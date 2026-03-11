@@ -11,7 +11,7 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 
 use oxc_react_compiler::entrypoint::options::PluginOptions;
-use oxc_react_compiler::entrypoint::pipeline::run_lint_pipeline;
+use oxc_react_compiler::entrypoint::pipeline::run_full_pipeline;
 use oxc_react_compiler::entrypoint::program::discover_functions;
 use oxc_react_compiler::error::{DiagnosticKind, ErrorCollector};
 use oxc_react_compiler::hir::build::HIRBuilder;
@@ -30,7 +30,12 @@ fn run_lint_analysis(source: &str, filename: &str) -> ErrorCollector {
     }
 
     let options = PluginOptions::default();
-    let config = EnvironmentConfig::default();
+    let config = EnvironmentConfig {
+        // Enable all validation passes for lint analysis
+        validate_exhaustive_memo_dependencies: true,
+        validate_exhaustive_effect_dependencies: true,
+        ..EnvironmentConfig::default()
+    };
     let mut all_errors = ErrorCollector::default();
 
     let functions = discover_functions(&parser_ret.program, &options);
@@ -48,12 +53,14 @@ fn run_lint_analysis(source: &str, filename: &str) -> ErrorCollector {
             &config,
         );
 
-        let Some(mut hir_func) = hir_func else {
+        let Some(hir_func) = hir_func else {
             continue;
         };
 
         let mut errors = ErrorCollector::default();
-        let _ = run_lint_pipeline(&mut hir_func.body, &config, &mut errors);
+        // Use run_full_pipeline to capture all validation passes including
+        // validate_preserved_manual_memoization (which runs on ReactiveFunction).
+        let _ = run_full_pipeline(hir_func, &config, &mut errors);
 
         all_errors.extend(&mut errors);
     }
