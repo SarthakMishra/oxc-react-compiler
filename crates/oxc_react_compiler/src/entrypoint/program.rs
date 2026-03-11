@@ -199,11 +199,10 @@ fn compose_source_maps(
     if source_pos < original_source.len() {
         let remaining = &original_source[source_pos..];
         for ch in remaining.chars() {
-            if output_col == 0 || ch == '\n' {
-                if ch != '\n' {
+            if (output_col == 0 || ch == '\n')
+                && ch != '\n' {
                     composed.add_mapping(output_line, output_col, orig_line, orig_col);
                 }
-            }
             if ch == '\n' {
                 output_line += 1;
                 output_col = 0;
@@ -232,21 +231,18 @@ fn try_compile_function(
     let hir_func = builder.build_function(func, fn_type);
     let mut errors = ErrorCollector::default();
 
-    match run_full_pipeline(hir_func, config, &mut errors) {
-        Ok(rf) => {
-            let (code, sm) = if generate_source_map {
-                let (code, sm) = codegen_function_with_source_map(&rf, source_text);
-                (code, Some(sm))
-            } else {
-                (codegen_function(&rf), None)
-            };
-            diagnostics.extend(errors.into_diagnostics());
-            Some((code, sm))
-        }
-        Err(()) => {
-            diagnostics.extend(errors.into_diagnostics());
-            None
-        }
+    if let Ok(rf) = run_full_pipeline(hir_func, config, &mut errors) {
+        let (code, sm) = if generate_source_map {
+            let (code, sm) = codegen_function_with_source_map(&rf, source_text);
+            (code, Some(sm))
+        } else {
+            (codegen_function(&rf), None)
+        };
+        diagnostics.extend(errors.into_diagnostics());
+        Some((code, sm))
+    } else {
+        diagnostics.extend(errors.into_diagnostics());
+        None
     }
 }
 
@@ -264,26 +260,23 @@ fn try_compile_arrow(
     let hir_func = builder.build_arrow_function(arrow, name, fn_type);
     let mut errors = ErrorCollector::default();
 
-    match run_full_pipeline(hir_func, config, &mut errors) {
-        Ok(rf) => {
-            let (code, sm) = if generate_source_map {
-                let (code, sm) = codegen_function_with_source_map(&rf, source_text);
-                (code, Some(sm))
-            } else {
-                (codegen_function(&rf), None)
-            };
-            diagnostics.extend(errors.into_diagnostics());
-            Some((code, sm))
-        }
-        Err(()) => {
-            diagnostics.extend(errors.into_diagnostics());
-            None
-        }
+    if let Ok(rf) = run_full_pipeline(hir_func, config, &mut errors) {
+        let (code, sm) = if generate_source_map {
+            let (code, sm) = codegen_function_with_source_map(&rf, source_text);
+            (code, Some(sm))
+        } else {
+            (codegen_function(&rf), None)
+        };
+        diagnostics.extend(errors.into_diagnostics());
+        Some((code, sm))
+    } else {
+        diagnostics.extend(errors.into_diagnostics());
+        None
     }
 }
 
 /// Walk a statement, discover compilable functions, and compile them immediately.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn compile_statement<'a>(
     stmt: &'a Statement<'a>,
     options: &PluginOptions,
@@ -324,33 +317,29 @@ fn compile_statement<'a>(
                 }
             }
         }
-        Statement::ExportDefaultDeclaration(export) => match &export.declaration {
-            ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
-                let name = func.id.as_ref().map(|id| id.name.to_string());
-                let fn_type = name
-                    .as_deref()
-                    .map(classify_function_name)
-                    .unwrap_or(ReactFunctionType::Component);
+        Statement::ExportDefaultDeclaration(export) => if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration {
+            let name = func.id.as_ref().map(|id| id.name.to_string());
+            let fn_type = name
+                .as_deref()
+                .map_or(ReactFunctionType::Component, classify_function_name);
 
-                if should_compile_default_export(name.as_deref(), fn_type, options) {
-                    let builder = HIRBuilder::new(config.clone());
-                    if let Some((code, sm)) = try_compile_function(
-                        builder,
-                        func,
-                        fn_type,
-                        config,
-                        source_text,
-                        generate_source_map,
-                        diagnostics,
-                    ) {
-                        if let Some(sm) = sm {
-                            source_maps.push((func.span, sm));
-                        }
-                        compiled.push((func.span, code));
+            if should_compile_default_export(name.as_deref(), fn_type, options) {
+                let builder = HIRBuilder::new(config.clone());
+                if let Some((code, sm)) = try_compile_function(
+                    builder,
+                    func,
+                    fn_type,
+                    config,
+                    source_text,
+                    generate_source_map,
+                    diagnostics,
+                ) {
+                    if let Some(sm) = sm {
+                        source_maps.push((func.span, sm));
                     }
+                    compiled.push((func.span, code));
                 }
             }
-            _ => {}
         },
         Statement::ExportNamedDeclaration(export) => {
             if let Some(decl) = &export.declaration {
@@ -382,7 +371,7 @@ fn compile_statement<'a>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn compile_declaration<'a>(
     decl: &'a Declaration<'a>,
     options: &PluginOptions,
@@ -439,7 +428,7 @@ fn compile_declaration<'a>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn compile_variable_declaration<'a>(
     decl: &'a VariableDeclaration<'a>,
     options: &PluginOptions,
@@ -451,8 +440,8 @@ fn compile_variable_declaration<'a>(
     diagnostics: &mut Vec<OxcDiagnostic>,
 ) {
     for declarator in &decl.declarations {
-        if let Some(init) = &declarator.init {
-            if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+        if let Some(init) = &declarator.init
+            && let BindingPattern::BindingIdentifier(id) = &declarator.id {
                 let name = id.name.to_string();
                 let fn_type = classify_function_name(&name);
 
@@ -504,7 +493,6 @@ fn compile_variable_declaration<'a>(
                     _ => {}
                 }
             }
-        }
     }
 }
 
@@ -567,21 +555,17 @@ fn discover_in_statement<'a>(
                 }
             }
         }
-        Statement::ExportDefaultDeclaration(export) => match &export.declaration {
-            ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
-                let name = func.id.as_ref().map(|id| id.name.to_string());
-                let fn_type = name
-                    .as_deref()
-                    .map(classify_function_name)
-                    .unwrap_or(ReactFunctionType::Component);
+        Statement::ExportDefaultDeclaration(export) => if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration {
+            let name = func.id.as_ref().map(|id| id.name.to_string());
+            let fn_type = name
+                .as_deref()
+                .map_or(ReactFunctionType::Component, classify_function_name);
 
-                if should_compile_default_export(name.as_deref(), fn_type, options) {
-                    let opt_out =
-                        has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
-                    functions.push(DiscoveredFunction { name, fn_type, span: func.span, opt_out });
-                }
+            if should_compile_default_export(name.as_deref(), fn_type, options) {
+                let opt_out =
+                    has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
+                functions.push(DiscoveredFunction { name, fn_type, span: func.span, opt_out });
             }
-            _ => {}
         },
         Statement::ExportNamedDeclaration(export) => {
             if let Some(decl) = &export.declaration {
@@ -636,8 +620,8 @@ fn discover_in_variable_declaration<'a>(
     functions: &mut Vec<DiscoveredFunction>,
 ) {
     for declarator in &decl.declarations {
-        if let Some(init) = &declarator.init {
-            if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+        if let Some(init) = &declarator.init
+            && let BindingPattern::BindingIdentifier(id) = &declarator.id {
                 let name = id.name.to_string();
                 let fn_type = classify_function_name(&name);
 
@@ -665,7 +649,6 @@ fn discover_in_variable_declaration<'a>(
                     });
                 }
             }
-        }
     }
 }
 
@@ -733,7 +716,7 @@ fn should_compile_default_export(
         CompilationMode::All => true,
         CompilationMode::Infer => {
             // Default exports that look like components
-            name.map_or(true, |n| {
+            name.is_none_or(|n| {
                 matches!(
                     classify_function_name(n),
                     ReactFunctionType::Component | ReactFunctionType::Hook
@@ -745,9 +728,9 @@ fn should_compile_default_export(
 }
 
 fn has_opt_out_directive(directives: Option<&[Directive<'_>]>) -> bool {
-    directives.map_or(false, |dirs| dirs.iter().any(|d| d.directive.as_str() == "use no memo"))
+    directives.is_some_and(|dirs| dirs.iter().any(|d| d.directive.as_str() == "use no memo"))
 }
 
 fn has_memo_directive(directives: Option<&[Directive<'_>]>) -> bool {
-    directives.map_or(false, |dirs| dirs.iter().any(|d| d.directive.as_str() == "use memo"))
+    directives.is_some_and(|dirs| dirs.iter().any(|d| d.directive.as_str() == "use memo"))
 }

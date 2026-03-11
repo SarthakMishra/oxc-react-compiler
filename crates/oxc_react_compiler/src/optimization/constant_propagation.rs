@@ -20,13 +20,12 @@ pub fn constant_propagation(hir: &mut HIR) {
     }
 
     // Phase 2: Replace LoadLocal with Primitive where possible
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if let InstructionValue::LoadLocal { place } = &instr.value {
-                if let Some(constant) = constants.get(&place.identifier.id) {
+            if let InstructionValue::LoadLocal { place } = &instr.value
+                && let Some(constant) = constants.get(&place.identifier.id) {
                     instr.value = InstructionValue::Primitive { value: constant.clone() };
                 }
-            }
         }
     }
 }

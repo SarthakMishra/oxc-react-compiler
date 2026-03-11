@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 //! Tier 2 lint rules that depend on the React Compiler's HIR analysis.
+//!
 //! These run the full compiler pipeline in lint mode to detect issues
 //! that require deep analysis (mutation tracking, scope inference, etc.).
 
@@ -85,20 +86,17 @@ fn find_and_build_function<'a>(
             }
             Statement::ExportDefaultDeclaration(export) => {
                 if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration
-                {
-                    if func.span == span {
+                    && func.span == span {
                         let builder = HIRBuilder::new(config.clone());
                         return Some(builder.build_function(func, fn_type));
                     }
-                }
             }
             Statement::ExportNamedDeclaration(export) => {
-                if let Some(Declaration::FunctionDeclaration(func)) = &export.declaration {
-                    if func.span == span {
+                if let Some(Declaration::FunctionDeclaration(func)) = &export.declaration
+                    && func.span == span {
                         let builder = HIRBuilder::new(config.clone());
                         return Some(builder.build_function(func, fn_type));
                     }
-                }
             }
             Statement::VariableDeclaration(decl) => {
                 for declarator in &decl.declarations {

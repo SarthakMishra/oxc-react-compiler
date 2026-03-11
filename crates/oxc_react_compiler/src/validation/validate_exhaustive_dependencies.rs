@@ -55,10 +55,9 @@ pub fn validate_exhaustive_dependencies(hir: &HIR, errors: &mut ErrorCollector) 
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             format!(
-                                "React Hook \"{}\" has a missing dependency: \"{}\". \
+                                "React Hook \"{name}\" has a missing dependency: \"{dep_name}\". \
                                  Either include it in the dependency array or remove \
-                                 the dependency array.",
-                                name, dep_name
+                                 the dependency array."
                             ),
                             kind,
                         ));
@@ -87,11 +86,10 @@ fn collect_callback_dependencies(hir: &HIR, callback: &Place) -> FxHashSet<Strin
                         match &inner_instr.value {
                             InstructionValue::LoadLocal { place }
                             | InstructionValue::LoadContext { place } => {
-                                if place.reactive {
-                                    if let Some(name) = &place.identifier.name {
+                                if place.reactive
+                                    && let Some(name) = &place.identifier.name {
                                         deps.insert(name.clone());
                                     }
-                                }
                             }
                             _ => {}
                         }
@@ -117,11 +115,10 @@ fn collect_declared_deps(hir: &HIR, deps_place: &Place) -> FxHashSet<String> {
 
             if let InstructionValue::ArrayExpression { elements } = &instr.value {
                 for element in elements {
-                    if let crate::hir::types::ArrayElement::Expression(place) = element {
-                        if let Some(name) = &place.identifier.name {
+                    if let crate::hir::types::ArrayElement::Expression(place) = element
+                        && let Some(name) = &place.identifier.name {
                             declared.insert(name.clone());
                         }
-                    }
                 }
             }
         }

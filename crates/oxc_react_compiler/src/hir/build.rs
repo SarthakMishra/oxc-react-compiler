@@ -306,7 +306,7 @@ impl HIRBuilder {
 
         // Lower body statements
         if let Some(body) = &func.body {
-            for stmt in body.statements.iter() {
+            for stmt in &body.statements {
                 self.lower_statement(stmt);
             }
         }
@@ -361,7 +361,7 @@ impl HIRBuilder {
                 }
             }
         } else {
-            for stmt in arrow.body.statements.iter() {
+            for stmt in &arrow.body.statements {
                 self.lower_statement(stmt);
             }
         }
@@ -412,7 +412,7 @@ impl HIRBuilder {
                 }
             }
         } else {
-            for stmt in arrow.body.statements.iter() {
+            for stmt in &arrow.body.statements {
                 inner.lower_statement(stmt);
             }
         }
@@ -447,29 +447,23 @@ impl HIRBuilder {
 
     fn lower_formal_params(&mut self, params: &ast::FormalParameters<'_>) -> Vec<Param> {
         let mut result = Vec::new();
-        for param in params.items.iter() {
-            match &param.pattern {
-                BindingPattern::BindingIdentifier(id) => {
-                    let place = self.make_named_place(&id.name, id.span);
-                    result.push(Param::Identifier(place));
-                }
-                _ => {
-                    // For destructured params, create a temp and emit destructure later.
-                    let place = self.make_temp(param.span);
-                    result.push(Param::Identifier(place));
-                }
+        for param in &params.items {
+            if let BindingPattern::BindingIdentifier(id) = &param.pattern {
+                let place = self.make_named_place(&id.name, id.span);
+                result.push(Param::Identifier(place));
+            } else {
+                // For destructured params, create a temp and emit destructure later.
+                let place = self.make_temp(param.span);
+                result.push(Param::Identifier(place));
             }
         }
         if let Some(rest) = &params.rest {
-            match &rest.rest.argument {
-                BindingPattern::BindingIdentifier(id) => {
-                    let place = self.make_named_place(&id.name, id.span);
-                    result.push(Param::Spread(place));
-                }
-                _ => {
-                    let place = self.make_temp(rest.span);
-                    result.push(Param::Spread(place));
-                }
+            if let BindingPattern::BindingIdentifier(id) = &rest.rest.argument {
+                let place = self.make_named_place(&id.name, id.span);
+                result.push(Param::Spread(place));
+            } else {
+                let place = self.make_temp(rest.span);
+                result.push(Param::Spread(place));
             }
         }
         result
@@ -482,7 +476,7 @@ impl HIRBuilder {
     fn lower_statement(&mut self, stmt: &Statement<'_>) {
         match stmt {
             Statement::BlockStatement(block) => {
-                for s in block.body.iter() {
+                for s in &block.body {
                     self.lower_statement(s);
                 }
             }
@@ -592,7 +586,7 @@ impl HIRBuilder {
 
     fn lower_variable_declaration(&mut self, decl: &ast::VariableDeclaration<'_>) {
         let kind = map_var_kind(decl.kind);
-        for declarator in decl.declarations.iter() {
+        for declarator in &decl.declarations {
             self.lower_variable_declarator(declarator, kind);
         }
     }
@@ -673,7 +667,7 @@ impl HIRBuilder {
         kind: InstructionKind,
     ) -> DestructurePattern {
         let mut properties = Vec::new();
-        for prop in pat.properties.iter() {
+        for prop in &pat.properties {
             let key = self.property_key_to_string(&prop.key);
             let target = self.lower_binding_pattern_to_target(&prop.value, kind);
             properties.push(DestructureObjectProperty {
@@ -702,7 +696,7 @@ impl HIRBuilder {
         kind: InstructionKind,
     ) -> DestructurePattern {
         let mut items = Vec::new();
-        for elem in pat.elements.iter() {
+        for elem in &pat.elements {
             match elem {
                 Some(binding) => {
                     let target = self.lower_binding_pattern_to_target(binding, kind);
@@ -837,7 +831,7 @@ impl HIRBuilder {
         let mut cases = Vec::new();
         let mut case_blocks = Vec::new();
 
-        for case in switch.cases.iter() {
+        for case in &switch.cases {
             let block_id = self.new_block(BlockKind::Block);
             let test_place = case.test.as_ref().map(|t| {
                 self.switch_block(self.current_block);
@@ -854,7 +848,7 @@ impl HIRBuilder {
 
         for (i, (block_id, stmts)) in case_blocks.iter().enumerate() {
             self.switch_block(*block_id);
-            for s in stmts.iter() {
+            for s in *stmts {
                 self.lower_statement(s);
             }
             // Fall through to next case block if no explicit break/return
@@ -983,7 +977,7 @@ impl HIRBuilder {
         // Init: get next value
         self.switch_block(init_block);
         let next_val = self.emit(
-            InstructionValue::IteratorNext { iterator: iterator.clone(), loc: for_of.span },
+            InstructionValue::IteratorNext { iterator, loc: for_of.span },
             for_of.span,
         );
         self.lower_for_left(&for_of.left, next_val, for_of.span);
@@ -1128,7 +1122,7 @@ impl HIRBuilder {
 
         // Try body
         self.switch_block(try_block);
-        for stmt in try_stmt.block.body.iter() {
+        for stmt in &try_stmt.block.body {
             self.lower_statement(stmt);
         }
         if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
@@ -1139,16 +1133,15 @@ impl HIRBuilder {
         self.switch_block(handler_block);
         if let Some(handler) = &try_stmt.handler {
             // Declare catch param if present
-            if let Some(param) = &handler.param {
-                if let BindingPattern::BindingIdentifier(id) = &param.pattern {
+            if let Some(param) = &handler.param
+                && let BindingPattern::BindingIdentifier(id) = &param.pattern {
                     let lvalue = self.make_named_place(&id.name, id.span);
                     self.emit(
                         InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::Let },
                         id.span,
                     );
                 }
-            }
-            for stmt in handler.body.body.iter() {
+            for stmt in &handler.body.body {
                 self.lower_statement(stmt);
             }
         }
@@ -1159,7 +1152,7 @@ impl HIRBuilder {
         // Finalizer (lowered inline after the fallthrough for simplicity)
         self.switch_block(fallthrough);
         if let Some(finalizer) = &try_stmt.finalizer {
-            for stmt in finalizer.body.iter() {
+            for stmt in &finalizer.body {
                 self.lower_statement(stmt);
             }
         }
@@ -1239,7 +1232,7 @@ impl HIRBuilder {
 
         self.emit(
             InstructionValue::DeclareLocal {
-                lvalue: lvalue.clone(),
+                lvalue,
                 type_: InstructionKind::HoistedFunction,
             },
             loc,
@@ -1269,7 +1262,7 @@ impl HIRBuilder {
             .unwrap_or_default();
 
         if let Some(body) = &func.body {
-            for stmt in body.statements.iter() {
+            for stmt in &body.statements {
                 self.lower_statement(stmt);
             }
         }
@@ -1353,7 +1346,7 @@ impl HIRBuilder {
             Expression::BigIntLiteral(lit) => self.emit(
                 InstructionValue::Primitive {
                     value: Primitive::BigInt(
-                        lit.raw.as_ref().map(|r| r.to_string()).unwrap_or_default(),
+                        lit.raw.as_ref().map(std::string::ToString::to_string).unwrap_or_default(),
                     ),
                 },
                 loc,
@@ -1374,9 +1367,7 @@ impl HIRBuilder {
                     .map(|q| {
                         q.value
                             .cooked
-                            .as_ref()
-                            .map(|c| c.to_string())
-                            .unwrap_or_else(|| q.value.raw.to_string())
+                            .as_ref().map_or_else(|| q.value.raw.to_string(), std::string::ToString::to_string)
                     })
                     .collect();
                 let subexpressions =
@@ -1393,9 +1384,7 @@ impl HIRBuilder {
                     .map(|q| {
                         q.value
                             .cooked
-                            .as_ref()
-                            .map(|c| c.to_string())
-                            .unwrap_or_else(|| q.value.raw.to_string())
+                            .as_ref().map_or_else(|| q.value.raw.to_string(), std::string::ToString::to_string)
                     })
                     .collect();
                 let subexpressions =
@@ -1494,7 +1483,7 @@ impl HIRBuilder {
             // Sequence
             Expression::SequenceExpression(seq) => {
                 let mut last = self.make_temp(loc);
-                for expr in seq.expressions.iter() {
+                for expr in &seq.expressions {
                     last = self.lower_expression(expr);
                 }
                 last
@@ -1636,8 +1625,8 @@ impl HIRBuilder {
 
     fn lower_call_expression(&mut self, call: &ast::CallExpression<'_>, loc: Span) -> Place {
         // Detect useMemo / useCallback for manual memoization markers
-        if let Some(callee_name) = extract_callee_name(&call.callee) {
-            if callee_name == "useMemo" || callee_name == "useCallback" {
+        if let Some(callee_name) = extract_callee_name(&call.callee)
+            && (callee_name == "useMemo" || callee_name == "useCallback") {
                 let memo_id = self.next_memo_id;
                 self.next_memo_id += 1;
                 self.emit(InstructionValue::StartMemoize { manual_memo_id: memo_id }, loc);
@@ -1659,7 +1648,6 @@ impl HIRBuilder {
                 );
                 return result;
             }
-        }
 
         // Check if callee is a member expression → MethodCall
         match &call.callee {
@@ -1674,7 +1662,7 @@ impl HIRBuilder {
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
                 let computed_access = self
-                    .emit(InstructionValue::ComputedLoad { object: object.clone(), property }, loc);
+                    .emit(InstructionValue::ComputedLoad { object, property }, loc);
                 let args = self.lower_arguments(&call.arguments);
                 self.emit(InstructionValue::CallExpression { callee: computed_access, args }, loc)
             }
@@ -1937,7 +1925,7 @@ impl HIRBuilder {
 
     fn lower_object_expression(&mut self, obj: &ast::ObjectExpression<'_>, loc: Span) -> Place {
         let mut properties = Vec::new();
-        for prop_kind in obj.properties.iter() {
+        for prop_kind in &obj.properties {
             match prop_kind {
                 ObjectPropertyKind::ObjectProperty(prop) => {
                     if prop.method {
@@ -1983,7 +1971,7 @@ impl HIRBuilder {
 
     fn lower_array_expression(&mut self, arr: &ast::ArrayExpression<'_>, loc: Span) -> Place {
         let mut elements = Vec::new();
-        for elem in arr.elements.iter() {
+        for elem in &arr.elements {
             match elem {
                 ArrayExpressionElement::SpreadElement(spread) => {
                     let val = self.lower_expression(&spread.argument);
@@ -2347,7 +2335,7 @@ fn for_init_as_expression<'a>(init: &'a ForStatementInit<'a>) -> Option<&'a Expr
     // ForStatementInit inherits Expression variants
     match init {
         ForStatementInit::BooleanLiteral(e) => {
-            Some(unsafe { &*(e.as_ref() as *const ast::BooleanLiteral as *const Expression<'a>) })
+            Some(unsafe { &*std::ptr::from_ref::<ast::BooleanLiteral>(e.as_ref()).cast::<Expression<'a>>() })
         }
         // For simplicity, handle the common case by emitting UnsupportedNode
         // A full implementation would match all Expression variants
@@ -2367,7 +2355,7 @@ fn arg_as_expression<'a>(arg: &'a Argument<'a>) -> Option<&'a Expression<'a>> {
         _ => {
             // SAFETY: Argument inherits Expression variants with the same layout
             // when it's not SpreadElement.
-            Some(unsafe { &*(arg as *const Argument<'a> as *const Expression<'a>) })
+            Some(unsafe { &*std::ptr::from_ref::<Argument<'a>>(arg).cast::<Expression<'a>>() })
         }
     }
 }
@@ -2380,7 +2368,7 @@ fn array_elem_as_expression<'a>(
         ArrayExpressionElement::SpreadElement(_) | ArrayExpressionElement::Elision(_) => None,
         _ => {
             // SAFETY: inherited Expression variants have the same layout
-            Some(unsafe { &*(elem as *const ArrayExpressionElement<'a> as *const Expression<'a>) })
+            Some(unsafe { &*std::ptr::from_ref::<ArrayExpressionElement<'a>>(elem).cast::<Expression<'a>>() })
         }
     }
 }
@@ -2391,7 +2379,7 @@ fn jsx_expression_as_expression<'a>(expr: &'a JSXExpression<'a>) -> Option<&'a E
         JSXExpression::EmptyExpression(_) => None,
         _ => {
             // SAFETY: inherited Expression variants
-            Some(unsafe { &*(expr as *const JSXExpression<'a> as *const Expression<'a>) })
+            Some(unsafe { &*std::ptr::from_ref::<JSXExpression<'a>>(expr).cast::<Expression<'a>>() })
         }
     }
 }
@@ -2402,7 +2390,7 @@ fn property_key_as_expression<'a>(key: &'a PropertyKey<'a>) -> Option<&'a Expres
         PropertyKey::StaticIdentifier(_) | PropertyKey::PrivateIdentifier(_) => None,
         _ => {
             // SAFETY: inherited Expression variants
-            Some(unsafe { &*(key as *const PropertyKey<'a> as *const Expression<'a>) })
+            Some(unsafe { &*std::ptr::from_ref::<PropertyKey<'a>>(key).cast::<Expression<'a>>() })
         }
     }
 }

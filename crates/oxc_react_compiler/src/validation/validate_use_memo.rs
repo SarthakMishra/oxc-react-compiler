@@ -62,8 +62,8 @@ fn check_memo_callback_async(
             if instr.lvalue.identifier.id != callback_id {
                 continue;
             }
-            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
-                if lowered_func.is_async {
+            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
+                && lowered_func.is_async {
                     errors.push(CompilerError::invalid_react_with_kind(
                         call_loc,
                         "useMemo callback must not be async. \
@@ -72,7 +72,6 @@ fn check_memo_callback_async(
                         DiagnosticKind::UseMemoValidation,
                     ));
                 }
-            }
         }
     }
 }

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{BlockId, FunctionExprType, HIR, InstructionValue, Param, Place, Terminal};
+use crate::hir::types::{HIR, InstructionValue, Param, Place, Terminal};
 
 /// Inline immediately-invoked function expressions (IIFEs).
 ///
@@ -21,7 +21,7 @@ pub fn inline_iife(hir: &mut HIR) {
     // - The function has no context variables (no captures)
     // - The block terminates with a Return
 
-    let mut next_block_id = hir.blocks.iter().map(|(id, _)| id.0).max().unwrap_or(0) + 1;
+    let _next_block_id = hir.blocks.iter().map(|(id, _)| id.0).max().unwrap_or(0) + 1;
 
     // Collect IIFE sites: (block_idx, call_instr_idx, func_instr_idx)
     let mut iife_sites: Vec<(usize, usize, usize)> = Vec::new();
@@ -46,13 +46,11 @@ pub fn inline_iife(hir: &mut HIR) {
             // Check if prev is a simple FunctionExpression.
             if let InstructionValue::FunctionExpression { ref lowered_func, .. } = prev.value {
                 // Only inline if the function has a single block and no context.
-                if lowered_func.context.is_empty() && lowered_func.body.blocks.len() == 1 {
-                    if let Some((_, entry_block)) = lowered_func.body.blocks.first() {
-                        if matches!(entry_block.terminal, Terminal::Return { .. }) {
+                if lowered_func.context.is_empty() && lowered_func.body.blocks.len() == 1
+                    && let Some((_, entry_block)) = lowered_func.body.blocks.first()
+                        && matches!(entry_block.terminal, Terminal::Return { .. }) {
                             iife_sites.push((block_idx, i, i - 1));
                         }
-                    }
-                }
             }
         }
     }
@@ -101,7 +99,7 @@ pub fn inline_iife(hir: &mut HIR) {
 
         // Replace the call instruction with a reference to the return value.
         // The inlined function's instructions will be inserted before this point.
-        let call_lvalue = call_instr.lvalue.clone();
+        let _call_lvalue = call_instr.lvalue.clone();
         call_instr.value = InstructionValue::LoadLocal { place: return_value };
 
         // Insert the function body's instructions before the (now-transformed) call.

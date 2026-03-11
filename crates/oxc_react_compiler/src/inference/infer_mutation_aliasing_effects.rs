@@ -68,8 +68,7 @@ impl AbstractHeap {
             .id_to_value
             .get(&from)
             .and_then(|&idx| self.values.get(idx))
-            .map(|v| v.kind)
-            .unwrap_or(ValueKind::Mutable);
+            .map_or(ValueKind::Mutable, |v| v.kind);
         self.create(into, kind);
     }
 
@@ -137,8 +136,7 @@ impl AbstractHeap {
         self.id_to_value
             .get(&id)
             .and_then(|&idx| self.values.get(idx))
-            .map(|v| v.frozen)
-            .unwrap_or(false)
+            .is_some_and(|v| v.frozen)
     }
 
     /// Compute the effect for a place based on heap state.
@@ -174,7 +172,7 @@ impl AbstractHeap {
 /// 4. Write resolved effects back to places
 pub fn infer_mutation_aliasing_effects(hir: &mut HIR) {
     // Phase 1: Compute initial effects for each instruction.
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             let effects = compute_instruction_effects(&instr.value, &instr.lvalue);
             instr.effects = Some(effects);
@@ -217,11 +215,10 @@ pub fn infer_mutation_aliasing_effects(hir: &mut HIR) {
             let captured: Vec<IdentifierId> = heap.values[value_idx].captures.clone();
 
             for cap_id in captured {
-                if let Some(&cap_idx) = heap.id_to_value.get(&cap_id) {
-                    if !heap.values[cap_idx].mutated && is_mutated {
+                if let Some(&cap_idx) = heap.id_to_value.get(&cap_id)
+                    && !heap.values[cap_idx].mutated && is_mutated {
                         to_mutate.push(cap_idx);
                     }
-                }
             }
         }
 
@@ -234,7 +231,7 @@ pub fn infer_mutation_aliasing_effects(hir: &mut HIR) {
     }
 
     // Phase 4: Write effects back to all places.
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             // Set effect on the lvalue.
             let lvalue_effect = heap.compute_effect(instr.lvalue.identifier.id);
@@ -277,7 +274,7 @@ fn process_effect_for_heap(heap: &mut AbstractHeap, effect: &AliasingEffect) {
                             heap.capture(arg.identifier.id, into.identifier.id);
                         }
                         Effect::Freeze => {
-                            heap.freeze(arg.identifier.id, FreezeReason::FrozenByValue)
+                            heap.freeze(arg.identifier.id, FreezeReason::FrozenByValue);
                         }
                         _ => {}
                     }
@@ -428,7 +425,7 @@ fn set_operand_effects(value: &mut crate::hir::types::InstructionValue, heap: &A
             for elem in elements.iter_mut() {
                 match elem {
                     ArrayElement::Expression(place) | ArrayElement::Spread(place) => {
-                        update_place(place, heap)
+                        update_place(place, heap);
                     }
                     ArrayElement::Hole => {}
                 }

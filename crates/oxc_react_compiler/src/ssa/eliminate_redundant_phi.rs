@@ -18,7 +18,7 @@ pub fn eliminate_redundant_phi(hir: &mut HIR) {
         let mut replacements: FxHashMap<IdentifierId, IdentifierId> = FxHashMap::default();
 
         // Find redundant phis
-        for (_, block) in hir.blocks.iter() {
+        for (_, block) in &hir.blocks {
             for phi in &block.phis {
                 if let Some(replacement) = is_redundant_phi(phi) {
                     replacements.insert(phi.place.identifier.id, replacement);
@@ -35,7 +35,7 @@ pub fn eliminate_redundant_phi(hir: &mut HIR) {
         apply_replacements(hir, &replacements);
 
         // Remove the redundant phi nodes
-        for (_, block) in hir.blocks.iter_mut() {
+        for (_, block) in &mut hir.blocks {
             block.phis.retain(|phi| !replacements.contains_key(&phi.place.identifier.id));
         }
     }
@@ -76,7 +76,7 @@ fn apply_replacements(hir: &mut HIR, replacements: &FxHashMap<IdentifierId, Iden
     // Resolve transitive replacements
     let resolved = resolve_transitive(replacements);
 
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         // Update instructions
         for instr in &mut block.instructions {
             replace_in_place(&mut instr.lvalue, &resolved);
@@ -104,12 +104,11 @@ fn resolve_transitive(
         let snapshot: Vec<(IdentifierId, IdentifierId)> =
             resolved.iter().map(|(&k, &v)| (k, v)).collect();
         for (key, value) in snapshot {
-            if let Some(&further) = resolved.get(&value) {
-                if further != value {
+            if let Some(&further) = resolved.get(&value)
+                && further != value {
                     resolved.insert(key, further);
                     changed = true;
                 }
-            }
         }
     }
     resolved
@@ -353,7 +352,7 @@ fn replace_in_hir_function(
         replace_in_place(ctx, replacements);
     }
     // Replace in body
-    for (_, block) in func.body.blocks.iter_mut() {
+    for (_, block) in &mut func.body.blocks {
         for instr in &mut block.instructions {
             replace_in_place(&mut instr.lvalue, replacements);
             replace_in_instruction_value(&mut instr.value, replacements);

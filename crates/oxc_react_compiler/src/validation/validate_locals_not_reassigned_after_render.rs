@@ -56,22 +56,19 @@ fn check_nested_reassignments(
 ) {
     for (_, block) in &nested_hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value {
-                if let Some(name) = &lvalue.identifier.name {
-                    if render_assigned.contains(name) {
+            if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+                    && render_assigned.contains(name) {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             format!(
-                                "Local variable \"{}\" is assigned during render but \
+                                "Local variable \"{name}\" is assigned during render but \
                                  reassigned inside a nested function (effect or event handler). \
-                                 This prevents the compiler from memoizing correctly.",
-                                name
+                                 This prevents the compiler from memoizing correctly."
                             ),
                             DiagnosticKind::LocalsReassignedAfterRender,
                         ));
                     }
-                }
-            }
         }
     }
 }

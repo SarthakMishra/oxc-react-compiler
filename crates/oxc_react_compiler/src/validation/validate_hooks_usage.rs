@@ -14,21 +14,18 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
 
     for (block_id, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
-                if let Some(name) = &callee.identifier.name {
-                    if is_hook_name(name) && conditional_blocks.contains(block_id) {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value
+                && let Some(name) = &callee.identifier.name
+                    && is_hook_name(name) && conditional_blocks.contains(block_id) {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             format!(
-                                "React Hook \"{}\" is called conditionally. \
-                                 Hooks must be called in the exact same order in every render.",
-                                name
+                                "React Hook \"{name}\" is called conditionally. \
+                                 Hooks must be called in the exact same order in every render."
                             ),
                             DiagnosticKind::HooksViolation,
                         ));
                     }
-                }
-            }
         }
     }
 }

@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    Effect, HIR, Identifier, IdentifierId, Instruction, InstructionId, InstructionValue,
-    MutableRange, Place, Type,
+    HIR, Instruction, InstructionValue,
 };
 
 /// Outline JSX expressions into separate variables.
@@ -16,7 +15,7 @@ use crate::hir::types::{
 ///   `const t1 = <Child />;`
 ///   `<Parent>{t1}</Parent>`
 pub fn outline_jsx(hir: &mut HIR) {
-    let mut next_instr_id = hir
+    let _next_instr_id = hir
         .blocks
         .iter()
         .flat_map(|(_, b)| b.instructions.iter())
@@ -24,7 +23,7 @@ pub fn outline_jsx(hir: &mut HIR) {
         .max()
         .unwrap_or(0)
         + 1;
-    let mut next_ident_id = hir
+    let _next_ident_id = hir
         .blocks
         .iter()
         .flat_map(|(_, b)| b.instructions.iter())
@@ -33,10 +32,10 @@ pub fn outline_jsx(hir: &mut HIR) {
         .unwrap_or(0)
         + 1;
 
-    for (_, block) in hir.blocks.iter_mut() {
-        let mut insertions: Vec<(usize, Instruction)> = Vec::new();
+    for (_, block) in &mut hir.blocks {
+        let _insertions: Vec<(usize, Instruction)> = Vec::new();
 
-        for (idx, instr) in block.instructions.iter().enumerate() {
+        for instr in &block.instructions {
             // Find instructions that produce JSX and are used as arguments to other JSX.
             // We look at the children of JsxExpression: if a child was produced by another
             // JsxExpression instruction in this same block, it's already outlined.

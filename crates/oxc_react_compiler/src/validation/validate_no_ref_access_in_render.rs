@@ -10,8 +10,8 @@ use crate::hir::types::{HIR, InstructionValue, Place};
 pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::PropertyLoad { object, property } = &instr.value {
-                if property == "current" && is_likely_ref(object) {
+            if let InstructionValue::PropertyLoad { object, property } = &instr.value
+                && property == "current" && is_likely_ref(object) {
                     errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
                         "Accessing ref.current during render. \
@@ -20,7 +20,6 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
                         DiagnosticKind::RefAccessInRender,
                     ));
                 }
-            }
         }
     }
 }
@@ -35,5 +34,5 @@ fn is_likely_ref(place: &Place) -> bool {
         .identifier
         .name
         .as_deref()
-        .map_or(false, |name| name.ends_with("Ref") || name.ends_with("ref") || name == "ref")
+        .is_some_and(|name| name.ends_with("Ref") || name.ends_with("ref") || name == "ref")
 }

@@ -11,23 +11,20 @@ use crate::hir::types::{HIR, InstructionValue};
 pub fn validate_static_components(hir: &HIR, errors: &mut ErrorCollector) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::FunctionExpression { name, .. } = &instr.value {
-                if let Some(name) = name {
-                    if is_component_name(name) {
+            if let InstructionValue::FunctionExpression { name, .. } = &instr.value
+                && let Some(name) = name
+                    && is_component_name(name) {
                         // This is a component defined inline - could be problematic
                         // unless it's a known pattern like React.memo(() => ...)
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             format!(
-                                "Component \"{}\" is defined inline during render. \
-                                 Move it outside the parent component to avoid remounting.",
-                                name
+                                "Component \"{name}\" is defined inline during render. \
+                                 Move it outside the parent component to avoid remounting."
                             ),
                             DiagnosticKind::StaticComponents,
                         ));
                     }
-                }
-            }
         }
     }
 }

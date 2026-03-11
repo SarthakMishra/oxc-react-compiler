@@ -11,7 +11,7 @@ use crate::hir::types::{BinaryOp, HIR, InstructionValue, Primitive, PrimitiveTyp
 /// - Function expressions -> Function type
 /// - Call expressions -> Poly (unknown return type, refined by shape system)
 pub fn infer_types(hir: &mut HIR) {
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             let inferred = infer_instruction_type(&instr.value);
             instr.lvalue.identifier.type_ = inferred;

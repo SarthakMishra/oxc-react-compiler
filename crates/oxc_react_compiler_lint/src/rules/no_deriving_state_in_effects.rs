@@ -12,7 +12,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use crate::utils::hook_detection::{get_callee_name, is_effect_hook_call, is_set_state_call};
 
 /// Check for derived state computations inside effect callbacks.
-pub fn check_no_deriving_state_in_effects<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
+pub fn check_no_deriving_state_in_effects(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     let mut visitor =
         NoDerivedStateInEffectsVisitor { diagnostics: Vec::new(), in_effect_callback: false };
     visitor.visit_program(program);
@@ -61,9 +61,8 @@ impl<'a> Visit<'a> for NoDerivedStateInEffectsVisitor {
             let hook_name = get_callee_name(it).unwrap_or("setState");
             self.diagnostics.push(
                 OxcDiagnostic::warn(format!(
-                    "\"{}\" is called inside an effect callback. If this derives state from \
-                     props or other state, compute the value during render instead (e.g., with useMemo).",
-                    hook_name
+                    "\"{hook_name}\" is called inside an effect callback. If this derives state from \
+                     props or other state, compute the value during render instead (e.g., with useMemo)."
                 ))
                 .with_label(it.span),
             );

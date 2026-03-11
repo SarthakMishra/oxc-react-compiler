@@ -11,7 +11,7 @@ pub fn optimize_for_ssr(hir: &mut HIR) {
     // Strip scope annotations from all identifiers. Without scopes,
     // the downstream passes (infer_reactive_scope_variables, build_reactive_scope_terminals)
     // become no-ops, and codegen emits plain function bodies.
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             instr.lvalue.identifier.scope = None;
         }

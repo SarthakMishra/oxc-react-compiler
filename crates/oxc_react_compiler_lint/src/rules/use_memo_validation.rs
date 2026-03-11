@@ -12,7 +12,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use crate::utils::hook_detection::get_callee_name;
 
 /// Check for invalid `useMemo`/`useCallback` usage patterns.
-pub fn check_use_memo_validation<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
+pub fn check_use_memo_validation(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     let mut visitor = UseMemoValidationVisitor { diagnostics: Vec::new() };
     visitor.visit_program(program);
     visitor.diagnostics
@@ -24,19 +24,10 @@ struct UseMemoValidationVisitor {
 
 impl<'a> Visit<'a> for UseMemoValidationVisitor {
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
-        if let Some(name) = get_callee_name(it) {
-            if name == "useMemo" || name == "useCallback" {
+        if let Some(name) = get_callee_name(it)
+            && (name == "useMemo" || name == "useCallback") {
                 // Must have exactly 2 arguments
-                if it.arguments.len() != 2 {
-                    self.diagnostics.push(
-                        OxcDiagnostic::warn(format!(
-                            "\"{}\" requires exactly 2 arguments (a callback and a dependency array), but received {}.",
-                            name,
-                            it.arguments.len()
-                        ))
-                        .with_label(it.span),
-                    );
-                } else {
+                if it.arguments.len() == 2 {
                     // First argument should be a function
                     let first = &it.arguments[0];
                     let is_fn = matches!(
@@ -46,8 +37,7 @@ impl<'a> Visit<'a> for UseMemoValidationVisitor {
                     if !is_fn {
                         self.diagnostics.push(
                             OxcDiagnostic::warn(format!(
-                                "The first argument to \"{}\" should be a function expression.",
-                                name
+                                "The first argument to \"{name}\" should be a function expression."
                             ))
                             .with_label(it.span),
                         );
@@ -59,15 +49,22 @@ impl<'a> Visit<'a> for UseMemoValidationVisitor {
                     if !is_array {
                         self.diagnostics.push(
                             OxcDiagnostic::warn(format!(
-                                "The second argument to \"{}\" should be a dependency array.",
-                                name
+                                "The second argument to \"{name}\" should be a dependency array."
                             ))
                             .with_label(it.span),
                         );
                     }
+                } else {
+                    self.diagnostics.push(
+                        OxcDiagnostic::warn(format!(
+                            "\"{}\" requires exactly 2 arguments (a callback and a dependency array), but received {}.",
+                            name,
+                            it.arguments.len()
+                        ))
+                        .with_label(it.span),
+                    );
                 }
             }
-        }
 
         walk::walk_call_expression(self, it);
     }

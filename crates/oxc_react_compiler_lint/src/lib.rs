@@ -1,3 +1,9 @@
+#![allow(
+    clippy::needless_pass_by_value,
+    clippy::only_used_in_recursion,
+    clippy::match_same_arms
+)]
+
 pub mod rules;
 pub mod utils;
 
@@ -16,7 +22,7 @@ use rules::{
 };
 
 /// Run all lint rules on the given program and return any diagnostics found.
-pub fn run_lint_rules<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
+pub fn run_lint_rules(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     let mut diagnostics = Vec::new();
 
     // Core rules

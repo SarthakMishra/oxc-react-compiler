@@ -50,8 +50,8 @@ pub fn merge_overlapping_reactive_scopes_hir(hir: &mut HIR) {
 
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if let Some(ref mut scope) = instr.lvalue.identifier.scope {
-                if let Some(&target) = merge_map.get(&scope.id) {
+            if let Some(ref mut scope) = instr.lvalue.identifier.scope
+                && let Some(&target) = merge_map.get(&scope.id) {
                     // Find the merged range for the target
                     if let Some(merged) = merged_ranges.iter().find(|m| m.0 == target) {
                         scope.id = target;
@@ -59,7 +59,6 @@ pub fn merge_overlapping_reactive_scopes_hir(hir: &mut HIR) {
                         scope.range.end = InstructionId(merged.2);
                     }
                 }
-            }
         }
     }
 }
@@ -101,8 +100,8 @@ fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock) {
     for &(first_idx, second_idx) in to_merge.iter().rev() {
         if second_idx < block.instructions.len() && first_idx < block.instructions.len() {
             let second = block.instructions.remove(second_idx);
-            if let crate::hir::types::ReactiveInstruction::Scope(second_scope) = second {
-                if let Some(crate::hir::types::ReactiveInstruction::Scope(first_scope)) =
+            if let crate::hir::types::ReactiveInstruction::Scope(second_scope) = second
+                && let Some(crate::hir::types::ReactiveInstruction::Scope(first_scope)) =
                     block.instructions.get_mut(first_idx)
                 {
                     // Merge: extend first scope's instructions with second's
@@ -113,7 +112,6 @@ fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock) {
                     // Merge the merged list
                     first_scope.scope.merged.push(second_scope.scope.id);
                 }
-            }
         }
     }
 

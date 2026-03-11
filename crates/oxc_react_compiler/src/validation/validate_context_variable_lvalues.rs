@@ -31,21 +31,18 @@ pub fn validate_context_variable_lvalues(hir: &HIR, errors: &mut ErrorCollector)
     // Second pass: find StoreContext instructions that write to const-bound names.
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::StoreContext { lvalue, .. } = &instr.value {
-                if let Some(name) = &lvalue.identifier.name {
-                    if const_context_ids.contains(name) {
+            if let InstructionValue::StoreContext { lvalue, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+                    && const_context_ids.contains(name) {
                         errors.push(CompilerError::invalid_js_with_kind(
                             instr.loc,
                             format!(
-                                "Cannot reassign context variable \"{}\". \
-                                 It was declared as a const binding and is immutable.",
-                                name
+                                "Cannot reassign context variable \"{name}\". \
+                                 It was declared as a const binding and is immutable."
                             ),
                             DiagnosticKind::ContextVariableLvalues,
                         ));
                     }
-                }
-            }
         }
     }
 }

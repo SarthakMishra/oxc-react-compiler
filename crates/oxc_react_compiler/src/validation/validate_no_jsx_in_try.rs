@@ -56,12 +56,8 @@ fn mark_reachable(hir: &HIR, start: BlockId, visited: &mut FxHashSet<BlockId>) {
         return;
     }
 
-    if let Some((_, block)) = hir.blocks.iter().find(|(id, _)| *id == start) {
-        match &block.terminal {
-            Terminal::Goto { block: next } => {
-                mark_reachable(hir, *next, visited);
-            }
-            _ => {}
+    if let Some((_, block)) = hir.blocks.iter().find(|(id, _)| *id == start)
+        && let Terminal::Goto { block: next } = &block.terminal {
+            mark_reachable(hir, *next, visited);
         }
-    }
 }

@@ -13,7 +13,7 @@ use rustc_hash::FxHashSet;
 use crate::utils::hook_detection::{is_component_name, is_hook_name, is_use_ref_call};
 
 /// Check for `.current` accesses on ref values during render.
-pub fn check_no_ref_access_in_render<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
+pub fn check_no_ref_access_in_render(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     let mut visitor =
         NoRefAccessInRenderVisitor { diagnostics: Vec::new(), context_stack: Vec::new() };
     visitor.visit_program(program);
@@ -141,24 +141,21 @@ impl<'a> Visit<'a> for NoRefAccessInRenderVisitor {
         }
 
         // Track `const myRef = useRef(...)`.
-        if let Some(init) = &it.init {
-            if let Expression::CallExpression(call) = init {
-                if is_use_ref_call(call) {
-                    if let Some(name) = Self::function_name_from_id(&it.id) {
+        if let Some(init) = &it.init
+            && let Expression::CallExpression(call) = init
+                && is_use_ref_call(call)
+                    && let Some(name) = Self::function_name_from_id(&it.id) {
                         self.register_ref(name.to_string());
                     }
-                }
-            }
-        }
 
         walk::walk_variable_declarator(self, it);
     }
 
     fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
         // Check for `ref.current` access during render.
-        if self.is_in_render_phase() && it.property.name.as_str() == "current" {
-            if let Expression::Identifier(ident) = &it.object {
-                if self.is_known_ref(ident.name.as_str()) {
+        if self.is_in_render_phase() && it.property.name.as_str() == "current"
+            && let Expression::Identifier(ident) = &it.object
+                && self.is_known_ref(ident.name.as_str()) {
                     self.diagnostics.push(
                         OxcDiagnostic::warn(
                             "Accessing ref.current during render can lead to bugs.",
@@ -166,8 +163,6 @@ impl<'a> Visit<'a> for NoRefAccessInRenderVisitor {
                         .with_label(it.span),
                     );
                 }
-            }
-        }
         walk::walk_static_member_expression(self, it);
     }
 }

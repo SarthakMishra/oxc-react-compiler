@@ -438,10 +438,10 @@ pub fn is_hook_name(name: &str) -> bool {
     if name.len() < 4 {
         return false;
     }
-    name.starts_with("use") && name.as_bytes().get(3).map_or(false, |b| b.is_ascii_uppercase())
+    name.starts_with("use") && name.as_bytes().get(3).is_some_and(u8::is_ascii_uppercase)
 }
 
 /// Check if a name is a known React component (PascalCase).
 pub fn is_component_name(name: &str) -> bool {
-    name.as_bytes().first().map_or(false, |b| b.is_ascii_uppercase())
+    name.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
 }

@@ -72,12 +72,11 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
     // Phase 3: Write the dependencies back onto the scopes
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if let Some(ref mut scope) = instr.lvalue.identifier.scope {
-                if let Some(deps) = scope_deps.remove(&scope.id) {
+            if let Some(ref mut scope) = instr.lvalue.identifier.scope
+                && let Some(deps) = scope_deps.remove(&scope.id) {
                     // Only include reactive dependencies
                     scope.dependencies = deps.into_iter().filter(|d| d.reactive).collect();
                 }
-            }
         }
     }
 }

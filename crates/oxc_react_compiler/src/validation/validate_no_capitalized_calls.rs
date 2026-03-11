@@ -11,29 +11,27 @@ use crate::hir::types::{HIR, InstructionValue};
 pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
-                if let Some(name) = &callee.identifier.name {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value
+                && let Some(name) = &callee.identifier.name {
                     // Skip hook calls (useXxx) — those are valid PascalCase-like calls
                     if name.starts_with("use")
-                        && name.as_bytes().get(3).map_or(false, |b| b.is_ascii_uppercase())
+                        && name.as_bytes().get(3).is_some_and(u8::is_ascii_uppercase)
                     {
                         continue;
                     }
 
                     // Check if the callee starts with an uppercase letter
-                    if name.as_bytes().first().map_or(false, |b| b.is_ascii_uppercase()) {
+                    if name.as_bytes().first().is_some_and(u8::is_ascii_uppercase) {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             format!(
-                                "\"{}\" is a component and cannot be called directly. \
-                                 Use JSX syntax (<{} />) instead of calling it as a function.",
-                                name, name
+                                "\"{name}\" is a component and cannot be called directly. \
+                                 Use JSX syntax (<{name} />) instead of calling it as a function."
                             ),
                             DiagnosticKind::CapitalizedCalls,
                         ));
                     }
                 }
-            }
         }
     }
 }

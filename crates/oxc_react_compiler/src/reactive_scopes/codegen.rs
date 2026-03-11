@@ -15,7 +15,7 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
 
     // Generate function header
     if let Some(ref name) = rf.id {
-        output.push_str(&format!("function {}(", name));
+        output.push_str(&format!("function {name}("));
     } else {
         output.push_str("function (");
     }
@@ -40,7 +40,7 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     // Count total cache slots needed
     let total_slots = count_cache_slots(&rf.body);
     if total_slots > 0 {
-        output.push_str(&format!("  const $ = _c({});\n", total_slots));
+        output.push_str(&format!("  const $ = _c({total_slots});\n"));
     }
 
     // Generate body
@@ -78,14 +78,14 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 Primitive::Boolean(b) => b.to_string(),
                 Primitive::Number(n) => n.to_string(),
                 Primitive::String(s) => format!("\"{}\"", s.replace('\"', "\\\"")),
-                Primitive::BigInt(n) => format!("{}n", n),
+                Primitive::BigInt(n) => format!("{n}n"),
             };
-            output.push_str(&format!("{}const {} = {};\n", indent, lvalue_name, val_str));
+            output.push_str(&format!("{indent}const {lvalue_name} = {val_str};\n"));
         }
         InstructionValue::LoadLocal { place } => {
             let name = place_name(place);
             if name != lvalue_name {
-                output.push_str(&format!("{}const {} = {};\n", indent, lvalue_name, name));
+                output.push_str(&format!("{indent}const {lvalue_name} = {name};\n"));
             }
         }
         InstructionValue::StoreLocal { lvalue: target, value, type_ } => {
@@ -97,11 +97,11 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 Some(crate::hir::types::InstructionKind::Var) => "var ",
                 _ => "",
             };
-            output.push_str(&format!("{}{}{} = {};\n", indent, keyword, target_name, value_name));
+            output.push_str(&format!("{indent}{keyword}{target_name} = {value_name};\n"));
         }
         InstructionValue::CallExpression { callee, args } => {
             let callee_name = place_name(callee);
-            let args_str: Vec<String> = args.iter().map(|a| place_name(a)).collect();
+            let args_str: Vec<String> = args.iter().map(place_name).collect();
             output.push_str(&format!(
                 "{}const {} = {}({});\n",
                 indent,
@@ -112,7 +112,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::MethodCall { receiver, property, args } => {
             let receiver_name = place_name(receiver);
-            let args_str: Vec<String> = args.iter().map(|a| place_name(a)).collect();
+            let args_str: Vec<String> = args.iter().map(place_name).collect();
             output.push_str(&format!(
                 "{}const {} = {}.{}({});\n",
                 indent,
@@ -163,7 +163,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::JsxExpression { tag, props, children } => {
             let tag_name = place_name(tag);
-            output.push_str(&format!("{}const {} = <{}", indent, lvalue_name, tag_name));
+            output.push_str(&format!("{indent}const {lvalue_name} = <{tag_name}"));
             for attr in props {
                 match &attr.name {
                     crate::hir::types::JsxAttributeName::Named(name) => {
@@ -181,11 +181,11 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 for child in children {
                     output.push_str(&format!("{{{}}}", place_name(child)));
                 }
-                output.push_str(&format!("</{}>;\n", tag_name));
+                output.push_str(&format!("</{tag_name}>;\n"));
             }
         }
         InstructionValue::JsxFragment { children } => {
-            output.push_str(&format!("{}const {} = <>", indent, lvalue_name));
+            output.push_str(&format!("{indent}const {lvalue_name} = <>"));
             for child in children {
                 output.push_str(&format!("{{{}}}", place_name(child)));
             }
@@ -193,9 +193,9 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::ObjectExpression { properties } => {
             if properties.is_empty() {
-                output.push_str(&format!("{}const {} = {{}};\n", indent, lvalue_name));
+                output.push_str(&format!("{indent}const {lvalue_name} = {{}};\n"));
             } else {
-                output.push_str(&format!("{}const {} = {{ ", indent, lvalue_name));
+                output.push_str(&format!("{indent}const {lvalue_name} = {{ "));
                 for (i, prop) in properties.iter().enumerate() {
                     if i > 0 {
                         output.push_str(", ");
@@ -221,7 +221,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
             }
         }
         InstructionValue::ArrayExpression { elements } => {
-            output.push_str(&format!("{}const {} = [", indent, lvalue_name));
+            output.push_str(&format!("{indent}const {lvalue_name} = ["));
             for (i, elem) in elements.iter().enumerate() {
                 if i > 0 {
                     output.push_str(", ");
@@ -241,7 +241,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
             output.push_str("];\n");
         }
         InstructionValue::TemplateLiteral { quasis, subexpressions } => {
-            output.push_str(&format!("{}const {} = `", indent, lvalue_name));
+            output.push_str(&format!("{indent}const {lvalue_name} = `"));
             for (i, quasi) in quasis.iter().enumerate() {
                 output.push_str(quasi);
                 if i < subexpressions.len() {
@@ -252,7 +252,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::NewExpression { callee, args } => {
             let callee_name = place_name(callee);
-            let args_str: Vec<String> = args.iter().map(|a| place_name(a)).collect();
+            let args_str: Vec<String> = args.iter().map(place_name).collect();
             output.push_str(&format!(
                 "{}const {} = new {}({});\n",
                 indent,
@@ -299,9 +299,9 @@ fn codegen_terminal(
         ReactiveTerminal::If { test, consequent, alternate, .. } => {
             output.push_str(&format!("{}if ({}) {{\n", indent_str, place_name(test)));
             codegen_block(consequent, output, cache_slot, indent + 1);
-            output.push_str(&format!("{}}} else {{\n", indent_str));
+            output.push_str(&format!("{indent_str}}} else {{\n"));
             codegen_block(alternate, output, cache_slot, indent + 1);
-            output.push_str(&format!("{}}}\n", indent_str));
+            output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Switch { test, cases, .. } => {
             output.push_str(&format!("{}switch ({}) {{\n", indent_str, place_name(test)));
@@ -309,60 +309,60 @@ fn codegen_terminal(
                 if let Some(tv) = test_val {
                     output.push_str(&format!("{}  case {}:\n", indent_str, place_name(tv)));
                 } else {
-                    output.push_str(&format!("{}  default:\n", indent_str));
+                    output.push_str(&format!("{indent_str}  default:\n"));
                 }
                 codegen_block(block, output, cache_slot, indent + 2);
             }
-            output.push_str(&format!("{}}}\n", indent_str));
+            output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::While { test, body, .. } => {
-            output.push_str(&format!("{}while (true) {{\n", indent_str));
+            output.push_str(&format!("{indent_str}while (true) {{\n"));
             codegen_block(test, output, cache_slot, indent + 1);
             codegen_block(body, output, cache_slot, indent + 1);
-            output.push_str(&format!("{}}}\n", indent_str));
+            output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::DoWhile { body, test, .. } => {
-            output.push_str(&format!("{}do {{\n", indent_str));
+            output.push_str(&format!("{indent_str}do {{\n"));
             codegen_block(body, output, cache_slot, indent + 1);
-            output.push_str(&format!("{}}} while (true);\n", indent_str));
+            output.push_str(&format!("{indent_str}}} while (true);\n"));
             // Test block is evaluated inside the loop for condition
             let _ = test;
         }
         ReactiveTerminal::For { init, test, update, body, .. } => {
-            output.push_str(&format!("{}for (;;) {{\n", indent_str));
+            output.push_str(&format!("{indent_str}for (;;) {{\n"));
             codegen_block(init, output, cache_slot, indent + 1);
             codegen_block(test, output, cache_slot, indent + 1);
             codegen_block(body, output, cache_slot, indent + 1);
             if let Some(upd) = update {
                 codegen_block(upd, output, cache_slot, indent + 1);
             }
-            output.push_str(&format!("{}}}\n", indent_str));
+            output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForOf { init, test, body, .. } => {
-            output.push_str(&format!("{}for (const _ of _) {{\n", indent_str));
+            output.push_str(&format!("{indent_str}for (const _ of _) {{\n"));
             codegen_block(init, output, cache_slot, indent + 1);
             codegen_block(test, output, cache_slot, indent + 1);
             codegen_block(body, output, cache_slot, indent + 1);
-            output.push_str(&format!("{}}}\n", indent_str));
+            output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForIn { init, test, body, .. } => {
-            output.push_str(&format!("{}for (const _ in _) {{\n", indent_str));
+            output.push_str(&format!("{indent_str}for (const _ in _) {{\n"));
             codegen_block(init, output, cache_slot, indent + 1);
             codegen_block(test, output, cache_slot, indent + 1);
             codegen_block(body, output, cache_slot, indent + 1);
-            output.push_str(&format!("{}}}\n", indent_str));
+            output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Try { block, handler, .. } => {
-            output.push_str(&format!("{}try {{\n", indent_str));
+            output.push_str(&format!("{indent_str}try {{\n"));
             codegen_block(block, output, cache_slot, indent + 1);
-            output.push_str(&format!("{}}} catch (e) {{\n", indent_str));
+            output.push_str(&format!("{indent_str}}} catch (e) {{\n"));
             codegen_block(handler, output, cache_slot, indent + 1);
-            output.push_str(&format!("{}}}\n", indent_str));
+            output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Label { block, label, .. } => {
-            output.push_str(&format!("{}bb{}: {{\n", indent_str, label));
+            output.push_str(&format!("{indent_str}bb{label}: {{\n"));
             codegen_block(block, output, cache_slot, indent + 1);
-            output.push_str(&format!("{}}}\n", indent_str));
+            output.push_str(&format!("{indent_str}}}\n"));
         }
     }
 }
@@ -381,8 +381,7 @@ fn codegen_scope(
     if deps.is_empty() {
         // Constant scope — check sentinel
         output.push_str(&format!(
-            "{}if ($[{}] === Symbol.for(\"react.memo_cache_sentinel\")) {{\n",
-            indent_str, slot_start
+            "{indent_str}if ($[{slot_start}] === Symbol.for(\"react.memo_cache_sentinel\")) {{\n"
         ));
         *cache_slot += 1;
     } else {
@@ -395,7 +394,7 @@ fn codegen_scope(
                     .identifier
                     .name
                     .as_deref()
-                    .map_or_else(|| format!("_t{}", dep.identifier.id.0), |n| n.to_string());
+                    .map_or_else(|| format!("_t{}", dep.identifier.id.0), std::string::ToString::to_string);
                 format!("$[{}] !== {}", slot_start + i as u32, dep_name)
             })
             .collect();
@@ -413,7 +412,7 @@ fn codegen_scope(
             .identifier
             .name
             .as_deref()
-            .map_or_else(|| format!("_t{}", decl.identifier.id.0), |n| n.to_string());
+            .map_or_else(|| format!("_t{}", decl.identifier.id.0), std::string::ToString::to_string);
         let inner_indent = "  ".repeat(indent + 1);
         output.push_str(&format!(
             "{}$[{}] = {};\n",
@@ -432,7 +431,7 @@ fn codegen_scope(
                 .identifier
                 .name
                 .as_deref()
-                .map_or_else(|| format!("_t{}", dep.identifier.id.0), |n| n.to_string());
+                .map_or_else(|| format!("_t{}", dep.identifier.id.0), std::string::ToString::to_string);
             output.push_str(&format!(
                 "{}$[{}] = {};\n",
                 inner_indent,
@@ -442,7 +441,7 @@ fn codegen_scope(
         }
     }
 
-    output.push_str(&format!("{}}} else {{\n", indent_str));
+    output.push_str(&format!("{indent_str}}} else {{\n"));
 
     // Load cached declarations
     for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
@@ -450,7 +449,7 @@ fn codegen_scope(
             .identifier
             .name
             .as_deref()
-            .map_or_else(|| format!("_t{}", decl.identifier.id.0), |n| n.to_string());
+            .map_or_else(|| format!("_t{}", decl.identifier.id.0), std::string::ToString::to_string);
         let inner_indent = "  ".repeat(indent + 1);
         output.push_str(&format!(
             "{}{} = $[{}];\n",
@@ -460,7 +459,7 @@ fn codegen_scope(
         ));
     }
 
-    output.push_str(&format!("{}}}\n", indent_str));
+    output.push_str(&format!("{indent_str}}}\n"));
 }
 
 fn count_cache_slots(block: &ReactiveBlock) -> u32 {
@@ -653,7 +652,7 @@ impl SourceMap {
             }
 
             // Field 1: generated column (relative).
-            let gen_col = entry.generated_column as i64;
+            let gen_col = i64::from(entry.generated_column);
             vlq_encode(&mut result, gen_col - prev_gen_col);
             prev_gen_col = gen_col;
 
@@ -662,12 +661,12 @@ impl SourceMap {
             prev_source = 0;
 
             // Field 3: original line (relative).
-            let orig_line = entry.original_line as i64;
+            let orig_line = i64::from(entry.original_line);
             vlq_encode(&mut result, orig_line - prev_orig_line);
             prev_orig_line = orig_line;
 
             // Field 4: original column (relative).
-            let orig_col = entry.original_column as i64;
+            let orig_col = i64::from(entry.original_column);
             vlq_encode(&mut result, orig_col - prev_orig_col);
             prev_orig_col = orig_col;
         }
@@ -787,7 +786,7 @@ pub fn codegen_function_with_source_map(
 
     // Generate function header.
     if let Some(ref name) = rf.id {
-        ctx.write(&format!("function {}(", name));
+        ctx.write(&format!("function {name}("));
     } else {
         ctx.write("function (");
     }
@@ -810,7 +809,7 @@ pub fn codegen_function_with_source_map(
 
     let total_slots = count_cache_slots(&rf.body);
     if total_slots > 0 {
-        ctx.write(&format!("  const $ = _c({});\n", total_slots));
+        ctx.write(&format!("  const $ = _c({total_slots});\n"));
     }
 
     codegen_block_with_map(&rf.body, &mut ctx, &mut 0u32, 1, source_text);

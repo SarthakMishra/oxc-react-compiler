@@ -11,8 +11,8 @@ use crate::hir::types::{HIR, InstructionValue, Place};
 pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
-                if is_set_state_call(callee) {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value
+                && is_set_state_call(callee) {
                     errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
                         "setState is called unconditionally during render. \
@@ -21,7 +21,6 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
                         DiagnosticKind::SetStateInRender,
                     ));
                 }
-            }
         }
     }
 }
@@ -31,7 +30,7 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
 /// Matches the common React convention where `useState` returns `[state, setState]`
 /// and the setter is named `setX` where X starts with an uppercase letter.
 fn is_set_state_call(place: &Place) -> bool {
-    place.identifier.name.as_deref().map_or(false, |name| {
+    place.identifier.name.as_deref().is_some_and(|name| {
         // Common patterns: setX, setState
         name.starts_with("set") && name.len() > 3 && name.as_bytes()[3].is_ascii_uppercase()
     })

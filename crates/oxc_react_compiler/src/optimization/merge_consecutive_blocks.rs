@@ -77,10 +77,10 @@ fn apply_merge(hir: &mut HIR, from: BlockId, into: BlockId) {
     }
 
     // Update any remaining references to `into` to point to `from`
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         rewrite_terminal_target(&mut block.terminal, into, from);
         // Update predecessor lists
-        for pred in block.preds.iter_mut() {
+        for pred in &mut block.preds {
             if *pred == into {
                 *pred = from;
             }

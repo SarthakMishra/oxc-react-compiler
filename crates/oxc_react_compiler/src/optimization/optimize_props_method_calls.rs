@@ -34,7 +34,7 @@ pub fn optimize_props_method_calls(hir: &mut HIR) {
         .unwrap_or(0)
         + 1;
 
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         let mut insertions: Vec<(usize, Instruction)> = Vec::new();
 
         for (idx, instr) in block.instructions.iter_mut().enumerate() {
@@ -44,8 +44,7 @@ pub fn optimize_props_method_calls(hir: &mut HIR) {
                     .identifier
                     .name
                     .as_deref()
-                    .map(|n| n == "props" || n.starts_with("_t"))
-                    .unwrap_or(false)
+                    .is_some_and(|n| n == "props" || n.starts_with("_t"))
                     && matches!(receiver.identifier.type_, Type::Object);
 
                 if !is_props {

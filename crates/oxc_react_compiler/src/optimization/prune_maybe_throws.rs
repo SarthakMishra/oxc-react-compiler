@@ -8,7 +8,7 @@ use crate::hir::types::HIR;
 /// actually needed (e.g., simple assignments that cannot throw). This pass
 /// replaces them with direct `Goto` terminals to simplify the CFG.
 pub fn prune_maybe_throws(hir: &mut HIR) {
-    for (_id, block) in hir.blocks.iter_mut() {
+    for (_id, block) in &mut hir.blocks {
         if let crate::hir::types::Terminal::MaybeThrow { continuation, handler: _ } =
             &block.terminal
         {

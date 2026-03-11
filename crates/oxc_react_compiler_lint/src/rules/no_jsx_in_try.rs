@@ -10,7 +10,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::Span;
 
 /// Check for JSX elements inside try blocks.
-pub fn check_no_jsx_in_try<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
+pub fn check_no_jsx_in_try(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     let mut visitor = NoJsxInTryVisitor { diagnostics: Vec::new(), try_depth: 0 };
     visitor.visit_program(program);
     visitor.diagnostics

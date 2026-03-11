@@ -13,7 +13,7 @@ use rustc_hash::FxHashSet;
 pub fn dead_code_elimination(hir: &mut HIR) {
     let used = collect_used_identifiers(hir);
 
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         block.instructions.retain(|instr| {
             // Keep instructions with side effects
             if has_side_effects(&instr.value) {

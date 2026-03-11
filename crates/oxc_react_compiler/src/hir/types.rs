@@ -56,7 +56,9 @@ pub struct MutableRange {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
+#[derive(Default)]
 pub enum Effect {
+    #[default]
     Unknown = 0,
     Freeze = 1,
     Read = 2,
@@ -67,11 +69,6 @@ pub enum Effect {
     Store = 7,
 }
 
-impl Default for Effect {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
 
 // ---------------------------------------------------------------------------
 // ValueKind / ValueReason / FreezeReason
@@ -105,19 +102,16 @@ pub enum FreezeReason {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum Type {
     Primitive(PrimitiveType),
     Object,
     Function,
     /// Unknown / generic type.
+    #[default]
     Poly,
 }
 
-impl Default for Type {
-    fn default() -> Self {
-        Self::Poly
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrimitiveType {

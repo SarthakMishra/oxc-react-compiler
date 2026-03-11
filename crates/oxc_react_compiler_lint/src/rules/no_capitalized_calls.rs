@@ -12,7 +12,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use crate::utils::hook_detection::is_component_name;
 
 /// Check for PascalCase function calls that should be JSX.
-pub fn check_no_capitalized_calls<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
+pub fn check_no_capitalized_calls(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     let mut visitor = NoCapitalizedCallsVisitor { diagnostics: Vec::new() };
     visitor.visit_program(program);
     visitor.diagnostics
@@ -54,8 +54,7 @@ impl<'a> Visit<'a> for NoCapitalizedCallsVisitor {
                 if !known_non_components.contains(&name) {
                     self.diagnostics.push(
                         OxcDiagnostic::warn(format!(
-                            "\"{}\" is called as a regular function. If this is a React component, render it as JSX: `<{} />`.",
-                            name, name
+                            "\"{name}\" is called as a regular function. If this is a React component, render it as JSX: `<{name} />`."
                         ))
                         .with_label(it.span),
                     );

@@ -16,7 +16,7 @@ pub fn infer_reactive_places(hir: &mut HIR) {
     let mut reactive: FxHashSet<IdentifierId> = FxHashSet::default();
 
     // Mark all places that come from hook calls as reactive
-    for (_, block) in hir.blocks.iter() {
+    for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if is_hook_result(&instr.value) {
                 reactive.insert(instr.lvalue.identifier.id);
@@ -28,7 +28,7 @@ pub fn infer_reactive_places(hir: &mut HIR) {
     let mut changed = true;
     while changed {
         changed = false;
-        for (_, block) in hir.blocks.iter() {
+        for (_, block) in &hir.blocks {
             for instr in &block.instructions {
                 if reactive.contains(&instr.lvalue.identifier.id) {
                     continue;
@@ -42,7 +42,7 @@ pub fn infer_reactive_places(hir: &mut HIR) {
     }
 
     // Phase 3: Apply reactive flags to places
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if reactive.contains(&instr.lvalue.identifier.id) {
                 instr.lvalue.reactive = true;
@@ -60,7 +60,7 @@ fn is_hook_result(value: &InstructionValue) -> bool {
                 .identifier
                 .name
                 .as_deref()
-                .map_or(false, |name| crate::hir::globals::is_hook_name(name))
+                .is_some_and(crate::hir::globals::is_hook_name)
         }
         _ => false,
     }

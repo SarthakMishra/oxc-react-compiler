@@ -63,21 +63,18 @@ fn check_effect_body_for_set_state(
 
                         if let InstructionValue::CallExpression { callee: inner_callee, .. } =
                             &inner_instr.value
-                        {
-                            if is_set_state_call(inner_callee) {
+                            && is_set_state_call(inner_callee) {
                                 errors.push(CompilerError::invalid_react_with_kind(
                                     inner_instr.loc,
                                     format!(
-                                        "setState is called directly inside \"{}\". \
+                                        "setState is called directly inside \"{hook_name}\". \
                                          Synchronous setState in effects causes an extra \
                                          re-render. Consider deriving the value during render \
-                                         or moving the update into a callback.",
-                                        hook_name
+                                         or moving the update into a callback."
                                     ),
                                     DiagnosticKind::SetStateInEffects,
                                 ));
                             }
-                        }
                     }
                 }
             }
@@ -87,7 +84,7 @@ fn check_effect_body_for_set_state(
 
 /// Detect if a place refers to a setState-like function.
 fn is_set_state_call(place: &Place) -> bool {
-    place.identifier.name.as_deref().map_or(false, |name| {
+    place.identifier.name.as_deref().is_some_and(|name| {
         name.starts_with("set") && name.len() > 3 && name.as_bytes()[3].is_ascii_uppercase()
     })
 }

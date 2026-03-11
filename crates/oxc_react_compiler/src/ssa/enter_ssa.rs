@@ -123,20 +123,18 @@ fn compute_dominators(
             // Find first processed predecessor
             let mut new_idom = None;
             for p in pred_list {
-                if let Some(&pi) = id_to_idx.get(p) {
-                    if doms[pi].is_some() {
+                if let Some(&pi) = id_to_idx.get(p)
+                    && doms[pi].is_some() {
                         new_idom = Some(pi);
                         break;
                     }
-                }
             }
             if let Some(mut new_idom_val) = new_idom {
                 for p in pred_list {
-                    if let Some(&pi) = id_to_idx.get(p) {
-                        if doms[pi].is_some() && pi != new_idom_val {
+                    if let Some(&pi) = id_to_idx.get(p)
+                        && doms[pi].is_some() && pi != new_idom_val {
                             new_idom_val = intersect(&doms, pi, new_idom_val);
                         }
-                    }
                 }
                 if doms[b] != Some(new_idom_val) {
                     doms[b] = Some(new_idom_val);
@@ -148,11 +146,10 @@ fn compute_dominators(
 
     let mut result = FxHashMap::default();
     for (i, dom) in doms.iter().enumerate() {
-        if let Some(d) = dom {
-            if i != entry_idx {
+        if let Some(d) = dom
+            && i != entry_idx {
                 result.insert(block_ids[i], block_ids[*d]);
             }
-        }
     }
     result
 }
@@ -719,7 +716,7 @@ fn rename_terminal_uses(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn rename_block(
     hir: &mut HIR,
     block_id: BlockId,
@@ -818,21 +815,18 @@ fn rename_block(
                         if !stack.is_empty() {
                             // Check if this is the right variable by comparing
                             // declaration IDs via the HIR
-                            if let Some(orig_decl) = find_declaration_id_for_var(hir, orig_id) {
-                                if orig_decl == phi_decl_id {
+                            if let Some(orig_decl) = find_declaration_id_for_var(hir, orig_id)
+                                && orig_decl == phi_decl_id {
                                     matched_original = Some(orig_id);
                                     break;
                                 }
-                            }
                             // Fallback: match by name
-                            if matched_original.is_none() {
-                                if let Some(orig_name) = find_name_for_var(hir, orig_id) {
-                                    if Some(&orig_name) == phi_name.as_ref() {
+                            if matched_original.is_none()
+                                && let Some(orig_name) = find_name_for_var(hir, orig_id)
+                                    && Some(&orig_name) == phi_name.as_ref() {
                                         matched_original = Some(orig_id);
                                         break;
                                     }
-                                }
-                            }
                         }
                     }
 

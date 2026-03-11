@@ -31,7 +31,7 @@ pub fn build_reactive_function(
     ReactiveFunction { loc, id, params, body, directives }
 }
 
-fn find_block<'a>(hir: &'a HIR, block_id: BlockId) -> Option<&'a BasicBlock> {
+fn find_block(hir: &HIR, block_id: BlockId) -> Option<&BasicBlock> {
     hir.blocks.iter().find(|(id, _)| *id == block_id).map(|(_, block)| block)
 }
 
@@ -232,11 +232,10 @@ fn find_scope_in_block(
 ) -> Option<crate::hir::types::ReactiveScope> {
     if let Some(block) = find_block(hir, block_id) {
         for instr in &block.instructions {
-            if let Some(ref scope) = instr.lvalue.identifier.scope {
-                if scope.id == scope_id {
+            if let Some(ref scope) = instr.lvalue.identifier.scope
+                && scope.id == scope_id {
                     return Some(scope.as_ref().clone());
                 }
-            }
         }
     }
     None

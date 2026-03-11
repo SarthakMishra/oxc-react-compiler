@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
 use napi_derive::napi;
 
 #[napi(object)]
@@ -83,16 +83,12 @@ pub fn lint_react_file(source: String, filename: String) -> LintResult {
     let diagnostics = oxc_diagnostics
         .into_iter()
         .map(|d| {
-            let (start, end) = d
-                .labels
-                .as_ref()
-                .and_then(|labels| labels.first())
-                .map(|label| {
+            let (start, end) =
+                d.labels.as_ref().and_then(|labels| labels.first()).map_or((0, 0), |label| {
                     let s = label.offset() as u32;
                     let e = s + label.len() as u32;
                     (s, e)
-                })
-                .unwrap_or((0, 0));
+                });
             LintDiagnostic { message: d.message.to_string(), start, end }
         })
         .collect();

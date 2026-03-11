@@ -12,6 +12,12 @@ pub struct DisjointSet<T: Copy + Eq + Hash> {
     rank: FxHashMap<T, u32>,
 }
 
+impl<T: Copy + Eq + Hash> Default for DisjointSet<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Copy + Eq + Hash> DisjointSet<T> {
     pub fn new() -> Self {
         Self { parent: FxHashMap::default(), rank: FxHashMap::default() }

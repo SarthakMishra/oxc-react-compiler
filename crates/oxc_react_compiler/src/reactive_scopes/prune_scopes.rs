@@ -874,15 +874,11 @@ pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let crate::hir::types::InstructionValue::CallExpression { callee, .. } = &instr.value
-            {
-                if let Some(name) = &callee.identifier.name {
-                    if is_hook_name(name) {
-                        if let Some(ref scope) = instr.lvalue.identifier.scope {
+                && let Some(name) = &callee.identifier.name
+                    && is_hook_name(name)
+                        && let Some(ref scope) = instr.lvalue.identifier.scope {
                             scopes_with_hooks.insert(scope.id);
                         }
-                    }
-                }
-            }
         }
     }
 
@@ -893,11 +889,10 @@ pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
 
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if let Some(ref scope) = instr.lvalue.identifier.scope {
-                if scopes_with_hooks.contains(&scope.id) {
+            if let Some(ref scope) = instr.lvalue.identifier.scope
+                && scopes_with_hooks.contains(&scope.id) {
                     instr.lvalue.identifier.scope = None;
                 }
-            }
         }
     }
 }

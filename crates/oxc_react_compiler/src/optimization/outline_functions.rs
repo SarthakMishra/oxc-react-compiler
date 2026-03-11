@@ -13,7 +13,7 @@ use crate::hir::types::{HIR, InstructionValue};
 /// lowered_func context. Full hoisting (moving to module scope and
 /// replacing with a reference) requires codegen support.
 pub fn outline_functions(hir: &mut HIR) {
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if let InstructionValue::FunctionExpression { ref mut lowered_func, .. } = instr.value {
                 // A function can be outlined if it has no context variables

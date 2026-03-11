@@ -113,15 +113,14 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
     }
 
     // Step 3: Write mutable ranges back to identifiers.
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             let id = instr.lvalue.identifier.id;
             let start = creation_map.get(&id).copied().unwrap_or(instr.id);
 
             let end = transitive_mutations
                 .get(&id)
-                .map(|&last| InstructionId(last.0 + 1))
-                .unwrap_or(InstructionId(start.0 + 1));
+                .map_or(InstructionId(start.0 + 1), |&last| InstructionId(last.0 + 1));
 
             instr.lvalue.identifier.mutable_range = MutableRange { start, end };
         }

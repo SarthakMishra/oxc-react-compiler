@@ -14,7 +14,7 @@ use oxc_syntax::scope::ScopeFlags;
 use crate::utils::hook_detection::{is_component_name, is_hook_call, is_hook_name};
 
 /// Check for violations of the Rules of Hooks.
-pub fn check_rules_of_hooks<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
+pub fn check_rules_of_hooks(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     let mut visitor = RulesOfHooksVisitor {
         diagnostics: Vec::new(),
         // We start outside any component/hook context.
@@ -178,8 +178,8 @@ impl<'a> Visit<'a> for RulesOfHooksVisitor {
     }
 
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
-        if is_hook_call(it) {
-            if !self.is_hook_allowed() {
+        if is_hook_call(it)
+            && !self.is_hook_allowed() {
                 match self.current_context() {
                     Some(frame) if frame.kind == FunctionContext::ComponentOrHook => {
                         // Inside a component/hook but in a conditional/loop.
@@ -191,7 +191,6 @@ impl<'a> Visit<'a> for RulesOfHooksVisitor {
                     }
                 }
             }
-        }
         // Continue walking into arguments (there may be nested arrow functions etc.)
         walk::walk_call_expression(self, it);
     }

@@ -57,8 +57,8 @@ pub fn align_reactive_scopes_to_block_scopes_hir(hir: &mut HIR) {
 
     // For each block, clamp any instruction's scope range to the block boundaries
     for (_, block) in &mut hir.blocks {
-        let block_start = block.instructions.first().map(|i| i.id.0).unwrap_or(0);
-        let block_end = block.instructions.last().map(|i| i.id.0 + 1).unwrap_or(0);
+        let block_start = block.instructions.first().map_or(0, |i| i.id.0);
+        let block_end = block.instructions.last().map_or(0, |i| i.id.0 + 1);
 
         for instr in &mut block.instructions {
             if let Some(ref mut scope) = instr.lvalue.identifier.scope {

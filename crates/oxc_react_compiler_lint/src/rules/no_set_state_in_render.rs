@@ -13,7 +13,7 @@ use oxc_syntax::scope::ScopeFlags;
 use crate::utils::hook_detection::{is_component_name, is_hook_name, is_set_state_call};
 
 /// Check for setState calls during render.
-pub fn check_no_set_state_in_render<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
+pub fn check_no_set_state_in_render(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     let mut visitor =
         NoSetStateInRenderVisitor { diagnostics: Vec::new(), context_stack: Vec::new() };
     visitor.visit_program(program);

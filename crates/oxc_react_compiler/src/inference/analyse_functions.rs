@@ -10,7 +10,7 @@ use crate::hir::types::{HIR, HIRFunction, InstructionValue};
 /// This information is used by InferMutationAliasingEffects to properly
 /// track mutations through closures.
 pub fn analyse_functions(hir: &mut HIR, errors: &mut ErrorCollector) {
-    for (_, block) in hir.blocks.iter_mut() {
+    for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             match &mut instr.value {
                 InstructionValue::FunctionExpression { lowered_func, .. } => {

@@ -46,11 +46,10 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
             if lvalue_range.end.0 > lvalue_range.start.0 + 1 {
                 let operand_ids = collect_operand_ids(&instr.value);
                 for op_id in operand_ids {
-                    if let Some(&op_range) = ranges.get(&op_id) {
-                        if op_range.end.0 > op_range.start.0 + 1 {
+                    if let Some(&op_range) = ranges.get(&op_id)
+                        && op_range.end.0 > op_range.start.0 + 1 {
                             dsu.union(lvalue_id, op_id);
                         }
-                    }
                 }
             }
         }

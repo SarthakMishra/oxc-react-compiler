@@ -30,10 +30,9 @@ pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &m
             errors.push(CompilerError::invalid_react_with_kind(
                 loc,
                 format!(
-                    "Manual memoization (memo id {}) is not preserved. \
+                    "Manual memoization (memo id {memo_id}) is not preserved. \
                      The memoized region spans multiple reactive scopes, which means \
-                     the compiler cannot guarantee the same memoization semantics.",
-                    memo_id
+                     the compiler cannot guarantee the same memoization semantics."
                 ),
                 DiagnosticKind::MemoizationPreservation,
             ));
@@ -44,10 +43,9 @@ pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &m
             errors.push(CompilerError::invalid_react_with_kind(
                 region.loc,
                 format!(
-                    "Manual memoization (memo id {}) was pruned. \
+                    "Manual memoization (memo id {memo_id}) was pruned. \
                      The compiler determined the memoized value does not need \
-                     memoization, but this may change the program's semantics.",
-                    memo_id
+                     memoization, but this may change the program's semantics."
                 ),
                 DiagnosticKind::MemoizationPreservation,
             ));

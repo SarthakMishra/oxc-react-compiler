@@ -57,21 +57,18 @@ fn check_effect_callback_for_derived_state(
                             callee: inner_callee,
                             args: inner_args,
                         } = &inner_instr.value
-                        {
-                            if is_set_state_call(inner_callee) && !inner_args.is_empty() {
+                            && is_set_state_call(inner_callee) && !inner_args.is_empty() {
                                 errors.push(CompilerError::invalid_react_with_kind(
                                     inner_instr.loc,
                                     format!(
-                                        "Derived computation inside \"{}\". \
+                                        "Derived computation inside \"{hook_name}\". \
                                          setState is called with a value that may be derived \
                                          from props or state. Compute derived values during \
-                                         render instead (e.g., with useMemo).",
-                                        hook_name
+                                         render instead (e.g., with useMemo)."
                                     ),
                                     DiagnosticKind::DerivedComputationsInEffects,
                                 ));
                             }
-                        }
                     }
                 }
             }
@@ -81,7 +78,7 @@ fn check_effect_callback_for_derived_state(
 
 /// Detect if a place refers to a setState-like function.
 fn is_set_state_call(place: &Place) -> bool {
-    place.identifier.name.as_deref().map_or(false, |name| {
+    place.identifier.name.as_deref().is_some_and(|name| {
         name.starts_with("set") && name.len() > 3 && name.as_bytes()[3].is_ascii_uppercase()
     })
 }
