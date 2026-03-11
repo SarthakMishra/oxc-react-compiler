@@ -48,17 +48,17 @@ but not correctness. The compiler will work without them.
 
 ## Priority 3: Testing Infrastructure
 
-- [ ] Build fixture test harness comparing against upstream compiler snapshots -- [testing.md](testing.md)#gap-1-upstream-fixture-test-harness
-- [ ] Add end-to-end transformation snapshot tests -- [testing.md](testing.md)#gap-2-end-to-end-snapshot-tests
-- [ ] Add per-pass unit tests for inference and reactive scope passes -- [testing.md](testing.md)#gap-3-per-pass-unit-tests
+- [x] Build fixture test harness comparing against upstream compiler snapshots -- [testing.md](testing.md)#gap-1-upstream-fixture-test-harness
+- [x] Add end-to-end transformation snapshot tests -- [testing.md](testing.md)#gap-2-end-to-end-snapshot-tests
+- [x] Add per-pass unit tests for inference and reactive scope passes -- [testing.md](testing.md)#gap-3-per-pass-unit-tests
 
 ---
 
 ## Priority 4: Integration and Polish
 
-- [ ] Implement Tier 2 lint rules (currently all return empty vecs) -- [lint.md](lint.md)#gap-1-tier-2-lint-rules
-- [ ] Add source map generation to codegen -- [codegen.md](codegen.md)#gap-1-source-map-generation
-- [ ] Vite plugin depends on pipeline working -- no code changes needed, just pipeline completion
+- [x] Implement Tier 2 lint rules (currently all return empty vecs) -- [lint.md](lint.md)#gap-1-tier-2-lint-rules
+- [x] Add source map generation to codegen -- [codegen.md](codegen.md)#gap-1-source-map-generation
+- [x] Vite plugin depends on pipeline working -- no code changes needed, just pipeline completion
 
 ---
 

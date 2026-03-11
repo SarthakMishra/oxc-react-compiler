@@ -676,6 +676,259 @@ impl Default for SourceMap {
     }
 }
 
+/// Encode source map mappings as a VLQ-encoded string suitable for the
+/// `"mappings"` field of a v3 source map JSON.
+///
+/// Simplified encoding: each entry maps a generated position to an original
+/// position within a single source file (source index 0).
+impl SourceMap {
+    pub fn to_vlq_mappings(&self) -> String {
+        if self.mappings.is_empty() {
+            return String::new();
+        }
+
+        let mut result = String::new();
+        let mut prev_gen_line: u32 = 0;
+        let mut prev_gen_col: i64 = 0;
+        let mut prev_orig_line: i64 = 0;
+        let mut prev_orig_col: i64 = 0;
+        let mut prev_source: i64 = 0;
+
+        for entry in &self.mappings {
+            // Emit semicolons for skipped lines.
+            while prev_gen_line < entry.generated_line {
+                result.push(';');
+                prev_gen_line += 1;
+                prev_gen_col = 0;
+            }
+
+            if !result.is_empty() && !result.ends_with(';') {
+                result.push(',');
+            }
+
+            // Field 1: generated column (relative).
+            let gen_col = entry.generated_column as i64;
+            vlq_encode(&mut result, gen_col - prev_gen_col);
+            prev_gen_col = gen_col;
+
+            // Field 2: source index (relative, always 0).
+            vlq_encode(&mut result, 0 - prev_source);
+            prev_source = 0;
+
+            // Field 3: original line (relative).
+            let orig_line = entry.original_line as i64;
+            vlq_encode(&mut result, orig_line - prev_orig_line);
+            prev_orig_line = orig_line;
+
+            // Field 4: original column (relative).
+            let orig_col = entry.original_column as i64;
+            vlq_encode(&mut result, orig_col - prev_orig_col);
+            prev_orig_col = orig_col;
+        }
+
+        result
+    }
+
+    /// Serialize to a complete v3 source map JSON string.
+    pub fn to_json(&self, file: &str, source_file: &str) -> String {
+        format!(
+            r#"{{"version":3,"file":"{}","sources":["{}"],"mappings":"{}"}}"#,
+            file,
+            source_file,
+            self.to_vlq_mappings()
+        )
+    }
+}
+
+/// Encode a single signed integer as a VLQ string.
+fn vlq_encode(output: &mut String, value: i64) {
+    const VLQ_BASE_SHIFT: u32 = 5;
+    const VLQ_BASE: i64 = 1 << VLQ_BASE_SHIFT; // 32
+    const VLQ_BASE_MASK: i64 = VLQ_BASE - 1; // 31
+    const VLQ_CONTINUATION_BIT: i64 = VLQ_BASE; // 32
+
+    static VLQ_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    // Convert signed to VLQ-signed representation.
+    let mut vlq = if value < 0 {
+        ((-value) << 1) + 1
+    } else {
+        value << 1
+    };
+
+    loop {
+        let mut digit = vlq & VLQ_BASE_MASK;
+        vlq >>= VLQ_BASE_SHIFT;
+        if vlq > 0 {
+            digit |= VLQ_CONTINUATION_BIT;
+        }
+        output.push(VLQ_CHARS[digit as usize] as char);
+        if vlq == 0 {
+            break;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CodegenContext: output buffer with position tracking
+// ---------------------------------------------------------------------------
+
+/// A code generation context that tracks output line/column positions
+/// and builds a source map alongside the generated code.
+struct CodegenContext {
+    output: String,
+    source_map: SourceMap,
+    line: u32,
+    column: u32,
+}
+
+impl CodegenContext {
+    fn new() -> Self {
+        Self {
+            output: String::new(),
+            source_map: SourceMap::new(),
+            line: 0,
+            column: 0,
+        }
+    }
+
+    /// Write a string to the output buffer, updating line/column tracking.
+    fn write(&mut self, s: &str) {
+        for ch in s.chars() {
+            self.output.push(ch);
+            if ch == '\n' {
+                self.line += 1;
+                self.column = 0;
+            } else {
+                self.column += 1;
+            }
+        }
+    }
+
+    /// Record a source mapping from the current generated position to the
+    /// given original source position (0-based line and column from Span).
+    fn map_from_span(&mut self, span: oxc_span::Span, source: &str) {
+        if span.start == 0 && span.end == 0 {
+            return; // Dummy span, skip.
+        }
+        // Convert byte offset to line/column.
+        let (orig_line, orig_col) = byte_offset_to_line_col(source, span.start as usize);
+        self.source_map
+            .add_mapping(self.line, self.column, orig_line as u32, orig_col as u32);
+    }
+}
+
+/// Convert a byte offset in source text to 0-based (line, column).
+fn byte_offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
+    let mut line = 0;
+    let mut col = 0;
+    for (i, ch) in source.char_indices() {
+        if i >= offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
+/// Generate JavaScript code with a source map from a ReactiveFunction.
+///
+/// Like `codegen_function` but also produces a `SourceMap` that maps
+/// generated positions back to positions in `source_text`.
+pub fn codegen_function_with_source_map(
+    rf: &ReactiveFunction,
+    source_text: &str,
+) -> (String, SourceMap) {
+    let mut ctx = CodegenContext::new();
+
+    // Map function start to original span.
+    ctx.map_from_span(rf.loc, source_text);
+
+    // Generate function header.
+    if let Some(ref name) = rf.id {
+        ctx.write(&format!("function {}(", name));
+    } else {
+        ctx.write("function (");
+    }
+
+    for (i, param) in rf.params.iter().enumerate() {
+        if i > 0 {
+            ctx.write(", ");
+        }
+        match param {
+            crate::hir::types::Param::Identifier(place) => {
+                ctx.write(&place_name(place));
+            }
+            crate::hir::types::Param::Spread(place) => {
+                ctx.write("...");
+                ctx.write(&place_name(place));
+            }
+        }
+    }
+    ctx.write(") {\n");
+
+    let total_slots = count_cache_slots(&rf.body);
+    if total_slots > 0 {
+        ctx.write(&format!("  const $ = _c({});\n", total_slots));
+    }
+
+    codegen_block_with_map(&rf.body, &mut ctx, &mut 0u32, 1, source_text);
+
+    ctx.write("}\n");
+    (ctx.output, ctx.source_map)
+}
+
+fn codegen_block_with_map(
+    block: &ReactiveBlock,
+    ctx: &mut CodegenContext,
+    cache_slot: &mut u32,
+    indent: usize,
+    source: &str,
+) {
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                let indent_str = "  ".repeat(indent);
+                // Record mapping for this instruction.
+                ctx.map_from_span(instruction.loc, source);
+                codegen_instruction(instruction, &mut ctx.output, &indent_str);
+                // Update line/col tracking after codegen_instruction wrote to output.
+                recompute_position(ctx);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                codegen_terminal(terminal, &mut ctx.output, cache_slot, indent);
+                recompute_position(ctx);
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                codegen_scope(scope_block, &mut ctx.output, cache_slot, indent);
+                recompute_position(ctx);
+            }
+        }
+    }
+}
+
+/// Recompute line/column position from the output string.
+/// Called after delegating to functions that write directly to the String.
+fn recompute_position(ctx: &mut CodegenContext) {
+    let mut line = 0u32;
+    let mut col = 0u32;
+    for ch in ctx.output.chars() {
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+    ctx.line = line;
+    ctx.column = col;
+}
+
 fn unary_op_str(op: crate::hir::types::UnaryOp) -> &'static str {
     use crate::hir::types::UnaryOp;
     match op {

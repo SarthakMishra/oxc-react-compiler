@@ -1,0 +1,8 @@
+---
+source: crates/oxc_react_compiler/tests/fixture_tests.rs
+expression: snapshot
+---
+transformed: false
+diagnostics: 0
+---
+(not transformed)

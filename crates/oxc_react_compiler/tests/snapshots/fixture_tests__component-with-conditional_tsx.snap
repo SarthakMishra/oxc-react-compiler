@@ -1,0 +1,26 @@
+---
+source: crates/oxc_react_compiler/tests/fixture_tests.rs
+expression: snapshot
+---
+transformed: true
+diagnostics: 0
+---
+import { c as _c } from "react/compiler-runtime";
+function Toggle(_t0) {
+  const t10 = isOn;
+  if (_t10) {
+    const t14 = "div";
+    /* t15 = Discriminant(8) */
+    const t16 = <_t14>{_t15}</_t14>;
+    return _t16;
+  } else {
+    const t11 = "div";
+    /* t12 = Discriminant(8) */
+    const t13 = <_t11>{_t12}</_t11>;
+    return _t13;
+  }
+  const t11 = "div";
+  /* t12 = Discriminant(8) */
+  const t13 = <_t11>{_t12}</_t11>;
+  return _t13;
+}

@@ -1,0 +1,16 @@
+---
+source: crates/oxc_react_compiler/tests/fixture_tests.rs
+expression: snapshot
+---
+transformed: true
+diagnostics: 0
+---
+import { c as _c } from "react/compiler-runtime";
+const Button = function Button(_t0) {
+  const t8 = "button";
+  const t9 = onClick;
+  const t10 = label;
+  const t11 = <_t8 onClick={_t9}>{_t10}</_t8>;
+  return _t11;
+}
+;
