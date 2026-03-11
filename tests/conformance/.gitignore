@@ -1,0 +1,3 @@
+# Upstream fixtures are downloaded, not committed
+upstream-fixtures/*
+!upstream-fixtures/.gitkeep

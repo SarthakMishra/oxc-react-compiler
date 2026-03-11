@@ -1,0 +1,9 @@
+# Known upstream fixtures that our compiler does not yet match.
+# One fixture filename per line. Lines starting with '#' are comments.
+#
+# Format: <relative-path-from-upstream-fixtures/>
+# Example: array-spread.tsx
+#
+# These fixtures are expected to diverge from upstream output.
+# The conformance test will not fail on these, but will fail if a
+# previously passing fixture starts failing (regression).
