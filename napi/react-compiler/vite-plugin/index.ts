@@ -9,15 +9,9 @@
  *   });
  */
 
-interface ReactCompilerOptions {
-  compilationMode?: 'infer' | 'all' | 'syntax' | 'annotation';
-  outputMode?: 'client' | 'ssr' | 'lint';
-  target?: 'react17' | 'react18' | 'react19';
-  include?: string[];
-  exclude?: string[];
-  /** Enable source map generation (default: true in dev, false in build) */
-  sourceMap?: boolean;
-}
+import type { ReactCompilerOptions } from './options';
+
+export type { ReactCompilerOptions };
 
 export function reactCompiler(options: ReactCompilerOptions = {}): any {
   // Dynamic import of the native binding
@@ -58,6 +52,8 @@ export function reactCompiler(options: ReactCompilerOptions = {}): any {
           compilationMode: options.compilationMode,
           outputMode: options.outputMode,
           sourceMap: enableSourceMap,
+          gatingImportSource: options.gating?.importSource,
+          gatingFunctionName: options.gating?.functionName,
         });
 
         if (!result.transformed) return null;
@@ -72,6 +68,18 @@ export function reactCompiler(options: ReactCompilerOptions = {}): any {
       } catch (e) {
         console.error(`[oxc-react-compiler] Error transforming ${id}:`, e);
         return null;
+      }
+    },
+
+    handleHotUpdate({ file, server }: { file: string; server: any }) {
+      if (!isReactFile(file)) return;
+
+      // Invalidate the module to force re-transform with the compiler.
+      // This ensures the compiled output is regenerated when React files change,
+      // which matters when compiler transforms affect dependency tracking.
+      const mod = server.moduleGraph.getModuleById(file);
+      if (mod) {
+        server.moduleGraph.invalidateModule(mod);
       }
     },
   };

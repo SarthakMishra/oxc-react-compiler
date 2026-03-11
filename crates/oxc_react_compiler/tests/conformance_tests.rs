@@ -11,6 +11,7 @@
 //!
 //! To download upstream fixtures:
 //!   ./tests/conformance/download-upstream.sh
+//!   # or set OXC_DOWNLOAD_FIXTURES=1 to auto-download on first test run
 //!
 //! To generate expected outputs:
 //!   node tests/conformance/run-upstream.mjs
@@ -214,15 +215,135 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Auto-download support (set OXC_DOWNLOAD_FIXTURES=1 to enable)
+// ---------------------------------------------------------------------------
+
+const REPO: &str = "facebook/react";
+const BRANCH: &str = "main";
+const FIXTURE_PREFIX: &str =
+    "compiler/packages/babel-plugin-react-compiler/src/__tests__/fixtures/compiler";
+
+/// Check if auto-download is enabled via environment variable.
+fn should_auto_download() -> bool {
+    std::env::var("OXC_DOWNLOAD_FIXTURES").unwrap_or_default() == "1"
+}
+
+/// Returns true if the directory exists and contains at least one fixture file.
+fn has_fixture_files(dir: &Path) -> bool {
+    !collect_fixture_files(dir).is_empty()
+}
+
+/// Download upstream fixtures using the GitHub API.
+fn download_fixtures(fixtures_dir: &Path) {
+    use serde_json::Value;
+
+    eprintln!("Downloading upstream React Compiler fixtures...");
+    eprintln!("Repository: {} (branch: {})", REPO, BRANCH);
+
+    let api_url = format!("https://api.github.com/repos/{}/git/trees/{}?recursive=1", REPO, BRANCH);
+
+    let response: Value = match ureq::get(&api_url)
+        .header("Accept", "application/vnd.github.v3+json")
+        .header("User-Agent", "oxc-react-compiler-tests")
+        .call()
+    {
+        Ok(mut resp) => match resp.body_mut().read_json() {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("Failed to parse GitHub API response: {}", e);
+                return;
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to fetch GitHub API: {}", e);
+            return;
+        }
+    };
+
+    let tree = match response.get("tree").and_then(|t| t.as_array()) {
+        Some(t) => t,
+        None => {
+            eprintln!("Unexpected API response format (no 'tree' array)");
+            return;
+        }
+    };
+
+    let fixture_entries: Vec<&str> = tree
+        .iter()
+        .filter_map(|entry| {
+            let path = entry.get("path")?.as_str()?;
+            let entry_type = entry.get("type")?.as_str()?;
+            if entry_type == "blob"
+                && path.starts_with(FIXTURE_PREFIX)
+                && !path.contains("__snapshots__")
+                && !path.ends_with(".snap")
+                && !path.contains(".expected")
+            {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    eprintln!("Found {} fixture files to download.", fixture_entries.len());
+
+    let mut count = 0;
+    for filepath in &fixture_entries {
+        let rel_path = &filepath[FIXTURE_PREFIX.len() + 1..]; // strip prefix + /
+        let output_file = fixtures_dir.join(rel_path);
+
+        if let Some(parent) = output_file.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        let raw_url = format!("https://raw.githubusercontent.com/{}/{}/{}", REPO, BRANCH, filepath);
+
+        match ureq::get(&raw_url).header("User-Agent", "oxc-react-compiler-tests").call() {
+            Ok(mut resp) => {
+                if let Ok(body) = resp.body_mut().read_to_string() {
+                    let _ = std::fs::write(&output_file, body);
+                    count += 1;
+                }
+            }
+            Err(_) => continue,
+        }
+
+        if count % 100 == 0 && count > 0 {
+            eprintln!("  Downloaded {} / {} files...", count, fixture_entries.len());
+        }
+    }
+
+    eprintln!("Done! Downloaded {} fixture files.", count);
+}
+
+/// Ensure fixtures are available, downloading if enabled and needed.
+fn ensure_fixtures(fixtures_dir: &Path) -> bool {
+    if has_fixture_files(fixtures_dir) {
+        return true;
+    }
+
+    if should_auto_download() {
+        let _ = std::fs::create_dir_all(fixtures_dir);
+        download_fixtures(fixtures_dir);
+        return has_fixture_files(fixtures_dir);
+    }
+
+    false
+}
+
 #[test]
 fn upstream_conformance() {
     let fixtures_dir = upstream_fixtures_dir();
-    if !fixtures_dir.exists() {
+
+    if !ensure_fixtures(&fixtures_dir) {
         eprintln!(
             "Upstream fixtures not found at {}. Skipping conformance tests.",
             fixtures_dir.display()
         );
-        eprintln!("Run ./tests/conformance/download-upstream.sh to download them.");
+        eprintln!("Run ./tests/conformance/download-upstream.sh to download them,");
+        eprintln!("or set OXC_DOWNLOAD_FIXTURES=1 to auto-download on test run.");
         return;
     }
 

@@ -21,7 +21,7 @@ use rules::{
     use_memo_validation::check_use_memo_validation,
 };
 
-/// Run all lint rules on the given program and return any diagnostics found.
+/// Run Tier 1 (AST-level) lint rules on the given program.
 pub fn run_lint_rules(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -41,14 +41,16 @@ pub fn run_lint_rules(program: &Program<'_>) -> Vec<OxcDiagnostic> {
     diagnostics.extend(check_no_deriving_state_in_effects(program));
     diagnostics.extend(check_globals(program));
 
-    // Tier 2 rules (compiler-dependent) are disabled by default.
-    // They require running the full compiler pipeline in lint mode.
-    // To enable, uncomment the following:
-    // diagnostics.extend(rules::tier2::check_hooks_tier2(program));
-    // diagnostics.extend(rules::tier2::check_immutability(program));
-    // diagnostics.extend(rules::tier2::check_preserve_manual_memoization(program));
-    // diagnostics.extend(rules::tier2::check_memo_dependencies(program));
-    // diagnostics.extend(rules::tier2::check_exhaustive_effect_deps(program));
+    diagnostics
+}
 
+/// Run all lint rules (Tier 1 + Tier 2) on the given program.
+///
+/// Tier 2 rules run the full compiler pipeline (HIR, SSA, mutation analysis,
+/// reactive scopes) to detect issues that require deep analysis. This is
+/// more expensive than `run_lint_rules` but catches more issues.
+pub fn run_all_lint_rules(program: &Program<'_>) -> Vec<OxcDiagnostic> {
+    let mut diagnostics = run_lint_rules(program);
+    diagnostics.extend(rules::tier2::run_tier2_rules(program));
     diagnostics
 }

@@ -110,6 +110,7 @@ napi-derive = "2"
 
 # Testing
 insta = { version = "1", features = ["glob"] }
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [workspace.metadata.cargo-shear]
 ignored = []

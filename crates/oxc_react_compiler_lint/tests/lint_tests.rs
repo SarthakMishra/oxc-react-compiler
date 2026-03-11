@@ -1,7 +1,7 @@
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
 use oxc_react_compiler_lint::rules::tier2;
-use oxc_react_compiler_lint::run_lint_rules;
+use oxc_react_compiler_lint::{run_all_lint_rules, run_lint_rules};
 use oxc_span::SourceType;
 
 fn run_lint(source: &str) -> Vec<String> {
@@ -10,6 +10,16 @@ fn run_lint(source: &str) -> Vec<String> {
     let ret = Parser::new(&allocator, source, source_type).parse();
     let diagnostics = run_lint_rules(&ret.program);
     diagnostics.into_iter().map(|d| d.message.to_string()).collect()
+}
+
+fn parse_and_run_tier2<F>(source: &str, f: F) -> Vec<String>
+where
+    F: for<'a> FnOnce(&oxc_ast::ast::Program<'a>) -> Vec<oxc_diagnostics::OxcDiagnostic>,
+{
+    let allocator = Allocator::default();
+    let source_type = SourceType::tsx();
+    let ret = Parser::new(&allocator, source, source_type).parse();
+    f(&ret.program).into_iter().map(|d| d.message.to_string()).collect()
 }
 
 #[test]
@@ -134,7 +144,7 @@ function Foo({ name }) {
 }
 
 // ---------------------------------------------------------------------------
-// Tier 2 lint tests (compiler-dependent, use _with_source APIs)
+// Tier 2 lint tests (compiler-dependent, use &Program API)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -147,9 +157,8 @@ function Foo({ condition }) {
     return <div />;
 }
 "#;
-    let diags = tier2::check_hooks_tier2_with_source(source, "test.tsx");
+    let diags = parse_and_run_tier2(source, tier2::check_hooks_tier2);
     // Wiring test: verifies the pipeline runs without panicking.
-    // The hooks validation may not yet detect all conditional patterns at the HIR level.
     let _ = diags;
 }
 
@@ -164,7 +173,7 @@ function Foo({ items }) {
     return <div />;
 }
 "#;
-    let diags = tier2::check_hooks_tier2_with_source(source, "test.tsx");
+    let diags = parse_and_run_tier2(source, tier2::check_hooks_tier2);
     // Wiring test: verifies the pipeline runs without panicking on loop constructs.
     let _ = diags;
 }
@@ -178,11 +187,11 @@ function Foo() {
     return <div>{x}</div>;
 }
 "#;
-    let diags = tier2::check_hooks_tier2_with_source(source, "test.tsx");
+    let diags = parse_and_run_tier2(source, tier2::check_hooks_tier2);
     assert!(
         diags.is_empty(),
         "Top-level hooks should not produce Tier 2 hooks diagnostics: {:?}",
-        diags.iter().map(|d| d.message.to_string()).collect::<Vec<_>>()
+        diags
     );
 }
 
@@ -194,11 +203,9 @@ function Foo({ a, b }) {
     return <div>{value}</div>;
 }
 "#;
-    let diags = tier2::check_memo_dependencies_with_source(source, "test.tsx");
-    // Should detect that 'b' is missing from the dependency array
-    // Note: this depends on the reactive analysis correctly identifying 'b' as a dependency
-    // The test verifies the wiring works, even if the analysis may not catch all cases yet
-    let _ = diags; // Don't assert on count since the analysis may not be complete
+    let diags = parse_and_run_tier2(source, tier2::check_memo_dependencies);
+    // Wiring test: verifies the pipeline runs without panicking.
+    let _ = diags;
 }
 
 #[test]
@@ -211,9 +218,9 @@ function Foo({ count }) {
     return <div>{count}</div>;
 }
 "#;
-    let diags = tier2::check_exhaustive_effect_deps_with_source(source, "test.tsx");
-    // Should detect that 'count' is missing from the useEffect dependency array
-    let _ = diags; // Wiring test
+    let diags = parse_and_run_tier2(source, tier2::check_exhaustive_effect_deps);
+    // Wiring test: verifies the pipeline runs without panicking.
+    let _ = diags;
 }
 
 #[test]
@@ -223,16 +230,35 @@ function Foo({ name }) {
     return <div>Hello {name}</div>;
 }
 "#;
-    let hooks = tier2::check_hooks_tier2_with_source(source, "test.tsx");
-    let immutability = tier2::check_immutability_with_source(source, "test.tsx");
-    assert!(
-        hooks.is_empty(),
-        "Clean component should have no hooks violations: {:?}",
-        hooks.iter().map(|d| d.message.to_string()).collect::<Vec<_>>()
-    );
+    let hooks = parse_and_run_tier2(source, tier2::check_hooks_tier2);
+    let immutability = parse_and_run_tier2(source, tier2::check_immutability);
+    assert!(hooks.is_empty(), "Clean component should have no hooks violations: {:?}", hooks);
     assert!(
         immutability.is_empty(),
         "Clean component should have no immutability violations: {:?}",
-        immutability.iter().map(|d| d.message.to_string()).collect::<Vec<_>>()
+        immutability
+    );
+}
+
+// ---------------------------------------------------------------------------
+// run_all_lint_rules integration test
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_run_all_lint_rules() {
+    let source = r#"
+function Foo({ name }) {
+    return <div>Hello {name}</div>;
+}
+"#;
+    let allocator = Allocator::default();
+    let source_type = SourceType::tsx();
+    let ret = Parser::new(&allocator, source, source_type).parse();
+    let diags = run_all_lint_rules(&ret.program);
+    // Clean component: no Tier 1 or Tier 2 diagnostics expected
+    assert!(
+        diags.is_empty(),
+        "Clean component should have no diagnostics: {:?}",
+        diags.iter().map(|d| d.message.to_string()).collect::<Vec<_>>()
     );
 }

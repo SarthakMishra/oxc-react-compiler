@@ -15,6 +15,10 @@ pub struct TransformOptions {
     pub output_mode: Option<String>,
     /// Enable source map generation.
     pub source_map: Option<bool>,
+    /// Import source for gating function (e.g., "my-flags").
+    pub gating_import_source: Option<String>,
+    /// Function name for gating check (e.g., "isCompilerEnabled").
+    pub gating_function_name: Option<String>,
 }
 
 #[napi]
@@ -37,6 +41,14 @@ pub fn transform_react_file(
                     }
                     _ => oxc_react_compiler::entrypoint::options::CompilationMode::Infer,
                 };
+            }
+            if let (Some(import_source), Some(function_name)) =
+                (opts.gating_import_source, opts.gating_function_name)
+            {
+                po.gating = Some(oxc_react_compiler::entrypoint::options::GatingConfig {
+                    import_source,
+                    function_name,
+                });
             }
             po
         }
@@ -78,7 +90,7 @@ pub fn lint_react_file(source: String, filename: String) -> LintResult {
         return LintResult { diagnostics: vec![] };
     }
 
-    let oxc_diagnostics = oxc_react_compiler_lint::run_lint_rules(&parser_ret.program);
+    let oxc_diagnostics = oxc_react_compiler_lint::run_all_lint_rules(&parser_ret.program);
 
     let diagnostics = oxc_diagnostics
         .into_iter()

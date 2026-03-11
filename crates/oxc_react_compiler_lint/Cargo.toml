@@ -20,5 +20,10 @@ oxc_syntax.workspace = true
 
 rustc-hash.workspace = true
 
+[[bench]]
+name = "lint"
+harness = false
+
 [dev-dependencies]
 insta.workspace = true
+criterion.workspace = true

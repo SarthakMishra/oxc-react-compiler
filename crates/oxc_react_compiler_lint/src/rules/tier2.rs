@@ -1,15 +1,10 @@
-#![allow(dead_code)]
-
 //! Tier 2 lint rules that depend on the React Compiler's HIR analysis.
 //!
 //! These run the full compiler pipeline in lint mode to detect issues
 //! that require deep analysis (mutation tracking, scope inference, etc.).
 
-use oxc_allocator::Allocator;
 use oxc_ast::ast::Program;
 use oxc_diagnostics::OxcDiagnostic;
-use oxc_parser::Parser;
-use oxc_span::SourceType;
 
 use oxc_react_compiler::entrypoint::options::PluginOptions;
 use oxc_react_compiler::entrypoint::pipeline::run_full_pipeline;
@@ -19,48 +14,36 @@ use oxc_react_compiler::hir::build::HIRBuilder;
 use oxc_react_compiler::hir::environment::EnvironmentConfig;
 use oxc_react_compiler::hir::types::ReactFunctionType;
 
-/// Run the compiler pipeline in lint mode for a source file, collecting all errors
-/// with their structured diagnostic kinds intact.
-fn run_lint_analysis(source: &str, filename: &str) -> ErrorCollector {
-    let allocator = Allocator::default();
-    let source_type = SourceType::from_path(filename).unwrap_or_default();
-    let parser_ret = Parser::new(&allocator, source, source_type).parse();
-
-    if parser_ret.panicked {
-        return ErrorCollector::default();
-    }
-
-    let options = PluginOptions::default();
-    let config = EnvironmentConfig {
-        // Enable all validation passes for lint analysis
+/// Lint-mode environment config with all validation passes enabled.
+fn lint_config() -> EnvironmentConfig {
+    EnvironmentConfig {
         validate_exhaustive_memo_dependencies: true,
         validate_exhaustive_effect_dependencies: true,
         ..EnvironmentConfig::default()
-    };
+    }
+}
+
+/// Run the compiler pipeline in lint mode on an already-parsed program,
+/// collecting all errors with their structured diagnostic kinds intact.
+fn run_lint_analysis(program: &Program<'_>) -> ErrorCollector {
+    let options = PluginOptions::default();
+    let config = lint_config();
     let mut all_errors = ErrorCollector::default();
 
-    let functions = discover_functions(&parser_ret.program, &options);
+    let functions = discover_functions(program, &options);
 
     for func_info in &functions {
         if func_info.opt_out {
             continue;
         }
 
-        // Find the function in the AST by span and build HIR.
-        let hir_func = find_and_build_function(
-            &parser_ret.program,
-            func_info.span,
-            func_info.fn_type,
-            &config,
-        );
+        let hir_func = find_and_build_function(program, func_info.span, func_info.fn_type, &config);
 
         let Some(hir_func) = hir_func else {
             continue;
         };
 
         let mut errors = ErrorCollector::default();
-        // Use run_full_pipeline to capture all validation passes including
-        // validate_preserved_manual_memoization (which runs on ReactiveFunction).
         let _ = run_full_pipeline(hir_func, &config, &mut errors);
 
         all_errors.extend(&mut errors);
@@ -71,7 +54,7 @@ fn run_lint_analysis(source: &str, filename: &str) -> ErrorCollector {
 
 /// Find a function in the AST by span and build its HIR.
 fn find_and_build_function<'a>(
-    program: &'a oxc_ast::ast::Program<'a>,
+    program: &'a Program<'a>,
     span: oxc_span::Span,
     fn_type: ReactFunctionType,
     config: &EnvironmentConfig,
@@ -85,30 +68,36 @@ fn find_and_build_function<'a>(
                 return Some(builder.build_function(func, fn_type));
             }
             Statement::ExportDefaultDeclaration(export) => {
-                if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration
-                    && func.span == span {
-                        let builder = HIRBuilder::new(config.clone());
-                        return Some(builder.build_function(func, fn_type));
-                    }
+                if let ExportDefaultDeclarationKind::FunctionDeclaration(func) =
+                    &export.declaration
+                    && func.span == span
+                {
+                    let builder = HIRBuilder::new(config.clone());
+                    return Some(builder.build_function(func, fn_type));
+                }
             }
             Statement::ExportNamedDeclaration(export) => {
                 if let Some(Declaration::FunctionDeclaration(func)) = &export.declaration
-                    && func.span == span {
-                        let builder = HIRBuilder::new(config.clone());
-                        return Some(builder.build_function(func, fn_type));
-                    }
+                    && func.span == span
+                {
+                    let builder = HIRBuilder::new(config.clone());
+                    return Some(builder.build_function(func, fn_type));
+                }
             }
             Statement::VariableDeclaration(decl) => {
                 for declarator in &decl.declarations {
                     if let Some(init) = &declarator.init {
                         match init.without_parentheses() {
-                            Expression::ArrowFunctionExpression(arrow) if arrow.span == span => {
-                                let name =
-                                    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                                        Some(id.name.to_string())
-                                    } else {
-                                        None
-                                    };
+                            Expression::ArrowFunctionExpression(arrow)
+                                if arrow.span == span =>
+                            {
+                                let name = if let BindingPattern::BindingIdentifier(id) =
+                                    &declarator.id
+                                {
+                                    Some(id.name.to_string())
+                                } else {
+                                    None
+                                };
                                 let builder = HIRBuilder::new(config.clone());
                                 return Some(builder.build_arrow_function(arrow, name, fn_type));
                             }
@@ -127,69 +116,35 @@ fn find_and_build_function<'a>(
     None
 }
 
-/// Full Rules of Hooks validation using HIR control flow analysis.
-/// Goes beyond the AST-level check by analyzing the actual CFG for
-/// conditional and loop paths.
-pub fn check_hooks_tier2(_program: &Program) -> Vec<OxcDiagnostic> {
-    // The hooks validation is performed inside run_lint_pipeline when
-    // validate_hooks_usage is enabled. We can't easily re-run just for
-    // hooks without the source string. Return empty for the AST-only API.
-    // The full lint is available via run_lint_analysis with source.
-    Vec::new()
+/// Run all Tier 2 rules on the given program and return diagnostics.
+///
+/// This runs the full compiler pipeline (HIR → SSA → inference → reactive scopes → validation)
+/// and collects diagnostics from all validation passes.
+pub fn run_tier2_rules(program: &Program<'_>) -> Vec<OxcDiagnostic> {
+    run_lint_analysis(program).into_diagnostics()
 }
 
-/// Run Tier 2 hooks validation with source text.
-pub fn check_hooks_tier2_with_source(source: &str, filename: &str) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::HooksViolation)
+/// Full Rules of Hooks validation using HIR control flow analysis.
+pub fn check_hooks_tier2(program: &Program<'_>) -> Vec<OxcDiagnostic> {
+    run_lint_analysis(program).diagnostics_by_kind(DiagnosticKind::HooksViolation)
 }
 
 /// Detect mutation of frozen (immutable) values.
-/// Uses the effect system to track which values are frozen
-/// and reports mutations of those values.
-pub fn check_immutability(_program: &Program) -> Vec<OxcDiagnostic> {
-    Vec::new()
+pub fn check_immutability(program: &Program<'_>) -> Vec<OxcDiagnostic> {
+    run_lint_analysis(program).diagnostics_by_kind(DiagnosticKind::ImmutabilityViolation)
 }
 
-/// Run Tier 2 immutability checks with source text.
-pub fn check_immutability_with_source(source: &str, filename: &str) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::ImmutabilityViolation)
-}
-
-/// Validate that the compiler's memoization preserves manual
-/// useMemo/useCallback guarantees.
-pub fn check_preserve_manual_memoization(_program: &Program) -> Vec<OxcDiagnostic> {
-    Vec::new()
-}
-
-/// Run Tier 2 manual memoization preservation checks with source text.
-pub fn check_preserve_manual_memoization_with_source(
-    source: &str,
-    filename: &str,
-) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::MemoizationPreservation)
+/// Validate that the compiler's memoization preserves manual useMemo/useCallback guarantees.
+pub fn check_preserve_manual_memoization(program: &Program<'_>) -> Vec<OxcDiagnostic> {
+    run_lint_analysis(program).diagnostics_by_kind(DiagnosticKind::MemoizationPreservation)
 }
 
 /// Validate exhaustive dependencies for useMemo/useCallback.
-/// Uses the compiler's dependency analysis to find missing deps.
-pub fn check_memo_dependencies(_program: &Program) -> Vec<OxcDiagnostic> {
-    Vec::new()
-}
-
-/// Run Tier 2 memo dependency checks with source text.
-pub fn check_memo_dependencies_with_source(source: &str, filename: &str) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::MemoDependency)
+pub fn check_memo_dependencies(program: &Program<'_>) -> Vec<OxcDiagnostic> {
+    run_lint_analysis(program).diagnostics_by_kind(DiagnosticKind::MemoDependency)
 }
 
 /// Validate exhaustive dependencies for useEffect/useLayoutEffect.
-/// Similar to memo-dependencies but for effect hooks.
-pub fn check_exhaustive_effect_deps(_program: &Program) -> Vec<OxcDiagnostic> {
-    Vec::new()
-}
-
-/// Run Tier 2 effect dependency checks with source text.
-pub fn check_exhaustive_effect_deps_with_source(
-    source: &str,
-    filename: &str,
-) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::EffectDependency)
+pub fn check_exhaustive_effect_deps(program: &Program<'_>) -> Vec<OxcDiagnostic> {
+    run_lint_analysis(program).diagnostics_by_kind(DiagnosticKind::EffectDependency)
 }
