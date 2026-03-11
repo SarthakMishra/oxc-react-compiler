@@ -3,7 +3,7 @@
 > Lint rules that require the full compiler pipeline (HIR, effect system, reactive scopes)
 > to detect issues that cannot be found with AST-level analysis alone.
 
-**Current state:** All 5 rules are stubbed in `crates/oxc_react_compiler_lint/src/rules/tier2.rs`. The `_with_source` variants call `run_lint_analysis` which runs the pipeline, but the filtering is based on string matching on diagnostic messages rather than structured error categories. The `_program`-only variants return empty vectors.
+**Current state:** All 5 rules are stubbed in `crates/oxc_react_compiler_lint/src/rules/tier2.rs`. The `_with_source` variants call `run_lint_analysis` which runs the pipeline, and filtering now uses structured `DiagnosticKind` categories instead of string matching (Gap 6 completed). The `_program`-only variants return empty vectors.
 
 ---
 
@@ -66,13 +66,9 @@
 - Test cases: missing dep in useEffect, ref.current in deps, dispatch/setState in deps (stable), cleanup referencing stale values
 **Depends on:** None
 
-### Gap 6: Structured Error Categories for Lint Filtering
+### Gap 6: Structured Error Categories for Lint Filtering ✅
 
-**Upstream:** N/A (upstream ESLint plugin uses the compiler's error severity system)
-**Current state:** `check_*_with_source` functions filter diagnostics by string matching (`msg.contains("hook")`, etc.), which is fragile and will miss or mis-categorize diagnostics.
-**What's needed:**
-- Add an `ErrorCategory` enum variant for each Tier 2 rule type (HooksViolation, ImmutabilityViolation, MemoizationPreservation, MemoDependency, EffectDependency)
-- Tag diagnostics in the pipeline with their category
-- Filter by category in the `_with_source` functions instead of string matching
-- This makes the lint rules robust against diagnostic message changes
-**Depends on:** None (but should be done before or alongside Gaps 1-5)
+~~**Upstream:** N/A (upstream ESLint plugin uses the compiler's error severity system)~~
+~~**Current state:** `check_*_with_source` functions filter diagnostics by string matching (`msg.contains("hook")`, etc.), which is fragile and will miss or mis-categorize diagnostics.~~
+
+**Completed**: Added a `DiagnosticKind` enum with 17 variants to `CompilerError`, tagged all 14 validation passes with the correct kind, and updated `tier2.rs` to filter by kind instead of string matching. This makes lint filtering robust against diagnostic message changes.
