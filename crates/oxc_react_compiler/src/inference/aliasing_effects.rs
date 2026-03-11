@@ -28,25 +28,13 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
-            effects.push(AliasingEffect::Alias {
-                from: place.clone(),
-                into: lvalue.clone(),
-            });
+            effects.push(AliasingEffect::Alias { from: place.clone(), into: lvalue.clone() });
         }
 
-        InstructionValue::StoreLocal {
-            lvalue: store_lvalue,
-            value,
-            ..
-        }
-        | InstructionValue::StoreContext {
-            lvalue: store_lvalue,
-            value,
-        } => {
-            effects.push(AliasingEffect::Assign {
-                from: value.clone(),
-                into: store_lvalue.clone(),
-            });
+        InstructionValue::StoreLocal { lvalue: store_lvalue, value, .. }
+        | InstructionValue::StoreContext { lvalue: store_lvalue, value } => {
+            effects
+                .push(AliasingEffect::Assign { from: value.clone(), into: store_lvalue.clone() });
         }
 
         InstructionValue::ObjectExpression { properties } => {
@@ -104,28 +92,18 @@ pub fn compute_instruction_effects(
 
         InstructionValue::PropertyLoad { object, .. }
         | InstructionValue::ComputedLoad { object, .. } => {
-            effects.push(AliasingEffect::CreateFrom {
-                from: object.clone(),
-                into: lvalue.clone(),
-            });
+            effects.push(AliasingEffect::CreateFrom { from: object.clone(), into: lvalue.clone() });
         }
 
         InstructionValue::PropertyStore { object, value, .. }
         | InstructionValue::ComputedStore { object, value, .. } => {
-            effects.push(AliasingEffect::Mutate {
-                value: object.clone(),
-            });
-            effects.push(AliasingEffect::Capture {
-                from: value.clone(),
-                into: object.clone(),
-            });
+            effects.push(AliasingEffect::Mutate { value: object.clone() });
+            effects.push(AliasingEffect::Capture { from: value.clone(), into: object.clone() });
         }
 
         InstructionValue::PropertyDelete { object, .. }
         | InstructionValue::ComputedDelete { object, .. } => {
-            effects.push(AliasingEffect::Mutate {
-                value: object.clone(),
-            });
+            effects.push(AliasingEffect::Mutate { value: object.clone() });
         }
 
         InstructionValue::FunctionExpression { lowered_func, .. } => {
@@ -137,20 +115,14 @@ pub fn compute_instruction_effects(
             });
         }
 
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             effects.push(AliasingEffect::Create {
                 into: lvalue.clone(),
                 value: ValueKind::Frozen,
                 reason: ValueReason::KnownValue,
             });
-            effects.push(AliasingEffect::ImmutableCapture {
-                from: tag.clone(),
-                into: lvalue.clone(),
-            });
+            effects
+                .push(AliasingEffect::ImmutableCapture { from: tag.clone(), into: lvalue.clone() });
             for attr in props {
                 effects.push(AliasingEffect::Freeze {
                     value: attr.value.clone(),
@@ -188,10 +160,7 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::Await { value } => {
-            effects.push(AliasingEffect::CreateFrom {
-                from: value.clone(),
-                into: lvalue.clone(),
-            });
+            effects.push(AliasingEffect::CreateFrom { from: value.clone(), into: lvalue.clone() });
         }
 
         InstructionValue::NewExpression { callee, args } => {
@@ -213,17 +182,12 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::Destructure { value, .. } => {
-            effects.push(AliasingEffect::CreateFrom {
-                from: value.clone(),
-                into: lvalue.clone(),
-            });
+            effects.push(AliasingEffect::CreateFrom { from: value.clone(), into: lvalue.clone() });
         }
 
         InstructionValue::PrefixUpdate { lvalue: target, .. }
         | InstructionValue::PostfixUpdate { lvalue: target, .. } => {
-            effects.push(AliasingEffect::Mutate {
-                value: target.clone(),
-            });
+            effects.push(AliasingEffect::Mutate { value: target.clone() });
             effects.push(AliasingEffect::Create {
                 into: lvalue.clone(),
                 value: ValueKind::Primitive,
@@ -246,27 +210,17 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::IteratorNext { iterator, .. } => {
-            effects.push(AliasingEffect::CreateFrom {
-                from: iterator.clone(),
-                into: lvalue.clone(),
-            });
-            effects.push(AliasingEffect::MutateConditionally {
-                value: iterator.clone(),
-            });
+            effects
+                .push(AliasingEffect::CreateFrom { from: iterator.clone(), into: lvalue.clone() });
+            effects.push(AliasingEffect::MutateConditionally { value: iterator.clone() });
         }
 
         InstructionValue::NextPropertyOf { value } => {
-            effects.push(AliasingEffect::CreateFrom {
-                from: value.clone(),
-                into: lvalue.clone(),
-            });
+            effects.push(AliasingEffect::CreateFrom { from: value.clone(), into: lvalue.clone() });
         }
 
         InstructionValue::TypeCastExpression { value, .. } => {
-            effects.push(AliasingEffect::Alias {
-                from: value.clone(),
-                into: lvalue.clone(),
-            });
+            effects.push(AliasingEffect::Alias { from: value.clone(), into: lvalue.clone() });
         }
 
         InstructionValue::TaggedTemplateExpression { tag, .. } => {

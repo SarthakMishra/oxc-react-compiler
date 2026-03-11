@@ -84,32 +84,17 @@ impl CompilerError {
 
     /// Creates an `InvalidReact` error.
     pub fn invalid_react(span: Span, message: impl Into<String>) -> Self {
-        Self {
-            category: ErrorCategory::InvalidReact,
-            span,
-            message: message.into(),
-            detail: None,
-        }
+        Self { category: ErrorCategory::InvalidReact, span, message: message.into(), detail: None }
     }
 
     /// Creates an `InvalidJS` error.
     pub fn invalid_js(span: Span, message: impl Into<String>) -> Self {
-        Self {
-            category: ErrorCategory::InvalidJS,
-            span,
-            message: message.into(),
-            detail: None,
-        }
+        Self { category: ErrorCategory::InvalidJS, span, message: message.into(), detail: None }
     }
 
     /// Creates a `Todo` error for unimplemented features.
     pub fn todo(span: Span, message: impl Into<String>) -> Self {
-        Self {
-            category: ErrorCategory::Todo,
-            span,
-            message: message.into(),
-            detail: None,
-        }
+        Self { category: ErrorCategory::Todo, span, message: message.into(), detail: None }
     }
 
     /// Creates an `InvariantViolation` error for internal compiler bugs.
@@ -142,9 +127,7 @@ impl ErrorCollector {
 
     /// Returns `true` if any critical (invariant violation) errors exist.
     pub fn has_critical_errors(&self) -> bool {
-        self.errors
-            .iter()
-            .any(|e| e.category == ErrorCategory::InvariantViolation)
+        self.errors.iter().any(|e| e.category == ErrorCategory::InvariantViolation)
     }
 
     /// Returns `true` if compilation should bail given the threshold.
@@ -158,10 +141,7 @@ impl ErrorCollector {
 
     /// Converts all collected errors into diagnostics.
     pub fn into_diagnostics(self) -> Vec<OxcDiagnostic> {
-        self.errors
-            .into_iter()
-            .map(CompilerError::into_diagnostic)
-            .collect()
+        self.errors.into_iter().map(CompilerError::into_diagnostic).collect()
     }
 
     /// Drains all errors out of the collector and returns them.

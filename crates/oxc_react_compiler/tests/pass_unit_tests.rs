@@ -24,10 +24,7 @@ fn make_identifier(ids: &mut IdGenerator, name: &str) -> Identifier {
         id: ids.next_identifier_id(),
         declaration_id: Some(ids.next_declaration_id()),
         name: Some(name.to_string()),
-        mutable_range: MutableRange {
-            start: InstructionId(0),
-            end: InstructionId(0),
-        },
+        mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
         scope: None,
         type_: Type::Poly,
         loc: dummy_span(),
@@ -53,13 +50,7 @@ fn make_reactive_place(ids: &mut IdGenerator, name: &str) -> Place {
 }
 
 fn make_instruction(ids: &mut IdGenerator, lvalue: Place, value: InstructionValue) -> Instruction {
-    Instruction {
-        id: ids.next_instruction_id(),
-        lvalue,
-        value,
-        loc: dummy_span(),
-        effects: None,
-    }
+    Instruction { id: ids.next_instruction_id(), lvalue, value, loc: dummy_span(), effects: None }
 }
 
 // ---------------------------------------------------------------------------
@@ -77,29 +68,19 @@ fn test_infer_reactive_places_simple() {
 
     let temp = make_place(&mut ids, "t0");
 
-    let instr = make_instruction(
-        &mut ids,
-        temp,
-        InstructionValue::LoadLocal {
-            place: props.clone(),
-        },
-    );
+    let instr =
+        make_instruction(&mut ids, temp, InstructionValue::LoadLocal { place: props.clone() });
 
     let block = BasicBlock {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![instr],
-        terminal: Terminal::Return {
-            value: make_place(&mut ids, "t0"),
-        },
+        terminal: Terminal::Return { value: make_place(&mut ids, "t0") },
         preds: vec![],
         phis: vec![],
     };
 
-    let mut hir = HIR {
-        entry: block_id,
-        blocks: vec![(block_id, block)],
-    };
+    let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
     infer_reactive_places(&mut hir);
 
@@ -116,17 +97,12 @@ fn test_infer_reactive_places_empty_hir() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![],
-        terminal: Terminal::Return {
-            value: make_place(&mut ids, "undefined"),
-        },
+        terminal: Terminal::Return { value: make_place(&mut ids, "undefined") },
         preds: vec![],
         phis: vec![],
     };
 
-    let mut hir = HIR {
-        entry: block_id,
-        blocks: vec![(block_id, block)],
-    };
+    let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
     infer_reactive_places(&mut hir);
     assert_eq!(hir.blocks.len(), 1);
@@ -146,26 +122,19 @@ fn test_infer_reactive_scope_variables_no_reactive() {
     let instr = make_instruction(
         &mut ids,
         lvalue,
-        InstructionValue::Primitive {
-            value: Primitive::Number(42.0),
-        },
+        InstructionValue::Primitive { value: Primitive::Number(42.0) },
     );
 
     let block = BasicBlock {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![instr],
-        terminal: Terminal::Return {
-            value: make_place(&mut ids, "x"),
-        },
+        terminal: Terminal::Return { value: make_place(&mut ids, "x") },
         preds: vec![],
         phis: vec![],
     };
 
-    let mut hir = HIR {
-        entry: block_id,
-        blocks: vec![(block_id, block)],
-    };
+    let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
     let scopes = infer_reactive_scope_variables(&mut hir);
     // No reactive identifiers means no scopes (or empty scopes).
@@ -184,34 +153,23 @@ fn test_infer_reactive_scope_variables_with_reactive_identifier() {
 
     let mut lvalue = make_place(&mut ids, "derived");
     lvalue.reactive = true;
-    lvalue.identifier.mutable_range = MutableRange {
-        start: InstructionId(0),
-        end: InstructionId(2),
-    };
+    lvalue.identifier.mutable_range =
+        MutableRange { start: InstructionId(0), end: InstructionId(2) };
 
     let props = make_reactive_place(&mut ids, "props");
 
-    let instr = make_instruction(
-        &mut ids,
-        lvalue,
-        InstructionValue::LoadLocal { place: props },
-    );
+    let instr = make_instruction(&mut ids, lvalue, InstructionValue::LoadLocal { place: props });
 
     let block = BasicBlock {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![instr],
-        terminal: Terminal::Return {
-            value: make_place(&mut ids, "derived"),
-        },
+        terminal: Terminal::Return { value: make_place(&mut ids, "derived") },
         preds: vec![],
         phis: vec![],
     };
 
-    let mut hir = HIR {
-        entry: block_id,
-        blocks: vec![(block_id, block)],
-    };
+    let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
     let scopes = infer_reactive_scope_variables(&mut hir);
     // Should run without panic; scope count depends on the pass logic.
@@ -231,17 +189,12 @@ fn test_propagate_scope_dependencies_empty() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![],
-        terminal: Terminal::Return {
-            value: make_place(&mut ids, "undefined"),
-        },
+        terminal: Terminal::Return { value: make_place(&mut ids, "undefined") },
         preds: vec![],
         phis: vec![],
     };
 
-    let mut hir = HIR {
-        entry: block_id,
-        blocks: vec![(block_id, block)],
-    };
+    let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
     propagate_scope_dependencies_hir(&mut hir);
     assert_eq!(hir.blocks.len(), 1);
@@ -261,9 +214,7 @@ fn test_build_reactive_function_single_block() {
     let instr = make_instruction(
         &mut ids,
         x.clone(),
-        InstructionValue::Primitive {
-            value: Primitive::Number(1.0),
-        },
+        InstructionValue::Primitive { value: Primitive::Number(1.0) },
     );
 
     let block = BasicBlock {
@@ -275,10 +226,7 @@ fn test_build_reactive_function_single_block() {
         phis: vec![],
     };
 
-    let hir = HIR {
-        entry: block_id,
-        blocks: vec![(block_id, block)],
-    };
+    let hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
     let rf = build_reactive_function(
         hir,
@@ -305,9 +253,7 @@ fn test_build_reactive_function_with_params() {
     let instr = make_instruction(
         &mut ids,
         ret.clone(),
-        InstructionValue::LoadLocal {
-            place: param_place.clone(),
-        },
+        InstructionValue::LoadLocal { place: param_place.clone() },
     );
 
     let block = BasicBlock {
@@ -319,10 +265,7 @@ fn test_build_reactive_function_with_params() {
         phis: vec![],
     };
 
-    let hir = HIR {
-        entry: block_id,
-        blocks: vec![(block_id, block)],
-    };
+    let hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
     let rf = build_reactive_function(
         hir,
@@ -354,9 +297,7 @@ fn test_build_reactive_function_if_terminal() {
         instructions: vec![make_instruction(
             &mut ids,
             test_place.clone(),
-            InstructionValue::Primitive {
-                value: Primitive::Boolean(true),
-            },
+            InstructionValue::Primitive { value: Primitive::Boolean(true) },
         )],
         terminal: Terminal::If {
             test: test_place,
@@ -372,9 +313,7 @@ fn test_build_reactive_function_if_terminal() {
     let cons_instr = make_instruction(
         &mut ids,
         place_a,
-        InstructionValue::Primitive {
-            value: Primitive::Number(1.0),
-        },
+        InstructionValue::Primitive { value: Primitive::Number(1.0) },
     );
     let consequent = BasicBlock {
         kind: BlockKind::Block,
@@ -389,9 +328,7 @@ fn test_build_reactive_function_if_terminal() {
     let alt_instr = make_instruction(
         &mut ids,
         place_b,
-        InstructionValue::Primitive {
-            value: Primitive::Number(2.0),
-        },
+        InstructionValue::Primitive { value: Primitive::Number(2.0) },
     );
     let alternate = BasicBlock {
         kind: BlockKind::Block,
@@ -421,26 +358,17 @@ fn test_build_reactive_function_if_terminal() {
         ],
     };
 
-    let rf = build_reactive_function(
-        hir,
-        vec![],
-        Some("IfComponent".to_string()),
-        dummy_span(),
-        vec![],
-    );
+    let rf =
+        build_reactive_function(hir, vec![], Some("IfComponent".to_string()), dummy_span(), vec![]);
 
     assert_eq!(rf.id.as_deref(), Some("IfComponent"));
     // Should have converted the If terminal into a ReactiveTerminal::If.
-    let has_if = rf.body.instructions.iter().any(|i| {
-        matches!(
-            i,
-            ReactiveInstruction::Terminal(ReactiveTerminal::If { .. })
-        )
-    });
-    assert!(
-        has_if,
-        "should contain an If terminal in the reactive function"
-    );
+    let has_if = rf
+        .body
+        .instructions
+        .iter()
+        .any(|i| matches!(i, ReactiveInstruction::Terminal(ReactiveTerminal::If { .. })));
+    assert!(has_if, "should contain an If terminal in the reactive function");
 }
 
 // ---------------------------------------------------------------------------
@@ -453,9 +381,7 @@ fn test_codegen_empty_function() {
         loc: dummy_span(),
         id: Some("Empty".to_string()),
         params: vec![],
-        body: ReactiveBlock {
-            instructions: vec![],
-        },
+        body: ReactiveBlock { instructions: vec![] },
         directives: vec![],
     };
 
@@ -495,9 +421,7 @@ fn test_codegen_function_with_primitive() {
     let instr = Instruction {
         id: ids.next_instruction_id(),
         lvalue,
-        value: InstructionValue::Primitive {
-            value: Primitive::Number(42.0),
-        },
+        value: InstructionValue::Primitive { value: Primitive::Number(42.0) },
         loc: dummy_span(),
         effects: None,
     };
@@ -506,9 +430,7 @@ fn test_codegen_function_with_primitive() {
         loc: dummy_span(),
         id: Some("NumFunc".to_string()),
         params: vec![],
-        body: ReactiveBlock {
-            instructions: vec![ReactiveInstruction::Instruction(instr)],
-        },
+        body: ReactiveBlock { instructions: vec![ReactiveInstruction::Instruction(instr)] },
         directives: vec![],
     };
 
@@ -527,9 +449,7 @@ fn test_codegen_function_with_params() {
         loc: dummy_span(),
         id: Some("Add".to_string()),
         params: vec![Param::Identifier(param1), Param::Identifier(param2)],
-        body: ReactiveBlock {
-            instructions: vec![],
-        },
+        body: ReactiveBlock { instructions: vec![] },
         directives: vec![],
     };
 
@@ -547,26 +467,18 @@ fn test_codegen_scope_block() {
     let instr = Instruction {
         id: ids.next_instruction_id(),
         lvalue: lvalue.clone(),
-        value: InstructionValue::Primitive {
-            value: Primitive::String("hello".to_string()),
-        },
+        value: InstructionValue::Primitive { value: Primitive::String("hello".to_string()) },
         loc: dummy_span(),
         effects: None,
     };
 
     let scope = ReactiveScope {
         id: ids.next_scope_id(),
-        range: MutableRange {
-            start: InstructionId(0),
-            end: InstructionId(1),
-        },
+        range: MutableRange { start: InstructionId(0), end: InstructionId(1) },
         dependencies: vec![],
         declarations: vec![(
             lvalue.identifier.id,
-            ReactiveScopeDeclaration {
-                identifier: lvalue.identifier.clone(),
-                scope: ScopeId(0),
-            },
+            ReactiveScopeDeclaration { identifier: lvalue.identifier.clone(), scope: ScopeId(0) },
         )],
         reassignments: vec![],
         early_return_value: None,
@@ -576,27 +488,20 @@ fn test_codegen_scope_block() {
 
     let scope_block = ReactiveScopeBlock {
         scope,
-        instructions: ReactiveBlock {
-            instructions: vec![ReactiveInstruction::Instruction(instr)],
-        },
+        instructions: ReactiveBlock { instructions: vec![ReactiveInstruction::Instruction(instr)] },
     };
 
     let rf = ReactiveFunction {
         loc: dummy_span(),
         id: Some("Scoped".to_string()),
         params: vec![],
-        body: ReactiveBlock {
-            instructions: vec![ReactiveInstruction::Scope(scope_block)],
-        },
+        body: ReactiveBlock { instructions: vec![ReactiveInstruction::Scope(scope_block)] },
         directives: vec![],
     };
 
     let code = codegen_function(&rf);
     // Should contain cache initialization.
-    assert!(
-        code.contains("_c("),
-        "should have cache slot initialization"
-    );
+    assert!(code.contains("_c("), "should have cache slot initialization");
     assert!(code.contains("$["), "should reference cache slots");
 }
 
@@ -613,9 +518,7 @@ fn test_hir_to_codegen_roundtrip() {
     let instr = make_instruction(
         &mut ids,
         x.clone(),
-        InstructionValue::Primitive {
-            value: Primitive::String("hello".to_string()),
-        },
+        InstructionValue::Primitive { value: Primitive::String("hello".to_string()) },
     );
 
     let block = BasicBlock {
@@ -627,18 +530,10 @@ fn test_hir_to_codegen_roundtrip() {
         phis: vec![],
     };
 
-    let hir = HIR {
-        entry: block_id,
-        blocks: vec![(block_id, block)],
-    };
+    let hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
-    let rf = build_reactive_function(
-        hir,
-        vec![],
-        Some("Greeter".to_string()),
-        dummy_span(),
-        vec![],
-    );
+    let rf =
+        build_reactive_function(hir, vec![], Some("Greeter".to_string()), dummy_span(), vec![]);
 
     let code = codegen_function(&rf);
     assert!(code.contains("function Greeter()"));

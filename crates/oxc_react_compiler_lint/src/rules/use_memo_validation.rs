@@ -6,16 +6,14 @@
 //! expression and the second must be a dependency array.
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_diagnostics::OxcDiagnostic;
 
 use crate::utils::hook_detection::get_callee_name;
 
 /// Check for invalid `useMemo`/`useCallback` usage patterns.
 pub fn check_use_memo_validation<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
-    let mut visitor = UseMemoValidationVisitor {
-        diagnostics: Vec::new(),
-    };
+    let mut visitor = UseMemoValidationVisitor { diagnostics: Vec::new() };
     visitor.visit_program(program);
     visitor.diagnostics
 }

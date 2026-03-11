@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    Effect, Identifier, IdentifierId, Instruction, InstructionId, InstructionValue, MutableRange,
-    Place, Type, HIR,
+    Effect, HIR, Identifier, IdentifierId, Instruction, InstructionId, InstructionValue,
+    MutableRange, Place, Type,
 };
 
 /// Optimize method calls on props to avoid unnecessary memoization.
@@ -38,12 +38,7 @@ pub fn optimize_props_method_calls(hir: &mut HIR) {
         let mut insertions: Vec<(usize, Instruction)> = Vec::new();
 
         for (idx, instr) in block.instructions.iter_mut().enumerate() {
-            if let InstructionValue::MethodCall {
-                ref receiver,
-                ref property,
-                ..
-            } = instr.value
-            {
+            if let InstructionValue::MethodCall { ref receiver, ref property, .. } = instr.value {
                 // Check if the receiver is a props parameter (first param, or named "props").
                 let is_props = receiver
                     .identifier
@@ -98,14 +93,9 @@ pub fn optimize_props_method_calls(hir: &mut HIR) {
                 // Replace the MethodCall with a CallExpression using the loaded property.
                 if let InstructionValue::MethodCall { args, .. } = std::mem::replace(
                     &mut instr.value,
-                    InstructionValue::Primitive {
-                        value: crate::hir::types::Primitive::Undefined,
-                    },
+                    InstructionValue::Primitive { value: crate::hir::types::Primitive::Undefined },
                 ) {
-                    instr.value = InstructionValue::CallExpression {
-                        callee: temp_place,
-                        args,
-                    };
+                    instr.value = InstructionValue::CallExpression { callee: temp_place, args };
                 }
 
                 insertions.push((idx, load_instr));

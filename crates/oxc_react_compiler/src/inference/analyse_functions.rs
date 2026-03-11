@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::ErrorCollector;
-use crate::hir::types::{HIRFunction, InstructionValue, HIR};
+use crate::hir::types::{HIR, HIRFunction, InstructionValue};
 
 /// Recursively analyze nested functions within the HIR.
 ///

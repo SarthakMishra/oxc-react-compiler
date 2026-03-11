@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{InstructionValue, HIR};
+use crate::hir::types::{HIR, InstructionValue};
 
 /// Validate that PascalCase functions are not called as regular functions.
 ///
@@ -15,20 +15,13 @@ pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
                 if let Some(name) = &callee.identifier.name {
                     // Skip hook calls (useXxx) — those are valid PascalCase-like calls
                     if name.starts_with("use")
-                        && name
-                            .as_bytes()
-                            .get(3)
-                            .map_or(false, |b| b.is_ascii_uppercase())
+                        && name.as_bytes().get(3).map_or(false, |b| b.is_ascii_uppercase())
                     {
                         continue;
                     }
 
                     // Check if the callee starts with an uppercase letter
-                    if name
-                        .as_bytes()
-                        .first()
-                        .map_or(false, |b| b.is_ascii_uppercase())
-                    {
+                    if name.as_bytes().first().map_or(false, |b| b.is_ascii_uppercase()) {
                         errors.push(CompilerError::invalid_react(
                             instr.loc,
                             format!(

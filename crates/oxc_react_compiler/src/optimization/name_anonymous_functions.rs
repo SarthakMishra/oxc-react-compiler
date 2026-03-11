@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::hir::types::{InstructionValue, HIR};
+use crate::hir::types::{HIR, InstructionValue};
 
 /// Give names to anonymous function expressions based on their assignment target.
 /// e.g., `const foo = () => {}` names the function "foo".

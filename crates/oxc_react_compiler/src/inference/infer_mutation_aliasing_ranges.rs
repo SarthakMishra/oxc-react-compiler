@@ -2,7 +2,7 @@
 
 use rustc_hash::FxHashMap;
 
-use crate::hir::types::{AliasingEffect, Effect, IdentifierId, InstructionId, MutableRange, HIR};
+use crate::hir::types::{AliasingEffect, Effect, HIR, IdentifierId, InstructionId, MutableRange};
 
 /// Compute mutable ranges for all identifiers.
 ///
@@ -38,10 +38,7 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
                         | AliasingEffect::MutateConditionally { value }
                         | AliasingEffect::MutateTransitive { value }
                         | AliasingEffect::MutateTransitiveConditionally { value } => {
-                            mutation_map
-                                .entry(value.identifier.id)
-                                .or_default()
-                                .push(instr_id);
+                            mutation_map.entry(value.identifier.id).or_default().push(instr_id);
                         }
                         AliasingEffect::Alias { from, into }
                         | AliasingEffect::Assign { from, into }

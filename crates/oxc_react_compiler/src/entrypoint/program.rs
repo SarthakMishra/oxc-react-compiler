@@ -34,11 +34,7 @@ pub fn compile_program(source: &str, filename: &str, options: &PluginOptions) ->
     let parser_ret = Parser::new(&allocator, source, source_type).parse();
 
     if parser_ret.panicked {
-        return CompileResult {
-            code: source.to_string(),
-            transformed: false,
-            diagnostics: vec![],
-        };
+        return CompileResult { code: source.to_string(), transformed: false, diagnostics: vec![] };
     }
 
     let config = EnvironmentConfig::default();
@@ -47,30 +43,16 @@ pub fn compile_program(source: &str, filename: &str, options: &PluginOptions) ->
 
     // Walk the AST and compile each discovered function in place.
     for stmt in &parser_ret.program.body {
-        compile_statement(
-            stmt,
-            options,
-            &config,
-            &mut compiled_functions,
-            &mut diagnostics,
-        );
+        compile_statement(stmt, options, &config, &mut compiled_functions, &mut diagnostics);
     }
 
     if compiled_functions.is_empty() {
-        return CompileResult {
-            code: source.to_string(),
-            transformed: false,
-            diagnostics,
-        };
+        return CompileResult { code: source.to_string(), transformed: false, diagnostics };
     }
 
     let code = apply_compilation(source, &compiled_functions);
 
-    CompileResult {
-        code,
-        transformed: true,
-        diagnostics,
-    }
+    CompileResult { code, transformed: true, diagnostics }
 }
 
 /// Try to compile a single function, returning the compiled code on success.
@@ -338,12 +320,7 @@ fn discover_in_statement<'a>(
                 if should_compile_default_export(name.as_deref(), fn_type, options) {
                     let opt_out =
                         has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
-                    functions.push(DiscoveredFunction {
-                        name,
-                        fn_type,
-                        span: func.span,
-                        opt_out,
-                    });
+                    functions.push(DiscoveredFunction { name, fn_type, span: func.span, opt_out });
                 }
             }
             _ => {}
@@ -451,10 +428,7 @@ fn is_react_wrapper_call(call: &CallExpression<'_>) -> bool {
         Expression::StaticMemberExpression(member) => {
             if let Expression::Identifier(obj) = &member.object {
                 obj.name == "React"
-                    && matches!(
-                        member.property.name.as_str(),
-                        "forwardRef" | "memo" | "lazy"
-                    )
+                    && matches!(member.property.name.as_str(), "forwardRef" | "memo" | "lazy")
             } else {
                 false
             }
@@ -482,10 +456,7 @@ fn should_compile(
         CompilationMode::All => true,
         CompilationMode::Infer => {
             // Infer mode: compile components and hooks
-            matches!(
-                fn_type,
-                ReactFunctionType::Component | ReactFunctionType::Hook
-            )
+            matches!(fn_type, ReactFunctionType::Component | ReactFunctionType::Hook)
         }
         CompilationMode::Syntax => {
             // Only compile functions with "use memo" directive
@@ -516,13 +487,9 @@ fn should_compile_default_export(
 }
 
 fn has_opt_out_directive(directives: Option<&[Directive<'_>]>) -> bool {
-    directives.map_or(false, |dirs| {
-        dirs.iter().any(|d| d.directive.as_str() == "use no memo")
-    })
+    directives.map_or(false, |dirs| dirs.iter().any(|d| d.directive.as_str() == "use no memo"))
 }
 
 fn has_memo_directive(directives: Option<&[Directive<'_>]>) -> bool {
-    directives.map_or(false, |dirs| {
-        dirs.iter().any(|d| d.directive.as_str() == "use memo")
-    })
+    directives.map_or(false, |dirs| dirs.iter().any(|d| d.directive.as_str() == "use memo"))
 }

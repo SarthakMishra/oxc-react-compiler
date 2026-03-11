@@ -14,10 +14,7 @@ pub struct DisjointSet<T: Copy + Eq + Hash> {
 
 impl<T: Copy + Eq + Hash> DisjointSet<T> {
     pub fn new() -> Self {
-        Self {
-            parent: FxHashMap::default(),
-            rank: FxHashMap::default(),
-        }
+        Self { parent: FxHashMap::default(), rank: FxHashMap::default() }
     }
 
     /// Creates a new singleton set containing `item`.

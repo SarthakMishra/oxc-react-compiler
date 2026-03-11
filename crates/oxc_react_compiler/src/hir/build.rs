@@ -230,10 +230,7 @@ impl HIRBuilder {
                 id,
                 declaration_id: None,
                 name: None,
-                mutable_range: MutableRange {
-                    start: InstructionId(0),
-                    end: InstructionId(0),
-                },
+                mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
                 scope: None,
                 type_: Type::default(),
                 loc,
@@ -253,10 +250,7 @@ impl HIRBuilder {
                 id,
                 declaration_id: Some(decl_id),
                 name: Some(name.to_string()),
-                mutable_range: MutableRange {
-                    start: InstructionId(0),
-                    end: InstructionId(0),
-                },
+                mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
                 scope: None,
                 type_: Type::default(),
                 loc,
@@ -275,13 +269,7 @@ impl HIRBuilder {
     fn emit(&mut self, value: InstructionValue, loc: Span) -> Place {
         let instr_id = self.env.id_generator.next_instruction_id();
         let lvalue = self.make_temp(loc);
-        let instr = Instruction {
-            id: instr_id,
-            lvalue: lvalue.clone(),
-            value,
-            loc,
-            effects: None,
-        };
+        let instr = Instruction { id: instr_id, lvalue: lvalue.clone(), value, loc, effects: None };
         self.current_block_mut().instructions.push(instr);
         lvalue
     }
@@ -313,12 +301,7 @@ impl HIRBuilder {
         let directives = func
             .body
             .as_ref()
-            .map(|body| {
-                body.directives
-                    .iter()
-                    .map(|d| d.directive.to_string())
-                    .collect::<Vec<_>>()
-            })
+            .map(|body| body.directives.iter().map(|d| d.directive.to_string()).collect::<Vec<_>>())
             .unwrap_or_default();
 
         // Lower body statements
@@ -330,12 +313,7 @@ impl HIRBuilder {
 
         // Ensure the last block has a return terminal if it's still unreachable.
         if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
-            let undef = self.emit(
-                InstructionValue::Primitive {
-                    value: Primitive::Undefined,
-                },
-                loc,
-            );
+            let undef = self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc);
             self.emit_terminal(Terminal::Return { value: undef });
         }
 
@@ -349,10 +327,7 @@ impl HIRBuilder {
             params,
             returns,
             context: Vec::new(),
-            body: HIR {
-                entry,
-                blocks: self.blocks,
-            },
+            body: HIR { entry, blocks: self.blocks },
             is_async,
             is_generator,
             directives,
@@ -373,12 +348,8 @@ impl HIRBuilder {
         let loc = arrow.span;
         let params = self.lower_formal_params(&arrow.params);
 
-        let directives = arrow
-            .body
-            .directives
-            .iter()
-            .map(|d| d.directive.to_string())
-            .collect::<Vec<_>>();
+        let directives =
+            arrow.body.directives.iter().map(|d| d.directive.to_string()).collect::<Vec<_>>();
 
         if arrow.expression {
             if let Some(stmt) = arrow.body.statements.first() {
@@ -396,12 +367,7 @@ impl HIRBuilder {
         }
 
         if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
-            let undef = self.emit(
-                InstructionValue::Primitive {
-                    value: Primitive::Undefined,
-                },
-                loc,
-            );
+            let undef = self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc);
             self.emit_terminal(Terminal::Return { value: undef });
         }
 
@@ -415,10 +381,7 @@ impl HIRBuilder {
             params,
             returns,
             context: Vec::new(),
-            body: HIR {
-                entry,
-                blocks: self.blocks,
-            },
+            body: HIR { entry, blocks: self.blocks },
             is_async: arrow.r#async,
             is_generator: false,
             directives,
@@ -432,12 +395,8 @@ impl HIRBuilder {
 
         let params = inner.lower_formal_params(&arrow.params);
 
-        let directives = arrow
-            .body
-            .directives
-            .iter()
-            .map(|d| d.directive.to_string())
-            .collect::<Vec<_>>();
+        let directives =
+            arrow.body.directives.iter().map(|d| d.directive.to_string()).collect::<Vec<_>>();
 
         if arrow.expression {
             // Arrow with expression body: `() => expr`
@@ -460,12 +419,8 @@ impl HIRBuilder {
 
         // Implicit undefined return if needed
         if matches!(inner.current_block_mut().terminal, Terminal::Unreachable) {
-            let undef = inner.emit(
-                InstructionValue::Primitive {
-                    value: Primitive::Undefined,
-                },
-                loc,
-            );
+            let undef =
+                inner.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc);
             inner.emit_terminal(Terminal::Return { value: undef });
         }
 
@@ -479,10 +434,7 @@ impl HIRBuilder {
             params,
             returns,
             context: Vec::new(),
-            body: HIR {
-                entry,
-                blocks: inner.blocks,
-            },
+            body: HIR { entry, blocks: inner.blocks },
             is_async: arrow.r#async,
             is_generator: false,
             directives,
@@ -551,12 +503,7 @@ impl HIRBuilder {
                 let value = if let Some(arg) = &ret.argument {
                     self.lower_expression(arg)
                 } else {
-                    self.emit(
-                        InstructionValue::Primitive {
-                            value: Primitive::Undefined,
-                        },
-                        ret.span,
-                    )
+                    self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, ret.span)
                 };
                 self.emit_terminal(Terminal::Return { value });
                 // Create a new block for any unreachable code after return.
@@ -622,9 +569,7 @@ impl HIRBuilder {
             Statement::DebuggerStatement(_) => {
                 // Emit as unsupported node; debugger has no semantic effect for memoization.
                 self.emit(
-                    InstructionValue::UnsupportedNode {
-                        node: "DebuggerStatement".to_string(),
-                    },
+                    InstructionValue::UnsupportedNode { node: "DebuggerStatement".to_string() },
                     stmt.span(),
                 );
             }
@@ -662,21 +607,14 @@ impl HIRBuilder {
                 let lvalue = self.make_named_place(&id.name, id.span);
                 // Emit DeclareLocal
                 self.emit(
-                    InstructionValue::DeclareLocal {
-                        lvalue: lvalue.clone(),
-                        type_: kind,
-                    },
+                    InstructionValue::DeclareLocal { lvalue: lvalue.clone(), type_: kind },
                     id.span,
                 );
                 // If there's an initializer, lower it and store
                 if let Some(init) = &decl.init {
                     let value = self.lower_expression(init);
                     self.emit(
-                        InstructionValue::StoreLocal {
-                            lvalue,
-                            value,
-                            type_: Some(kind),
-                        },
+                        InstructionValue::StoreLocal { lvalue, value, type_: Some(kind) },
                         decl.span,
                     );
                 }
@@ -687,18 +625,13 @@ impl HIRBuilder {
                     self.lower_expression(init)
                 } else {
                     self.emit(
-                        InstructionValue::Primitive {
-                            value: Primitive::Undefined,
-                        },
+                        InstructionValue::Primitive { value: Primitive::Undefined },
                         decl.span,
                     )
                 };
                 let pattern = self.lower_object_binding_pattern(obj_pat, kind);
                 self.emit(
-                    InstructionValue::Destructure {
-                        lvalue_pattern: pattern,
-                        value,
-                    },
+                    InstructionValue::Destructure { lvalue_pattern: pattern, value },
                     decl.span,
                 );
             }
@@ -707,18 +640,13 @@ impl HIRBuilder {
                     self.lower_expression(init)
                 } else {
                     self.emit(
-                        InstructionValue::Primitive {
-                            value: Primitive::Undefined,
-                        },
+                        InstructionValue::Primitive { value: Primitive::Undefined },
                         decl.span,
                     )
                 };
                 let pattern = self.lower_array_binding_pattern(arr_pat, kind);
                 self.emit(
-                    InstructionValue::Destructure {
-                        lvalue_pattern: pattern,
-                        value,
-                    },
+                    InstructionValue::Destructure { lvalue_pattern: pattern, value },
                     decl.span,
                 );
             }
@@ -758,10 +686,7 @@ impl HIRBuilder {
             BindingPattern::BindingIdentifier(id) => {
                 let place = self.make_named_place(&id.name, id.span);
                 self.emit(
-                    InstructionValue::DeclareLocal {
-                        lvalue: place.clone(),
-                        type_: kind,
-                    },
+                    InstructionValue::DeclareLocal { lvalue: place.clone(), type_: kind },
                     id.span,
                 );
                 place
@@ -792,10 +717,7 @@ impl HIRBuilder {
             BindingPattern::BindingIdentifier(id) => {
                 let place = self.make_named_place(&id.name, id.span);
                 self.emit(
-                    InstructionValue::DeclareLocal {
-                        lvalue: place.clone(),
-                        type_: kind,
-                    },
+                    InstructionValue::DeclareLocal { lvalue: place.clone(), type_: kind },
                     id.span,
                 );
                 place
@@ -814,10 +736,7 @@ impl HIRBuilder {
             BindingPattern::BindingIdentifier(id) => {
                 let place = self.make_named_place(&id.name, id.span);
                 self.emit(
-                    InstructionValue::DeclareLocal {
-                        lvalue: place.clone(),
-                        type_: kind,
-                    },
+                    InstructionValue::DeclareLocal { lvalue: place.clone(), type_: kind },
                     id.span,
                 );
                 DestructureTarget::Place(place)
@@ -849,20 +768,10 @@ impl HIRBuilder {
             BindingPattern::BindingIdentifier(id) => {
                 let lvalue = self.make_named_place(&id.name, id.span);
                 self.emit(
-                    InstructionValue::DeclareLocal {
-                        lvalue: lvalue.clone(),
-                        type_: kind,
-                    },
+                    InstructionValue::DeclareLocal { lvalue: lvalue.clone(), type_: kind },
                     id.span,
                 );
-                self.emit(
-                    InstructionValue::StoreLocal {
-                        lvalue,
-                        value,
-                        type_: Some(kind),
-                    },
-                    loc,
-                );
+                self.emit(InstructionValue::StoreLocal { lvalue, value, type_: Some(kind) }, loc);
             }
             _ => {
                 self.emit(
@@ -934,18 +843,11 @@ impl HIRBuilder {
                 self.switch_block(self.current_block);
                 self.lower_expression(t)
             });
-            cases.push(SwitchCase {
-                test: test_place,
-                block: block_id,
-            });
+            cases.push(SwitchCase { test: test_place, block: block_id });
             case_blocks.push((block_id, &case.consequent));
         }
 
-        self.emit_terminal(Terminal::Switch {
-            test,
-            cases,
-            fallthrough,
-        });
+        self.emit_terminal(Terminal::Switch { test, cases, fallthrough });
 
         // Push break target
         self.break_targets.push(fallthrough);
@@ -957,11 +859,8 @@ impl HIRBuilder {
             }
             // Fall through to next case block if no explicit break/return
             if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
-                let next = if i + 1 < case_blocks.len() {
-                    case_blocks[i + 1].0
-                } else {
-                    fallthrough
-                };
+                let next =
+                    if i + 1 < case_blocks.len() { case_blocks[i + 1].0 } else { fallthrough };
                 self.emit_terminal(Terminal::Goto { block: next });
             }
         }
@@ -1017,9 +916,7 @@ impl HIRBuilder {
         self.switch_block(body_block);
         self.lower_statement(&for_stmt.body);
         if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
-            self.emit_terminal(Terminal::Goto {
-                block: update_block,
-            });
+            self.emit_terminal(Terminal::Goto { block: update_block });
         }
 
         self.continue_targets.pop();
@@ -1047,10 +944,8 @@ impl HIRBuilder {
 
         // Init: emit NextPropertyOf
         self.switch_block(init_block);
-        let next_prop = self.emit(
-            InstructionValue::NextPropertyOf { value: collection },
-            for_in.span,
-        );
+        let next_prop =
+            self.emit(InstructionValue::NextPropertyOf { value: collection }, for_in.span);
         self.lower_for_left(&for_in.left, next_prop, for_in.span);
         self.emit_terminal(Terminal::Goto { block: test_block });
 
@@ -1088,10 +983,7 @@ impl HIRBuilder {
         // Init: get next value
         self.switch_block(init_block);
         let next_val = self.emit(
-            InstructionValue::IteratorNext {
-                iterator: iterator.clone(),
-                loc: for_of.span,
-            },
+            InstructionValue::IteratorNext { iterator: iterator.clone(), loc: for_of.span },
             for_of.span,
         );
         self.lower_for_left(&for_of.left, next_val, for_of.span);
@@ -1135,11 +1027,7 @@ impl HIRBuilder {
                                 id.span,
                             );
                             self.emit(
-                                InstructionValue::StoreLocal {
-                                    lvalue,
-                                    value,
-                                    type_: Some(kind),
-                                },
+                                InstructionValue::StoreLocal { lvalue, value, type_: Some(kind) },
                                 loc,
                             );
                         }
@@ -1156,20 +1044,11 @@ impl HIRBuilder {
             }
             ForStatementLeft::AssignmentTargetIdentifier(id) => {
                 let lvalue = self.make_named_place(&id.name, id.span);
-                self.emit(
-                    InstructionValue::StoreLocal {
-                        lvalue,
-                        value,
-                        type_: None,
-                    },
-                    loc,
-                );
+                self.emit(InstructionValue::StoreLocal { lvalue, value, type_: None }, loc);
             }
             _ => {
                 self.emit(
-                    InstructionValue::UnsupportedNode {
-                        node: "ForLeftComplex".to_string(),
-                    },
+                    InstructionValue::UnsupportedNode { node: "ForLeftComplex".to_string() },
                     loc,
                 );
             }
@@ -1245,11 +1124,7 @@ impl HIRBuilder {
         let handler_block = self.new_block(BlockKind::Catch);
         let fallthrough = self.new_block(BlockKind::Block);
 
-        self.emit_terminal(Terminal::Try {
-            block: try_block,
-            handler: handler_block,
-            fallthrough,
-        });
+        self.emit_terminal(Terminal::Try { block: try_block, handler: handler_block, fallthrough });
 
         // Try body
         self.switch_block(try_block);
@@ -1268,10 +1143,7 @@ impl HIRBuilder {
                 if let BindingPattern::BindingIdentifier(id) = &param.pattern {
                     let lvalue = self.make_named_place(&id.name, id.span);
                     self.emit(
-                        InstructionValue::DeclareLocal {
-                            lvalue,
-                            type_: InstructionKind::Let,
-                        },
+                        InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::Let },
                         id.span,
                     );
                 }
@@ -1301,15 +1173,10 @@ impl HIRBuilder {
         let label_id = self.next_label;
         self.next_label += 1;
 
-        self.emit_terminal(Terminal::Label {
-            block: body_block,
-            fallthrough,
-            label: label_id,
-        });
+        self.emit_terminal(Terminal::Label { block: body_block, fallthrough, label: label_id });
 
         // Register label for break/continue
-        self.label_map
-            .insert(label_name.clone(), (fallthrough, body_block));
+        self.label_map.insert(label_name.clone(), (fallthrough, body_block));
         self.break_targets.push(fallthrough);
 
         self.switch_block(body_block);
@@ -1327,9 +1194,7 @@ impl HIRBuilder {
     fn lower_break_statement(&mut self, brk: &ast::BreakStatement<'_>) {
         let target = if let Some(label) = &brk.label {
             let name = label.name.to_string();
-            self.label_map
-                .get(&name)
-                .map(|(break_target, _)| *break_target)
+            self.label_map.get(&name).map(|(break_target, _)| *break_target)
         } else {
             self.break_targets.last().copied()
         };
@@ -1345,9 +1210,7 @@ impl HIRBuilder {
     fn lower_continue_statement(&mut self, cont: &ast::ContinueStatement<'_>) {
         let target = if let Some(label) = &cont.label {
             let name = label.name.to_string();
-            self.label_map
-                .get(&name)
-                .map(|(_, cont_target)| *cont_target)
+            self.label_map.get(&name).map(|(_, cont_target)| *cont_target)
         } else {
             self.continue_targets.last().copied()
         };
@@ -1402,12 +1265,7 @@ impl HIRBuilder {
         let directives = func
             .body
             .as_ref()
-            .map(|body| {
-                body.directives
-                    .iter()
-                    .map(|d| d.directive.to_string())
-                    .collect::<Vec<_>>()
-            })
+            .map(|body| body.directives.iter().map(|d| d.directive.to_string()).collect::<Vec<_>>())
             .unwrap_or_default();
 
         if let Some(body) = &func.body {
@@ -1417,12 +1275,7 @@ impl HIRBuilder {
         }
 
         if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
-            let undef = self.emit(
-                InstructionValue::Primitive {
-                    value: Primitive::Undefined,
-                },
-                loc,
-            );
+            let undef = self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc);
             self.emit_terminal(Terminal::Return { value: undef });
         }
 
@@ -1436,10 +1289,7 @@ impl HIRBuilder {
             params,
             returns,
             context: Vec::new(),
-            body: HIR {
-                entry,
-                blocks: std::mem::take(&mut self.blocks),
-            },
+            body: HIR { entry, blocks: std::mem::take(&mut self.blocks) },
             is_async: func.r#async,
             is_generator: func.generator,
             directives,
@@ -1462,10 +1312,7 @@ impl HIRBuilder {
                 if is_global_name(&name) {
                     self.emit(
                         InstructionValue::LoadGlobal {
-                            binding: GlobalBinding {
-                                name,
-                                kind: GlobalBindingKind::Global,
-                            },
+                            binding: GlobalBinding { name, kind: GlobalBindingKind::Global },
                         },
                         loc,
                     )
@@ -1490,28 +1337,17 @@ impl HIRBuilder {
             ),
 
             // Literals
-            Expression::BooleanLiteral(lit) => self.emit(
-                InstructionValue::Primitive {
-                    value: Primitive::Boolean(lit.value),
-                },
-                loc,
-            ),
-            Expression::NullLiteral(_) => self.emit(
-                InstructionValue::Primitive {
-                    value: Primitive::Null,
-                },
-                loc,
-            ),
-            Expression::NumericLiteral(lit) => self.emit(
-                InstructionValue::Primitive {
-                    value: Primitive::Number(lit.value),
-                },
-                loc,
-            ),
+            Expression::BooleanLiteral(lit) => {
+                self.emit(InstructionValue::Primitive { value: Primitive::Boolean(lit.value) }, loc)
+            }
+            Expression::NullLiteral(_) => {
+                self.emit(InstructionValue::Primitive { value: Primitive::Null }, loc)
+            }
+            Expression::NumericLiteral(lit) => {
+                self.emit(InstructionValue::Primitive { value: Primitive::Number(lit.value) }, loc)
+            }
             Expression::StringLiteral(lit) => self.emit(
-                InstructionValue::Primitive {
-                    value: Primitive::String(lit.value.to_string()),
-                },
+                InstructionValue::Primitive { value: Primitive::String(lit.value.to_string()) },
                 loc,
             ),
             Expression::BigIntLiteral(lit) => self.emit(
@@ -1543,18 +1379,9 @@ impl HIRBuilder {
                             .unwrap_or_else(|| q.value.raw.to_string())
                     })
                     .collect();
-                let subexpressions = tpl
-                    .expressions
-                    .iter()
-                    .map(|e| self.lower_expression(e))
-                    .collect();
-                self.emit(
-                    InstructionValue::TemplateLiteral {
-                        quasis,
-                        subexpressions,
-                    },
-                    loc,
-                )
+                let subexpressions =
+                    tpl.expressions.iter().map(|e| self.lower_expression(e)).collect();
+                self.emit(InstructionValue::TemplateLiteral { quasis, subexpressions }, loc)
             }
 
             Expression::TaggedTemplateExpression(tagged) => {
@@ -1571,19 +1398,12 @@ impl HIRBuilder {
                             .unwrap_or_else(|| q.value.raw.to_string())
                     })
                     .collect();
-                let subexpressions = tagged
-                    .quasi
-                    .expressions
-                    .iter()
-                    .map(|e| self.lower_expression(e))
-                    .collect();
+                let subexpressions =
+                    tagged.quasi.expressions.iter().map(|e| self.lower_expression(e)).collect();
                 self.emit(
                     InstructionValue::TaggedTemplateExpression {
                         tag,
-                        value: TemplateLiteralData {
-                            quasis,
-                            subexpressions,
-                        },
+                        value: TemplateLiteralData { quasis, subexpressions },
                     },
                     loc,
                 )
@@ -1607,10 +1427,7 @@ impl HIRBuilder {
             Expression::UnaryExpression(unary) => {
                 let value = self.lower_expression(&unary.argument);
                 self.emit(
-                    InstructionValue::UnaryExpression {
-                        op: map_unary_op(unary.operator),
-                        value,
-                    },
+                    InstructionValue::UnaryExpression { op: map_unary_op(unary.operator), value },
                     loc,
                 )
             }
@@ -1728,18 +1545,11 @@ impl HIRBuilder {
                 let _value = if let Some(arg) = &yield_expr.argument {
                     self.lower_expression(arg)
                 } else {
-                    self.emit(
-                        InstructionValue::Primitive {
-                            value: Primitive::Undefined,
-                        },
-                        loc,
-                    )
+                    self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc)
                 };
                 // Model yield as an unsupported node for now (could add proper generator support)
                 self.emit(
-                    InstructionValue::UnsupportedNode {
-                        node: "YieldExpression".to_string(),
-                    },
+                    InstructionValue::UnsupportedNode { node: "YieldExpression".to_string() },
                     loc,
                 )
             }
@@ -1762,13 +1572,7 @@ impl HIRBuilder {
                     },
                     loc,
                 );
-                self.emit(
-                    InstructionValue::CallExpression {
-                        callee,
-                        args: vec![source],
-                    },
-                    loc,
-                )
+                self.emit(InstructionValue::CallExpression { callee, args: vec![source] }, loc)
             }
 
             // Chain expression (optional chaining)
@@ -1790,10 +1594,7 @@ impl HIRBuilder {
                 let name = format!("{}.{}", meta.meta.name, meta.property.name);
                 self.emit(
                     InstructionValue::LoadGlobal {
-                        binding: GlobalBinding {
-                            name,
-                            kind: GlobalBindingKind::Global,
-                        },
+                        binding: GlobalBinding { name, kind: GlobalBindingKind::Global },
                     },
                     loc,
                 )
@@ -1808,17 +1609,13 @@ impl HIRBuilder {
 
             // Class expression
             Expression::ClassExpression(_) => self.emit(
-                InstructionValue::UnsupportedNode {
-                    node: "ClassExpression".to_string(),
-                },
+                InstructionValue::UnsupportedNode { node: "ClassExpression".to_string() },
                 loc,
             ),
 
             // PrivateInExpression (#field in obj)
             Expression::PrivateInExpression(_) => self.emit(
-                InstructionValue::UnsupportedNode {
-                    node: "PrivateInExpression".to_string(),
-                },
+                InstructionValue::UnsupportedNode { node: "PrivateInExpression".to_string() },
                 loc,
             ),
 
@@ -1827,9 +1624,7 @@ impl HIRBuilder {
 
             // V8 intrinsic
             Expression::V8IntrinsicExpression(_) => self.emit(
-                InstructionValue::UnsupportedNode {
-                    node: "V8IntrinsicExpression".to_string(),
-                },
+                InstructionValue::UnsupportedNode { node: "V8IntrinsicExpression".to_string() },
                 loc,
             ),
         }
@@ -1845,28 +1640,14 @@ impl HIRBuilder {
             if callee_name == "useMemo" || callee_name == "useCallback" {
                 let memo_id = self.next_memo_id;
                 self.next_memo_id += 1;
-                self.emit(
-                    InstructionValue::StartMemoize {
-                        manual_memo_id: memo_id,
-                    },
-                    loc,
-                );
+                self.emit(InstructionValue::StartMemoize { manual_memo_id: memo_id }, loc);
                 // Lower the call normally
                 let callee = self.lower_expression(&call.callee);
                 let args = self.lower_arguments(&call.arguments);
-                let result = self.emit(
-                    InstructionValue::CallExpression {
-                        callee,
-                        args: args.clone(),
-                    },
-                    loc,
-                );
+                let result =
+                    self.emit(InstructionValue::CallExpression { callee, args: args.clone() }, loc);
                 // The deps array is the second argument, if present
-                let deps = if args.len() > 1 {
-                    vec![args[1].clone()]
-                } else {
-                    Vec::new()
-                };
+                let deps = if args.len() > 1 { vec![args[1].clone()] } else { Vec::new() };
                 self.emit(
                     InstructionValue::FinishMemoize {
                         manual_memo_id: memo_id,
@@ -1886,34 +1667,16 @@ impl HIRBuilder {
                 let receiver = self.lower_expression(&member.object);
                 let property = member.property.name.to_string();
                 let args = self.lower_arguments(&call.arguments);
-                self.emit(
-                    InstructionValue::MethodCall {
-                        receiver,
-                        property,
-                        args,
-                    },
-                    loc,
-                )
+                self.emit(InstructionValue::MethodCall { receiver, property, args }, loc)
             }
             Expression::ComputedMemberExpression(member) => {
                 // Computed method call: obj[prop](args)
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
-                let computed_access = self.emit(
-                    InstructionValue::ComputedLoad {
-                        object: object.clone(),
-                        property,
-                    },
-                    loc,
-                );
+                let computed_access = self
+                    .emit(InstructionValue::ComputedLoad { object: object.clone(), property }, loc);
                 let args = self.lower_arguments(&call.arguments);
-                self.emit(
-                    InstructionValue::CallExpression {
-                        callee: computed_access,
-                        args,
-                    },
-                    loc,
-                )
+                self.emit(InstructionValue::CallExpression { callee: computed_access, args }, loc)
             }
             _ => {
                 let callee = self.lower_expression(&call.callee);
@@ -1954,11 +1717,7 @@ impl HIRBuilder {
         let value = if let Some(bin_op) = compound_assignment_to_binary(assign.operator) {
             let lhs_val = self.lower_assignment_target_load(&assign.left, loc);
             self.emit(
-                InstructionValue::BinaryExpression {
-                    op: bin_op,
-                    left: lhs_val,
-                    right: rhs,
-                },
+                InstructionValue::BinaryExpression { op: bin_op, left: lhs_val, right: rhs },
                 loc,
             )
         } else if matches!(
@@ -2001,9 +1760,7 @@ impl HIRBuilder {
                 self.emit(InstructionValue::ComputedLoad { object, property }, loc)
             }
             _ => self.emit(
-                InstructionValue::UnsupportedNode {
-                    node: "AssignmentTargetLoad".to_string(),
-                },
+                InstructionValue::UnsupportedNode { node: "AssignmentTargetLoad".to_string() },
                 loc,
             ),
         }
@@ -2020,13 +1777,7 @@ impl HIRBuilder {
             AssignmentTarget::AssignmentTargetIdentifier(id) => {
                 let name = id.name.to_string();
                 if is_global_name(&name) {
-                    self.emit(
-                        InstructionValue::StoreGlobal {
-                            name,
-                            value: value.clone(),
-                        },
-                        loc,
-                    );
+                    self.emit(InstructionValue::StoreGlobal { name, value: value.clone() }, loc);
                 } else {
                     let lvalue = self.make_named_place(&name, id.span);
                     self.emit(
@@ -2056,11 +1807,7 @@ impl HIRBuilder {
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
                 self.emit(
-                    InstructionValue::ComputedStore {
-                        object,
-                        property,
-                        value: value.clone(),
-                    },
+                    InstructionValue::ComputedStore { object, property, value: value.clone() },
                     loc,
                 );
                 value
@@ -2076,9 +1823,7 @@ impl HIRBuilder {
                 )
             }
             _ => self.emit(
-                InstructionValue::UnsupportedNode {
-                    node: "AssignmentTargetStore".to_string(),
-                },
+                InstructionValue::UnsupportedNode { node: "AssignmentTargetStore".to_string() },
                 loc,
             ),
         }
@@ -2199,19 +1944,11 @@ impl HIRBuilder {
                         // Object method shorthand
                         let value = self.lower_expression(&prop.value);
                         let key = self.lower_obj_property_key(&prop.key);
-                        properties.push(ObjectProperty {
-                            key,
-                            value,
-                            shorthand: false,
-                        });
+                        properties.push(ObjectProperty { key, value, shorthand: false });
                     } else {
                         let value = self.lower_expression(&prop.value);
                         let key = self.lower_obj_property_key(&prop.key);
-                        properties.push(ObjectProperty {
-                            key,
-                            value,
-                            shorthand: prop.shorthand,
-                        });
+                        properties.push(ObjectProperty { key, value, shorthand: prop.shorthand });
                     }
                 }
                 ObjectPropertyKind::SpreadProperty(spread) => {
@@ -2277,14 +2014,7 @@ impl HIRBuilder {
         let props = self.lower_jsx_attributes(&jsx.opening_element.attributes);
         let children = self.lower_jsx_children(&jsx.children);
 
-        self.emit(
-            InstructionValue::JsxExpression {
-                tag,
-                props,
-                children,
-            },
-            loc,
-        )
+        self.emit(InstructionValue::JsxExpression { tag, props, children }, loc)
     }
 
     fn lower_jsx_fragment(&mut self, frag: &ast::JSXFragment<'_>, loc: Span) -> Place {
@@ -2297,9 +2027,7 @@ impl HIRBuilder {
             JSXElementName::Identifier(id) => {
                 // Lowercase identifiers are intrinsic elements (div, span, etc.)
                 self.emit(
-                    InstructionValue::Primitive {
-                        value: Primitive::String(id.name.to_string()),
-                    },
+                    InstructionValue::Primitive { value: Primitive::String(id.name.to_string()) },
                     loc,
                 )
             }
@@ -2355,10 +2083,7 @@ impl HIRBuilder {
             ),
         };
         self.emit(
-            InstructionValue::PropertyLoad {
-                object,
-                property: member.property.name.to_string(),
-            },
+            InstructionValue::PropertyLoad { object, property: member.property.name.to_string() },
             loc,
         )
     }
@@ -2417,9 +2142,7 @@ impl HIRBuilder {
                     } else {
                         // Boolean attribute: `<div disabled />`
                         self.emit(
-                            InstructionValue::Primitive {
-                                value: Primitive::Boolean(true),
-                            },
+                            InstructionValue::Primitive { value: Primitive::Boolean(true) },
                             a.span,
                         )
                     };
@@ -2427,10 +2150,7 @@ impl HIRBuilder {
                 }
                 JSXAttributeItem::SpreadAttribute(spread) => {
                     let value = self.lower_expression(&spread.argument);
-                    result.push(JsxAttribute {
-                        name: JsxAttributeName::Spread,
-                        value,
-                    });
+                    result.push(JsxAttribute { name: JsxAttributeName::Spread, value });
                 }
             }
         }
@@ -2516,9 +2236,7 @@ impl HIRBuilder {
             _ => {
                 // TSNonNullExpression and other TS-specific chain elements
                 self.emit(
-                    InstructionValue::UnsupportedNode {
-                        node: "ChainElement".to_string(),
-                    },
+                    InstructionValue::UnsupportedNode { node: "ChainElement".to_string() },
                     loc,
                 )
             }

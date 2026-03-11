@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{IdentifierId, Phi, Place, HIR};
+use crate::hir::types::{HIR, IdentifierId, Phi, Place};
 use rustc_hash::FxHashMap;
 
 /// Remove phi nodes that are trivially redundant.
@@ -36,9 +36,7 @@ pub fn eliminate_redundant_phi(hir: &mut HIR) {
 
         // Remove the redundant phi nodes
         for (_, block) in hir.blocks.iter_mut() {
-            block
-                .phis
-                .retain(|phi| !replacements.contains_key(&phi.place.identifier.id));
+            block.phis.retain(|phi| !replacements.contains_key(&phi.place.identifier.id));
         }
     }
 }
@@ -146,10 +144,7 @@ fn replace_in_instruction_value(
         InstructionValue::DeclareContext { lvalue } => {
             replace_in_place(lvalue, replacements);
         }
-        InstructionValue::Destructure {
-            lvalue_pattern,
-            value,
-        } => {
+        InstructionValue::Destructure { lvalue_pattern, value } => {
             replace_in_place(value, replacements);
             replace_in_destructure_pattern(lvalue_pattern, replacements);
         }
@@ -193,11 +188,7 @@ fn replace_in_instruction_value(
             replace_in_place(object, replacements);
             replace_in_place(property, replacements);
         }
-        InstructionValue::ComputedStore {
-            object,
-            property,
-            value,
-        } => {
+        InstructionValue::ComputedStore { object, property, value } => {
             replace_in_place(object, replacements);
             replace_in_place(property, replacements);
             replace_in_place(value, replacements);
@@ -228,11 +219,7 @@ fn replace_in_instruction_value(
                 }
             }
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             replace_in_place(tag, replacements);
             for attr in props {
                 replace_in_place(&mut attr.value, replacements);

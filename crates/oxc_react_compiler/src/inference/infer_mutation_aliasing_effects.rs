@@ -3,7 +3,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::hir::types::{
-    AliasingEffect, Effect, FreezeReason, IdentifierId, Place, ValueKind, HIR,
+    AliasingEffect, Effect, FreezeReason, HIR, IdentifierId, Place, ValueKind,
 };
 
 use super::aliasing_effects::compute_instruction_effects;
@@ -31,10 +31,7 @@ impl AbstractValue {
     fn new(kind: ValueKind) -> Self {
         Self {
             kind,
-            frozen: matches!(
-                kind,
-                ValueKind::Frozen | ValueKind::Primitive | ValueKind::Global
-            ),
+            frozen: matches!(kind, ValueKind::Frozen | ValueKind::Primitive | ValueKind::Global),
             freeze_reason: None,
             aliases: Vec::new(),
             captures: Vec::new(),
@@ -54,10 +51,7 @@ struct AbstractHeap {
 
 impl AbstractHeap {
     fn new() -> Self {
-        Self {
-            id_to_value: FxHashMap::default(),
-            values: Vec::new(),
-        }
+        Self { id_to_value: FxHashMap::default(), values: Vec::new() }
     }
 
     /// Allocate a new abstract value and associate it with the given identifier.
@@ -263,23 +257,13 @@ fn process_effect_for_heap(heap: &mut AbstractHeap, effect: &AliasingEffect) {
         AliasingEffect::CreateFrom { from, into } => {
             heap.create_from(from.identifier.id, into.identifier.id);
         }
-        AliasingEffect::CreateFunction {
-            captures,
-            function: _,
-            into,
-        } => {
+        AliasingEffect::CreateFunction { captures, function: _, into } => {
             heap.create(into.identifier.id, ValueKind::Mutable);
             for cap in captures {
                 heap.capture(cap.identifier.id, into.identifier.id);
             }
         }
-        AliasingEffect::Apply {
-            receiver: _,
-            function: _,
-            args,
-            into,
-            signature,
-        } => {
+        AliasingEffect::Apply { receiver: _, function: _, args, into, signature } => {
             // Create a fresh value for the return.
             heap.create(into.identifier.id, ValueKind::Mutable);
 
@@ -405,11 +389,7 @@ fn set_operand_effects(value: &mut crate::hir::types::InstructionValue, heap: &A
             update_place(object, heap);
             update_place(property, heap);
         }
-        InstructionValue::ComputedStore {
-            object,
-            property,
-            value,
-        } => {
+        InstructionValue::ComputedStore { object, property, value } => {
             update_place(object, heap);
             update_place(property, heap);
             update_place(value, heap);
@@ -454,11 +434,7 @@ fn set_operand_effects(value: &mut crate::hir::types::InstructionValue, heap: &A
                 }
             }
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             update_place(tag, heap);
             for prop in props.iter_mut() {
                 update_place(&mut prop.value, heap);

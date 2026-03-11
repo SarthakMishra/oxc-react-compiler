@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{BinaryOp, InstructionValue, Primitive, PrimitiveType, Type, UnaryOp, HIR};
+use crate::hir::types::{BinaryOp, HIR, InstructionValue, Primitive, PrimitiveType, Type, UnaryOp};
 
 /// Infer types for all identifiers in the HIR.
 ///

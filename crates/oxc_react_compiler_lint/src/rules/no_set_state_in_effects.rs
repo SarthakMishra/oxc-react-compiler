@@ -6,7 +6,7 @@
 //! `.then()` callback or an event listener).
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_syntax::scope::ScopeFlags;
 
@@ -14,11 +14,8 @@ use crate::utils::hook_detection::{is_effect_hook_call, is_set_state_call};
 
 /// Check for setState calls directly inside effect callbacks.
 pub fn check_no_set_state_in_effects<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
-    let mut visitor = NoSetStateInEffectsVisitor {
-        diagnostics: Vec::new(),
-        effect_depth: 0,
-        nested_fn_depth: 0,
-    };
+    let mut visitor =
+        NoSetStateInEffectsVisitor { diagnostics: Vec::new(), effect_depth: 0, nested_fn_depth: 0 };
     visitor.visit_program(program);
     visitor.diagnostics
 }

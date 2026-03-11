@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{InstructionValue, HIR};
+use crate::hir::types::{HIR, InstructionValue};
 
 /// Remove manual memoization markers (StartMemoize/FinishMemoize)
 /// when the configuration says not to preserve them.

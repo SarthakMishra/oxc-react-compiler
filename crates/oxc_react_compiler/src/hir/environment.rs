@@ -95,10 +95,7 @@ pub struct Environment {
 
 impl Environment {
     pub fn new(config: EnvironmentConfig) -> Self {
-        Self {
-            config,
-            id_generator: IdGenerator::new(),
-        }
+        Self { config, id_generator: IdGenerator::new() }
     }
 }
 

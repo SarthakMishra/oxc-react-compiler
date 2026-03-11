@@ -6,7 +6,7 @@
 //! render, which destroys all state and DOM.
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_syntax::scope::ScopeFlags;
 
@@ -14,10 +14,7 @@ use crate::utils::hook_detection::is_component_name;
 
 /// Check for component definitions inside render functions.
 pub fn check_static_components<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
-    let mut visitor = StaticComponentsVisitor {
-        diagnostics: Vec::new(),
-        component_depth: 0,
-    };
+    let mut visitor = StaticComponentsVisitor { diagnostics: Vec::new(), component_depth: 0 };
     visitor.visit_program(program);
     visitor.diagnostics
 }

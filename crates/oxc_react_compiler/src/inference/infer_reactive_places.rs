@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{IdentifierId, InstructionValue, Place, HIR};
+use crate::hir::types::{HIR, IdentifierId, InstructionValue, Place};
 use rustc_hash::FxHashSet;
 
 /// Infer which places are reactive (depend on props/state).

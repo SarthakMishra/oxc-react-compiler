@@ -9,14 +9,12 @@
 //!   2. Run `cargo insta test --accept` to generate the initial snapshot
 //!   3. Review the snapshot to verify correctness
 
-use oxc_react_compiler::{compile_program, PluginOptions};
+use oxc_react_compiler::{PluginOptions, compile_program};
 use std::path::Path;
 
 /// Run a single fixture file through the compiler and snapshot its output.
 fn run_fixture(fixture_path: &str) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures")
-        .join(fixture_path);
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(fixture_path);
 
     let source = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("Failed to read fixture {}: {}", fixture_path, e));
@@ -31,11 +29,7 @@ fn run_fixture(fixture_path: &str) {
         "transformed: {}\ndiagnostics: {}\n---\n{}",
         result.transformed,
         result.diagnostics.len(),
-        if result.transformed {
-            &result.code
-        } else {
-            "(not transformed)"
-        }
+        if result.transformed { &result.code } else { "(not transformed)" }
     );
 
     insta::assert_snapshot!(snap_name, snapshot);

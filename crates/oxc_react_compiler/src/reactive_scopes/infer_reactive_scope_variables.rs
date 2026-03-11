@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    IdentifierId, InstructionId, InstructionValue, MutableRange, ReactiveScope, ScopeId,
-    SourceLocation, HIR,
+    HIR, IdentifierId, InstructionId, InstructionValue, MutableRange, ReactiveScope, ScopeId,
+    SourceLocation,
 };
 use crate::utils::disjoint_set::DisjointSet;
 use rustc_hash::FxHashMap;
@@ -72,10 +72,8 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
 
     for (_, members) in sets {
         // Compute merged range for the scope
-        let mut merged_range = MutableRange {
-            start: InstructionId(u32::MAX),
-            end: InstructionId(0),
-        };
+        let mut merged_range =
+            MutableRange { start: InstructionId(u32::MAX), end: InstructionId(0) };
         let mut any_reactive = false;
 
         for &member in &members {
@@ -175,11 +173,7 @@ fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
             ids.push(object.identifier.id);
             ids.push(property.identifier.id);
         }
-        InstructionValue::ComputedStore {
-            object,
-            property,
-            value,
-        } => {
+        InstructionValue::ComputedStore { object, property, value } => {
             ids.push(object.identifier.id);
             ids.push(property.identifier.id);
             ids.push(value.identifier.id);
@@ -210,11 +204,7 @@ fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
                 }
             }
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             ids.push(tag.identifier.id);
             for attr in props {
                 ids.push(attr.value.identifier.id);

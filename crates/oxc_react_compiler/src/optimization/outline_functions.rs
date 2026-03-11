@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{InstructionValue, HIR};
+use crate::hir::types::{HIR, InstructionValue};
 
 /// Outline nested function expressions to module level when possible.
 ///
@@ -15,11 +15,7 @@ use crate::hir::types::{InstructionValue, HIR};
 pub fn outline_functions(hir: &mut HIR) {
     for (_, block) in hir.blocks.iter_mut() {
         for instr in &mut block.instructions {
-            if let InstructionValue::FunctionExpression {
-                ref mut lowered_func,
-                ..
-            } = instr.value
-            {
+            if let InstructionValue::FunctionExpression { ref mut lowered_func, .. } = instr.value {
                 // A function can be outlined if it has no context variables
                 // (i.e., it captures nothing from the enclosing scope).
                 // Functions that only reference globals or module-level bindings

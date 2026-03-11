@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{InstructionId, ReactiveFunction, ScopeId, HIR};
+use crate::hir::types::{HIR, InstructionId, ReactiveFunction, ScopeId};
 
 /// Merge overlapping reactive scopes in the HIR.
 ///
@@ -79,12 +79,8 @@ fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock) {
 
     for (i, instr) in block.instructions.iter().enumerate() {
         if let crate::hir::types::ReactiveInstruction::Scope(scope_block) = instr {
-            let dep_ids: Vec<crate::hir::types::IdentifierId> = scope_block
-                .scope
-                .dependencies
-                .iter()
-                .map(|d| d.identifier.id)
-                .collect();
+            let dep_ids: Vec<crate::hir::types::IdentifierId> =
+                scope_block.scope.dependencies.iter().map(|d| d.identifier.id).collect();
             scope_indices.push((i, dep_ids));
         }
     }
@@ -138,21 +134,11 @@ fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock) {
 fn merge_scopes_in_terminal(terminal: &mut crate::hir::types::ReactiveTerminal) {
     use crate::hir::types::ReactiveTerminal;
     match terminal {
-        ReactiveTerminal::If {
-            consequent,
-            alternate,
-            ..
-        } => {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
             merge_scopes_in_block(consequent);
             merge_scopes_in_block(alternate);
         }
-        ReactiveTerminal::For {
-            init,
-            test,
-            update,
-            body,
-            ..
-        } => {
+        ReactiveTerminal::For { init, test, update, body, .. } => {
             merge_scopes_in_block(init);
             merge_scopes_in_block(test);
             if let Some(upd) = update {
@@ -160,12 +146,8 @@ fn merge_scopes_in_terminal(terminal: &mut crate::hir::types::ReactiveTerminal) 
             }
             merge_scopes_in_block(body);
         }
-        ReactiveTerminal::ForOf {
-            init, test, body, ..
-        }
-        | ReactiveTerminal::ForIn {
-            init, test, body, ..
-        } => {
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
             merge_scopes_in_block(init);
             merge_scopes_in_block(test);
             merge_scopes_in_block(body);

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{InstructionValue, HIR};
+use crate::hir::types::{HIR, InstructionValue};
 
 /// Validate correct usage of `useMemo` and `useCallback`.
 ///

@@ -6,7 +6,7 @@
 //! non-deterministic results and can break React's rendering model.
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_diagnostics::OxcDiagnostic;
 
 /// Known impure member expressions: (object, property).
@@ -23,9 +23,7 @@ const IMPURE_GLOBAL_CALLS: &[&str] = &["fetch", "setTimeout", "setInterval", "qu
 
 /// Check for impure function calls that should not appear in render.
 pub fn check_purity<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
-    let mut visitor = PurityVisitor {
-        diagnostics: Vec::new(),
-    };
+    let mut visitor = PurityVisitor { diagnostics: Vec::new() };
     visitor.visit_program(program);
     visitor.diagnostics
 }

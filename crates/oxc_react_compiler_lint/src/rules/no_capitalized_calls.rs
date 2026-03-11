@@ -6,16 +6,14 @@
 //! For example, `MyComponent()` should be `<MyComponent />`.
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_diagnostics::OxcDiagnostic;
 
 use crate::utils::hook_detection::is_component_name;
 
 /// Check for PascalCase function calls that should be JSX.
 pub fn check_no_capitalized_calls<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
-    let mut visitor = NoCapitalizedCallsVisitor {
-        diagnostics: Vec::new(),
-    };
+    let mut visitor = NoCapitalizedCallsVisitor { diagnostics: Vec::new() };
     visitor.visit_program(program);
     visitor.diagnostics
 }

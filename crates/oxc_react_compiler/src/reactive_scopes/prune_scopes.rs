@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    BasicBlock, BlockId, BlockKind, IdentifierId, InstructionId, ReactiveBlock, ReactiveFunction,
-    ReactiveInstruction, ReactiveTerminal, ScopeId, Terminal, HIR,
+    BasicBlock, BlockId, BlockKind, HIR, IdentifierId, InstructionId, ReactiveBlock,
+    ReactiveFunction, ReactiveInstruction, ReactiveTerminal, ScopeId, Terminal,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -64,11 +64,7 @@ fn collect_instruction_operand_ids(
         InstructionValue::UnaryExpression { value, .. } => {
             used.insert(value.identifier.id);
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             used.insert(tag.identifier.id);
             for attr in props {
                 used.insert(attr.value.identifier.id);
@@ -95,12 +91,7 @@ fn collect_used_in_terminal(
                 used.insert(value.identifier.id);
             }
         }
-        ReactiveTerminal::If {
-            test,
-            consequent,
-            alternate,
-            ..
-        } => {
+        ReactiveTerminal::If { test, consequent, alternate, .. } => {
             if !in_scope {
                 used.insert(test.identifier.id);
             }
@@ -115,13 +106,7 @@ fn collect_used_in_terminal(
                 collect_used_outside_scopes(block, in_scope, used);
             }
         }
-        ReactiveTerminal::For {
-            init,
-            test,
-            update,
-            body,
-            ..
-        } => {
+        ReactiveTerminal::For { init, test, update, body, .. } => {
             collect_used_outside_scopes(init, in_scope, used);
             collect_used_outside_scopes(test, in_scope, used);
             if let Some(upd) = update {
@@ -129,12 +114,8 @@ fn collect_used_in_terminal(
             }
             collect_used_outside_scopes(body, in_scope, used);
         }
-        ReactiveTerminal::ForOf {
-            init, test, body, ..
-        }
-        | ReactiveTerminal::ForIn {
-            init, test, body, ..
-        } => {
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
             collect_used_outside_scopes(init, in_scope, used);
             collect_used_outside_scopes(test, in_scope, used);
             collect_used_outside_scopes(body, in_scope, used);
@@ -161,11 +142,8 @@ fn prune_scopes_in_block(block: &mut ReactiveBlock, used_outside: &FxHashSet<Ide
         match instr {
             ReactiveInstruction::Scope(mut scope_block) => {
                 // Check if any declaration of this scope is used outside
-                let any_used = scope_block
-                    .scope
-                    .declarations
-                    .iter()
-                    .any(|(id, _)| used_outside.contains(id));
+                let any_used =
+                    scope_block.scope.declarations.iter().any(|(id, _)| used_outside.contains(id));
 
                 prune_scopes_in_block(&mut scope_block.instructions, used_outside);
 
@@ -197,11 +175,7 @@ fn prune_scopes_in_terminal(
     used_outside: &FxHashSet<IdentifierId>,
 ) {
     match terminal {
-        ReactiveTerminal::If {
-            consequent,
-            alternate,
-            ..
-        } => {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
             prune_scopes_in_block(consequent, used_outside);
             prune_scopes_in_block(alternate, used_outside);
         }
@@ -210,13 +184,7 @@ fn prune_scopes_in_terminal(
                 prune_scopes_in_block(block, used_outside);
             }
         }
-        ReactiveTerminal::For {
-            init,
-            test,
-            update,
-            body,
-            ..
-        } => {
+        ReactiveTerminal::For { init, test, update, body, .. } => {
             prune_scopes_in_block(init, used_outside);
             prune_scopes_in_block(test, used_outside);
             if let Some(upd) = update {
@@ -224,12 +192,8 @@ fn prune_scopes_in_terminal(
             }
             prune_scopes_in_block(body, used_outside);
         }
-        ReactiveTerminal::ForOf {
-            init, test, body, ..
-        }
-        | ReactiveTerminal::ForIn {
-            init, test, body, ..
-        } => {
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
             prune_scopes_in_block(init, used_outside);
             prune_scopes_in_block(test, used_outside);
             prune_scopes_in_block(body, used_outside);
@@ -312,11 +276,8 @@ fn prune_unused_scopes_in_block(block: &mut ReactiveBlock, referenced: &FxHashSe
             ReactiveInstruction::Scope(mut scope_block) => {
                 prune_unused_scopes_in_block(&mut scope_block.instructions, referenced);
 
-                let has_used_decls = scope_block
-                    .scope
-                    .declarations
-                    .iter()
-                    .any(|(id, _)| referenced.contains(id));
+                let has_used_decls =
+                    scope_block.scope.declarations.iter().any(|(id, _)| referenced.contains(id));
 
                 if has_used_decls || scope_block.scope.declarations.is_empty() {
                     new_instructions.push(ReactiveInstruction::Scope(scope_block));
@@ -644,9 +605,7 @@ pub fn build_reactive_scope_terminals_hir(hir: &mut HIR) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let Some(ref scope) = instr.lvalue.identifier.scope {
-                scope_map
-                    .entry(scope.id)
-                    .or_insert((scope.range.start, scope.range.end));
+                scope_map.entry(scope.id).or_insert((scope.range.start, scope.range.end));
             }
         }
     }
@@ -657,10 +616,8 @@ pub fn build_reactive_scope_terminals_hir(hir: &mut HIR) {
 
     // Step 2: Sort scopes innermost-first (narrowest range first) so that inner scopes
     // are processed before outer scopes. This ensures nesting works correctly.
-    let mut scopes: Vec<(ScopeId, InstructionId, InstructionId)> = scope_map
-        .into_iter()
-        .map(|(id, (start, end))| (id, start, end))
-        .collect();
+    let mut scopes: Vec<(ScopeId, InstructionId, InstructionId)> =
+        scope_map.into_iter().map(|(id, (start, end))| (id, start, end)).collect();
     scopes.sort_by_key(|(_, start, end)| end.0 - start.0);
 
     // Allocate new BlockIds starting past the highest existing one.
@@ -682,10 +639,7 @@ fn insert_scope_terminal(
 ) {
     // Find the block that contains the first instruction of this scope.
     let entry_idx = hir.blocks.iter().position(|(_, block)| {
-        block
-            .instructions
-            .iter()
-            .any(|i| i.id.0 >= range_start.0 && i.id.0 < range_end.0)
+        block.instructions.iter().any(|i| i.id.0 >= range_start.0 && i.id.0 < range_end.0)
     });
 
     let Some(entry_idx) = entry_idx else {
@@ -695,14 +649,8 @@ fn insert_scope_terminal(
     let block = &hir.blocks[entry_idx].1;
 
     // Find the position within the block where the scope starts and ends.
-    let scope_start_pos = block
-        .instructions
-        .iter()
-        .position(|i| i.id.0 >= range_start.0);
-    let scope_end_pos = block
-        .instructions
-        .iter()
-        .position(|i| i.id.0 >= range_end.0);
+    let scope_start_pos = block.instructions.iter().position(|i| i.id.0 >= range_start.0);
+    let scope_end_pos = block.instructions.iter().position(|i| i.id.0 >= range_end.0);
 
     let Some(start_pos) = scope_start_pos else {
         return;
@@ -746,11 +694,8 @@ fn insert_scope_terminal(
 
         // Original block keeps the before-scope instructions and gets a Scope terminal.
         hir.blocks[entry_idx].1.instructions = before_instrs;
-        hir.blocks[entry_idx].1.terminal = Terminal::Scope {
-            scope: scope_id,
-            block: scope_block_id,
-            fallthrough,
-        };
+        hir.blocks[entry_idx].1.terminal =
+            Terminal::Scope { scope: scope_id, block: scope_block_id, fallthrough };
 
         // Update predecessor lists: blocks that the scope block jumps to should
         // know they're now reached from scope_block_id instead of original_block_id.
@@ -776,9 +721,7 @@ fn insert_scope_terminal(
             kind: BlockKind::Block,
             id: scope_block_id,
             instructions: scope_instrs,
-            terminal: Terminal::Goto {
-                block: fallthrough_block_id,
-            },
+            terminal: Terminal::Goto { block: fallthrough_block_id },
             preds: vec![original_block_id],
             phis: Vec::new(),
         };
@@ -847,104 +790,46 @@ fn terminal_fallthrough(terminal: &Terminal) -> Option<BlockId> {
 fn terminal_successors(terminal: &Terminal) -> Vec<BlockId> {
     match terminal {
         Terminal::Goto { block } => vec![*block],
-        Terminal::If {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => vec![*consequent, *alternate, *fallthrough],
-        Terminal::Branch {
-            consequent,
-            alternate,
-            ..
-        } => vec![*consequent, *alternate],
-        Terminal::Switch {
-            cases, fallthrough, ..
-        } => {
+        Terminal::If { consequent, alternate, fallthrough, .. } => {
+            vec![*consequent, *alternate, *fallthrough]
+        }
+        Terminal::Branch { consequent, alternate, .. } => vec![*consequent, *alternate],
+        Terminal::Switch { cases, fallthrough, .. } => {
             let mut succs: Vec<BlockId> = cases.iter().map(|c| c.block).collect();
             succs.push(*fallthrough);
             succs
         }
         Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => vec![],
-        Terminal::For {
-            init,
-            test,
-            update,
-            body,
-            fallthrough,
-        } => {
+        Terminal::For { init, test, update, body, fallthrough } => {
             let mut succs = vec![*init, *test, *body, *fallthrough];
             if let Some(u) = update {
                 succs.push(*u);
             }
             succs
         }
-        Terminal::ForOf {
-            init,
-            test,
-            body,
-            fallthrough,
-        } => vec![*init, *test, *body, *fallthrough],
-        Terminal::ForIn {
-            init,
-            test,
-            body,
-            fallthrough,
-        } => vec![*init, *test, *body, *fallthrough],
-        Terminal::DoWhile {
-            body,
-            test,
-            fallthrough,
-        } => vec![*body, *test, *fallthrough],
-        Terminal::While {
-            test,
-            body,
-            fallthrough,
-        } => vec![*test, *body, *fallthrough],
-        Terminal::Logical {
-            left,
-            right,
-            fallthrough,
-            ..
-        } => vec![*left, *right, *fallthrough],
-        Terminal::Ternary {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => vec![*consequent, *alternate, *fallthrough],
-        Terminal::Optional {
-            consequent,
-            fallthrough,
-            ..
-        } => vec![*consequent, *fallthrough],
-        Terminal::Sequence {
-            blocks,
-            fallthrough,
-            ..
-        } => {
+        Terminal::ForOf { init, test, body, fallthrough } => {
+            vec![*init, *test, *body, *fallthrough]
+        }
+        Terminal::ForIn { init, test, body, fallthrough } => {
+            vec![*init, *test, *body, *fallthrough]
+        }
+        Terminal::DoWhile { body, test, fallthrough } => vec![*body, *test, *fallthrough],
+        Terminal::While { test, body, fallthrough } => vec![*test, *body, *fallthrough],
+        Terminal::Logical { left, right, fallthrough, .. } => vec![*left, *right, *fallthrough],
+        Terminal::Ternary { consequent, alternate, fallthrough, .. } => {
+            vec![*consequent, *alternate, *fallthrough]
+        }
+        Terminal::Optional { consequent, fallthrough, .. } => vec![*consequent, *fallthrough],
+        Terminal::Sequence { blocks, fallthrough, .. } => {
             let mut succs = blocks.clone();
             succs.push(*fallthrough);
             succs
         }
-        Terminal::Label {
-            block, fallthrough, ..
-        } => vec![*block, *fallthrough],
-        Terminal::MaybeThrow {
-            continuation,
-            handler,
-        } => vec![*continuation, *handler],
-        Terminal::Try {
-            block,
-            handler,
-            fallthrough,
-        } => vec![*block, *handler, *fallthrough],
-        Terminal::Scope {
-            block, fallthrough, ..
-        } => vec![*block, *fallthrough],
-        Terminal::PrunedScope {
-            block, fallthrough, ..
-        } => vec![*block, *fallthrough],
+        Terminal::Label { block, fallthrough, .. } => vec![*block, *fallthrough],
+        Terminal::MaybeThrow { continuation, handler } => vec![*continuation, *handler],
+        Terminal::Try { block, handler, fallthrough } => vec![*block, *handler, *fallthrough],
+        Terminal::Scope { block, fallthrough, .. } => vec![*block, *fallthrough],
+        Terminal::PrunedScope { block, fallthrough, .. } => vec![*block, *fallthrough],
     }
 }
 
@@ -1021,11 +906,7 @@ pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
 
 fn for_each_block_in_terminal(terminal: &ReactiveTerminal, mut f: impl FnMut(&ReactiveBlock)) {
     match terminal {
-        ReactiveTerminal::If {
-            consequent,
-            alternate,
-            ..
-        } => {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
             f(consequent);
             f(alternate);
         }
@@ -1034,13 +915,7 @@ fn for_each_block_in_terminal(terminal: &ReactiveTerminal, mut f: impl FnMut(&Re
                 f(block);
             }
         }
-        ReactiveTerminal::For {
-            init,
-            test,
-            update,
-            body,
-            ..
-        } => {
+        ReactiveTerminal::For { init, test, update, body, .. } => {
             f(init);
             f(test);
             if let Some(upd) = update {
@@ -1048,12 +923,8 @@ fn for_each_block_in_terminal(terminal: &ReactiveTerminal, mut f: impl FnMut(&Re
             }
             f(body);
         }
-        ReactiveTerminal::ForOf {
-            init, test, body, ..
-        }
-        | ReactiveTerminal::ForIn {
-            init, test, body, ..
-        } => {
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
             f(init);
             f(test);
             f(body);
@@ -1079,11 +950,7 @@ fn for_each_block_in_terminal_mut(
     mut f: impl FnMut(&mut ReactiveBlock),
 ) {
     match terminal {
-        ReactiveTerminal::If {
-            consequent,
-            alternate,
-            ..
-        } => {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
             f(consequent);
             f(alternate);
         }
@@ -1092,13 +959,7 @@ fn for_each_block_in_terminal_mut(
                 f(block);
             }
         }
-        ReactiveTerminal::For {
-            init,
-            test,
-            update,
-            body,
-            ..
-        } => {
+        ReactiveTerminal::For { init, test, update, body, .. } => {
             f(init);
             f(test);
             if let Some(upd) = update {
@@ -1106,12 +967,8 @@ fn for_each_block_in_terminal_mut(
             }
             f(body);
         }
-        ReactiveTerminal::ForOf {
-            init, test, body, ..
-        }
-        | ReactiveTerminal::ForIn {
-            init, test, body, ..
-        } => {
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
             f(init);
             f(test);
             f(body);

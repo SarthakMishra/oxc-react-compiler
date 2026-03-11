@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    Effect, Identifier, IdentifierId, Instruction, InstructionId, InstructionValue, MutableRange,
-    Place, Type, HIR,
+    Effect, HIR, Identifier, IdentifierId, Instruction, InstructionId, InstructionValue,
+    MutableRange, Place, Type,
 };
 
 /// Outline JSX expressions into separate variables.

@@ -2,7 +2,7 @@
 
 use crate::error::{CompilerError, ErrorCollector};
 use crate::hir::globals::is_component_name;
-use crate::hir::types::{InstructionValue, HIR};
+use crate::hir::types::{HIR, InstructionValue};
 
 /// Validate that components are not defined inline during render.
 ///

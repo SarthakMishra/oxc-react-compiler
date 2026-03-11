@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{BlockId, IdentifierId, InstructionId, Phi, Place, HIR};
+use crate::hir::types::{BlockId, HIR, IdentifierId, InstructionId, Phi, Place};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Enter SSA form: insert phi nodes and rename identifiers.
@@ -53,103 +53,44 @@ fn terminal_successors(terminal: &crate::hir::types::Terminal) -> Vec<BlockId> {
     use crate::hir::types::Terminal;
     match terminal {
         Terminal::Goto { block } => vec![*block],
-        Terminal::If {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => vec![*consequent, *alternate, *fallthrough],
-        Terminal::Branch {
-            consequent,
-            alternate,
-            ..
-        } => vec![*consequent, *alternate],
-        Terminal::Switch {
-            cases, fallthrough, ..
-        } => {
+        Terminal::If { consequent, alternate, fallthrough, .. } => {
+            vec![*consequent, *alternate, *fallthrough]
+        }
+        Terminal::Branch { consequent, alternate, .. } => vec![*consequent, *alternate],
+        Terminal::Switch { cases, fallthrough, .. } => {
             let mut succs: Vec<BlockId> = cases.iter().map(|c| c.block).collect();
             succs.push(*fallthrough);
             succs
         }
         Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => vec![],
-        Terminal::For {
-            init,
-            test,
-            update,
-            body,
-            fallthrough,
-        } => {
+        Terminal::For { init, test, update, body, fallthrough } => {
             let mut succs = vec![*init, *test, *body, *fallthrough];
             if let Some(u) = update {
                 succs.push(*u);
             }
             succs
         }
-        Terminal::ForOf {
-            init,
-            test,
-            body,
-            fallthrough,
+        Terminal::ForOf { init, test, body, fallthrough }
+        | Terminal::ForIn { init, test, body, fallthrough } => {
+            vec![*init, *test, *body, *fallthrough]
         }
-        | Terminal::ForIn {
-            init,
-            test,
-            body,
-            fallthrough,
-        } => vec![*init, *test, *body, *fallthrough],
-        Terminal::DoWhile {
-            body,
-            test,
-            fallthrough,
-        } => vec![*body, *test, *fallthrough],
-        Terminal::While {
-            test,
-            body,
-            fallthrough,
-        } => vec![*test, *body, *fallthrough],
-        Terminal::Logical {
-            left,
-            right,
-            fallthrough,
-            ..
-        } => vec![*left, *right, *fallthrough],
-        Terminal::Ternary {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => vec![*consequent, *alternate, *fallthrough],
-        Terminal::Optional {
-            consequent,
-            fallthrough,
-            ..
-        } => vec![*consequent, *fallthrough],
-        Terminal::Sequence {
-            blocks,
-            fallthrough,
-        } => {
+        Terminal::DoWhile { body, test, fallthrough } => vec![*body, *test, *fallthrough],
+        Terminal::While { test, body, fallthrough } => vec![*test, *body, *fallthrough],
+        Terminal::Logical { left, right, fallthrough, .. } => vec![*left, *right, *fallthrough],
+        Terminal::Ternary { consequent, alternate, fallthrough, .. } => {
+            vec![*consequent, *alternate, *fallthrough]
+        }
+        Terminal::Optional { consequent, fallthrough, .. } => vec![*consequent, *fallthrough],
+        Terminal::Sequence { blocks, fallthrough } => {
             let mut succs = blocks.clone();
             succs.push(*fallthrough);
             succs
         }
-        Terminal::Label {
-            block, fallthrough, ..
-        } => vec![*block, *fallthrough],
-        Terminal::MaybeThrow {
-            continuation,
-            handler,
-        } => vec![*continuation, *handler],
-        Terminal::Try {
-            block,
-            handler,
-            fallthrough,
-        } => vec![*block, *handler, *fallthrough],
-        Terminal::Scope {
-            block, fallthrough, ..
-        }
-        | Terminal::PrunedScope {
-            block, fallthrough, ..
-        } => vec![*block, *fallthrough],
+        Terminal::Label { block, fallthrough, .. } => vec![*block, *fallthrough],
+        Terminal::MaybeThrow { continuation, handler } => vec![*continuation, *handler],
+        Terminal::Try { block, handler, fallthrough } => vec![*block, *handler, *fallthrough],
+        Terminal::Scope { block, fallthrough, .. }
+        | Terminal::PrunedScope { block, fallthrough, .. } => vec![*block, *fallthrough],
     }
 }
 
@@ -161,11 +102,8 @@ fn compute_dominators(
     preds: &FxHashMap<BlockId, Vec<BlockId>>,
 ) -> FxHashMap<BlockId, BlockId> {
     // Map block ID to index for efficient intersection
-    let id_to_idx: FxHashMap<BlockId, usize> = block_ids
-        .iter()
-        .enumerate()
-        .map(|(i, id)| (*id, i))
-        .collect();
+    let id_to_idx: FxHashMap<BlockId, usize> =
+        block_ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
     let n = block_ids.len();
 
     // Initialize: entry dominates itself, everything else undefined
@@ -280,9 +218,7 @@ fn find_variable_definitions(hir: &HIR) -> FxHashMap<IdentifierId, FxHashSet<Blo
     let mut defs: FxHashMap<IdentifierId, FxHashSet<BlockId>> = FxHashMap::default();
     for (block_id, block) in &hir.blocks {
         for instr in &block.instructions {
-            defs.entry(instr.lvalue.identifier.id)
-                .or_default()
-                .insert(*block_id);
+            defs.entry(instr.lvalue.identifier.id).or_default().insert(*block_id);
         }
     }
     defs
@@ -421,11 +357,7 @@ fn collect_max_id_from_value(value: &crate::hir::types::InstructionValue, max: &
             collect_max_id_from_place(object, max);
             collect_max_id_from_place(property, max);
         }
-        InstructionValue::ComputedStore {
-            object,
-            property,
-            value,
-        } => {
+        InstructionValue::ComputedStore { object, property, value } => {
             collect_max_id_from_place(object, max);
             collect_max_id_from_place(property, max);
             collect_max_id_from_place(value, max);
@@ -456,11 +388,7 @@ fn collect_max_id_from_value(value: &crate::hir::types::InstructionValue, max: &
                 }
             }
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             collect_max_id_from_place(tag, max);
             for attr in props {
                 collect_max_id_from_place(&attr.value, max);
@@ -559,30 +487,14 @@ fn rename_variables(
 
     // We need the block ordering (successor info) to fill phi operands.
     // Build a quick lookup: block_id -> index in hir.blocks
-    let block_index: FxHashMap<BlockId, usize> = hir
-        .blocks
-        .iter()
-        .enumerate()
-        .map(|(i, (id, _))| (*id, i))
-        .collect();
+    let block_index: FxHashMap<BlockId, usize> =
+        hir.blocks.iter().enumerate().map(|(i, (id, _))| (*id, i)).collect();
 
     // Precompute successors per block
-    let successors: FxHashMap<BlockId, Vec<BlockId>> = hir
-        .blocks
-        .iter()
-        .map(|(id, block)| (*id, terminal_successors(&block.terminal)))
-        .collect();
+    let successors: FxHashMap<BlockId, Vec<BlockId>> =
+        hir.blocks.iter().map(|(id, block)| (*id, terminal_successors(&block.terminal))).collect();
 
-    rename_block(
-        hir,
-        entry,
-        dom_tree,
-        &mut stacks,
-        next_id,
-        &block_index,
-        &successors,
-        preds,
-    );
+    rename_block(hir, entry, dom_tree, &mut stacks, next_id, &block_index, &successors, preds);
 }
 
 fn fresh_ssa_name(
@@ -600,10 +512,7 @@ fn current_ssa_name(
     original: IdentifierId,
     stacks: &FxHashMap<IdentifierId, Vec<IdentifierId>>,
 ) -> IdentifierId {
-    stacks
-        .get(&original)
-        .and_then(|stack| stack.last().copied())
-        .unwrap_or(original)
+    stacks.get(&original).and_then(|stack| stack.last().copied()).unwrap_or(original)
 }
 
 fn rename_place_use(place: &mut Place, stacks: &FxHashMap<IdentifierId, Vec<IdentifierId>>) {
@@ -690,11 +599,7 @@ fn rename_instruction_value_uses(
             rename_place_use(object, stacks);
             rename_place_use(property, stacks);
         }
-        InstructionValue::ComputedStore {
-            object,
-            property,
-            value,
-        } => {
+        InstructionValue::ComputedStore { object, property, value } => {
             rename_place_use(object, stacks);
             rename_place_use(property, stacks);
             rename_place_use(value, stacks);
@@ -725,11 +630,7 @@ fn rename_instruction_value_uses(
                 }
             }
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             rename_place_use(tag, stacks);
             for attr in props {
                 rename_place_use(&mut attr.value, stacks);
@@ -853,9 +754,7 @@ fn rename_block(
         // We need to temporarily take the value out to avoid borrow issues
         let mut value = std::mem::replace(
             &mut hir.blocks[idx].1.instructions[i].value,
-            crate::hir::types::InstructionValue::UnsupportedNode {
-                node: String::new(),
-            },
+            crate::hir::types::InstructionValue::UnsupportedNode { node: String::new() },
         );
         rename_instruction_value_uses(&mut value, stacks);
         hir.blocks[idx].1.instructions[i].value = value;
@@ -908,15 +807,9 @@ fn rename_block(
                     // Find the original variable for this phi. We need to figure out
                     // what variable this phi node is for. We look at the phi's
                     // declaration_id as a stable identifier across SSA renames.
-                    let phi_decl_id = hir.blocks[succ_idx].1.phis[pi]
-                        .place
-                        .identifier
-                        .declaration_id;
-                    let phi_name = hir.blocks[succ_idx].1.phis[pi]
-                        .place
-                        .identifier
-                        .name
-                        .clone();
+                    let phi_decl_id =
+                        hir.blocks[succ_idx].1.phis[pi].place.identifier.declaration_id;
+                    let phi_name = hir.blocks[succ_idx].1.phis[pi].place.identifier.name.clone();
 
                     // Find the original identifier id by searching stacks for a match
                     // based on declaration_id
@@ -948,9 +841,7 @@ fn rename_block(
                         let current = current_ssa_name(orig_id, stacks);
                         let mut operand_place = hir.blocks[succ_idx].1.phis[pi].place.clone();
                         operand_place.identifier.id = current;
-                        hir.blocks[succ_idx].1.phis[pi]
-                            .operands
-                            .push((block_id, operand_place));
+                        hir.blocks[succ_idx].1.phis[pi].operands.push((block_id, operand_place));
                     }
                 }
             }
@@ -960,16 +851,7 @@ fn rename_block(
     // 5. Recurse into dominator tree children
     let children: Vec<BlockId> = dom_tree.get(&block_id).cloned().unwrap_or_default();
     for child in children {
-        rename_block(
-            hir,
-            child,
-            dom_tree,
-            stacks,
-            next_id,
-            block_index,
-            successors,
-            preds,
-        );
+        rename_block(hir, child, dom_tree, stacks, next_id, block_index, successors, preds);
     }
 
     // 6. Pop all names pushed in this block

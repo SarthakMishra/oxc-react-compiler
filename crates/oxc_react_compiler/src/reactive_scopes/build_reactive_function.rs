@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    BasicBlock, BlockId, Param, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
-    ReactiveScopeBlock, ReactiveTerminal, SourceLocation, Terminal, HIR,
+    BasicBlock, BlockId, HIR, Param, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
+    ReactiveScopeBlock, ReactiveTerminal, SourceLocation, Terminal,
 };
 
 /// Convert HIR CFG to ReactiveFunction tree.
@@ -28,20 +28,11 @@ pub fn build_reactive_function(
 ) -> ReactiveFunction {
     let body = build_reactive_block(&hir, hir.entry);
 
-    ReactiveFunction {
-        loc,
-        id,
-        params,
-        body,
-        directives,
-    }
+    ReactiveFunction { loc, id, params, body, directives }
 }
 
 fn find_block<'a>(hir: &'a HIR, block_id: BlockId) -> Option<&'a BasicBlock> {
-    hir.blocks
-        .iter()
-        .find(|(id, _)| *id == block_id)
-        .map(|(_, block)| block)
+    hir.blocks.iter().find(|(id, _)| *id == block_id).map(|(_, block)| block)
 }
 
 fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
@@ -65,12 +56,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 current = *next;
                 continue;
             }
-            Terminal::If {
-                test,
-                consequent,
-                alternate,
-                fallthrough,
-            } => {
+            Terminal::If { test, consequent, alternate, fallthrough } => {
                 let consequent_block = build_reactive_block(hir, *consequent);
                 let alternate_block = build_reactive_block(hir, *alternate);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::If {
@@ -96,11 +82,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 }));
                 break;
             }
-            Terminal::Switch {
-                test,
-                cases,
-                fallthrough,
-            } => {
+            Terminal::Switch { test, cases, fallthrough } => {
                 let reactive_cases: Vec<(Option<crate::hir::types::Place>, ReactiveBlock)> = cases
                     .iter()
                     .map(|case| {
@@ -116,13 +98,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 current = *fallthrough;
                 continue;
             }
-            Terminal::For {
-                init,
-                test,
-                update,
-                body,
-                fallthrough,
-            } => {
+            Terminal::For { init, test, update, body, fallthrough } => {
                 let init_block = build_reactive_block(hir, *init);
                 let test_block = build_reactive_block(hir, *test);
                 let update_block = update.map(|u| build_reactive_block(hir, u));
@@ -137,11 +113,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 current = *fallthrough;
                 continue;
             }
-            Terminal::While {
-                test,
-                body,
-                fallthrough,
-            } => {
+            Terminal::While { test, body, fallthrough } => {
                 let test_block = build_reactive_block(hir, *test);
                 let body_block = build_reactive_block(hir, *body);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::While {
@@ -152,11 +124,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 current = *fallthrough;
                 continue;
             }
-            Terminal::DoWhile {
-                body,
-                test,
-                fallthrough,
-            } => {
+            Terminal::DoWhile { body, test, fallthrough } => {
                 let body_block = build_reactive_block(hir, *body);
                 let test_block = build_reactive_block(hir, *test);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::DoWhile {
@@ -167,12 +135,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 current = *fallthrough;
                 continue;
             }
-            Terminal::ForOf {
-                init,
-                test,
-                body,
-                fallthrough,
-            } => {
+            Terminal::ForOf { init, test, body, fallthrough } => {
                 let init_block = build_reactive_block(hir, *init);
                 let test_block = build_reactive_block(hir, *test);
                 let body_block = build_reactive_block(hir, *body);
@@ -185,12 +148,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 current = *fallthrough;
                 continue;
             }
-            Terminal::ForIn {
-                init,
-                test,
-                body,
-                fallthrough,
-            } => {
+            Terminal::ForIn { init, test, body, fallthrough } => {
                 let init_block = build_reactive_block(hir, *init);
                 let test_block = build_reactive_block(hir, *test);
                 let body_block = build_reactive_block(hir, *body);
@@ -203,11 +161,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 current = *fallthrough;
                 continue;
             }
-            Terminal::Try {
-                block: try_block,
-                handler,
-                fallthrough,
-            } => {
+            Terminal::Try { block: try_block, handler, fallthrough } => {
                 let try_reactive = build_reactive_block(hir, *try_block);
                 let handler_reactive = build_reactive_block(hir, *handler);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Try {
@@ -218,11 +172,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 current = *fallthrough;
                 continue;
             }
-            Terminal::Label {
-                block: label_block,
-                fallthrough,
-                label,
-            } => {
+            Terminal::Label { block: label_block, fallthrough, label } => {
                 let label_reactive = build_reactive_block(hir, *label_block);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Label {
                     block: label_reactive,
@@ -232,11 +182,7 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 current = *fallthrough;
                 continue;
             }
-            Terminal::Scope {
-                block: scope_block,
-                fallthrough,
-                scope,
-            } => {
+            Terminal::Scope { block: scope_block, fallthrough, scope } => {
                 let scope_reactive = build_reactive_block(hir, *scope_block);
 
                 // Try to find the ReactiveScope from the block's instructions

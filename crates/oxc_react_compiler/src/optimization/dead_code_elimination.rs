@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{BlockId, IdentifierId, InstructionValue, Terminal, HIR};
+use crate::hir::types::{BlockId, HIR, IdentifierId, InstructionValue, Terminal};
 use rustc_hash::FxHashSet;
 
 /// Remove instructions whose results are never used.
@@ -100,11 +100,7 @@ fn collect_used_in_instruction_value(value: &InstructionValue, used: &mut FxHash
             add(object);
             add(property);
         }
-        InstructionValue::ComputedStore {
-            object,
-            property,
-            value,
-        } => {
+        InstructionValue::ComputedStore { object, property, value } => {
             add(object);
             add(property);
             add(value);
@@ -131,11 +127,7 @@ fn collect_used_in_instruction_value(value: &InstructionValue, used: &mut FxHash
                 }
             }
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             add(tag);
             for attr in props {
                 add(&attr.value);
@@ -276,102 +268,43 @@ fn find_reachable_blocks(hir: &HIR) -> FxHashSet<BlockId> {
 fn terminal_successors(terminal: &Terminal) -> Vec<BlockId> {
     match terminal {
         Terminal::Goto { block } => vec![*block],
-        Terminal::If {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => vec![*consequent, *alternate, *fallthrough],
-        Terminal::Branch {
-            consequent,
-            alternate,
-            ..
-        } => vec![*consequent, *alternate],
-        Terminal::Switch {
-            cases, fallthrough, ..
-        } => {
+        Terminal::If { consequent, alternate, fallthrough, .. } => {
+            vec![*consequent, *alternate, *fallthrough]
+        }
+        Terminal::Branch { consequent, alternate, .. } => vec![*consequent, *alternate],
+        Terminal::Switch { cases, fallthrough, .. } => {
             let mut succs: Vec<BlockId> = cases.iter().map(|c| c.block).collect();
             succs.push(*fallthrough);
             succs
         }
         Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => vec![],
-        Terminal::For {
-            init,
-            test,
-            update,
-            body,
-            fallthrough,
-        } => {
+        Terminal::For { init, test, update, body, fallthrough } => {
             let mut succs = vec![*init, *test, *body, *fallthrough];
             if let Some(u) = update {
                 succs.push(*u);
             }
             succs
         }
-        Terminal::ForOf {
-            init,
-            test,
-            body,
-            fallthrough,
+        Terminal::ForOf { init, test, body, fallthrough }
+        | Terminal::ForIn { init, test, body, fallthrough } => {
+            vec![*init, *test, *body, *fallthrough]
         }
-        | Terminal::ForIn {
-            init,
-            test,
-            body,
-            fallthrough,
-        } => vec![*init, *test, *body, *fallthrough],
-        Terminal::DoWhile {
-            body,
-            test,
-            fallthrough,
-        } => vec![*body, *test, *fallthrough],
-        Terminal::While {
-            test,
-            body,
-            fallthrough,
-        } => vec![*test, *body, *fallthrough],
-        Terminal::Logical {
-            left,
-            right,
-            fallthrough,
-            ..
-        } => vec![*left, *right, *fallthrough],
-        Terminal::Ternary {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => vec![*consequent, *alternate, *fallthrough],
-        Terminal::Optional {
-            consequent,
-            fallthrough,
-            ..
-        } => vec![*consequent, *fallthrough],
-        Terminal::Sequence {
-            blocks,
-            fallthrough,
-        } => {
+        Terminal::DoWhile { body, test, fallthrough } => vec![*body, *test, *fallthrough],
+        Terminal::While { test, body, fallthrough } => vec![*test, *body, *fallthrough],
+        Terminal::Logical { left, right, fallthrough, .. } => vec![*left, *right, *fallthrough],
+        Terminal::Ternary { consequent, alternate, fallthrough, .. } => {
+            vec![*consequent, *alternate, *fallthrough]
+        }
+        Terminal::Optional { consequent, fallthrough, .. } => vec![*consequent, *fallthrough],
+        Terminal::Sequence { blocks, fallthrough } => {
             let mut succs = blocks.clone();
             succs.push(*fallthrough);
             succs
         }
-        Terminal::Label {
-            block, fallthrough, ..
-        } => vec![*block, *fallthrough],
-        Terminal::MaybeThrow {
-            continuation,
-            handler,
-        } => vec![*continuation, *handler],
-        Terminal::Try {
-            block,
-            handler,
-            fallthrough,
-        } => vec![*block, *handler, *fallthrough],
-        Terminal::Scope {
-            block, fallthrough, ..
-        }
-        | Terminal::PrunedScope {
-            block, fallthrough, ..
-        } => vec![*block, *fallthrough],
+        Terminal::Label { block, fallthrough, .. } => vec![*block, *fallthrough],
+        Terminal::MaybeThrow { continuation, handler } => vec![*continuation, *handler],
+        Terminal::Try { block, handler, fallthrough } => vec![*block, *handler, *fallthrough],
+        Terminal::Scope { block, fallthrough, .. }
+        | Terminal::PrunedScope { block, fallthrough, .. } => vec![*block, *fallthrough],
     }
 }

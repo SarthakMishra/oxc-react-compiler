@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{AliasingEffect, IdentifierId, InstructionValue, HIR};
+use crate::hir::types::{AliasingEffect, HIR, IdentifierId, InstructionValue};
 use rustc_hash::FxHashSet;
 
 /// Validate that known mutable function references are not frozen.

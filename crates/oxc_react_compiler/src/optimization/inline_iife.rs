@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{BlockId, FunctionExprType, InstructionValue, Param, Place, Terminal, HIR};
+use crate::hir::types::{BlockId, FunctionExprType, HIR, InstructionValue, Param, Place, Terminal};
 
 /// Inline immediately-invoked function expressions (IIFEs).
 ///
@@ -44,10 +44,7 @@ pub fn inline_iife(hir: &mut HIR) {
             }
 
             // Check if prev is a simple FunctionExpression.
-            if let InstructionValue::FunctionExpression {
-                ref lowered_func, ..
-            } = prev.value
-            {
+            if let InstructionValue::FunctionExpression { ref lowered_func, .. } = prev.value {
                 // Only inline if the function has a single block and no context.
                 if lowered_func.context.is_empty() && lowered_func.body.blocks.len() == 1 {
                     if let Some((_, entry_block)) = lowered_func.body.blocks.first() {
@@ -105,9 +102,7 @@ pub fn inline_iife(hir: &mut HIR) {
         // Replace the call instruction with a reference to the return value.
         // The inlined function's instructions will be inserted before this point.
         let call_lvalue = call_instr.lvalue.clone();
-        call_instr.value = InstructionValue::LoadLocal {
-            place: return_value,
-        };
+        call_instr.value = InstructionValue::LoadLocal { place: return_value };
 
         // Insert the function body's instructions before the (now-transformed) call.
         // Also insert StoreLocal for parameter -> argument bindings.
@@ -118,9 +113,7 @@ pub fn inline_iife(hir: &mut HIR) {
             new_instrs.push(crate::hir::types::Instruction {
                 id: func_instr.id, // Reuse IDs since this is a replacement.
                 lvalue: param_place.clone(),
-                value: InstructionValue::LoadLocal {
-                    place: arg_place.clone(),
-                },
+                value: InstructionValue::LoadLocal { place: arg_place.clone() },
                 loc: func_instr.loc,
                 effects: None,
             });

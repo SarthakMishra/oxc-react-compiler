@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{IdentifierId, InstructionValue, ReactiveScopeDependency, ScopeId, HIR};
+use crate::hir::types::{HIR, IdentifierId, InstructionValue, ReactiveScopeDependency, ScopeId};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Propagate scope dependencies through the HIR.
@@ -15,10 +15,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let Some(ref scope) = instr.lvalue.identifier.scope {
-                scope_declarations
-                    .entry(scope.id)
-                    .or_default()
-                    .insert(instr.lvalue.identifier.id);
+                scope_declarations.entry(scope.id).or_default().insert(instr.lvalue.identifier.id);
             }
         }
     }
@@ -33,10 +30,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                 None => continue,
             };
 
-            let declared = scope_declarations
-                .get(&scope_id)
-                .cloned()
-                .unwrap_or_default();
+            let declared = scope_declarations.get(&scope_id).cloned().unwrap_or_default();
 
             // Collect operands from the instruction value
             let operands = collect_operand_places(&instr.value);
@@ -149,11 +143,7 @@ fn collect_operand_places(value: &InstructionValue) -> Vec<&crate::hir::types::P
             places.push(object);
             places.push(property);
         }
-        InstructionValue::ComputedStore {
-            object,
-            property,
-            value,
-        } => {
+        InstructionValue::ComputedStore { object, property, value } => {
             places.push(object);
             places.push(property);
             places.push(value);
@@ -181,11 +171,7 @@ fn collect_operand_places(value: &InstructionValue) -> Vec<&crate::hir::types::P
                 }
             }
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             places.push(tag);
             for attr in props {
                 places.push(&attr.value);

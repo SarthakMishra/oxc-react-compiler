@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{InstructionValue, Terminal, HIR};
+use crate::hir::types::{HIR, InstructionValue, Terminal};
 
 /// Align method call scopes: ensure receiver and method call are in the same scope.
 pub fn align_method_call_scopes(hir: &mut HIR) {
@@ -9,10 +9,9 @@ pub fn align_method_call_scopes(hir: &mut HIR) {
             if let InstructionValue::MethodCall { receiver, .. } = &instr.value {
                 // If the receiver has a scope and the instruction's lvalue has a different scope,
                 // extend the receiver's scope to encompass the method call.
-                if let (Some(receiver_scope), Some(lvalue_scope)) = (
-                    &receiver.identifier.scope,
-                    &mut instr.lvalue.identifier.scope,
-                ) {
+                if let (Some(receiver_scope), Some(lvalue_scope)) =
+                    (&receiver.identifier.scope, &mut instr.lvalue.identifier.scope)
+                {
                     // Extend lvalue scope range to include receiver scope range
                     let new_start = lvalue_scope.range.start.0.min(receiver_scope.range.start.0);
                     let new_end = lvalue_scope.range.end.0.max(receiver_scope.range.end.0);
@@ -31,10 +30,9 @@ pub fn align_object_method_scopes(hir: &mut HIR) {
             if let InstructionValue::ObjectExpression { properties } = &instr.value {
                 // For each property value, if it has a scope, extend the object's scope
                 for prop in properties {
-                    if let (Some(prop_scope), Some(lvalue_scope)) = (
-                        &prop.value.identifier.scope,
-                        &mut instr.lvalue.identifier.scope,
-                    ) {
+                    if let (Some(prop_scope), Some(lvalue_scope)) =
+                        (&prop.value.identifier.scope, &mut instr.lvalue.identifier.scope)
+                    {
                         let new_start = lvalue_scope.range.start.0.min(prop_scope.range.start.0);
                         let new_end = lvalue_scope.range.end.0.max(prop_scope.range.end.0);
                         lvalue_scope.range.start.0 = new_start;
@@ -88,12 +86,7 @@ pub fn prune_unused_labels_hir(hir: &mut HIR) {
         Vec::new();
 
     for (block_id, block) in &hir.blocks {
-        if let Terminal::Label {
-            block: _label_block,
-            fallthrough,
-            label,
-        } = &block.terminal
-        {
+        if let Terminal::Label { block: _label_block, fallthrough, label } = &block.terminal {
             label_blocks.push((*block_id, *label, *fallthrough));
             // Mark label as used if any instruction in the label's body
             // references it (simplified: always keep labels for now)

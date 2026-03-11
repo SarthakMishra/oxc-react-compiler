@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{IdentifierId, InstructionValue, Primitive, HIR};
+use crate::hir::types::{HIR, IdentifierId, InstructionValue, Primitive};
 use rustc_hash::FxHashMap;
 
 /// Propagate known constant values through the HIR.
@@ -24,9 +24,7 @@ pub fn constant_propagation(hir: &mut HIR) {
         for instr in &mut block.instructions {
             if let InstructionValue::LoadLocal { place } = &instr.value {
                 if let Some(constant) = constants.get(&place.identifier.id) {
-                    instr.value = InstructionValue::Primitive {
-                        value: constant.clone(),
-                    };
+                    instr.value = InstructionValue::Primitive { value: constant.clone() };
                 }
             }
         }
@@ -77,8 +75,5 @@ fn collect_constants(hir: &HIR) -> FxHashMap<IdentifierId, Primitive> {
         }
     }
 
-    constants
-        .into_iter()
-        .filter_map(|(id, val)| val.map(|v| (id, v)))
-        .collect()
+    constants.into_iter().filter_map(|(id, val)| val.map(|v| (id, v))).collect()
 }

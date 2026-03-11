@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{InstructionValue, Place, HIR};
+use crate::hir::types::{HIR, InstructionValue, Place};
 
 /// Validate that setState is not called unconditionally during render.
 ///

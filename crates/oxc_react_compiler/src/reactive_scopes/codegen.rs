@@ -88,11 +88,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 output.push_str(&format!("{}const {} = {};\n", indent, lvalue_name, name));
             }
         }
-        InstructionValue::StoreLocal {
-            lvalue: target,
-            value,
-            type_,
-        } => {
+        InstructionValue::StoreLocal { lvalue: target, value, type_ } => {
             let target_name = place_name(target);
             let value_name = place_name(value);
             let keyword = match type_ {
@@ -101,10 +97,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 Some(crate::hir::types::InstructionKind::Var) => "var ",
                 _ => "",
             };
-            output.push_str(&format!(
-                "{}{}{} = {};\n",
-                indent, keyword, target_name, value_name
-            ));
+            output.push_str(&format!("{}{}{} = {};\n", indent, keyword, target_name, value_name));
         }
         InstructionValue::CallExpression { callee, args } => {
             let callee_name = place_name(callee);
@@ -117,11 +110,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 args_str.join(", ")
             ));
         }
-        InstructionValue::MethodCall {
-            receiver,
-            property,
-            args,
-        } => {
+        InstructionValue::MethodCall { receiver, property, args } => {
             let receiver_name = place_name(receiver);
             let args_str: Vec<String> = args.iter().map(|a| place_name(a)).collect();
             output.push_str(&format!(
@@ -142,11 +131,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 property
             ));
         }
-        InstructionValue::PropertyStore {
-            object,
-            property,
-            value,
-        } => {
+        InstructionValue::PropertyStore { object, property, value } => {
             output.push_str(&format!(
                 "{}{}.{} = {};\n",
                 indent,
@@ -176,11 +161,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 place_name(value)
             ));
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             let tag_name = place_name(tag);
             output.push_str(&format!("{}const {} = <{}", indent, lvalue_name, tag_name));
             for attr in props {
@@ -259,10 +240,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
             }
             output.push_str("];\n");
         }
-        InstructionValue::TemplateLiteral {
-            quasis,
-            subexpressions,
-        } => {
+        InstructionValue::TemplateLiteral { quasis, subexpressions } => {
             output.push_str(&format!("{}const {} = `", indent, lvalue_name));
             for (i, quasi) in quasis.iter().enumerate() {
                 output.push_str(quasi);
@@ -318,12 +296,7 @@ fn codegen_terminal(
         ReactiveTerminal::Throw { value, .. } => {
             output.push_str(&format!("{}throw {};\n", indent_str, place_name(value)));
         }
-        ReactiveTerminal::If {
-            test,
-            consequent,
-            alternate,
-            ..
-        } => {
+        ReactiveTerminal::If { test, consequent, alternate, .. } => {
             output.push_str(&format!("{}if ({}) {{\n", indent_str, place_name(test)));
             codegen_block(consequent, output, cache_slot, indent + 1);
             output.push_str(&format!("{}}} else {{\n", indent_str));
@@ -355,13 +328,7 @@ fn codegen_terminal(
             // Test block is evaluated inside the loop for condition
             let _ = test;
         }
-        ReactiveTerminal::For {
-            init,
-            test,
-            update,
-            body,
-            ..
-        } => {
+        ReactiveTerminal::For { init, test, update, body, .. } => {
             output.push_str(&format!("{}for (;;) {{\n", indent_str));
             codegen_block(init, output, cache_slot, indent + 1);
             codegen_block(test, output, cache_slot, indent + 1);
@@ -371,18 +338,14 @@ fn codegen_terminal(
             }
             output.push_str(&format!("{}}}\n", indent_str));
         }
-        ReactiveTerminal::ForOf {
-            init, test, body, ..
-        } => {
+        ReactiveTerminal::ForOf { init, test, body, .. } => {
             output.push_str(&format!("{}for (const _ of _) {{\n", indent_str));
             codegen_block(init, output, cache_slot, indent + 1);
             codegen_block(test, output, cache_slot, indent + 1);
             codegen_block(body, output, cache_slot, indent + 1);
             output.push_str(&format!("{}}}\n", indent_str));
         }
-        ReactiveTerminal::ForIn {
-            init, test, body, ..
-        } => {
+        ReactiveTerminal::ForIn { init, test, body, .. } => {
             output.push_str(&format!("{}for (const _ in _) {{\n", indent_str));
             codegen_block(init, output, cache_slot, indent + 1);
             codegen_block(test, output, cache_slot, indent + 1);
@@ -522,18 +485,10 @@ fn count_cache_slots(block: &ReactiveBlock) -> u32 {
 
 fn count_terminal_slots(terminal: &ReactiveTerminal) -> u32 {
     match terminal {
-        ReactiveTerminal::If {
-            consequent,
-            alternate,
-            ..
-        } => count_cache_slots(consequent) + count_cache_slots(alternate),
-        ReactiveTerminal::For {
-            init,
-            test,
-            update,
-            body,
-            ..
-        } => {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
+            count_cache_slots(consequent) + count_cache_slots(alternate)
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
             count_cache_slots(init)
                 + count_cache_slots(test)
                 + update.as_ref().map_or(0, count_cache_slots)
@@ -543,19 +498,16 @@ fn count_terminal_slots(terminal: &ReactiveTerminal) -> u32 {
         | ReactiveTerminal::DoWhile { body, test, .. } => {
             count_cache_slots(test) + count_cache_slots(body)
         }
-        ReactiveTerminal::ForOf {
-            init, test, body, ..
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            count_cache_slots(init) + count_cache_slots(test) + count_cache_slots(body)
         }
-        | ReactiveTerminal::ForIn {
-            init, test, body, ..
-        } => count_cache_slots(init) + count_cache_slots(test) + count_cache_slots(body),
         ReactiveTerminal::Try { block, handler, .. } => {
             count_cache_slots(block) + count_cache_slots(handler)
         }
-        ReactiveTerminal::Switch { cases, .. } => cases
-            .iter()
-            .map(|(_, block)| count_cache_slots(block))
-            .sum(),
+        ReactiveTerminal::Switch { cases, .. } => {
+            cases.iter().map(|(_, block)| count_cache_slots(block)).sum()
+        }
         ReactiveTerminal::Label { block, .. } => count_cache_slots(block),
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => 0,
     }
@@ -598,11 +550,7 @@ pub fn apply_compilation(
 }
 
 fn place_name(place: &Place) -> String {
-    place
-        .identifier
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("_t{}", place.identifier.id.0))
+    place.identifier.name.clone().unwrap_or_else(|| format!("_t{}", place.identifier.id.0))
 }
 
 fn binary_op_str(op: crate::hir::types::BinaryOp) -> &'static str {
@@ -655,9 +603,7 @@ pub struct SourceMapEntry {
 
 impl SourceMap {
     pub fn new() -> Self {
-        Self {
-            mappings: Vec::new(),
-        }
+        Self { mappings: Vec::new() }
     }
 
     pub fn add_mapping(&mut self, gen_line: u32, gen_col: u32, orig_line: u32, orig_col: u32) {
@@ -750,11 +696,7 @@ fn vlq_encode(output: &mut String, value: i64) {
     static VLQ_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     // Convert signed to VLQ-signed representation.
-    let mut vlq = if value < 0 {
-        ((-value) << 1) + 1
-    } else {
-        value << 1
-    };
+    let mut vlq = if value < 0 { ((-value) << 1) + 1 } else { value << 1 };
 
     loop {
         let mut digit = vlq & VLQ_BASE_MASK;
@@ -784,12 +726,7 @@ struct CodegenContext {
 
 impl CodegenContext {
     fn new() -> Self {
-        Self {
-            output: String::new(),
-            source_map: SourceMap::new(),
-            line: 0,
-            column: 0,
-        }
+        Self { output: String::new(), source_map: SourceMap::new(), line: 0, column: 0 }
     }
 
     /// Write a string to the output buffer, updating line/column tracking.
@@ -813,8 +750,7 @@ impl CodegenContext {
         }
         // Convert byte offset to line/column.
         let (orig_line, orig_col) = byte_offset_to_line_col(source, span.start as usize);
-        self.source_map
-            .add_mapping(self.line, self.column, orig_line as u32, orig_col as u32);
+        self.source_map.add_mapping(self.line, self.column, orig_line as u32, orig_col as u32);
     }
 }
 

@@ -6,7 +6,7 @@
 //! 2. Hooks must not be called inside conditions, loops, or nested functions.
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::Span;
 use oxc_syntax::scope::ScopeFlags;
@@ -90,10 +90,7 @@ impl RulesOfHooksVisitor {
                 }
             }
         };
-        self.context_stack.push(ContextFrame {
-            kind,
-            control_flow_depth: 0,
-        });
+        self.context_stack.push(ContextFrame { kind, control_flow_depth: 0 });
     }
 
     fn pop_function(&mut self) {

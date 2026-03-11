@@ -2,7 +2,7 @@
 
 use crate::error::{CompilerError, ErrorCollector};
 use crate::hir::globals::is_hook_name;
-use crate::hir::types::{BlockId, InstructionValue, Terminal, HIR};
+use crate::hir::types::{BlockId, HIR, InstructionValue, Terminal};
 use rustc_hash::FxHashSet;
 
 /// Validate that hooks are called according to the Rules of Hooks:
@@ -42,11 +42,7 @@ fn find_conditional_blocks(hir: &HIR) -> FxHashSet<BlockId> {
     // Direct children of conditional/loop terminals
     for (_, block) in &hir.blocks {
         match &block.terminal {
-            Terminal::If {
-                consequent,
-                alternate,
-                ..
-            } => {
+            Terminal::If { consequent, alternate, .. } => {
                 conditional.insert(*consequent);
                 conditional.insert(*alternate);
                 // Transitively mark blocks reachable from conditional branches
@@ -69,11 +65,7 @@ fn find_conditional_blocks(hir: &HIR) -> FxHashSet<BlockId> {
                 conditional.insert(*body);
                 mark_reachable(hir, *body, &mut conditional);
             }
-            Terminal::Ternary {
-                consequent,
-                alternate,
-                ..
-            } => {
+            Terminal::Ternary { consequent, alternate, .. } => {
                 conditional.insert(*consequent);
                 conditional.insert(*alternate);
             }
@@ -97,12 +89,7 @@ fn mark_reachable(hir: &HIR, start: BlockId, visited: &mut FxHashSet<BlockId>) {
         return; // Already visited
     }
 
-    if let Some(block) = hir
-        .blocks
-        .iter()
-        .find(|(id, _)| *id == start)
-        .map(|(_, b)| b)
-    {
+    if let Some(block) = hir.blocks.iter().find(|(id, _)| *id == start).map(|(_, b)| b) {
         match &block.terminal {
             Terminal::Goto { block: next } => {
                 mark_reachable(hir, *next, visited);

@@ -6,7 +6,7 @@
 //! setState calls inside callbacks or event handlers are fine.
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_syntax::scope::ScopeFlags;
 
@@ -14,10 +14,8 @@ use crate::utils::hook_detection::{is_component_name, is_hook_name, is_set_state
 
 /// Check for setState calls during render.
 pub fn check_no_set_state_in_render<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
-    let mut visitor = NoSetStateInRenderVisitor {
-        diagnostics: Vec::new(),
-        context_stack: Vec::new(),
-    };
+    let mut visitor =
+        NoSetStateInRenderVisitor { diagnostics: Vec::new(), context_stack: Vec::new() };
     visitor.visit_program(program);
     visitor.diagnostics
 }
@@ -37,9 +35,7 @@ struct NoSetStateInRenderVisitor {
 
 impl NoSetStateInRenderVisitor {
     fn is_in_render_phase(&self) -> bool {
-        self.context_stack
-            .last()
-            .is_some_and(|ctx| *ctx == RenderContext::RenderPhase)
+        self.context_stack.last().is_some_and(|ctx| *ctx == RenderContext::RenderPhase)
     }
 
     fn push_function(&mut self, name: Option<&str>) {

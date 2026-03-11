@@ -8,10 +8,7 @@ fn run_lint(source: &str) -> Vec<String> {
     let source_type = SourceType::tsx();
     let ret = Parser::new(&allocator, source, source_type).parse();
     let diagnostics = run_lint_rules(&ret.program);
-    diagnostics
-        .into_iter()
-        .map(|d| d.message.to_string())
-        .collect()
+    diagnostics.into_iter().map(|d| d.message.to_string()).collect()
 }
 
 #[test]
@@ -26,11 +23,7 @@ function Foo() {
 }
 "#;
     let errors = run_lint(source);
-    assert!(
-        errors.iter().any(|e| e.contains("try")),
-        "Should detect JSX in try: {:?}",
-        errors
-    );
+    assert!(errors.iter().any(|e| e.contains("try")), "Should detect JSX in try: {:?}", errors);
 }
 
 #[test]
@@ -74,9 +67,7 @@ function Foo() {
 }
 "#;
     let errors = run_lint(source);
-    let hook_errors = errors
-        .iter()
-        .any(|e| e.contains("conditionally") || e.contains("top level"));
+    let hook_errors = errors.iter().any(|e| e.contains("conditionally") || e.contains("top level"));
     assert!(!hook_errors, "Top-level hooks should be fine: {:?}", errors);
 }
 
@@ -91,9 +82,7 @@ function Foo() {
 "#;
     let errors = run_lint(source);
     assert!(
-        errors
-            .iter()
-            .any(|e| e.contains("setState") || e.contains("render")),
+        errors.iter().any(|e| e.contains("setState") || e.contains("render")),
         "Should detect setState in render: {:?}",
         errors
     );
@@ -109,9 +98,7 @@ function Foo() {
 "#;
     let errors = run_lint(source);
     assert!(
-        errors
-            .iter()
-            .any(|e| e.contains("impure") || e.contains("Math.random")),
+        errors.iter().any(|e| e.contains("impure") || e.contains("Math.random")),
         "Should detect impure call: {:?}",
         errors
     );
@@ -127,9 +114,7 @@ function Foo() {
 "#;
     let errors = run_lint(source);
     assert!(
-        errors
-            .iter()
-            .any(|e| e.contains("mobx") || e.contains("incompatible")),
+        errors.iter().any(|e| e.contains("mobx") || e.contains("incompatible")),
         "Should detect incompatible library: {:?}",
         errors
     );
@@ -144,9 +129,5 @@ function Foo({ name }) {
 "#;
     let errors = run_lint(source);
     // A clean component should have no errors (or very few)
-    assert!(
-        errors.len() <= 1,
-        "Clean component should have few errors: {:?}",
-        errors
-    );
+    assert!(errors.len() <= 1, "Clean component should have few errors: {:?}", errors);
 }

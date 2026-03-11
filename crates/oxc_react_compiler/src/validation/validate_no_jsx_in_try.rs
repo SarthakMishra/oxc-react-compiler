@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{BlockId, InstructionValue, Terminal, HIR};
+use crate::hir::types::{BlockId, HIR, InstructionValue, Terminal};
 use rustc_hash::FxHashSet;
 
 /// Validate that JSX is not used inside try blocks.
@@ -41,10 +41,7 @@ fn collect_try_block_ids(hir: &HIR) -> FxHashSet<BlockId> {
     let mut try_blocks = FxHashSet::default();
 
     for (_, block) in &hir.blocks {
-        if let Terminal::Try {
-            block: try_body, ..
-        } = &block.terminal
-        {
+        if let Terminal::Try { block: try_body, .. } = &block.terminal {
             mark_reachable(hir, *try_body, &mut try_blocks);
         }
     }

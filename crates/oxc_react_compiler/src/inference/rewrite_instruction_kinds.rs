@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{IdentifierId, InstructionKind, InstructionValue, HIR};
+use crate::hir::types::{HIR, IdentifierId, InstructionKind, InstructionValue};
 use rustc_hash::FxHashSet;
 
 /// Rewrite instruction kinds based on variable reassignment.
@@ -28,11 +28,8 @@ pub fn rewrite_instruction_kinds_based_on_reassignment(hir: &mut HIR) {
     }
 
     // Phase 2: Collect identifiers assigned more than once
-    let reassigned: FxHashSet<IdentifierId> = assignment_counts
-        .into_iter()
-        .filter(|(_, count)| *count > 1)
-        .map(|(id, _)| id)
-        .collect();
+    let reassigned: FxHashSet<IdentifierId> =
+        assignment_counts.into_iter().filter(|(_, count)| *count > 1).map(|(id, _)| id).collect();
 
     if reassigned.is_empty() {
         return;

@@ -14,15 +14,11 @@ pub struct OrderedMap<K, V> {
 
 impl<K: Eq, V> OrderedMap<K, V> {
     pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
+        Self { entries: Vec::new() }
     }
 
     pub fn with_capacity(cap: usize) -> Self {
-        Self {
-            entries: Vec::with_capacity(cap),
-        }
+        Self { entries: Vec::with_capacity(cap) }
     }
 
     /// Inserts a key-value pair. If the key already exists, its value is updated.
@@ -39,10 +35,7 @@ impl<K: Eq, V> OrderedMap<K, V> {
     }
 
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
-        self.entries
-            .iter_mut()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v)
+        self.entries.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
     pub fn contains_key(&self, key: &K) -> bool {

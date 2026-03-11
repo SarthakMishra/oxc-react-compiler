@@ -2,7 +2,7 @@
 
 use crate::error::{ErrorCollector, PanicThreshold};
 use crate::hir::environment::EnvironmentConfig;
-use crate::hir::types::{HIRFunction, ReactiveFunction, HIR};
+use crate::hir::types::{HIR, HIRFunction, ReactiveFunction};
 
 /// Run the HIR compilation pipeline (passes 2–46).
 ///

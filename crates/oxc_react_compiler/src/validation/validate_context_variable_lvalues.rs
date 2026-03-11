@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{InstructionKind, InstructionValue, HIR};
+use crate::hir::types::{HIR, InstructionKind, InstructionValue};
 
 /// Validate that context variables (captured from outer scope) are not reassigned
 /// when they were originally declared as `const`.
@@ -19,14 +19,11 @@ pub fn validate_context_variable_lvalues(hir: &HIR, errors: &mut ErrorCollector)
         .flat_map(|(_, block)| block.instructions.iter())
         .filter_map(|instr| match &instr.value {
             InstructionValue::StoreLocal {
-                lvalue,
-                type_: Some(InstructionKind::Const),
-                ..
+                lvalue, type_: Some(InstructionKind::Const), ..
             } => lvalue.identifier.name.clone(),
-            InstructionValue::DeclareLocal {
-                lvalue,
-                type_: InstructionKind::Const,
-            } => lvalue.identifier.name.clone(),
+            InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::Const } => {
+                lvalue.identifier.name.clone()
+            }
             _ => None,
         })
         .collect();

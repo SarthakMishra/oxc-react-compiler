@@ -505,14 +505,8 @@ pub struct TemplateLiteralData {
 
 #[derive(Debug, Clone)]
 pub enum DestructurePattern {
-    Object {
-        properties: Vec<DestructureObjectProperty>,
-        rest: Option<Place>,
-    },
-    Array {
-        items: Vec<DestructureArrayItem>,
-        rest: Option<Place>,
-    },
+    Object { properties: Vec<DestructureObjectProperty>, rest: Option<Place> },
+    Array { items: Vec<DestructureArrayItem>, rest: Option<Place> },
 }
 
 #[derive(Debug, Clone)]

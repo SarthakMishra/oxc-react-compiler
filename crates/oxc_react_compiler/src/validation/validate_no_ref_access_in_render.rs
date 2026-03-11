@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{InstructionValue, Place, HIR};
+use crate::hir::types::{HIR, InstructionValue, Place};
 
 /// Validate that ref values are not accessed during render.
 ///
@@ -30,7 +30,9 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
 /// environment to determine if the place was produced by `useRef`.
 /// For now, we use naming conventions.
 fn is_likely_ref(place: &Place) -> bool {
-    place.identifier.name.as_deref().map_or(false, |name| {
-        name.ends_with("Ref") || name.ends_with("ref") || name == "ref"
-    })
+    place
+        .identifier
+        .name
+        .as_deref()
+        .map_or(false, |name| name.ends_with("Ref") || name.ends_with("ref") || name == "ref")
 }

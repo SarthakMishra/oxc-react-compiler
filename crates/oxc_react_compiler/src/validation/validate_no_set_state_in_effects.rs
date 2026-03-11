@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{InstructionValue, Place, HIR};
+use crate::hir::types::{HIR, InstructionValue, Place};
 
 /// Known effect hook names.
 const EFFECT_HOOKS: &[&str] = &["useEffect", "useLayoutEffect", "useInsertionEffect"];
@@ -56,17 +56,13 @@ fn check_effect_body_for_set_state(
                 for (_, inner_block) in &lowered_func.body.blocks {
                     for inner_instr in &inner_block.instructions {
                         // Skip nested function expressions — setState inside those is OK
-                        if matches!(
-                            &inner_instr.value,
-                            InstructionValue::FunctionExpression { .. }
-                        ) {
+                        if matches!(&inner_instr.value, InstructionValue::FunctionExpression { .. })
+                        {
                             continue;
                         }
 
-                        if let InstructionValue::CallExpression {
-                            callee: inner_callee,
-                            ..
-                        } = &inner_instr.value
+                        if let InstructionValue::CallExpression { callee: inner_callee, .. } =
+                            &inner_instr.value
                         {
                             if is_set_state_call(inner_callee) {
                                 errors.push(CompilerError::invalid_react(

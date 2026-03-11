@@ -6,24 +6,16 @@
 //! that break compiler assumptions.
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_diagnostics::OxcDiagnostic;
 
 /// Libraries known to be incompatible with the React compiler.
-const BLOCKLISTED_LIBRARIES: &[&str] = &[
-    "mobx",
-    "mobx-react",
-    "mobx-react-lite",
-    "valtio",
-    "valtio/utils",
-    "immer",
-];
+const BLOCKLISTED_LIBRARIES: &[&str] =
+    &["mobx", "mobx-react", "mobx-react-lite", "valtio", "valtio/utils", "immer"];
 
 /// Check for imports from blocklisted libraries.
 pub fn check_incompatible_library<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
-    let mut visitor = IncompatibleLibraryVisitor {
-        diagnostics: Vec::new(),
-    };
+    let mut visitor = IncompatibleLibraryVisitor { diagnostics: Vec::new() };
     visitor.visit_program(program);
     visitor.diagnostics
 }

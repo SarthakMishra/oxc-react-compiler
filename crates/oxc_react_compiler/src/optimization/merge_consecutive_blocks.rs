@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{BlockId, Terminal, HIR};
+use crate::hir::types::{BlockId, HIR, Terminal};
 use rustc_hash::FxHashMap;
 
 /// Merge basic blocks that have a single predecessor/successor relationship.
@@ -98,40 +98,23 @@ fn rewrite_terminal_target(terminal: &mut Terminal, old: BlockId, new: BlockId) 
 
     match terminal {
         Terminal::Goto { block } => remap(block),
-        Terminal::If {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => {
+        Terminal::If { consequent, alternate, fallthrough, .. } => {
             remap(consequent);
             remap(alternate);
             remap(fallthrough);
         }
-        Terminal::Branch {
-            consequent,
-            alternate,
-            ..
-        } => {
+        Terminal::Branch { consequent, alternate, .. } => {
             remap(consequent);
             remap(alternate);
         }
-        Terminal::Switch {
-            cases, fallthrough, ..
-        } => {
+        Terminal::Switch { cases, fallthrough, .. } => {
             for case in cases {
                 remap(&mut case.block);
             }
             remap(fallthrough);
         }
         Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => {}
-        Terminal::For {
-            init,
-            test,
-            update,
-            body,
-            fallthrough,
-        } => {
+        Terminal::For { init, test, update, body, fallthrough } => {
             remap(init);
             remap(test);
             if let Some(u) = update {
@@ -140,106 +123,58 @@ fn rewrite_terminal_target(terminal: &mut Terminal, old: BlockId, new: BlockId) 
             remap(body);
             remap(fallthrough);
         }
-        Terminal::ForOf {
-            init,
-            test,
-            body,
-            fallthrough,
-        }
-        | Terminal::ForIn {
-            init,
-            test,
-            body,
-            fallthrough,
-        } => {
+        Terminal::ForOf { init, test, body, fallthrough }
+        | Terminal::ForIn { init, test, body, fallthrough } => {
             remap(init);
             remap(test);
             remap(body);
             remap(fallthrough);
         }
-        Terminal::DoWhile {
-            body,
-            test,
-            fallthrough,
-        } => {
+        Terminal::DoWhile { body, test, fallthrough } => {
             remap(body);
             remap(test);
             remap(fallthrough);
         }
-        Terminal::While {
-            test,
-            body,
-            fallthrough,
-        } => {
+        Terminal::While { test, body, fallthrough } => {
             remap(test);
             remap(body);
             remap(fallthrough);
         }
-        Terminal::Logical {
-            left,
-            right,
-            fallthrough,
-            ..
-        } => {
+        Terminal::Logical { left, right, fallthrough, .. } => {
             remap(left);
             remap(right);
             remap(fallthrough);
         }
-        Terminal::Ternary {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => {
+        Terminal::Ternary { consequent, alternate, fallthrough, .. } => {
             remap(consequent);
             remap(alternate);
             remap(fallthrough);
         }
-        Terminal::Optional {
-            consequent,
-            fallthrough,
-            ..
-        } => {
+        Terminal::Optional { consequent, fallthrough, .. } => {
             remap(consequent);
             remap(fallthrough);
         }
-        Terminal::Sequence {
-            blocks,
-            fallthrough,
-        } => {
+        Terminal::Sequence { blocks, fallthrough } => {
             for b in blocks {
                 remap(b);
             }
             remap(fallthrough);
         }
-        Terminal::Label {
-            block, fallthrough, ..
-        } => {
+        Terminal::Label { block, fallthrough, .. } => {
             remap(block);
             remap(fallthrough);
         }
-        Terminal::MaybeThrow {
-            continuation,
-            handler,
-        } => {
+        Terminal::MaybeThrow { continuation, handler } => {
             remap(continuation);
             remap(handler);
         }
-        Terminal::Try {
-            block,
-            handler,
-            fallthrough,
-        } => {
+        Terminal::Try { block, handler, fallthrough } => {
             remap(block);
             remap(handler);
             remap(fallthrough);
         }
-        Terminal::Scope {
-            block, fallthrough, ..
-        }
-        | Terminal::PrunedScope {
-            block, fallthrough, ..
-        } => {
+        Terminal::Scope { block, fallthrough, .. }
+        | Terminal::PrunedScope { block, fallthrough, .. } => {
             remap(block);
             remap(fallthrough);
         }
@@ -250,102 +185,43 @@ fn rewrite_terminal_target(terminal: &mut Terminal, old: BlockId, new: BlockId) 
 fn terminal_successors(terminal: &Terminal) -> Vec<BlockId> {
     match terminal {
         Terminal::Goto { block } => vec![*block],
-        Terminal::If {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => vec![*consequent, *alternate, *fallthrough],
-        Terminal::Branch {
-            consequent,
-            alternate,
-            ..
-        } => vec![*consequent, *alternate],
-        Terminal::Switch {
-            cases, fallthrough, ..
-        } => {
+        Terminal::If { consequent, alternate, fallthrough, .. } => {
+            vec![*consequent, *alternate, *fallthrough]
+        }
+        Terminal::Branch { consequent, alternate, .. } => vec![*consequent, *alternate],
+        Terminal::Switch { cases, fallthrough, .. } => {
             let mut succs: Vec<BlockId> = cases.iter().map(|c| c.block).collect();
             succs.push(*fallthrough);
             succs
         }
         Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => vec![],
-        Terminal::For {
-            init,
-            test,
-            update,
-            body,
-            fallthrough,
-        } => {
+        Terminal::For { init, test, update, body, fallthrough } => {
             let mut succs = vec![*init, *test, *body, *fallthrough];
             if let Some(u) = update {
                 succs.push(*u);
             }
             succs
         }
-        Terminal::ForOf {
-            init,
-            test,
-            body,
-            fallthrough,
+        Terminal::ForOf { init, test, body, fallthrough }
+        | Terminal::ForIn { init, test, body, fallthrough } => {
+            vec![*init, *test, *body, *fallthrough]
         }
-        | Terminal::ForIn {
-            init,
-            test,
-            body,
-            fallthrough,
-        } => vec![*init, *test, *body, *fallthrough],
-        Terminal::DoWhile {
-            body,
-            test,
-            fallthrough,
-        } => vec![*body, *test, *fallthrough],
-        Terminal::While {
-            test,
-            body,
-            fallthrough,
-        } => vec![*test, *body, *fallthrough],
-        Terminal::Logical {
-            left,
-            right,
-            fallthrough,
-            ..
-        } => vec![*left, *right, *fallthrough],
-        Terminal::Ternary {
-            consequent,
-            alternate,
-            fallthrough,
-            ..
-        } => vec![*consequent, *alternate, *fallthrough],
-        Terminal::Optional {
-            consequent,
-            fallthrough,
-            ..
-        } => vec![*consequent, *fallthrough],
-        Terminal::Sequence {
-            blocks,
-            fallthrough,
-        } => {
+        Terminal::DoWhile { body, test, fallthrough } => vec![*body, *test, *fallthrough],
+        Terminal::While { test, body, fallthrough } => vec![*test, *body, *fallthrough],
+        Terminal::Logical { left, right, fallthrough, .. } => vec![*left, *right, *fallthrough],
+        Terminal::Ternary { consequent, alternate, fallthrough, .. } => {
+            vec![*consequent, *alternate, *fallthrough]
+        }
+        Terminal::Optional { consequent, fallthrough, .. } => vec![*consequent, *fallthrough],
+        Terminal::Sequence { blocks, fallthrough } => {
             let mut succs = blocks.clone();
             succs.push(*fallthrough);
             succs
         }
-        Terminal::Label {
-            block, fallthrough, ..
-        } => vec![*block, *fallthrough],
-        Terminal::MaybeThrow {
-            continuation,
-            handler,
-        } => vec![*continuation, *handler],
-        Terminal::Try {
-            block,
-            handler,
-            fallthrough,
-        } => vec![*block, *handler, *fallthrough],
-        Terminal::Scope {
-            block, fallthrough, ..
-        }
-        | Terminal::PrunedScope {
-            block, fallthrough, ..
-        } => vec![*block, *fallthrough],
+        Terminal::Label { block, fallthrough, .. } => vec![*block, *fallthrough],
+        Terminal::MaybeThrow { continuation, handler } => vec![*continuation, *handler],
+        Terminal::Try { block, handler, fallthrough } => vec![*block, *handler, *fallthrough],
+        Terminal::Scope { block, fallthrough, .. }
+        | Terminal::PrunedScope { block, fallthrough, .. } => vec![*block, *fallthrough],
     }
 }

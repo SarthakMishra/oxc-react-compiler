@@ -60,17 +60,9 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
     // --- Array ---
     let mut array = ObjectShape::new();
     // Mutating methods
-    for method in &[
-        "push",
-        "pop",
-        "shift",
-        "unshift",
-        "splice",
-        "sort",
-        "reverse",
-        "fill",
-        "copyWithin",
-    ] {
+    for method in
+        &["push", "pop", "shift", "unshift", "splice", "sort", "reverse", "fill", "copyWithin"]
+    {
         let mut sig = FunctionSignature {
             params: vec![ParamEffect::Read],
             return_shape: ShapeId::NONE,
@@ -81,10 +73,7 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
         sig.params = vec![ParamEffect::Read; 3];
         array.properties.insert(
             method.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     // Non-mutating methods
@@ -113,19 +102,12 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
     ] {
         array.properties.insert(
             method.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
-    array.properties.insert(
-        "length".to_string(),
-        PropertyShape {
-            value_shape: ShapeId::NONE,
-            writable: true,
-        },
-    );
+    array
+        .properties
+        .insert("length".to_string(), PropertyShape { value_shape: ShapeId::NONE, writable: true });
     let array_shape = registry.register_shape(array);
     globals.insert("Array".to_string(), array_shape);
 
@@ -149,10 +131,7 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
     ] {
         object.properties.insert(
             method.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     let object_shape = registry.register_shape(object);
@@ -166,30 +145,19 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
     ] {
         math.properties.insert(
             method.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     // Math.random is impure
     math.properties.insert(
         "random".to_string(),
-        PropertyShape {
-            value_shape: ShapeId::NONE,
-            writable: false,
-        },
+        PropertyShape { value_shape: ShapeId::NONE, writable: false },
     );
     // Constants
-    for constant in &[
-        "PI", "E", "LN2", "LN10", "LOG2E", "LOG10E", "SQRT2", "SQRT1_2",
-    ] {
+    for constant in &["PI", "E", "LN2", "LN10", "LOG2E", "LOG10E", "SQRT2", "SQRT1_2"] {
         math.properties.insert(
             constant.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     let math_shape = registry.register_shape(math);
@@ -197,19 +165,11 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
 
     // --- JSON ---
     let mut json = ObjectShape::new();
-    json.properties.insert(
-        "parse".to_string(),
-        PropertyShape {
-            value_shape: ShapeId::NONE,
-            writable: false,
-        },
-    );
+    json.properties
+        .insert("parse".to_string(), PropertyShape { value_shape: ShapeId::NONE, writable: false });
     json.properties.insert(
         "stringify".to_string(),
-        PropertyShape {
-            value_shape: ShapeId::NONE,
-            writable: false,
-        },
+        PropertyShape { value_shape: ShapeId::NONE, writable: false },
     );
     let json_shape = registry.register_shape(json);
     globals.insert("JSON".to_string(), json_shape);
@@ -238,10 +198,7 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
     ] {
         console.properties.insert(
             method.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     let console_shape = registry.register_shape(console);
@@ -285,18 +242,12 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
     ] {
         string.properties.insert(
             method.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     string.properties.insert(
         "length".to_string(),
-        PropertyShape {
-            value_shape: ShapeId::NONE,
-            writable: false,
-        },
+        PropertyShape { value_shape: ShapeId::NONE, writable: false },
     );
     let string_shape = registry.register_shape(string);
     globals.insert("String".to_string(), string_shape);
@@ -318,10 +269,7 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
     ] {
         number.properties.insert(
             method.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     for constant in &[
@@ -336,10 +284,7 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
     ] {
         number.properties.insert(
             constant.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     let number_shape = registry.register_shape(number);
@@ -347,23 +292,12 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
 
     // --- Promise ---
     let mut promise = ObjectShape::new();
-    for method in &[
-        "then",
-        "catch",
-        "finally",
-        "all",
-        "allSettled",
-        "any",
-        "race",
-        "resolve",
-        "reject",
-    ] {
+    for method in
+        &["then", "catch", "finally", "all", "allSettled", "any", "race", "resolve", "reject"]
+    {
         promise.properties.insert(
             method.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     let promise_shape = registry.register_shape(promise);
@@ -384,19 +318,13 @@ pub fn register_globals(registry: &mut ShapeRegistry) -> GlobalRegistry {
     ] {
         react.properties.insert(
             method.to_string(),
-            PropertyShape {
-                value_shape: ShapeId::NONE,
-                writable: false,
-            },
+            PropertyShape { value_shape: ShapeId::NONE, writable: false },
         );
     }
     // React.Children
     react.properties.insert(
         "Children".to_string(),
-        PropertyShape {
-            value_shape: ShapeId::NONE,
-            writable: false,
-        },
+        PropertyShape { value_shape: ShapeId::NONE, writable: false },
     );
     let react_shape = registry.register_shape(react);
     globals.insert("React".to_string(), react_shape);
@@ -510,16 +438,10 @@ pub fn is_hook_name(name: &str) -> bool {
     if name.len() < 4 {
         return false;
     }
-    name.starts_with("use")
-        && name
-            .as_bytes()
-            .get(3)
-            .map_or(false, |b| b.is_ascii_uppercase())
+    name.starts_with("use") && name.as_bytes().get(3).map_or(false, |b| b.is_ascii_uppercase())
 }
 
 /// Check if a name is a known React component (PascalCase).
 pub fn is_component_name(name: &str) -> bool {
-    name.as_bytes()
-        .first()
-        .map_or(false, |b| b.is_ascii_uppercase())
+    name.as_bytes().first().map_or(false, |b| b.is_ascii_uppercase())
 }

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{InstructionValue, Place, HIR};
+use crate::hir::types::{HIR, InstructionValue, Place};
 use rustc_hash::FxHashSet;
 
 /// Known hooks that accept a dependency array as their second argument.

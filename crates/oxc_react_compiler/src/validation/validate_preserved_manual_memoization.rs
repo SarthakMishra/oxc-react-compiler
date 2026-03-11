@@ -102,11 +102,7 @@ fn check_instruction(
                 })
                 .start_scope = current_scope;
         }
-        InstructionValue::FinishMemoize {
-            manual_memo_id,
-            pruned,
-            ..
-        } => {
+        InstructionValue::FinishMemoize { manual_memo_id, pruned, .. } => {
             let entry = memo_scopes.entry(*manual_memo_id).or_insert(MemoRegion {
                 start_scope: None,
                 finish_scope: current_scope,
@@ -129,11 +125,7 @@ fn walk_terminal_blocks(
     use crate::hir::types::ReactiveTerminal;
 
     match terminal {
-        ReactiveTerminal::If {
-            consequent,
-            alternate,
-            ..
-        } => {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
             walk_reactive_block(consequent, current_scope, memo_scopes);
             walk_reactive_block(alternate, current_scope, memo_scopes);
         }
@@ -142,13 +134,7 @@ fn walk_terminal_blocks(
                 walk_reactive_block(case_block, current_scope, memo_scopes);
             }
         }
-        ReactiveTerminal::For {
-            init,
-            test,
-            update,
-            body,
-            ..
-        } => {
+        ReactiveTerminal::For { init, test, update, body, .. } => {
             walk_reactive_block(init, current_scope, memo_scopes);
             walk_reactive_block(test, current_scope, memo_scopes);
             if let Some(upd) = update {
@@ -156,12 +142,8 @@ fn walk_terminal_blocks(
             }
             walk_reactive_block(body, current_scope, memo_scopes);
         }
-        ReactiveTerminal::ForOf {
-            init, test, body, ..
-        }
-        | ReactiveTerminal::ForIn {
-            init, test, body, ..
-        } => {
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
             walk_reactive_block(init, current_scope, memo_scopes);
             walk_reactive_block(test, current_scope, memo_scopes);
             walk_reactive_block(body, current_scope, memo_scopes);

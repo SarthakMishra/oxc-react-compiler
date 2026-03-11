@@ -24,11 +24,7 @@ pub struct ObjectShape {
 
 impl ObjectShape {
     pub fn new() -> Self {
-        Self {
-            properties: FxHashMap::default(),
-            call_signature: None,
-            construct_signature: None,
-        }
+        Self { properties: FxHashMap::default(), call_signature: None, construct_signature: None }
     }
 }
 
@@ -125,14 +121,12 @@ impl ShapeRegistry {
 
     /// Look up a property shape on a given shape.
     pub fn get_property_shape(&self, shape_id: ShapeId, property: &str) -> Option<&PropertyShape> {
-        self.get_shape(shape_id)
-            .and_then(|shape| shape.properties.get(property))
+        self.get_shape(shape_id).and_then(|shape| shape.properties.get(property))
     }
 
     /// Get the call signature for a shape, if callable.
     pub fn get_call_signature(&self, shape_id: ShapeId) -> Option<&FunctionSignature> {
-        self.get_shape(shape_id)
-            .and_then(|shape| shape.call_signature.as_ref())
+        self.get_shape(shape_id).and_then(|shape| shape.call_signature.as_ref())
     }
 
     /// Number of registered shapes.

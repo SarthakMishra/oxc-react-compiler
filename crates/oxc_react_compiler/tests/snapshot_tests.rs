@@ -1,5 +1,5 @@
-use oxc_react_compiler::compile_program;
 use oxc_react_compiler::PluginOptions;
+use oxc_react_compiler::compile_program;
 
 // ---------------------------------------------------------------------------
 // Basic compilation tests
@@ -41,10 +41,7 @@ function NoMemo() {
 }
 "#;
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
-    assert!(
-        !result.transformed,
-        "use no memo should prevent compilation"
-    );
+    assert!(!result.transformed, "use no memo should prevent compilation");
 }
 
 #[test]

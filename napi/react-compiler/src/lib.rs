@@ -39,10 +39,7 @@ pub fn transform_react_file(
 
     let result = oxc_react_compiler::compile_program(&source, &filename, &plugin_options);
 
-    TransformResult {
-        code: result.code,
-        transformed: result.transformed,
-    }
+    TransformResult { code: result.code, transformed: result.transformed }
 }
 
 #[napi(object)]
@@ -64,9 +61,7 @@ pub fn lint_react_file(source: String, filename: String) -> LintResult {
     let parser_ret = oxc_parser::Parser::new(&allocator, &source, source_type).parse();
 
     if parser_ret.panicked {
-        return LintResult {
-            diagnostics: vec![],
-        };
+        return LintResult { diagnostics: vec![] };
     }
 
     let oxc_diagnostics = oxc_react_compiler_lint::run_lint_rules(&parser_ret.program);
@@ -84,11 +79,7 @@ pub fn lint_react_file(source: String, filename: String) -> LintResult {
                     (s, e)
                 })
                 .unwrap_or((0, 0));
-            LintDiagnostic {
-                message: d.message.to_string(),
-                start,
-                end,
-            }
+            LintDiagnostic { message: d.message.to_string(), start, end }
         })
         .collect();
 

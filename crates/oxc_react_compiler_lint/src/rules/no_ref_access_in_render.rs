@@ -5,7 +5,7 @@
 //! be read/written inside effects or event handlers.
 
 use oxc_ast::ast::*;
-use oxc_ast_visit::{walk, Visit};
+use oxc_ast_visit::{Visit, walk};
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_syntax::scope::ScopeFlags;
 use rustc_hash::FxHashSet;
@@ -14,10 +14,8 @@ use crate::utils::hook_detection::{is_component_name, is_hook_name, is_use_ref_c
 
 /// Check for `.current` accesses on ref values during render.
 pub fn check_no_ref_access_in_render<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
-    let mut visitor = NoRefAccessInRenderVisitor {
-        diagnostics: Vec::new(),
-        context_stack: Vec::new(),
-    };
+    let mut visitor =
+        NoRefAccessInRenderVisitor { diagnostics: Vec::new(), context_stack: Vec::new() };
     visitor.visit_program(program);
     visitor.diagnostics
 }
@@ -48,8 +46,7 @@ impl NoRefAccessInRenderVisitor {
     }
 
     fn is_in_render_phase(&self) -> bool {
-        self.current_context()
-            .is_some_and(|f| f.kind == RenderContext::RenderPhase)
+        self.current_context().is_some_and(|f| f.kind == RenderContext::RenderPhase)
     }
 
     /// Check if a name is a known ref in any enclosing render-phase context.
@@ -78,10 +75,7 @@ impl NoRefAccessInRenderVisitor {
             // Nested function is always "not render phase".
             RenderContext::Nested
         };
-        self.context_stack.push(ContextFrame {
-            kind,
-            ref_names: FxHashSet::default(),
-        });
+        self.context_stack.push(ContextFrame { kind, ref_names: FxHashSet::default() });
     }
 
     fn pop_function(&mut self) {
