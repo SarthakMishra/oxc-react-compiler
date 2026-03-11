@@ -27,6 +27,7 @@ export function reactCompiler(options: ReactCompilerOptions = {}): any {
 
     async buildStart() {
       try {
+        // @ts-ignore - native binding generated at build time
         binding = await import('../index.js');
       } catch (e) {
         console.warn('[oxc-react-compiler] Failed to load native binding:', e);
