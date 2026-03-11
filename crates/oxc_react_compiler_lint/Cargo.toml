@@ -17,3 +17,5 @@ rustc-hash.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+oxc_allocator.workspace = true
+oxc_parser.workspace = true

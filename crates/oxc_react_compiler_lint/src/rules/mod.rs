@@ -9,4 +9,5 @@ pub mod no_set_state_in_render;
 pub mod purity;
 pub mod rules_of_hooks;
 pub mod static_components;
+pub mod tier2;
 pub mod use_memo_validation;

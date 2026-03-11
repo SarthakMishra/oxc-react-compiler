@@ -584,9 +584,11 @@ name = "oxc_react_compiler_lint"
 version = "0.1.0"
 dependencies = [
  "insta",
+ "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
  "oxc_diagnostics",
+ "oxc_parser",
  "oxc_react_compiler",
  "oxc_semantic",
  "oxc_span",

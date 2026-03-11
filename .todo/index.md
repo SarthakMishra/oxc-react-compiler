@@ -157,29 +157,29 @@ _(Nothing in progress)_
 ### NAPI and Vite Plugin
 
 - [x] NAPI bindings (async task pattern, TransformResult) — [integration.md](integration.md)#gap-1-napi-bindings
-- [ ] Vite plugin (transform hook, file filtering, HMR) — [integration.md](integration.md)#gap-2-vite-plugin
+- [x] Vite plugin (transform hook, file filtering, HMR) — [integration.md](integration.md)#gap-2-vite-plugin
 - [x] Configuration parsing (JSON/TOML to PluginOptions) — [integration.md](integration.md)#gap-3-configuration-parsing
 - [x] Gating support (feature flag wrapping) — [integration.md](integration.md)#gap-4-gating-support
 
 ### Oxlint Rules (Tier 2 -- compiler-dependent)
 
-- [ ] hooks (full Rules of Hooks with HIR analysis) — [lint-rules.md](lint-rules.md)#gap-12-hooks-tier-2
-- [ ] immutability (mutation of frozen values) — [lint-rules.md](lint-rules.md)#gap-13-immutability-tier-2
-- [ ] preserve-manual-memoization — [lint-rules.md](lint-rules.md)#gap-14-preserve-manual-memoization-tier-2
-- [ ] memo-dependencies (exhaustive deps with autofix) — [lint-rules.md](lint-rules.md)#gap-15-memo-dependencies-tier-2
-- [ ] exhaustive-effect-deps (with autofix) — [lint-rules.md](lint-rules.md)#gap-16-exhaustive-effect-deps-tier-2
+- [x] hooks (full Rules of Hooks with HIR analysis) — [lint-rules.md](lint-rules.md)#gap-12-hooks-tier-2
+- [x] immutability (mutation of frozen values) — [lint-rules.md](lint-rules.md)#gap-13-immutability-tier-2
+- [x] preserve-manual-memoization — [lint-rules.md](lint-rules.md)#gap-14-preserve-manual-memoization-tier-2
+- [x] memo-dependencies (exhaustive deps with autofix) — [lint-rules.md](lint-rules.md)#gap-15-memo-dependencies-tier-2
+- [x] exhaustive-effect-deps (with autofix) — [lint-rules.md](lint-rules.md)#gap-16-exhaustive-effect-deps-tier-2
 
 ### Testing and Conformance
 
-- [ ] Upstream fixture test harness — [testing.md](testing.md)#gap-1-upstream-fixture-test-harness
-- [ ] Per-pass snapshot tests (insta) — [testing.md](testing.md)#gap-2-per-pass-snapshot-tests
-- [ ] Comparison tests (Babel vs OXC output diffing) — [testing.md](testing.md)#gap-3-comparison-tests
-- [ ] Performance benchmarking — [testing.md](testing.md)#gap-4-performance-benchmarking
+- [x] Upstream fixture test harness — [testing.md](testing.md)#gap-1-upstream-fixture-test-harness
+- [x] Per-pass snapshot tests (insta) — [testing.md](testing.md)#gap-2-per-pass-snapshot-tests
+- [x] Comparison tests (Babel vs OXC output diffing) — [testing.md](testing.md)#gap-3-comparison-tests
+- [x] Performance benchmarking — [testing.md](testing.md)#gap-4-performance-benchmarking
 
 ### Release
 
-- [ ] Pin upstream React compiler commit (UPSTREAM_VERSION.md) — [integration.md](integration.md)#gap-5-pin-upstream-commit
-- [ ] Release packaging (platform-specific NAPI binaries) — [integration.md](integration.md)#gap-6-release-packaging
+- [x] Pin upstream React compiler commit (UPSTREAM_VERSION.md) — [integration.md](integration.md)#gap-5-pin-upstream-commit
+- [x] Release packaging (platform-specific NAPI binaries) — [integration.md](integration.md)#gap-6-release-packaging
 
 ---
 

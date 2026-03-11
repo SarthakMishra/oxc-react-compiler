@@ -1,0 +1,53 @@
+{
+  "name": "@oxc-react/vite",
+  "version": "0.1.0",
+  "description": "OXC React Compiler - Native Rust implementation of the React Compiler for Vite/Rolldown",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "require": "./index.cjs"
+    },
+    "./vite": {
+      "import": "./vite-plugin/index.js",
+      "types": "./vite-plugin/index.d.ts"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.cjs",
+    "index.d.ts",
+    "vite-plugin/",
+    "*.node"
+  ],
+  "keywords": [
+    "react",
+    "compiler",
+    "vite",
+    "rolldown",
+    "oxc",
+    "memoization"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/oxc-react-compiler"
+  },
+  "napi": {
+    "name": "oxc-react-compiler",
+    "triples": {
+      "defaults": true,
+      "additional": [
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
+        "aarch64-apple-darwin",
+        "x86_64-unknown-freebsd"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.0.0"
+  }
+}

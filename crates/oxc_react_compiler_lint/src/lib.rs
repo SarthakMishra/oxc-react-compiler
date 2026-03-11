@@ -35,5 +35,14 @@ pub fn run_lint_rules<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
     diagnostics.extend(check_no_deriving_state_in_effects(program));
     diagnostics.extend(check_globals(program));
 
+    // Tier 2 rules (compiler-dependent) are disabled by default.
+    // They require running the full compiler pipeline in lint mode.
+    // To enable, uncomment the following:
+    // diagnostics.extend(rules::tier2::check_hooks_tier2(program));
+    // diagnostics.extend(rules::tier2::check_immutability(program));
+    // diagnostics.extend(rules::tier2::check_preserve_manual_memoization(program));
+    // diagnostics.extend(rules::tier2::check_memo_dependencies(program));
+    // diagnostics.extend(rules::tier2::check_exhaustive_effect_deps(program));
+
     diagnostics
 }
