@@ -4,13 +4,20 @@ expression: result.code
 ---
 import { c as _c } from "react/compiler-runtime";
 
-function Display(_t0) {
-  /* t25 = Discriminant(4) */
+function Display(t0) {
+  const $ = _c(2);
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    /* t25 = Discriminant(4) */
+  } else {
+  }
   const t26 = items;
-  const t27 = _t26.length;
-  const count = _t27;
-  /* t29 = Discriminant(4) */
+  const t27 = t26.length;
+  const count = t27;
+  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+    /* t29 = Discriminant(4) */
+  } else {
+  }
   const t30 = count;
   const t31 = 0;
-  const t32 = _t30 > _t31;
+  const t32 = t30 > t31;
 }

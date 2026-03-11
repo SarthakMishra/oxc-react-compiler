@@ -390,11 +390,10 @@ fn codegen_scope(
             .iter()
             .enumerate()
             .map(|(i, dep)| {
-                let dep_name = dep
-                    .identifier
-                    .name
-                    .as_deref()
-                    .map_or_else(|| format!("_t{}", dep.identifier.id.0), std::string::ToString::to_string);
+                let dep_name = dep.identifier.name.as_deref().map_or_else(
+                    || format!("t{}", dep.identifier.id.0),
+                    std::string::ToString::to_string,
+                );
                 format!("$[{}] !== {}", slot_start + i as u32, dep_name)
             })
             .collect();
@@ -412,7 +411,7 @@ fn codegen_scope(
             .identifier
             .name
             .as_deref()
-            .map_or_else(|| format!("_t{}", decl.identifier.id.0), std::string::ToString::to_string);
+            .map_or_else(|| format!("t{}", decl.identifier.id.0), std::string::ToString::to_string);
         let inner_indent = "  ".repeat(indent + 1);
         output.push_str(&format!(
             "{}$[{}] = {};\n",
@@ -427,11 +426,10 @@ fn codegen_scope(
     if !deps.is_empty() {
         let inner_indent = "  ".repeat(indent + 1);
         for (i, dep) in deps.iter().enumerate() {
-            let dep_name = dep
-                .identifier
-                .name
-                .as_deref()
-                .map_or_else(|| format!("_t{}", dep.identifier.id.0), std::string::ToString::to_string);
+            let dep_name = dep.identifier.name.as_deref().map_or_else(
+                || format!("t{}", dep.identifier.id.0),
+                std::string::ToString::to_string,
+            );
             output.push_str(&format!(
                 "{}$[{}] = {};\n",
                 inner_indent,
@@ -449,7 +447,7 @@ fn codegen_scope(
             .identifier
             .name
             .as_deref()
-            .map_or_else(|| format!("_t{}", decl.identifier.id.0), std::string::ToString::to_string);
+            .map_or_else(|| format!("t{}", decl.identifier.id.0), std::string::ToString::to_string);
         let inner_indent = "  ".repeat(indent + 1);
         output.push_str(&format!(
             "{}{} = $[{}];\n",
@@ -549,7 +547,7 @@ pub fn apply_compilation(
 }
 
 fn place_name(place: &Place) -> String {
-    place.identifier.name.clone().unwrap_or_else(|| format!("_t{}", place.identifier.id.0))
+    place.identifier.name.clone().unwrap_or_else(|| format!("t{}", place.identifier.id.0))
 }
 
 fn binary_op_str(op: crate::hir::types::BinaryOp) -> &'static str {

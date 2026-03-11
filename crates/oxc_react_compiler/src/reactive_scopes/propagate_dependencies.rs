@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{HIR, IdentifierId, InstructionValue, ReactiveScopeDependency, ScopeId};
+use crate::hir::types::{
+    HIR, IdentifierId, InstructionValue, ReactiveScopeDeclaration, ReactiveScopeDependency, ScopeId,
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Propagate scope dependencies through the HIR.
@@ -69,14 +71,74 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
         }
     }
 
-    // Phase 3: Write the dependencies back onto the scopes
+    // Phase 3: Determine declarations (identifiers defined in scope, used outside)
+    // Build a reverse-use map: operand_id -> set of consumer scope IDs (or None if outside scope)
+    let mut operand_consumers: FxHashMap<IdentifierId, Vec<Option<ScopeId>>> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            let consumer_scope = instr.lvalue.identifier.scope.as_ref().map(|s| s.id);
+            let operands = collect_operand_places(&instr.value);
+            for place in operands {
+                operand_consumers.entry(place.identifier.id).or_default().push(consumer_scope);
+            }
+        }
+        // Terminal uses are always "outside" any scope (scope = None)
+        match &block.terminal {
+            crate::hir::types::Terminal::Return { value }
+            | crate::hir::types::Terminal::Throw { value } => {
+                operand_consumers.entry(value.identifier.id).or_default().push(None);
+            }
+            crate::hir::types::Terminal::If { test, .. }
+            | crate::hir::types::Terminal::Branch { test, .. } => {
+                operand_consumers.entry(test.identifier.id).or_default().push(None);
+            }
+            _ => {}
+        }
+    }
+
+    // Build scope declarations: identifiers defined inside a scope that are used
+    // by instructions outside that scope (or in terminals)
+    let mut scope_decls: FxHashMap<ScopeId, Vec<(IdentifierId, ReactiveScopeDeclaration)>> =
+        FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let Some(ref scope) = instr.lvalue.identifier.scope {
+                let id = instr.lvalue.identifier.id;
+                // Check if this identifier is used by any consumer outside this scope
+                let used_outside = operand_consumers.get(&id).is_some_and(|consumers| {
+                    consumers.iter().any(|consumer_scope| *consumer_scope != Some(scope.id))
+                });
+
+                if used_outside {
+                    let decls = scope_decls.entry(scope.id).or_default();
+                    if !decls.iter().any(|(did, _)| *did == id) {
+                        decls.push((
+                            id,
+                            ReactiveScopeDeclaration {
+                                identifier: instr.lvalue.identifier.clone(),
+                                scope: scope.id,
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 4: Write the dependencies and declarations back onto the scopes
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if let Some(ref mut scope) = instr.lvalue.identifier.scope
-                && let Some(deps) = scope_deps.remove(&scope.id) {
+            if let Some(ref mut scope) = instr.lvalue.identifier.scope {
+                if let Some(deps) = scope_deps.remove(&scope.id) {
                     // Only include reactive dependencies
                     scope.dependencies = deps.into_iter().filter(|d| d.reactive).collect();
                 }
+                if let Some(decls) = scope_decls.remove(&scope.id) {
+                    scope.declarations = decls;
+                }
+            }
         }
     }
 }

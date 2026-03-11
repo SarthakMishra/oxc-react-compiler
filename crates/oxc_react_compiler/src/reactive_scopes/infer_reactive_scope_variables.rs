@@ -64,10 +64,11 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
         }
     }
 
-    // Phase 3: Build ReactiveScopes from disjoint sets
+    // Phase 3: Build ReactiveScopes from disjoint sets and map identifiers to scopes
     let sets = dsu.sets();
     let mut scope_id_counter = 0u32;
     let mut scopes = Vec::new();
+    let mut id_to_scope: FxHashMap<IdentifierId, ReactiveScope> = FxHashMap::default();
 
     for (_, members) in sets {
         // Compute merged range for the scope
@@ -96,8 +97,26 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
                 merged: Vec::new(),
                 loc: SourceLocation::default(),
             };
+            // Map all member identifiers to this scope
+            for &member in &members {
+                id_to_scope.insert(member, scope.clone());
+            }
             scopes.push(scope);
             scope_id_counter += 1;
+        }
+    }
+
+    // Phase 4: Assign scopes back to identifiers in the HIR
+    for (_, block) in &mut hir.blocks {
+        for instr in &mut block.instructions {
+            if let Some(scope) = id_to_scope.get(&instr.lvalue.identifier.id) {
+                instr.lvalue.identifier.scope = Some(Box::new(scope.clone()));
+            }
+        }
+        for phi in &mut block.phis {
+            if let Some(scope) = id_to_scope.get(&phi.place.identifier.id) {
+                phi.place.identifier.scope = Some(Box::new(scope.clone()));
+            }
         }
     }
 

@@ -4,12 +4,12 @@ expression: result.code
 ---
 import { c as _c } from "react/compiler-runtime";
 
-function Greeting(_t0) {
+function Greeting(t0) {
   const t10 = "div";
   /* t11 = Discriminant(8) */
   const t12 = name;
   /* t13 = Discriminant(8) */
   const t14 = age;
-  const t15 = <_t10>{_t11}{_t12}{_t13}{_t14}</_t10>;
-  return _t15;
+  const t15 = <t10>{t11}{t12}{t13}{t14}</t10>;
+  return t15;
 }

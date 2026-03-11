@@ -4,17 +4,17 @@ expression: result.code
 ---
 import { c as _c } from "react/compiler-runtime";
 
-function Header(_t0) {
+function Header(t0) {
   const t6 = "h1";
   const t7 = title;
-  const t8 = <_t6>{_t7}</_t6>;
-  return _t8;
+  const t8 = <t6>{t7}</t6>;
+  return t8;
 }
 
 
-function Footer(_t0) {
+function Footer(t0) {
   const t6 = "footer";
   const t7 = text;
-  const t8 = <_t6>{_t7}</_t6>;
-  return _t8;
+  const t8 = <t6>{t7}</t6>;
+  return t8;
 }

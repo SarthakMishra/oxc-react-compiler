@@ -1,12 +1,10 @@
 ---
-source: crates/oxc_react_compiler/tests/fixture_tests.rs
-expression: snapshot
----
-transformed: true
-diagnostics: 0
+source: crates/oxc_react_compiler/tests/snapshot_tests.rs
+expression: result.code
 ---
 import { c as _c } from "react/compiler-runtime";
-function useCounter() {
+
+function Counter() {
   const $ = _c(1);
   const t14 = useState;
   const t15 = 0;
@@ -17,8 +15,8 @@ function useCounter() {
   }
   /* t18 = Discriminant(4) */
   /* t19 = Discriminant(6) */
-  const t20 = count;
-  /* t21 = Discriminant(28) */
-  const t22 = { count, increment: t21 };
+  const t20 = "div";
+  const t21 = count;
+  const t22 = <t20>{t21}</t20>;
   return t22;
 }

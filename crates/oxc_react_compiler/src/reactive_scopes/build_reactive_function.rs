@@ -183,7 +183,9 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
                 continue;
             }
             Terminal::Scope { block: scope_block, fallthrough, scope } => {
-                let scope_reactive = build_reactive_block(hir, *scope_block);
+                // Build only the scope block's instructions without following its Goto terminal.
+                // The scope block's Goto points to fallthrough, which we process separately.
+                let scope_reactive = build_scope_block_only(hir, *scope_block);
 
                 // Try to find the ReactiveScope from the block's instructions
                 // by looking at the scope ID
@@ -217,6 +219,65 @@ fn build_reactive_block(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
             | Terminal::MaybeThrow { .. } => {
                 // These should have been lowered/simplified by earlier passes
                 break;
+            }
+        }
+    }
+
+    ReactiveBlock { instructions }
+}
+
+/// Build only the instructions from a single scope block, without following Goto terminals.
+/// This prevents duplication when the scope block's Goto leads to the fallthrough block.
+fn build_scope_block_only(hir: &HIR, block_id: BlockId) -> ReactiveBlock {
+    let mut instructions = Vec::new();
+
+    if let Some(block) = find_block(hir, block_id) {
+        for instr in &block.instructions {
+            instructions.push(ReactiveInstruction::Instruction(instr.clone()));
+        }
+
+        // Process the terminal, but don't follow Goto (that's the fallthrough).
+        // Other terminals (If, Switch, etc.) within the scope are processed normally.
+        match &block.terminal {
+            Terminal::Goto { .. } => {
+                // Don't follow — fallthrough is handled by the caller
+            }
+            Terminal::If { test, consequent, alternate, fallthrough } => {
+                let consequent_block = build_reactive_block(hir, *consequent);
+                let alternate_block = build_reactive_block(hir, *alternate);
+                instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::If {
+                    test: test.clone(),
+                    consequent: consequent_block,
+                    alternate: alternate_block,
+                    id: block_id,
+                }));
+                // Continue with fallthrough within the scope
+                let remaining = build_scope_block_only(hir, *fallthrough);
+                instructions.extend(remaining.instructions);
+            }
+            Terminal::Return { value } => {
+                instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Return {
+                    value: value.clone(),
+                    id: block_id,
+                }));
+            }
+            Terminal::Scope { block: scope_block, fallthrough, scope } => {
+                // Nested scope within scope
+                let scope_reactive = build_scope_block_only(hir, *scope_block);
+                let reactive_scope = find_scope_in_block(hir, *scope_block, *scope);
+                if let Some(rs) = reactive_scope {
+                    instructions.push(ReactiveInstruction::Scope(ReactiveScopeBlock {
+                        scope: rs,
+                        instructions: scope_reactive,
+                    }));
+                } else {
+                    instructions.extend(scope_reactive.instructions);
+                }
+                let remaining = build_scope_block_only(hir, *fallthrough);
+                instructions.extend(remaining.instructions);
+            }
+            _ => {
+                // For other terminals, process normally
             }
         }
     }

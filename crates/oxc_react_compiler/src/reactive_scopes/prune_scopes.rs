@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    BasicBlock, BlockId, BlockKind, HIR, IdentifierId, InstructionId, ReactiveBlock,
-    ReactiveFunction, ReactiveInstruction, ReactiveTerminal, ScopeId, Terminal,
+    ArrayElement, BasicBlock, BlockId, BlockKind, HIR, IdentifierId, InstructionId,
+    InstructionValue, ObjectPropertyKey, Place, ReactiveBlock, ReactiveFunction,
+    ReactiveInstruction, ReactiveTerminal, ScopeId, Terminal,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -479,20 +480,229 @@ fn promote_temps_in_block(block: &mut ReactiveBlock, counter: &mut u32) {
     for instr in &mut block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
-                if instruction.lvalue.identifier.name.is_none() {
-                    instruction.lvalue.identifier.name =
-                        Some(format!("t{}", instruction.lvalue.identifier.id.0));
-                }
+                promote_place(&mut instruction.lvalue);
+                promote_places_in_value(&mut instruction.value);
             }
             ReactiveInstruction::Scope(scope_block) => {
+                // Promote identifiers in scope dependencies and declarations
+                for dep in &mut scope_block.scope.dependencies {
+                    promote_identifier(&mut dep.identifier);
+                }
+                for (_, decl) in &mut scope_block.scope.declarations {
+                    promote_identifier(&mut decl.identifier);
+                }
                 promote_temps_in_block(&mut scope_block.instructions, counter);
             }
             ReactiveInstruction::Terminal(terminal) => {
+                promote_places_in_terminal(terminal);
                 for_each_block_in_terminal_mut(terminal, |block| {
                     promote_temps_in_block(block, counter);
                 });
             }
         }
+    }
+}
+
+fn promote_identifier(identifier: &mut crate::hir::types::Identifier) {
+    if identifier.name.is_none() {
+        identifier.name = Some(format!("t{}", identifier.id.0));
+    }
+}
+
+fn promote_place(place: &mut Place) {
+    promote_identifier(&mut place.identifier);
+}
+
+fn promote_places_in_terminal(terminal: &mut ReactiveTerminal) {
+    match terminal {
+        ReactiveTerminal::If { test, .. } => {
+            promote_place(test);
+        }
+        ReactiveTerminal::Switch { test, cases, .. } => {
+            promote_place(test);
+            for (test_val, _) in cases {
+                if let Some(tv) = test_val {
+                    promote_place(tv);
+                }
+            }
+        }
+        ReactiveTerminal::Return { value, .. } => {
+            promote_place(value);
+        }
+        ReactiveTerminal::Throw { value, .. } => {
+            promote_place(value);
+        }
+        ReactiveTerminal::For { .. }
+        | ReactiveTerminal::ForOf { .. }
+        | ReactiveTerminal::ForIn { .. }
+        | ReactiveTerminal::While { .. }
+        | ReactiveTerminal::DoWhile { .. }
+        | ReactiveTerminal::Label { .. }
+        | ReactiveTerminal::Try { .. } => {
+            // These terminals have blocks but no direct Place fields
+            // (blocks are walked by for_each_block_in_terminal_mut)
+        }
+    }
+}
+
+fn promote_places_in_value(value: &mut InstructionValue) {
+    match value {
+        InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+            promote_place(place);
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. } => {
+            promote_place(lvalue);
+            promote_place(value);
+        }
+        InstructionValue::StoreContext { lvalue, value } => {
+            promote_place(lvalue);
+            promote_place(value);
+        }
+        InstructionValue::DeclareLocal { lvalue, .. } => {
+            promote_place(lvalue);
+        }
+        InstructionValue::DeclareContext { lvalue } => {
+            promote_place(lvalue);
+        }
+        InstructionValue::Destructure { value, .. } => {
+            promote_place(value);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            promote_place(left);
+            promote_place(right);
+        }
+        InstructionValue::UnaryExpression { value, .. } => {
+            promote_place(value);
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            promote_place(lvalue);
+        }
+        InstructionValue::CallExpression { callee, args } => {
+            promote_place(callee);
+            for arg in args {
+                promote_place(arg);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            promote_place(receiver);
+            for arg in args {
+                promote_place(arg);
+            }
+        }
+        InstructionValue::NewExpression { callee, args } => {
+            promote_place(callee);
+            for arg in args {
+                promote_place(arg);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. } => {
+            promote_place(object);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            promote_place(object);
+            promote_place(value);
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            promote_place(object);
+            promote_place(property);
+        }
+        InstructionValue::ComputedStore {
+            object,
+            property,
+            value,
+        } => {
+            promote_place(object);
+            promote_place(property);
+            promote_place(value);
+        }
+        InstructionValue::PropertyDelete { object, .. } => {
+            promote_place(object);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            promote_place(object);
+            promote_place(property);
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                promote_place(&mut prop.value);
+                if let ObjectPropertyKey::Computed(p) = &mut prop.key {
+                    promote_place(p);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    ArrayElement::Spread(p) | ArrayElement::Expression(p) => {
+                        promote_place(p);
+                    }
+                    ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression {
+            tag,
+            props,
+            children,
+        } => {
+            promote_place(tag);
+            for attr in props {
+                promote_place(&mut attr.value);
+            }
+            for child in children {
+                promote_place(child);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                promote_place(child);
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                promote_place(sub);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            promote_place(tag);
+            for sub in &mut value.subexpressions {
+                promote_place(sub);
+            }
+        }
+        InstructionValue::StoreGlobal { value, .. } => {
+            promote_place(value);
+        }
+        InstructionValue::Await { value } => {
+            promote_place(value);
+        }
+        InstructionValue::GetIterator { collection } => {
+            promote_place(collection);
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            promote_place(iterator);
+        }
+        InstructionValue::NextPropertyOf { value } => {
+            promote_place(value);
+        }
+        InstructionValue::TypeCastExpression { value, .. } => {
+            promote_place(value);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            promote_place(decl);
+            for dep in deps {
+                promote_place(dep);
+            }
+        }
+        // No places in these variants
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
     }
 }
 

@@ -7,16 +7,9 @@ Last updated: 2026-03-11
 
 ---
 
-## Priority 1 -- Correctness (output is broken)
+## Priority 1 -- Core memoization (scopes created but boundaries wrong)
 
-- [ ] Fix `promote_used_temporaries` to rename ALL identifier references, not just lvalues -- [codegen-correctness.md](codegen-correctness.md)#gap-1-variable-reference-naming-mismatch-_tn-vs-tn
-- [ ] Fix `place_name()` fallback to use `t{id}` instead of `_t{id}` -- [codegen-correctness.md](codegen-correctness.md)#gap-3-place_name-fallback-uses-underscore-prefix
-
-## Priority 2 -- Core memoization (compiler produces no memoization)
-
-- [ ] Debug memoization pipeline: why no `ReactiveScopeBlock` nodes in output -- [memoization-codegen.md](memoization-codegen.md)#gap-1-verify-_cn-cache-allocation-is-emitted
-- [ ] Verify `propagate_scope_dependencies_hir` populates scope deps/decls -- [memoization-codegen.md](memoization-codegen.md)#gap-2-verify-n-memoization-slot-readswrites-are-emitted
-- [ ] Add end-to-end memoization snapshot test -- [memoization-codegen.md](memoization-codegen.md)#gap-3-end-to-end-memoization-test
+- [~] Fix scope boundary alignment so scopes wrap computation instructions, not discriminant markers -- [memoization-codegen.md](memoization-codegen.md)#gap-1-debug-memoization-pipeline----reactivescopeblock-generation
 
 ## Priority 3 -- Test coverage (upstream parity)
 
@@ -39,7 +32,7 @@ Last updated: 2026-03-11
 
 ## Active Work
 
-_(Nothing in progress)_
+- [~] Fix scope boundary alignment so scopes wrap computation instructions, not discriminant markers -- [memoization-codegen.md](memoization-codegen.md)#gap-1-debug-memoization-pipeline----reactivescopeblock-generation
 
 ---
 
@@ -53,6 +46,8 @@ _(Nothing blocked)_
 
 All previously planned workstreams have been completed:
 
+- **Codegen Correctness** -- Fixed `promote_used_temporaries` to walk all places (operands, terminals, scope deps/decls), fixed `place_name()` fallback to use `t{id}` instead of `_t{id}`, JSX naming fixed as a consequence
+- **Memoization Pipeline (partial)** -- Fixed scope assignment in `infer_reactive_scope_variables`, reactive param marking in `infer_reactive_places`, range extension in `infer_mutation_aliasing_ranges`, dependency/declaration population in `propagate_scope_dependencies_hir`, instruction dedup in `build_reactive_function`, added E2E memoization snapshot test
 - **Tier 2 Lint Rules** -- Full Rules of Hooks with CFG analysis, immutability checking, manual memoization preservation, exhaustive memo deps, exhaustive effect deps, structured DiagnosticKind filtering
 - **Source Maps** -- Source map generation from codegen, NAPI passthrough, Vite plugin wiring, whole-file source map composition
 - **Upstream Conformance** -- Fixture download, upstream oracle runner, differential comparison harness, output normalization
