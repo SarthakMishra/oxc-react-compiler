@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 10      | 1–10   | Full compiler: HIR foundation, BuildHIR, SSA, optimization, inference, reactive scopes, validation, pipeline, lint rules, testing |
+| [001.md](001.md) | 11      | 1–11   | Full compiler: HIR foundation, BuildHIR, SSA, optimization, inference, reactive scopes, validation, pipeline, lint rules, testing, end-to-end wiring |
 
 ## Archive
 

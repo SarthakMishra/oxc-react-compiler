@@ -7,58 +7,46 @@ Last updated: 2026-03-11
 
 ---
 
-## Critical Path: End-to-End Compilation
+## Priority 1: Upstream Conformance
 
-These items must be completed in order for the compiler to transform ANY code.
-They form a strict dependency chain.
+- [ ] Port upstream fixture inputs into test suite — [conformance.md](conformance.md)#gap-1-port-upstream-fixture-inputs
+- [ ] Run upstream Babel plugin as reference oracle — [conformance.md](conformance.md)#gap-2-run-upstream-babel-plugin-as-reference-oracle
+- [ ] Build differential comparison harness — [conformance.md](conformance.md)#gap-3-differential-comparison-harness
+- [ ] Add behavioral equivalence normalization — [conformance.md](conformance.md)#gap-4-behavioral-equivalence-normalization
+---
 
-- [x] Wire compile_program to call BuildHIR for discovered functions -- [pipeline.md](pipeline.md)#gap-1-wire-compile-program-to-buildhir
-- [x] Wire pipeline passes 29-46 (reactive scope construction) -- [pipeline.md](pipeline.md)#gap-2-wire-reactive-scope-construction-passes-29-46
-- [x] Wire pipeline passes 47-60 (build RF + RF optimization) -- [pipeline.md](pipeline.md)#gap-3-wire-build-reactive-function-and-rf-optimization-passes-47-60
-- [x] Wire pipeline pass 62 (codegen) and apply edits in compile_program -- [pipeline.md](pipeline.md)#gap-4-wire-codegen-and-source-replacement
-- [x] Fix build_reactive_scope_terminals_hir to actually split blocks at scope boundaries -- [reactive-scopes.md](reactive-scopes.md)#gap-1-build-reactive-scope-terminals-hir-is-a-stub
+## Priority 2: Source Map Support
+
+- [ ] Expose source map from compile_program — [source-maps.md](source-maps.md)#gap-1-expose-source-map-from-compile_program
+- [ ] Whole-file source map composition — [source-maps.md](source-maps.md)#gap-4-whole-file-source-map-composition
+- [ ] Pass source map through NAPI binding — [source-maps.md](source-maps.md)#gap-2-pass-source-map-through-napi-binding
+- [ ] Wire source map in Vite plugin — [source-maps.md](source-maps.md)#gap-3-wire-source-map-in-vite-plugin
 
 ---
 
-## Priority 1: Correctness (affects memoization output)
+## Priority 3: Tier 2 Lint Rules
 
-These passes exist but are incomplete. Incorrect behavior here means wrong memoization decisions.
-
-- [x] Complete infer_mutation_aliasing_effects phases 2-3 (abstract heap, fixpoint) -- [inference.md](inference.md)#gap-1-infer-mutation-aliasing-effects-phases-2-3
-- [x] Complete infer_mutation_aliasing_ranges (transitive tracking) -- [inference.md](inference.md)#gap-2-infer-mutation-aliasing-ranges-transitive-tracking
-- [x] Wire validate_hooks_usage and validate_no_capitalized_calls into pipeline -- [pipeline.md](pipeline.md)#gap-5-wire-validation-passes-12-13
-- [x] Wire validate_exhaustive_dependencies into pipeline (pass 30) -- [pipeline.md](pipeline.md)#gap-6-wire-validate-exhaustive-dependencies
-- [x] Wire validate_locals_not_reassigned_after_render into pipeline (pass 21) -- [pipeline.md](pipeline.md)#gap-7-wire-validate-locals-not-reassigned-after-render
-- [x] Wire validate_preserved_manual_memoization into pipeline (pass 61) -- [pipeline.md](pipeline.md)#gap-8-wire-validate-preserved-manual-memoization
+- [ ] Structured error categories for lint filtering — [tier2-lint.md](tier2-lint.md)#gap-6-structured-error-categories-for-lint-filtering
+- [ ] check_hooks_tier2: full Rules of Hooks with CFG analysis — [tier2-lint.md](tier2-lint.md)#gap-1-check_hooks_tier2----full-rules-of-hooks-with-cfg-analysis
+- [ ] check_immutability: mutation of frozen values — [tier2-lint.md](tier2-lint.md)#gap-2-check_immutability----mutation-of-frozen-values
+- [ ] check_preserve_manual_memoization — [tier2-lint.md](tier2-lint.md)#gap-3-check_preserve_manual_memoization
+- [ ] check_memo_dependencies: exhaustive useMemo/useCallback deps — [tier2-lint.md](tier2-lint.md)#gap-4-check_memo_dependencies----exhaustive-usememousecallback-deps
+- [ ] check_exhaustive_effect_deps: exhaustive useEffect deps — [tier2-lint.md](tier2-lint.md)#gap-5-check_exhaustive_effect_deps----exhaustive-useeffect-deps
 
 ---
 
-## Priority 2: Optimization Passes (no-op stubs)
+## Priority 4: Documentation
 
-These are real optimization passes that are currently no-ops. They affect output quality
-but not correctness. The compiler will work without them.
-
-- [x] Implement inline_iife -- [optimization.md](optimization.md)#gap-1-inline-iife
-- [x] Implement optimize_props_method_calls -- [optimization.md](optimization.md)#gap-2-optimize-props-method-calls
-- [x] Implement outline_jsx -- [optimization.md](optimization.md)#gap-3-outline-jsx
-- [x] Implement outline_functions -- [optimization.md](optimization.md)#gap-4-outline-functions
-- [x] Implement optimize_for_ssr -- [optimization.md](optimization.md)#gap-5-optimize-for-ssr
+- [ ] Vite plugin usage guide — [docs.md](docs.md)#gap-1-vite-plugin-usage-guide
+- [ ] Lint rules documentation — [docs.md](docs.md)#gap-2-lint-rules-documentation
+- [ ] Configuration reference — [docs.md](docs.md)#gap-3-configuration-reference
+- [ ] Known limitations section — [docs.md](docs.md)#gap-4-known-limitations-section
 
 ---
 
-## Priority 3: Testing Infrastructure
+## Priority 5: End-of-Project Cleanup
 
-- [x] Build fixture test harness comparing against upstream compiler snapshots -- [testing.md](testing.md)#gap-1-upstream-fixture-test-harness
-- [x] Add end-to-end transformation snapshot tests -- [testing.md](testing.md)#gap-2-end-to-end-snapshot-tests
-- [x] Add per-pass unit tests for inference and reactive scope passes -- [testing.md](testing.md)#gap-3-per-pass-unit-tests
-
----
-
-## Priority 4: Integration and Polish
-
-- [x] Implement Tier 2 lint rules (currently all return empty vecs) -- [lint.md](lint.md)#gap-1-tier-2-lint-rules
-- [x] Add source map generation to codegen -- [codegen.md](codegen.md)#gap-1-source-map-generation
-- [x] Vite plugin depends on pipeline working -- no code changes needed, just pipeline completion
+- [ ] Fix all clippy warnings (`cargo clippy --all-targets --all-features`) — iteratively fix real issues (unused variables, unused imports, type casts, missing docs, etc.) and suppress false positives with targeted `#[allow(...)]` attributes where appropriate. This is strictly last-priority cleanup work.
 
 ---
 
