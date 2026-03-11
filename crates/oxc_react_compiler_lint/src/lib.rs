@@ -5,7 +5,7 @@ use oxc_ast::ast::Program;
 use oxc_diagnostics::OxcDiagnostic;
 
 use rules::{
-    incompatible_library::check_incompatible_library,
+    globals::check_globals, incompatible_library::check_incompatible_library,
     no_capitalized_calls::check_no_capitalized_calls,
     no_deriving_state_in_effects::check_no_deriving_state_in_effects,
     no_jsx_in_try::check_no_jsx_in_try, no_ref_access_in_render::check_no_ref_access_in_render,
@@ -33,6 +33,7 @@ pub fn run_lint_rules<'a>(program: &Program<'a>) -> Vec<OxcDiagnostic> {
     diagnostics.extend(check_incompatible_library(program));
     diagnostics.extend(check_static_components(program));
     diagnostics.extend(check_no_deriving_state_in_effects(program));
+    diagnostics.extend(check_globals(program));
 
     diagnostics
 }

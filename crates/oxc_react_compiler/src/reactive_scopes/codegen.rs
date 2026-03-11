@@ -634,6 +634,48 @@ fn binary_op_str(op: crate::hir::types::BinaryOp) -> &'static str {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Source map generation
+// ---------------------------------------------------------------------------
+
+/// Basic source map generation.
+/// Maps output positions back to original source positions.
+#[derive(Debug, Clone)]
+pub struct SourceMap {
+    pub mappings: Vec<SourceMapEntry>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SourceMapEntry {
+    pub generated_line: u32,
+    pub generated_column: u32,
+    pub original_line: u32,
+    pub original_column: u32,
+}
+
+impl SourceMap {
+    pub fn new() -> Self {
+        Self {
+            mappings: Vec::new(),
+        }
+    }
+
+    pub fn add_mapping(&mut self, gen_line: u32, gen_col: u32, orig_line: u32, orig_col: u32) {
+        self.mappings.push(SourceMapEntry {
+            generated_line: gen_line,
+            generated_column: gen_col,
+            original_line: orig_line,
+            original_column: orig_col,
+        });
+    }
+}
+
+impl Default for SourceMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn unary_op_str(op: crate::hir::types::UnaryOp) -> &'static str {
     use crate::hir::types::UnaryOp;
     match op {

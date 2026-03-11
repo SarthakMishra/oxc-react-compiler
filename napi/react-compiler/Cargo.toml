@@ -9,6 +9,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 oxc_react_compiler.workspace = true
+oxc_react_compiler_lint.workspace = true
+oxc_allocator.workspace = true
+oxc_parser.workspace = true
+oxc_span.workspace = true
 napi.workspace = true
 napi-derive.workspace = true
 

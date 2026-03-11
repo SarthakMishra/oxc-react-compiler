@@ -84,3 +84,56 @@ pub struct SourceFilter {
     /// Glob patterns for files to exclude
     pub exclude: Vec<String>,
 }
+
+impl PluginOptions {
+    /// Parse options from a JSON-like key-value map.
+    pub fn from_map(map: &std::collections::HashMap<String, String>) -> Self {
+        let mut opts = Self::default();
+
+        if let Some(mode) = map.get("compilationMode") {
+            opts.compilation_mode = match mode.as_str() {
+                "all" => CompilationMode::All,
+                "syntax" => CompilationMode::Syntax,
+                "annotation" => CompilationMode::Annotation,
+                _ => CompilationMode::Infer,
+            };
+        }
+
+        if let Some(output) = map.get("outputMode") {
+            opts.output_mode = match output.as_str() {
+                "ssr" => OutputMode::SSR,
+                "lint" => OutputMode::Lint,
+                _ => OutputMode::Client,
+            };
+        }
+
+        if let Some(target) = map.get("target") {
+            opts.target = match target.as_str() {
+                "17" | "react17" => ReactTarget::React17,
+                "18" | "react18" => ReactTarget::React18,
+                _ => ReactTarget::React19,
+            };
+        }
+
+        if let Some(threshold) = map.get("panicThreshold") {
+            opts.panic_threshold = match threshold.as_str() {
+                "all" | "ALL_ERRORS" => PanicThreshold::AllErrors,
+                "none" | "NONE" => PanicThreshold::None,
+                _ => PanicThreshold::CriticalErrors,
+            };
+        }
+
+        opts
+    }
+}
+
+impl GatingConfig {
+    /// Generate the gating wrapper code.
+    pub fn generate_wrapper(&self, compiled_code: &str) -> String {
+        format!(
+            "import {{ {} }} from \"{}\";\n\
+             if ({}()) {{\n{}\n}}",
+            self.function_name, self.import_source, self.function_name, compiled_code
+        )
+    }
+}

@@ -32,6 +32,9 @@ pub struct EnvironmentConfig {
     pub enable_optional_dependencies: bool,
     pub enable_treat_ref_like_identifiers_as_refs: bool,
 
+    // Output mode
+    pub enable_ssr: bool,
+
     // Dev/HMR
     pub enable_reset_cache_on_source_file_changes: bool,
     pub enable_emit_hook_guards: bool,
@@ -61,6 +64,7 @@ impl Default for EnvironmentConfig {
             enable_transitively_freeze_function_expressions: true,
             enable_optional_dependencies: true,
             enable_treat_ref_like_identifiers_as_refs: false,
+            enable_ssr: false,
             enable_reset_cache_on_source_file_changes: false,
             enable_emit_hook_guards: false,
             custom_macros: Vec::new(),

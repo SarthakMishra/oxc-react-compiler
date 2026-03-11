@@ -1,3 +1,4 @@
+pub mod globals;
 pub mod incompatible_library;
 pub mod no_capitalized_calls;
 pub mod no_deriving_state_in_effects;

@@ -41,8 +41,8 @@ _(Nothing in progress)_
 - [x] HIR lowering: destructuring (object, array, nested, defaults, rest) — [build-hir.md](build-hir.md)#gap-6-destructuring-lowering
 - [x] HIR lowering: patterns (for-of, for-in, spread, computed properties) — [build-hir.md](build-hir.md)#gap-7-pattern-and-iterator-lowering
 - [x] Function discovery (find compilable components/hooks from OXC AST) — [build-hir.md](build-hir.md)#gap-8-function-discovery
-- [ ] Context variable handling (captured variables, closure analysis) — [build-hir.md](build-hir.md)#gap-9-context-variable-handling
-- [ ] Manual memoization markers (StartMemoize/FinishMemoize for useMemo/useCallback) — [build-hir.md](build-hir.md)#gap-10-manual-memoization-markers
+- [x] Context variable handling (captured variables, closure analysis) — [build-hir.md](build-hir.md)#gap-9-context-variable-handling
+- [x] Manual memoization markers (StartMemoize/FinishMemoize for useMemo/useCallback) — [build-hir.md](build-hir.md)#gap-10-manual-memoization-markers
 
 ### Phase 3: SSA and Early Optimization
 
@@ -97,7 +97,7 @@ _(Nothing in progress)_
 - [x] PruneHoistedContexts — [reactive-scopes.md](reactive-scopes.md)#gap-25-prunehoistedcontexts
 - [x] CodegenFunction (ReactiveFunction to JavaScript output) — [codegen.md](codegen.md)#gap-1-codegenfunction
 - [x] Import insertion (react/compiler-runtime) — [codegen.md](codegen.md)#gap-2-import-insertion
-- [ ] Source map generation — [codegen.md](codegen.md)#gap-3-source-map-generation
+- [x] Source map generation — [codegen.md](codegen.md)#gap-3-source-map-generation
 
 ---
 
@@ -130,11 +130,11 @@ _(Nothing in progress)_
 
 - [x] Pipeline orchestrator (run all 62 passes in order with config-based gating) — [pipeline.md](pipeline.md)#gap-1-pipeline-orchestrator
 - [x] Program-level compilation loop (discover functions, compile each, collect edits) — [pipeline.md](pipeline.md)#gap-2-program-level-compilation-loop
-- [ ] Lint mode (run pipeline, collect errors, skip codegen) — [pipeline.md](pipeline.md)#gap-3-lint-mode
-- [ ] OptimizeForSSR pass — [pipeline.md](pipeline.md)#gap-4-optimizeforssr
-- [ ] OutlineJSX pass — [pipeline.md](pipeline.md)#gap-5-outlinejsx
-- [ ] NameAnonymousFunctions pass — [pipeline.md](pipeline.md)#gap-6-nameanonymousfunctions
-- [ ] OutlineFunctions pass — [pipeline.md](pipeline.md)#gap-7-outlinefunctions
+- [x] Lint mode (run pipeline, collect errors, skip codegen) — [pipeline.md](pipeline.md)#gap-3-lint-mode
+- [x] OptimizeForSSR pass — [pipeline.md](pipeline.md)#gap-4-optimizeforssr
+- [x] OutlineJSX pass — [pipeline.md](pipeline.md)#gap-5-outlinejsx
+- [x] NameAnonymousFunctions pass — [pipeline.md](pipeline.md)#gap-6-nameanonymousfunctions
+- [x] OutlineFunctions pass — [pipeline.md](pipeline.md)#gap-7-outlinefunctions
 
 ### Oxlint Rules (Tier 1 -- standalone AST rules)
 
@@ -148,7 +148,7 @@ _(Nothing in progress)_
 - [x] no-set-state-in-effects — [lint-rules.md](lint-rules.md)#gap-8-no-set-state-in-effects
 - [x] no-ref-access-in-render — [lint-rules.md](lint-rules.md)#gap-9-no-ref-access-in-render
 - [x] no-deriving-state-in-effects — [lint-rules.md](lint-rules.md)#gap-10-no-deriving-state-in-effects
-- [ ] globals — [lint-rules.md](lint-rules.md)#gap-11-globals
+- [x] globals — [lint-rules.md](lint-rules.md)#gap-11-globals
 
 ---
 
@@ -158,8 +158,8 @@ _(Nothing in progress)_
 
 - [x] NAPI bindings (async task pattern, TransformResult) — [integration.md](integration.md)#gap-1-napi-bindings
 - [ ] Vite plugin (transform hook, file filtering, HMR) — [integration.md](integration.md)#gap-2-vite-plugin
-- [ ] Configuration parsing (JSON/TOML to PluginOptions) — [integration.md](integration.md)#gap-3-configuration-parsing
-- [ ] Gating support (feature flag wrapping) — [integration.md](integration.md)#gap-4-gating-support
+- [x] Configuration parsing (JSON/TOML to PluginOptions) — [integration.md](integration.md)#gap-3-configuration-parsing
+- [x] Gating support (feature flag wrapping) — [integration.md](integration.md)#gap-4-gating-support
 
 ### Oxlint Rules (Tier 2 -- compiler-dependent)
 

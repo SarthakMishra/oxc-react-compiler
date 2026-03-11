@@ -430,7 +430,11 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "oxc_allocator",
+ "oxc_parser",
  "oxc_react_compiler",
+ "oxc_react_compiler_lint",
+ "oxc_span",
 ]
 
 [[package]]

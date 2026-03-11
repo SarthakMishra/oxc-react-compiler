@@ -16,7 +16,7 @@ use oxc_span::Span;
 use oxc_syntax::operator::{
     AssignmentOperator, BinaryOperator, LogicalOperator, UnaryOperator, UpdateOperator,
 };
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::environment::{Environment, EnvironmentConfig};
 use super::types::*;
@@ -138,6 +138,13 @@ pub struct HIRBuilder {
 
     /// Monotonically increasing label counter for the `Label` terminal.
     next_label: u32,
+
+    /// Set of variable names that refer to context (captured from outer scope).
+    /// When an identifier in this set is loaded, we emit `LoadContext` instead of `LoadLocal`.
+    context_vars: FxHashSet<String>,
+
+    /// Monotonically increasing ID for manual memoization markers (useMemo/useCallback).
+    next_memo_id: u32,
 }
 
 impl HIRBuilder {
@@ -166,7 +173,15 @@ impl HIRBuilder {
             continue_targets: Vec::new(),
             label_map: FxHashMap::default(),
             next_label: 0,
+            context_vars: FxHashSet::default(),
+            next_memo_id: 0,
         }
+    }
+
+    /// Track context variables (captured from outer scope).
+    /// Call this when building a nested function to set up context tracking.
+    fn setup_context_variables(&mut self, outer_scope_vars: &[String]) {
+        self.context_vars = outer_scope_vars.iter().cloned().collect();
     }
 
     // ------------------------------------------------------------------
@@ -1378,8 +1393,6 @@ impl HIRBuilder {
             // Identifiers
             Expression::Identifier(ident) => {
                 let name = ident.name.to_string();
-                // In a real implementation we'd check scope to distinguish
-                // local vs global. For now, emit LoadLocal for all.
                 if is_global_name(&name) {
                     self.emit(
                         InstructionValue::LoadGlobal {
@@ -1390,6 +1403,10 @@ impl HIRBuilder {
                         },
                         loc,
                     )
+                } else if self.context_vars.contains(&name) {
+                    // Variable captured from an outer scope — use context ops
+                    let place = self.make_named_place(&name, loc);
+                    self.emit(InstructionValue::LoadContext { place }, loc)
                 } else {
                     let place = self.make_named_place(&name, loc);
                     self.emit(InstructionValue::LoadLocal { place }, loc)
@@ -1757,6 +1774,46 @@ impl HIRBuilder {
     // ------------------------------------------------------------------
 
     fn lower_call_expression(&mut self, call: &ast::CallExpression<'_>, loc: Span) -> Place {
+        // Detect useMemo / useCallback for manual memoization markers
+        if let Some(callee_name) = extract_callee_name(&call.callee) {
+            if callee_name == "useMemo" || callee_name == "useCallback" {
+                let memo_id = self.next_memo_id;
+                self.next_memo_id += 1;
+                self.emit(
+                    InstructionValue::StartMemoize {
+                        manual_memo_id: memo_id,
+                    },
+                    loc,
+                );
+                // Lower the call normally
+                let callee = self.lower_expression(&call.callee);
+                let args = self.lower_arguments(&call.arguments);
+                let result = self.emit(
+                    InstructionValue::CallExpression {
+                        callee,
+                        args: args.clone(),
+                    },
+                    loc,
+                );
+                // The deps array is the second argument, if present
+                let deps = if args.len() > 1 {
+                    vec![args[1].clone()]
+                } else {
+                    Vec::new()
+                };
+                self.emit(
+                    InstructionValue::FinishMemoize {
+                        manual_memo_id: memo_id,
+                        decl: result.clone(),
+                        deps,
+                        pruned: false,
+                    },
+                    loc,
+                );
+                return result;
+            }
+        }
+
         // Check if callee is a member expression → MethodCall
         match &call.callee {
             Expression::StaticMemberExpression(member) => {
@@ -2408,6 +2465,14 @@ impl HIRBuilder {
 // ---------------------------------------------------------------------------
 
 /// Check whether a name is likely a global (heuristic).
+/// Extract the simple name of a callee expression, if it's a plain identifier.
+fn extract_callee_name(expr: &Expression<'_>) -> Option<String> {
+    match expr.without_parentheses() {
+        Expression::Identifier(ident) => Some(ident.name.to_string()),
+        _ => None,
+    }
+}
+
 fn is_global_name(name: &str) -> bool {
     matches!(
         name,

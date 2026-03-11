@@ -44,3 +44,53 @@ pub fn transform_react_file(
         transformed: result.transformed,
     }
 }
+
+#[napi(object)]
+pub struct LintResult {
+    pub diagnostics: Vec<LintDiagnostic>,
+}
+
+#[napi(object)]
+pub struct LintDiagnostic {
+    pub message: String,
+    pub start: u32,
+    pub end: u32,
+}
+
+#[napi]
+pub fn lint_react_file(source: String, filename: String) -> LintResult {
+    let allocator = oxc_allocator::Allocator::default();
+    let source_type = oxc_span::SourceType::from_path(&filename).unwrap_or_default();
+    let parser_ret = oxc_parser::Parser::new(&allocator, &source, source_type).parse();
+
+    if parser_ret.panicked {
+        return LintResult {
+            diagnostics: vec![],
+        };
+    }
+
+    let oxc_diagnostics = oxc_react_compiler_lint::run_lint_rules(&parser_ret.program);
+
+    let diagnostics = oxc_diagnostics
+        .into_iter()
+        .map(|d| {
+            let (start, end) = d
+                .labels
+                .as_ref()
+                .and_then(|labels| labels.first())
+                .map(|label| {
+                    let s = label.offset() as u32;
+                    let e = s + label.len() as u32;
+                    (s, e)
+                })
+                .unwrap_or((0, 0));
+            LintDiagnostic {
+                message: d.message.to_string(),
+                start,
+                end,
+            }
+        })
+        .collect();
+
+    LintResult { diagnostics }
+}

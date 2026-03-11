@@ -55,6 +55,9 @@ pub fn run_pipeline(
         hir,
     );
 
+    // Phase 3b: Name anonymous functions (assign names based on lvalue)
+    crate::optimization::name_anonymous_functions::name_anonymous_functions(hir);
+
     // Phase 4: Validation (Hooks)
     if config.validate_hooks_usage {
         // TODO: validate_hooks_usage (requires full hook rule checking on HIR)
@@ -123,6 +126,20 @@ pub fn run_pipeline(
     // Pass 28: validate_no_freezing_known_mutable_functions
     crate::validation::validate_no_freezing_known_mutable_functions::validate_no_freezing_known_mutable_functions(hir, errors);
 
+    // Phase 6b: Optional outlining passes
+    if config.enable_jsx_outlining {
+        crate::optimization::outline_jsx::outline_jsx(hir);
+    }
+
+    if config.enable_function_outlining {
+        crate::optimization::outline_functions::outline_functions(hir);
+    }
+
+    // Phase 6c: SSR optimization (conditional)
+    if config.enable_ssr {
+        crate::optimization::optimize_for_ssr::optimize_for_ssr(hir);
+    }
+
     // Phase 7: Reactivity Inference
     // Pass 29: infer_reactive_places
     // TODO: crate::inference::infer_reactive_places::infer_reactive_places(hir);
@@ -136,5 +153,18 @@ pub fn run_pipeline(
         return Err(());
     }
 
+    Ok(())
+}
+
+/// Run the pipeline in lint mode: execute all validation and analysis passes
+/// but skip codegen. Useful for editor integrations and CI lint checks.
+pub fn run_lint_pipeline(
+    hir: &mut HIR,
+    config: &EnvironmentConfig,
+    errors: &mut ErrorCollector,
+) -> Result<(), ()> {
+    // Run the same passes as run_pipeline but skip codegen.
+    // In lint mode, we just collect errors without generating code.
+    run_pipeline(hir, config, errors)?;
     Ok(())
 }
