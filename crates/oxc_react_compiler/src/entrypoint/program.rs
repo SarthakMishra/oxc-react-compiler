@@ -106,8 +106,9 @@ fn compile_program_inner(
 
 /// Compose per-function source maps into a single source map for the whole file.
 ///
-/// This offsets each per-function source map's generated positions to account for
-/// the import statement added at the top and any preceding unmodified code.
+/// Generates identity mappings for unmodified regions (code between compiled
+/// functions passes through unchanged) and offsets per-function source maps
+/// to account for the import line and line count changes from compilation.
 fn compose_source_maps(
     original_source: &str,
     compiled_functions: &[(Span, String)],
@@ -118,68 +119,104 @@ fn compose_source_maps(
     // The import statement adds 1 line at the top.
     let import_line_offset: u32 = 1;
 
-    // Build a sorted list of (span, compiled_code) to compute output positions.
+    // Build a sorted list of edits.
     let mut edits: Vec<(usize, usize, &str)> = compiled_functions
         .iter()
         .map(|(span, code)| (span.start as usize, span.end as usize, code.as_str()))
         .collect();
     edits.sort_by_key(|e| e.0);
 
-    // For each function source map, compute the line offset in the output.
-    for (func_span, func_sm) in function_source_maps {
-        // Count lines in the original source before this function's span start.
-        // After apply_compilation, the import is prepended, and earlier edits
-        // may have changed the line count.
-        let output_line_offset = compute_output_line_offset(
-            original_source,
-            func_span.start as usize,
-            &edits,
-            import_line_offset,
-        );
+    // Build a map from span start to source map for quick lookup.
+    let sm_map: std::collections::HashMap<usize, &SourceMap> =
+        function_source_maps.iter().map(|(span, sm)| (span.start as usize, sm)).collect();
 
-        for entry in &func_sm.mappings {
-            composed.add_mapping(
-                entry.generated_line + output_line_offset,
-                entry.generated_column,
-                entry.original_line,
-                entry.original_column,
-            );
+    // Walk through the source, emitting identity mappings for unmodified regions
+    // and offset function source maps for compiled regions.
+    let mut output_line: u32 = import_line_offset; // Start after the import line
+    let mut output_col: u32 = 0;
+    let mut source_pos: usize = 0;
+    let mut orig_line: u32 = 0;
+    let mut orig_col: u32 = 0;
+
+    for &(edit_start, edit_end, replacement) in &edits {
+        // Emit identity mappings for the unmodified region before this edit.
+        if source_pos < edit_start {
+            let unmodified = &original_source[source_pos..edit_start];
+            for ch in unmodified.chars() {
+                if output_col == 0 || ch == '\n' {
+                    // Map start of each line in the unmodified region
+                    if ch != '\n' {
+                        composed.add_mapping(output_line, output_col, orig_line, orig_col);
+                    }
+                }
+                if ch == '\n' {
+                    output_line += 1;
+                    output_col = 0;
+                    orig_line += 1;
+                    orig_col = 0;
+                } else {
+                    output_col += 1;
+                    orig_col += 1;
+                }
+            }
+        }
+
+        // Emit the per-function source map entries, offset to the current output position.
+        if let Some(func_sm) = sm_map.get(&edit_start) {
+            for entry in &func_sm.mappings {
+                composed.add_mapping(
+                    entry.generated_line + output_line,
+                    entry.generated_column,
+                    entry.original_line,
+                    entry.original_column,
+                );
+            }
+        }
+
+        // Advance output position past the replacement.
+        for ch in replacement.chars() {
+            if ch == '\n' {
+                output_line += 1;
+                output_col = 0;
+            } else {
+                output_col += 1;
+            }
+        }
+
+        // Advance source position past the original span, tracking original line/col.
+        for ch in original_source[source_pos..edit_end].chars() {
+            if ch == '\n' {
+                orig_line += 1;
+                orig_col = 0;
+            } else {
+                orig_col += 1;
+            }
+        }
+        source_pos = edit_end;
+    }
+
+    // Emit identity mappings for any remaining unmodified code after the last edit.
+    if source_pos < original_source.len() {
+        let remaining = &original_source[source_pos..];
+        for ch in remaining.chars() {
+            if output_col == 0 || ch == '\n' {
+                if ch != '\n' {
+                    composed.add_mapping(output_line, output_col, orig_line, orig_col);
+                }
+            }
+            if ch == '\n' {
+                output_line += 1;
+                output_col = 0;
+                orig_line += 1;
+                orig_col = 0;
+            } else {
+                output_col += 1;
+                orig_col += 1;
+            }
         }
     }
 
     composed
-}
-
-/// Compute the line offset in the output for a function at the given byte offset.
-///
-/// Accounts for the import line and any earlier compiled functions whose line
-/// count may differ from the original code they replaced.
-fn compute_output_line_offset(
-    original_source: &str,
-    func_start: usize,
-    edits: &[(usize, usize, &str)],
-    import_line_offset: u32,
-) -> u32 {
-    let mut line_delta: i32 = import_line_offset as i32;
-
-    // Count lines before func_start, adjusting for earlier edits.
-    for &(edit_start, edit_end, replacement) in edits {
-        if edit_start >= func_start {
-            break;
-        }
-        // Lines removed from original
-        let original_lines =
-            original_source[edit_start..edit_end].chars().filter(|&c| c == '\n').count() as i32;
-        // Lines added by replacement
-        let replacement_lines = replacement.chars().filter(|&c| c == '\n').count() as i32;
-        line_delta += replacement_lines - original_lines;
-    }
-
-    // Lines in the original source before func_start
-    let original_lines_before =
-        original_source[..func_start].chars().filter(|&c| c == '\n').count() as u32;
-
-    (original_lines_before as i32 + line_delta) as u32
 }
 
 /// Try to compile a single function, returning the compiled code on success.
