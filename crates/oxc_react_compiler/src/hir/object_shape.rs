@@ -1,0 +1,1 @@
+// ShapeRegistry and FunctionSignature types.

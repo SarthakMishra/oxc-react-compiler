@@ -1,0 +1,1 @@
+// Hook usage validation pass.

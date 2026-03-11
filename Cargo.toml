@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/oxc_react_compiler",
+    "crates/oxc_react_compiler_lint",
+    "napi/react-compiler",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/user/oxc-react-compiler"
+
+[workspace.dependencies]
+# OXC ecosystem (pin to 0.117 series)
+oxc_allocator = "0.117"
+oxc_ast = "0.117"
+oxc_diagnostics = "0.117"
+oxc_parser = "0.117"
+oxc_semantic = "0.117"
+oxc_span = "0.117"
+oxc_syntax = "0.117"
+
+# Workspace crates
+oxc_react_compiler = { path = "crates/oxc_react_compiler" }
+oxc_react_compiler_lint = { path = "crates/oxc_react_compiler_lint" }
+
+# Shared dependencies
+rustc-hash = "2"
+bitflags = "2"
+log = "0.4"
+
+# NAPI
+napi = { version = "2", features = ["napi9"] }
+napi-derive = "2"
+
+# Testing
+insta = { version = "1", features = ["glob"] }

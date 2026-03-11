@@ -1,0 +1,16 @@
+[package]
+name = "oxc-react-compiler-napi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oxc_react_compiler.workspace = true
+napi.workspace = true
+napi-derive.workspace = true
+
+[build-dependencies]
+napi-build = "2"

@@ -1,0 +1,31 @@
+# Build
+/target
+/napi/react-compiler/*.node
+
+# Dependencies
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+*.local.json
+
+# MCP config
+.mcp.json
+
+# Serena
+.serena/
+
+# Misc
+*.log
