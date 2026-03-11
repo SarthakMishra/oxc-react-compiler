@@ -17,9 +17,9 @@ function Display(t0) {
   const count = t27;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     /* t29 = Discriminant(4) */
+    const t30 = count;
+    const t31 = 0;
+    const t32 = t30 > t31;
   } else {
   }
-  const t30 = count;
-  const t31 = 0;
-  const t32 = t30 > t31;
 }

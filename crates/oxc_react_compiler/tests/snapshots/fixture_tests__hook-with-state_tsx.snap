@@ -7,18 +7,23 @@ diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
 function useCounter() {
-  const $ = _c(1);
+  const $ = _c(3);
   const t14 = useState;
   const t15 = 0;
   const t16 = t14(t15);
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     /* t17 = Discriminant(4) */
+    /* t18 = Discriminant(4) */
   } else {
   }
-  /* t18 = Discriminant(4) */
   /* t19 = Discriminant(6) */
-  const t20 = count;
-  /* t21 = Discriminant(28) */
-  const t22 = { count, increment: t21 };
+  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+    const t20 = count;
+    /* t21 = Discriminant(28) */
+    const t22 = { count, increment: t21 };
+    $[2] = t22;
+  } else {
+    t22 = $[2];
+  }
   return t22;
 }

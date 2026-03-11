@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    ArrayElement, BasicBlock, BlockId, BlockKind, HIR, IdentifierId, InstructionId,
-    InstructionValue, ObjectPropertyKey, Place, ReactiveBlock, ReactiveFunction,
-    ReactiveInstruction, ReactiveTerminal, ScopeId, Terminal,
+    ArrayElement, BasicBlock, BlockId, BlockKind, HIR, IdentifierId, InstructionValue,
+    ObjectPropertyKey, Place, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
+    ReactiveTerminal, ScopeId, Terminal,
 };
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 /// Prune reactive scopes that don't escape the function.
 pub fn prune_non_escaping_scopes(rf: &mut ReactiveFunction) {
@@ -809,47 +809,72 @@ pub fn memoize_fbt_and_macro_operands_in_same_scope(hir: &mut HIR) {
 /// This splits blocks at scope boundaries and wraps scoped instructions so that
 /// `build_reactive_function` can produce `ReactiveScopeBlock` nodes.
 pub fn build_reactive_scope_terminals_hir(hir: &mut HIR) {
-    // Step 1: Collect unique scopes with their instruction ID ranges.
-    let mut scope_map: FxHashMap<ScopeId, (InstructionId, InstructionId)> = FxHashMap::default();
+    // Step 1: Collect unique scope IDs and determine their block-position boundaries.
+    // Instead of using instruction ID ranges (which break across SSA), we find the
+    // first and last instruction positions within each block for each scope.
+    let mut scope_ids: FxHashSet<ScopeId> = FxHashSet::default();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let Some(ref scope) = instr.lvalue.identifier.scope {
-                scope_map.entry(scope.id).or_insert((scope.range.start, scope.range.end));
+                scope_ids.insert(scope.id);
             }
         }
     }
 
-    if scope_map.is_empty() {
+    if scope_ids.is_empty() {
         return;
     }
 
-    // Step 2: Sort scopes innermost-first (narrowest range first) so that inner scopes
-    // are processed before outer scopes. This ensures nesting works correctly.
-    let mut scopes: Vec<(ScopeId, InstructionId, InstructionId)> =
-        scope_map.into_iter().map(|(id, (start, end))| (id, start, end)).collect();
-    scopes.sort_by_key(|(_, start, end)| end.0 - start.0);
+    // Step 2: For each scope, find which block contains its annotated instructions
+    // and compute position-based boundaries (first annotated pos to last annotated pos).
+    let mut scope_info: Vec<(ScopeId, usize, usize, usize)> = Vec::new(); // (scope_id, block_idx, start_pos, end_pos)
+
+    for &sid in &scope_ids {
+        for (block_idx, (_, block)) in hir.blocks.iter().enumerate() {
+            let first = block
+                .instructions
+                .iter()
+                .position(|i| i.lvalue.identifier.scope.as_ref().is_some_and(|s| s.id == sid));
+            if let Some(first_pos) = first {
+                let last_pos = block
+                    .instructions
+                    .iter()
+                    .rposition(|i| i.lvalue.identifier.scope.as_ref().is_some_and(|s| s.id == sid))
+                    .unwrap_or(first_pos);
+                scope_info.push((sid, block_idx, first_pos, last_pos + 1));
+                break; // Only handle the first block containing this scope
+            }
+        }
+    }
+
+    // Sort innermost-first (smallest span first).
+    scope_info.sort_by_key(|&(_, _, start, end)| end - start);
 
     // Allocate new BlockIds starting past the highest existing one.
     let mut next_block_id = hir.blocks.iter().map(|(id, _)| id.0).max().unwrap_or(0) + 1;
 
-    // Step 3: For each scope, split blocks at scope boundaries and insert Scope terminals.
-    for (scope_id, range_start, range_end) in scopes {
-        insert_scope_terminal(hir, scope_id, range_start, range_end, &mut next_block_id);
+    // Step 3: For each scope, split the block at the position boundaries.
+    for (scope_id, _block_idx, start_pos, end_pos) in scope_info {
+        insert_scope_terminal_by_position(hir, scope_id, start_pos, end_pos, &mut next_block_id);
     }
 }
 
-/// Insert a `Terminal::Scope` for one reactive scope by splitting blocks at scope boundaries.
-fn insert_scope_terminal(
+/// Insert a `Terminal::Scope` by splitting a block at position boundaries.
+/// `start_pos` and `end_pos` are positions within the block's instruction vector.
+fn insert_scope_terminal_by_position(
     hir: &mut HIR,
     scope_id: ScopeId,
-    range_start: InstructionId,
-    range_end: InstructionId,
+    _start_pos: usize,
+    _end_pos: usize,
     next_id: &mut u32,
 ) {
-    // Find the block that contains the first instruction of this scope.
+    // Re-find the block containing this scope (index may have shifted from prior insertions).
     let entry_idx = hir.blocks.iter().position(|(_, block)| {
-        block.instructions.iter().any(|i| i.id.0 >= range_start.0 && i.id.0 < range_end.0)
+        block
+            .instructions
+            .iter()
+            .any(|i| i.lvalue.identifier.scope.as_ref().is_some_and(|s| s.id == scope_id))
     });
 
     let Some(entry_idx) = entry_idx else {
@@ -858,16 +883,21 @@ fn insert_scope_terminal(
 
     let block = &hir.blocks[entry_idx].1;
 
-    // Find the position within the block where the scope starts and ends.
-    let scope_start_pos = block.instructions.iter().position(|i| i.id.0 >= range_start.0);
-    let scope_end_pos = block.instructions.iter().position(|i| i.id.0 >= range_end.0);
+    // Re-compute positions since block may have been modified by prior scope insertions.
+    let start_pos = block
+        .instructions
+        .iter()
+        .position(|i| i.lvalue.identifier.scope.as_ref().is_some_and(|s| s.id == scope_id));
 
-    let Some(start_pos) = scope_start_pos else {
+    let Some(start_pos) = start_pos else {
         return;
     };
 
-    // Determine the end position within the block (may extend to end of block).
-    let end_pos = scope_end_pos.unwrap_or(block.instructions.len());
+    let end_pos = block
+        .instructions
+        .iter()
+        .rposition(|i| i.lvalue.identifier.scope.as_ref().is_some_and(|s| s.id == scope_id))
+        .map_or(start_pos + 1, |p| p + 1);
 
     // Partition the block into three segments:
     //   [0..start_pos)      = before scope (stays in original block)
@@ -886,43 +916,10 @@ fn insert_scope_terminal(
     let scope_block_id = BlockId(*next_id);
     *next_id += 1;
 
-    if after_instrs.is_empty() {
-        // The scope extends to the end of the block. The scope block inherits
-        // the original terminal (the natural continuation).
-        let scope_block = BasicBlock {
-            kind: original_kind,
-            id: scope_block_id,
-            instructions: scope_instrs,
-            terminal: original_terminal.clone(),
-            preds: vec![original_block_id],
-            phis: Vec::new(),
-        };
-
-        // Determine fallthrough: where execution goes after the scope.
-        // Use the first successor of the original terminal.
-        let fallthrough = terminal_fallthrough(&original_terminal).unwrap_or(scope_block_id);
-
-        // Original block keeps the before-scope instructions and gets a Scope terminal.
-        hir.blocks[entry_idx].1.instructions = before_instrs;
-        hir.blocks[entry_idx].1.terminal =
-            Terminal::Scope { scope: scope_id, block: scope_block_id, fallthrough };
-
-        // Update predecessor lists: blocks that the scope block jumps to should
-        // know they're now reached from scope_block_id instead of original_block_id.
-        let successors = terminal_successors(&scope_block.terminal);
-        hir.blocks.push((scope_block_id, scope_block));
-
-        for succ_id in successors {
-            if let Some((_, succ_block)) = hir.blocks.iter_mut().find(|(id, _)| *id == succ_id) {
-                for pred in &mut succ_block.preds {
-                    if *pred == original_block_id {
-                        *pred = scope_block_id;
-                    }
-                }
-            }
-        }
-    } else {
-        // The scope ends mid-block. We need both a scope block and a fallthrough block.
+    // Always create a fallthrough block. The scope block uses Goto to the fallthrough,
+    // and the fallthrough gets the after-scope instructions + original terminal.
+    // This avoids self-referential fallthrough when the original terminal is Return/Throw.
+    {
         let fallthrough_block_id = BlockId(*next_id);
         *next_id += 1;
 

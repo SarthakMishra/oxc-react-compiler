@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    HIR, IdentifierId, InstructionId, InstructionValue, MutableRange, ReactiveScope, ScopeId,
-    SourceLocation,
+    DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId, InstructionId,
+    InstructionValue, MutableRange, ReactiveScope, ScopeId, SourceLocation,
 };
 use crate::utils::disjoint_set::DisjointSet;
 use rustc_hash::FxHashMap;
@@ -106,7 +106,44 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
         }
     }
 
-    // Phase 4: Assign scopes back to identifiers in the HIR
+    // Phase 4: Propagate scope membership to consuming instructions.
+    // If an instruction uses a scoped operand, the instruction's lvalue should also be
+    // in the same scope. Also propagate through Destructure pattern targets.
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                let lvalue_id = instr.lvalue.identifier.id;
+
+                // If this instruction is scoped, propagate to Destructure pattern targets
+                if let Some(scope) = id_to_scope.get(&lvalue_id).cloned() {
+                    if let InstructionValue::Destructure { lvalue_pattern, .. } = &instr.value {
+                        let target_ids = collect_destructure_target_ids(lvalue_pattern);
+                        for tid in target_ids {
+                            if !id_to_scope.contains_key(&tid) {
+                                id_to_scope.insert(tid, scope.clone());
+                                changed = true;
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Check if any operand is in a scope
+                let operand_ids = collect_operand_ids(&instr.value);
+                for op_id in &operand_ids {
+                    if let Some(scope) = id_to_scope.get(op_id) {
+                        id_to_scope.insert(lvalue_id, scope.clone());
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 5: Assign scopes back to identifiers in the HIR
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if let Some(scope) = id_to_scope.get(&instr.lvalue.identifier.id) {
@@ -283,4 +320,53 @@ fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
     }
 
     ids
+}
+
+/// Collect all identifier IDs from a destructure pattern's targets.
+/// This extracts IDs from all bindings created by a destructuring assignment,
+/// including nested patterns and rest elements.
+fn collect_destructure_target_ids(pattern: &DestructurePattern) -> Vec<IdentifierId> {
+    let mut ids = Vec::new();
+    collect_destructure_target_ids_inner(pattern, &mut ids);
+    ids
+}
+
+fn collect_destructure_target_ids_inner(pattern: &DestructurePattern, ids: &mut Vec<IdentifierId>) {
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                collect_destructure_target_inner(&prop.value, ids);
+            }
+            if let Some(rest_place) = rest {
+                ids.push(rest_place.identifier.id);
+            }
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(target) => {
+                        collect_destructure_target_inner(target, ids);
+                    }
+                    DestructureArrayItem::Spread(place) => {
+                        ids.push(place.identifier.id);
+                    }
+                    DestructureArrayItem::Hole => {}
+                }
+            }
+            if let Some(rest_place) = rest {
+                ids.push(rest_place.identifier.id);
+            }
+        }
+    }
+}
+
+fn collect_destructure_target_inner(target: &DestructureTarget, ids: &mut Vec<IdentifierId>) {
+    match target {
+        DestructureTarget::Place(place) => {
+            ids.push(place.identifier.id);
+        }
+        DestructureTarget::Pattern(nested) => {
+            collect_destructure_target_ids_inner(nested, ids);
+        }
+    }
 }

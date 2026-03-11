@@ -5,15 +5,15 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function useToggle(initial) {
-  const $ = _c(2);
+  const $ = _c(4);
   const t21 = useState;
   const t22 = initial;
   const t23 = t21(t22);
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     /* t24 = Discriminant(4) */
+    /* t25 = Discriminant(4) */
   } else {
   }
-  /* t25 = Discriminant(4) */
   /* t26 = Discriminant(6) */
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     /* t27 = Discriminant(4) */
@@ -21,8 +21,13 @@ function useToggle(initial) {
   }
   /* t28 = Discriminant(28) */
   const toggle = t28;
-  const t30 = value;
-  const t31 = toggle;
-  const t32 = [t30, t31];
+  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
+    const t30 = value;
+    const t31 = toggle;
+    const t32 = [t30, t31];
+    $[3] = t32;
+  } else {
+    t32 = $[3];
+  }
   return t32;
 }
