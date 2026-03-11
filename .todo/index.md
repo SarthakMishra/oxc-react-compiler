@@ -33,14 +33,14 @@ _(Nothing in progress)_
 
 ### Phase 2: BuildHIR (OXC AST to HIR)
 
-- [ ] HIR lowering: statements (variable declarations, assignments, returns, throw) — [build-hir.md](build-hir.md)#gap-1-statement-lowering
-- [ ] HIR lowering: expressions (binary, unary, calls, member access, template literals) — [build-hir.md](build-hir.md)#gap-2-expression-lowering
-- [ ] HIR lowering: control flow (if/else, switch, loops, try/catch, logical, ternary, optional chaining) — [build-hir.md](build-hir.md)#gap-3-control-flow-lowering
-- [ ] HIR lowering: JSX (elements, fragments, attributes, spread, children) — [build-hir.md](build-hir.md)#gap-4-jsx-lowering
-- [ ] HIR lowering: functions (declarations, expressions, arrows, closures, async, generators) — [build-hir.md](build-hir.md)#gap-5-function-lowering
-- [ ] HIR lowering: destructuring (object, array, nested, defaults, rest) — [build-hir.md](build-hir.md)#gap-6-destructuring-lowering
-- [ ] HIR lowering: patterns (for-of, for-in, spread, computed properties) — [build-hir.md](build-hir.md)#gap-7-pattern-and-iterator-lowering
-- [ ] Function discovery (find compilable components/hooks from OXC AST) — [build-hir.md](build-hir.md)#gap-8-function-discovery
+- [x] HIR lowering: statements (variable declarations, assignments, returns, throw) — [build-hir.md](build-hir.md)#gap-1-statement-lowering
+- [x] HIR lowering: expressions (binary, unary, calls, member access, template literals) — [build-hir.md](build-hir.md)#gap-2-expression-lowering
+- [x] HIR lowering: control flow (if/else, switch, loops, try/catch, logical, ternary, optional chaining) — [build-hir.md](build-hir.md)#gap-3-control-flow-lowering
+- [x] HIR lowering: JSX (elements, fragments, attributes, spread, children) — [build-hir.md](build-hir.md)#gap-4-jsx-lowering
+- [x] HIR lowering: functions (declarations, expressions, arrows, closures, async, generators) — [build-hir.md](build-hir.md)#gap-5-function-lowering
+- [x] HIR lowering: destructuring (object, array, nested, defaults, rest) — [build-hir.md](build-hir.md)#gap-6-destructuring-lowering
+- [x] HIR lowering: patterns (for-of, for-in, spread, computed properties) — [build-hir.md](build-hir.md)#gap-7-pattern-and-iterator-lowering
+- [x] Function discovery (find compilable components/hooks from OXC AST) — [build-hir.md](build-hir.md)#gap-8-function-discovery
 - [ ] Context variable handling (captured variables, closure analysis) — [build-hir.md](build-hir.md)#gap-9-context-variable-handling
 - [ ] Manual memoization markers (StartMemoize/FinishMemoize for useMemo/useCallback) — [build-hir.md](build-hir.md)#gap-10-manual-memoization-markers
 
@@ -60,13 +60,13 @@ _(Nothing in progress)_
 - [x] InferTypes (constraint-based type inference with shape system) — [inference.md](inference.md)#gap-1-infertypes
 - [x] AliasingEffect enum and composition rules — [inference.md](inference.md)#gap-2-aliasingeffect-enum-and-composition-rules
 - [x] InferMutationAliasingEffects (abstract interpretation, fixpoint) — [inference.md](inference.md)#gap-3-infermutationaliasingeffects
-- [ ] AnalyseFunctions (recursive nested function analysis) — [inference.md](inference.md)#gap-4-analysefunctions
+- [x] AnalyseFunctions (recursive nested function analysis) — [inference.md](inference.md)#gap-4-analysefunctions
 - [x] InferMutationAliasingRanges (MutableRange computation) — [inference.md](inference.md)#gap-5-infermutationaliasingranges
 
 ### Phase 5: Reactivity and Scope Inference
 
 - [x] InferReactivePlaces (fixpoint with post-dominator analysis) — [inference.md](inference.md)#gap-6-inferreactiveplaces
-- [ ] RewriteInstructionKindsBasedOnReassignment — [inference.md](inference.md)#gap-7-rewriteinstructionkindsbasedonreassignment
+- [x] RewriteInstructionKindsBasedOnReassignment — [inference.md](inference.md)#gap-7-rewriteinstructionkindsbasedonreassignment
 - [x] InferReactiveScopeVariables (DisjointSet-based scope grouping) — [reactive-scopes.md](reactive-scopes.md)#gap-1-inferreactivescopevariables
 - [x] MemoizeFbtAndMacroOperandsInSameScope — [reactive-scopes.md](reactive-scopes.md)#gap-2-memoizefbtandmacrooperandsinsamescope
 - [x] AlignMethodCallScopes — [reactive-scopes.md](reactive-scopes.md)#gap-3-alignmethodcallscopes
@@ -96,7 +96,7 @@ _(Nothing in progress)_
 - [x] RenameVariables — [reactive-scopes.md](reactive-scopes.md)#gap-24-renamevariables
 - [x] PruneHoistedContexts — [reactive-scopes.md](reactive-scopes.md)#gap-25-prunehoistedcontexts
 - [x] CodegenFunction (ReactiveFunction to JavaScript output) — [codegen.md](codegen.md)#gap-1-codegenfunction
-- [ ] Import insertion (react/compiler-runtime) — [codegen.md](codegen.md)#gap-2-import-insertion
+- [x] Import insertion (react/compiler-runtime) — [codegen.md](codegen.md)#gap-2-import-insertion
 - [ ] Source map generation — [codegen.md](codegen.md)#gap-3-source-map-generation
 
 ---
@@ -105,22 +105,22 @@ _(Nothing in progress)_
 
 ### Phase 7: Validation Passes
 
-- [ ] ValidateContextVariableLValues — [validation.md](validation.md)#gap-1-validatecontextvariablelvalues
-- [ ] ValidateUseMemo — [validation.md](validation.md)#gap-2-validateusememo
-- [ ] DropManualMemoization (conditional pass) — [validation.md](validation.md)#gap-3-dropmanualmemoization
+- [x] ValidateContextVariableLValues — [validation.md](validation.md)#gap-1-validatecontextvariablelvalues
+- [x] ValidateUseMemo — [validation.md](validation.md)#gap-2-validateusememo
+- [x] DropManualMemoization (conditional pass) — [validation.md](validation.md)#gap-3-dropmanualmemoization
 - [x] ValidateHooksUsage — [validation.md](validation.md)#gap-4-validatehooksusage
-- [ ] ValidateNoCapitalizedCalls — [validation.md](validation.md)#gap-5-validatenocapitalizedcalls
-- [ ] ValidateLocalsNotReassignedAfterRender — [validation.md](validation.md)#gap-6-validatelocalsnotreassignedafterrender
-- [ ] AssertValidMutableRanges — [validation.md](validation.md)#gap-7-assertvalidmutableranges
+- [x] ValidateNoCapitalizedCalls — [validation.md](validation.md)#gap-5-validatenocapitalizedcalls
+- [x] ValidateLocalsNotReassignedAfterRender — [validation.md](validation.md)#gap-6-validatelocalsnotreassignedafterrender
+- [x] AssertValidMutableRanges — [validation.md](validation.md)#gap-7-assertvalidmutableranges
 - [x] ValidateNoRefAccessInRender — [validation.md](validation.md)#gap-8-validatenorefaccessinrender
 - [x] ValidateNoSetStateInRender — [validation.md](validation.md)#gap-9-validatenosetstateinrender
-- [ ] ValidateNoDerivedComputationsInEffects — [validation.md](validation.md)#gap-10-validatenoderivedcomputationsineffects
-- [ ] ValidateNoSetStateInEffects — [validation.md](validation.md)#gap-11-validatenosetstateineffects
-- [ ] ValidateNoJSXInTryStatement — [validation.md](validation.md)#gap-12-validatenojsxintrystatement
-- [ ] ValidateNoFreezingKnownMutableFunctions — [validation.md](validation.md)#gap-13-validatenofreezingknownmutablefunctions
-- [ ] ValidateExhaustiveDependencies — [validation.md](validation.md)#gap-14-validateexhaustivedependencies
-- [ ] ValidateStaticComponents — [validation.md](validation.md)#gap-15-validatestaticcomponents
-- [ ] ValidatePreservedManualMemoization — [validation.md](validation.md)#gap-16-validatepreservedmanualmemoization
+- [x] ValidateNoDerivedComputationsInEffects — [validation.md](validation.md)#gap-10-validatenoderivedcomputationsineffects
+- [x] ValidateNoSetStateInEffects — [validation.md](validation.md)#gap-11-validatenosetstateineffects
+- [x] ValidateNoJSXInTryStatement — [validation.md](validation.md)#gap-12-validatenojsxintrystatement
+- [x] ValidateNoFreezingKnownMutableFunctions — [validation.md](validation.md)#gap-13-validatenofreezingknownmutablefunctions
+- [x] ValidateExhaustiveDependencies — [validation.md](validation.md)#gap-14-validateexhaustivedependencies
+- [x] ValidateStaticComponents — [validation.md](validation.md)#gap-15-validatestaticcomponents
+- [x] ValidatePreservedManualMemoization — [validation.md](validation.md)#gap-16-validatepreservedmanualmemoization
 
 ---
 
@@ -129,7 +129,7 @@ _(Nothing in progress)_
 ### Pipeline Orchestration
 
 - [x] Pipeline orchestrator (run all 62 passes in order with config-based gating) — [pipeline.md](pipeline.md)#gap-1-pipeline-orchestrator
-- [ ] Program-level compilation loop (discover functions, compile each, collect edits) — [pipeline.md](pipeline.md)#gap-2-program-level-compilation-loop
+- [x] Program-level compilation loop (discover functions, compile each, collect edits) — [pipeline.md](pipeline.md)#gap-2-program-level-compilation-loop
 - [ ] Lint mode (run pipeline, collect errors, skip codegen) — [pipeline.md](pipeline.md)#gap-3-lint-mode
 - [ ] OptimizeForSSR pass — [pipeline.md](pipeline.md)#gap-4-optimizeforssr
 - [ ] OutlineJSX pass — [pipeline.md](pipeline.md)#gap-5-outlinejsx
@@ -138,16 +138,16 @@ _(Nothing in progress)_
 
 ### Oxlint Rules (Tier 1 -- standalone AST rules)
 
-- [ ] no-jsx-in-try — [lint-rules.md](lint-rules.md)#gap-1-no-jsx-in-try
-- [ ] use-memo-validation — [lint-rules.md](lint-rules.md)#gap-2-use-memo-validation
-- [ ] no-capitalized-calls — [lint-rules.md](lint-rules.md)#gap-3-no-capitalized-calls
-- [ ] purity — [lint-rules.md](lint-rules.md)#gap-4-purity
-- [ ] incompatible-library — [lint-rules.md](lint-rules.md)#gap-5-incompatible-library
-- [ ] static-components — [lint-rules.md](lint-rules.md)#gap-6-static-components
-- [ ] no-set-state-in-render — [lint-rules.md](lint-rules.md)#gap-7-no-set-state-in-render
-- [ ] no-set-state-in-effects — [lint-rules.md](lint-rules.md)#gap-8-no-set-state-in-effects
-- [ ] no-ref-access-in-render — [lint-rules.md](lint-rules.md)#gap-9-no-ref-access-in-render
-- [ ] no-deriving-state-in-effects — [lint-rules.md](lint-rules.md)#gap-10-no-deriving-state-in-effects
+- [x] no-jsx-in-try — [lint-rules.md](lint-rules.md)#gap-1-no-jsx-in-try
+- [x] use-memo-validation — [lint-rules.md](lint-rules.md)#gap-2-use-memo-validation
+- [x] no-capitalized-calls — [lint-rules.md](lint-rules.md)#gap-3-no-capitalized-calls
+- [x] purity — [lint-rules.md](lint-rules.md)#gap-4-purity
+- [x] incompatible-library — [lint-rules.md](lint-rules.md)#gap-5-incompatible-library
+- [x] static-components — [lint-rules.md](lint-rules.md)#gap-6-static-components
+- [x] no-set-state-in-render — [lint-rules.md](lint-rules.md)#gap-7-no-set-state-in-render
+- [x] no-set-state-in-effects — [lint-rules.md](lint-rules.md)#gap-8-no-set-state-in-effects
+- [x] no-ref-access-in-render — [lint-rules.md](lint-rules.md)#gap-9-no-ref-access-in-render
+- [x] no-deriving-state-in-effects — [lint-rules.md](lint-rules.md)#gap-10-no-deriving-state-in-effects
 - [ ] globals — [lint-rules.md](lint-rules.md)#gap-11-globals
 
 ---
@@ -156,7 +156,7 @@ _(Nothing in progress)_
 
 ### NAPI and Vite Plugin
 
-- [ ] NAPI bindings (async task pattern, TransformResult) — [integration.md](integration.md)#gap-1-napi-bindings
+- [x] NAPI bindings (async task pattern, TransformResult) — [integration.md](integration.md)#gap-1-napi-bindings
 - [ ] Vite plugin (transform hook, file filtering, HMR) — [integration.md](integration.md)#gap-2-vite-plugin
 - [ ] Configuration parsing (JSON/TOML to PluginOptions) — [integration.md](integration.md)#gap-3-configuration-parsing
 - [ ] Gating support (feature flag wrapping) — [integration.md](integration.md)#gap-4-gating-support

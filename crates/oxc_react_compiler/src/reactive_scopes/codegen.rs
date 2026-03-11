@@ -561,6 +561,42 @@ fn count_terminal_slots(terminal: &ReactiveTerminal) -> u32 {
     }
 }
 
+/// Generate the import statement for the compiler runtime.
+pub fn generate_import_statement() -> String {
+    "import { c as _c } from \"react/compiler-runtime\";\n".to_string()
+}
+
+/// Apply compiled function to original source code.
+/// Returns the new source with import added and function bodies replaced.
+pub fn apply_compilation(
+    original_source: &str,
+    compiled_functions: &[(oxc_span::Span, String)],
+) -> String {
+    if compiled_functions.is_empty() {
+        return original_source.to_string();
+    }
+
+    let mut result = String::with_capacity(original_source.len() + 256);
+
+    // Add import at the top
+    result.push_str(&generate_import_statement());
+
+    // Apply edits in reverse order (to preserve offsets)
+    let mut edits: Vec<(usize, usize, &str)> = compiled_functions
+        .iter()
+        .map(|(span, code)| (span.start as usize, span.end as usize, code.as_str()))
+        .collect();
+    edits.sort_by(|a, b| b.0.cmp(&a.0));
+
+    let mut source = original_source.to_string();
+    for (start, end, replacement) in &edits {
+        source.replace_range(*start..*end, replacement);
+    }
+
+    result.push_str(&source);
+    result
+}
+
 fn place_name(place: &Place) -> String {
     place
         .identifier

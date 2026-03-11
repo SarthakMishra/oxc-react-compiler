@@ -1,5 +1,11 @@
+pub mod incompatible_library;
+pub mod no_capitalized_calls;
+pub mod no_deriving_state_in_effects;
 pub mod no_jsx_in_try;
 pub mod no_ref_access_in_render;
 pub mod no_set_state_in_effects;
 pub mod no_set_state_in_render;
+pub mod purity;
 pub mod rules_of_hooks;
+pub mod static_components;
+pub mod use_memo_validation;

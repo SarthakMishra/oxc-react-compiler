@@ -1,3 +1,5 @@
+pub mod assert_valid_mutable_ranges;
+pub mod drop_manual_memoization;
 pub mod validate_context_variable_lvalues;
 pub mod validate_exhaustive_dependencies;
 pub mod validate_hooks_usage;
@@ -10,4 +12,5 @@ pub mod validate_no_ref_access_in_render;
 pub mod validate_no_set_state_in_effects;
 pub mod validate_no_set_state_in_render;
 pub mod validate_preserved_manual_memoization;
+pub mod validate_static_components;
 pub mod validate_use_memo;
