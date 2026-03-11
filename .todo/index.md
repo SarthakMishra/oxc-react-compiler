@@ -24,8 +24,8 @@ They form a strict dependency chain.
 
 These passes exist but are incomplete. Incorrect behavior here means wrong memoization decisions.
 
-- [ ] Complete infer_mutation_aliasing_effects phases 2-3 (abstract heap, fixpoint) -- [inference.md](inference.md)#gap-1-infer-mutation-aliasing-effects-phases-2-3
-- [ ] Complete infer_mutation_aliasing_ranges (transitive tracking) -- [inference.md](inference.md)#gap-2-infer-mutation-aliasing-ranges-transitive-tracking
+- [x] Complete infer_mutation_aliasing_effects phases 2-3 (abstract heap, fixpoint) -- [inference.md](inference.md)#gap-1-infer-mutation-aliasing-effects-phases-2-3
+- [x] Complete infer_mutation_aliasing_ranges (transitive tracking) -- [inference.md](inference.md)#gap-2-infer-mutation-aliasing-ranges-transitive-tracking
 - [x] Wire validate_hooks_usage and validate_no_capitalized_calls into pipeline -- [pipeline.md](pipeline.md)#gap-5-wire-validation-passes-12-13
 - [x] Wire validate_exhaustive_dependencies into pipeline (pass 30) -- [pipeline.md](pipeline.md)#gap-6-wire-validate-exhaustive-dependencies
 - [x] Wire validate_locals_not_reassigned_after_render into pipeline (pass 21) -- [pipeline.md](pipeline.md)#gap-7-wire-validate-locals-not-reassigned-after-render
