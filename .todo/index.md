@@ -16,7 +16,7 @@ They form a strict dependency chain.
 - [x] Wire pipeline passes 29-46 (reactive scope construction) -- [pipeline.md](pipeline.md)#gap-2-wire-reactive-scope-construction-passes-29-46
 - [x] Wire pipeline passes 47-60 (build RF + RF optimization) -- [pipeline.md](pipeline.md)#gap-3-wire-build-reactive-function-and-rf-optimization-passes-47-60
 - [x] Wire pipeline pass 62 (codegen) and apply edits in compile_program -- [pipeline.md](pipeline.md)#gap-4-wire-codegen-and-source-replacement
-- [ ] Fix build_reactive_scope_terminals_hir to actually split blocks at scope boundaries -- [reactive-scopes.md](reactive-scopes.md)#gap-1-build-reactive-scope-terminals-hir-is-a-stub
+- [x] Fix build_reactive_scope_terminals_hir to actually split blocks at scope boundaries -- [reactive-scopes.md](reactive-scopes.md)#gap-1-build-reactive-scope-terminals-hir-is-a-stub
 
 ---
 

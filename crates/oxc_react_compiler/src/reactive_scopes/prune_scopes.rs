@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    IdentifierId, ReactiveBlock, ReactiveFunction, ReactiveInstruction, ReactiveTerminal, ScopeId,
-    Terminal, HIR,
+    BasicBlock, BlockId, BlockKind, IdentifierId, InstructionId, ReactiveBlock, ReactiveFunction,
+    ReactiveInstruction, ReactiveTerminal, ScopeId, Terminal, HIR,
 };
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Prune reactive scopes that don't escape the function.
 pub fn prune_non_escaping_scopes(rf: &mut ReactiveFunction) {
@@ -633,25 +633,319 @@ pub fn memoize_fbt_and_macro_operands_in_same_scope(hir: &mut HIR) {
 }
 
 /// Build reactive scope terminals in the HIR.
+///
+/// Converts scope annotations on identifiers into `Terminal::Scope` nodes in the CFG.
+/// This splits blocks at scope boundaries and wraps scoped instructions so that
+/// `build_reactive_function` can produce `ReactiveScopeBlock` nodes.
 pub fn build_reactive_scope_terminals_hir(hir: &mut HIR) {
-    // Collect all scopes and their ranges
-    let mut scope_ranges: Vec<(ScopeId, u32, u32)> = Vec::new();
+    // Step 1: Collect unique scopes with their instruction ID ranges.
+    let mut scope_map: FxHashMap<ScopeId, (InstructionId, InstructionId)> = FxHashMap::default();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let Some(ref scope) = instr.lvalue.identifier.scope {
-                let already = scope_ranges.iter().any(|(id, _, _)| *id == scope.id);
-                if !already {
-                    scope_ranges.push((scope.id, scope.range.start.0, scope.range.end.0));
-                }
+                scope_map
+                    .entry(scope.id)
+                    .or_insert((scope.range.start, scope.range.end));
             }
         }
     }
 
-    // For each scope, find the block it starts in and insert a Scope terminal
-    // This is a simplified version — the full implementation would split blocks
-    // at scope boundaries.
-    let _ = scope_ranges;
+    if scope_map.is_empty() {
+        return;
+    }
+
+    // Step 2: Sort scopes innermost-first (narrowest range first) so that inner scopes
+    // are processed before outer scopes. This ensures nesting works correctly.
+    let mut scopes: Vec<(ScopeId, InstructionId, InstructionId)> = scope_map
+        .into_iter()
+        .map(|(id, (start, end))| (id, start, end))
+        .collect();
+    scopes.sort_by_key(|(_, start, end)| end.0 - start.0);
+
+    // Allocate new BlockIds starting past the highest existing one.
+    let mut next_block_id = hir.blocks.iter().map(|(id, _)| id.0).max().unwrap_or(0) + 1;
+
+    // Step 3: For each scope, split blocks at scope boundaries and insert Scope terminals.
+    for (scope_id, range_start, range_end) in scopes {
+        insert_scope_terminal(hir, scope_id, range_start, range_end, &mut next_block_id);
+    }
+}
+
+/// Insert a `Terminal::Scope` for one reactive scope by splitting blocks at scope boundaries.
+fn insert_scope_terminal(
+    hir: &mut HIR,
+    scope_id: ScopeId,
+    range_start: InstructionId,
+    range_end: InstructionId,
+    next_id: &mut u32,
+) {
+    // Find the block that contains the first instruction of this scope.
+    let entry_idx = hir.blocks.iter().position(|(_, block)| {
+        block
+            .instructions
+            .iter()
+            .any(|i| i.id.0 >= range_start.0 && i.id.0 < range_end.0)
+    });
+
+    let Some(entry_idx) = entry_idx else {
+        return;
+    };
+
+    let block = &hir.blocks[entry_idx].1;
+
+    // Find the position within the block where the scope starts and ends.
+    let scope_start_pos = block
+        .instructions
+        .iter()
+        .position(|i| i.id.0 >= range_start.0);
+    let scope_end_pos = block
+        .instructions
+        .iter()
+        .position(|i| i.id.0 >= range_end.0);
+
+    let Some(start_pos) = scope_start_pos else {
+        return;
+    };
+
+    // Determine the end position within the block (may extend to end of block).
+    let end_pos = scope_end_pos.unwrap_or(block.instructions.len());
+
+    // Partition the block into three segments:
+    //   [0..start_pos)      = before scope (stays in original block)
+    //   [start_pos..end_pos) = scope content (goes into new scope block)
+    //   [end_pos..)          = after scope  (goes into fallthrough block)
+
+    let original_block_id = hir.blocks[entry_idx].0;
+    let original_terminal = hir.blocks[entry_idx].1.terminal.clone();
+    let original_kind = hir.blocks[entry_idx].1.kind;
+
+    let before_instrs = hir.blocks[entry_idx].1.instructions[..start_pos].to_vec();
+    let scope_instrs = hir.blocks[entry_idx].1.instructions[start_pos..end_pos].to_vec();
+    let after_instrs = hir.blocks[entry_idx].1.instructions[end_pos..].to_vec();
+
+    // Allocate block IDs for new blocks.
+    let scope_block_id = BlockId(*next_id);
+    *next_id += 1;
+
+    if after_instrs.is_empty() {
+        // The scope extends to the end of the block. The scope block inherits
+        // the original terminal (the natural continuation).
+        let scope_block = BasicBlock {
+            kind: original_kind,
+            id: scope_block_id,
+            instructions: scope_instrs,
+            terminal: original_terminal.clone(),
+            preds: vec![original_block_id],
+            phis: Vec::new(),
+        };
+
+        // Determine fallthrough: where execution goes after the scope.
+        // Use the first successor of the original terminal.
+        let fallthrough = terminal_fallthrough(&original_terminal).unwrap_or(scope_block_id);
+
+        // Original block keeps the before-scope instructions and gets a Scope terminal.
+        hir.blocks[entry_idx].1.instructions = before_instrs;
+        hir.blocks[entry_idx].1.terminal = Terminal::Scope {
+            scope: scope_id,
+            block: scope_block_id,
+            fallthrough,
+        };
+
+        // Update predecessor lists: blocks that the scope block jumps to should
+        // know they're now reached from scope_block_id instead of original_block_id.
+        let successors = terminal_successors(&scope_block.terminal);
+        hir.blocks.push((scope_block_id, scope_block));
+
+        for succ_id in successors {
+            if let Some((_, succ_block)) = hir.blocks.iter_mut().find(|(id, _)| *id == succ_id) {
+                for pred in &mut succ_block.preds {
+                    if *pred == original_block_id {
+                        *pred = scope_block_id;
+                    }
+                }
+            }
+        }
+    } else {
+        // The scope ends mid-block. We need both a scope block and a fallthrough block.
+        let fallthrough_block_id = BlockId(*next_id);
+        *next_id += 1;
+
+        // Scope block: holds the scope content, falls through to fallthrough block.
+        let scope_block = BasicBlock {
+            kind: BlockKind::Block,
+            id: scope_block_id,
+            instructions: scope_instrs,
+            terminal: Terminal::Goto {
+                block: fallthrough_block_id,
+            },
+            preds: vec![original_block_id],
+            phis: Vec::new(),
+        };
+
+        // Fallthrough block: holds after-scope instructions + original terminal.
+        let fallthrough_block = BasicBlock {
+            kind: original_kind,
+            id: fallthrough_block_id,
+            instructions: after_instrs,
+            terminal: original_terminal.clone(),
+            preds: vec![scope_block_id],
+            phis: Vec::new(),
+        };
+
+        // Original block keeps before-scope instructions + Scope terminal.
+        hir.blocks[entry_idx].1.instructions = before_instrs;
+        hir.blocks[entry_idx].1.terminal = Terminal::Scope {
+            scope: scope_id,
+            block: scope_block_id,
+            fallthrough: fallthrough_block_id,
+        };
+
+        // Update predecessor lists for successors of the fallthrough block.
+        let successors = terminal_successors(&original_terminal);
+        hir.blocks.push((scope_block_id, scope_block));
+        hir.blocks.push((fallthrough_block_id, fallthrough_block));
+
+        for succ_id in successors {
+            if let Some((_, succ_block)) = hir.blocks.iter_mut().find(|(id, _)| *id == succ_id) {
+                for pred in &mut succ_block.preds {
+                    if *pred == original_block_id {
+                        *pred = fallthrough_block_id;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Get the primary fallthrough successor of a terminal (the "next" block after it completes).
+fn terminal_fallthrough(terminal: &Terminal) -> Option<BlockId> {
+    match terminal {
+        Terminal::Goto { block } => Some(*block),
+        Terminal::If { fallthrough, .. } => Some(*fallthrough),
+        Terminal::Branch { consequent, .. } => Some(*consequent),
+        Terminal::Switch { fallthrough, .. } => Some(*fallthrough),
+        Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => None,
+        Terminal::For { fallthrough, .. } => Some(*fallthrough),
+        Terminal::ForOf { fallthrough, .. } => Some(*fallthrough),
+        Terminal::ForIn { fallthrough, .. } => Some(*fallthrough),
+        Terminal::DoWhile { fallthrough, .. } => Some(*fallthrough),
+        Terminal::While { fallthrough, .. } => Some(*fallthrough),
+        Terminal::Logical { fallthrough, .. } => Some(*fallthrough),
+        Terminal::Ternary { fallthrough, .. } => Some(*fallthrough),
+        Terminal::Optional { fallthrough, .. } => Some(*fallthrough),
+        Terminal::Sequence { fallthrough, .. } => Some(*fallthrough),
+        Terminal::Label { fallthrough, .. } => Some(*fallthrough),
+        Terminal::MaybeThrow { continuation, .. } => Some(*continuation),
+        Terminal::Try { fallthrough, .. } => Some(*fallthrough),
+        Terminal::Scope { fallthrough, .. } => Some(*fallthrough),
+        Terminal::PrunedScope { fallthrough, .. } => Some(*fallthrough),
+    }
+}
+
+/// Get all successor block IDs from a terminal.
+fn terminal_successors(terminal: &Terminal) -> Vec<BlockId> {
+    match terminal {
+        Terminal::Goto { block } => vec![*block],
+        Terminal::If {
+            consequent,
+            alternate,
+            fallthrough,
+            ..
+        } => vec![*consequent, *alternate, *fallthrough],
+        Terminal::Branch {
+            consequent,
+            alternate,
+            ..
+        } => vec![*consequent, *alternate],
+        Terminal::Switch {
+            cases, fallthrough, ..
+        } => {
+            let mut succs: Vec<BlockId> = cases.iter().map(|c| c.block).collect();
+            succs.push(*fallthrough);
+            succs
+        }
+        Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => vec![],
+        Terminal::For {
+            init,
+            test,
+            update,
+            body,
+            fallthrough,
+        } => {
+            let mut succs = vec![*init, *test, *body, *fallthrough];
+            if let Some(u) = update {
+                succs.push(*u);
+            }
+            succs
+        }
+        Terminal::ForOf {
+            init,
+            test,
+            body,
+            fallthrough,
+        } => vec![*init, *test, *body, *fallthrough],
+        Terminal::ForIn {
+            init,
+            test,
+            body,
+            fallthrough,
+        } => vec![*init, *test, *body, *fallthrough],
+        Terminal::DoWhile {
+            body,
+            test,
+            fallthrough,
+        } => vec![*body, *test, *fallthrough],
+        Terminal::While {
+            test,
+            body,
+            fallthrough,
+        } => vec![*test, *body, *fallthrough],
+        Terminal::Logical {
+            left,
+            right,
+            fallthrough,
+            ..
+        } => vec![*left, *right, *fallthrough],
+        Terminal::Ternary {
+            consequent,
+            alternate,
+            fallthrough,
+            ..
+        } => vec![*consequent, *alternate, *fallthrough],
+        Terminal::Optional {
+            consequent,
+            fallthrough,
+            ..
+        } => vec![*consequent, *fallthrough],
+        Terminal::Sequence {
+            blocks,
+            fallthrough,
+            ..
+        } => {
+            let mut succs = blocks.clone();
+            succs.push(*fallthrough);
+            succs
+        }
+        Terminal::Label {
+            block, fallthrough, ..
+        } => vec![*block, *fallthrough],
+        Terminal::MaybeThrow {
+            continuation,
+            handler,
+        } => vec![*continuation, *handler],
+        Terminal::Try {
+            block,
+            handler,
+            fallthrough,
+        } => vec![*block, *handler, *fallthrough],
+        Terminal::Scope {
+            block, fallthrough, ..
+        } => vec![*block, *fallthrough],
+        Terminal::PrunedScope {
+            block, fallthrough, ..
+        } => vec![*block, *fallthrough],
+    }
 }
 
 /// Flatten reactive loops in HIR.
