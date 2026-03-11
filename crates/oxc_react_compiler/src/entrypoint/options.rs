@@ -137,3 +137,147 @@ impl GatingConfig {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn default_options() {
+        let opts = PluginOptions::default();
+        assert_eq!(opts.compilation_mode, CompilationMode::Infer);
+        assert_eq!(opts.output_mode, OutputMode::Client);
+        assert_eq!(opts.target, ReactTarget::React19);
+        assert_eq!(opts.panic_threshold, PanicThreshold::CriticalErrors);
+        assert!(opts.gating.is_none());
+        assert!(opts.sources.is_none());
+    }
+
+    #[test]
+    fn from_map_empty() {
+        let map = HashMap::new();
+        let opts = PluginOptions::from_map(&map);
+        assert_eq!(opts.compilation_mode, CompilationMode::Infer);
+        assert_eq!(opts.output_mode, OutputMode::Client);
+        assert_eq!(opts.target, ReactTarget::React19);
+        assert_eq!(opts.panic_threshold, PanicThreshold::CriticalErrors);
+    }
+
+    #[test]
+    fn compilation_mode_parsing() {
+        let cases = [
+            ("all", CompilationMode::All),
+            ("syntax", CompilationMode::Syntax),
+            ("annotation", CompilationMode::Annotation),
+            ("infer", CompilationMode::Infer),
+            ("unknown", CompilationMode::Infer),
+            ("ALL", CompilationMode::Infer), // case-sensitive
+        ];
+        for (input, expected) in cases {
+            let map = HashMap::from([("compilationMode".to_string(), input.to_string())]);
+            let opts = PluginOptions::from_map(&map);
+            assert_eq!(opts.compilation_mode, expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn output_mode_parsing() {
+        let cases = [
+            ("ssr", OutputMode::SSR),
+            ("lint", OutputMode::Lint),
+            ("client", OutputMode::Client),
+            ("unknown", OutputMode::Client),
+        ];
+        for (input, expected) in cases {
+            let map = HashMap::from([("outputMode".to_string(), input.to_string())]);
+            let opts = PluginOptions::from_map(&map);
+            assert_eq!(opts.output_mode, expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn react_target_parsing() {
+        let cases = [
+            ("17", ReactTarget::React17),
+            ("react17", ReactTarget::React17),
+            ("18", ReactTarget::React18),
+            ("react18", ReactTarget::React18),
+            ("19", ReactTarget::React19),
+            ("react19", ReactTarget::React19),
+            ("unknown", ReactTarget::React19),
+        ];
+        for (input, expected) in cases {
+            let map = HashMap::from([("target".to_string(), input.to_string())]);
+            let opts = PluginOptions::from_map(&map);
+            assert_eq!(opts.target, expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn panic_threshold_parsing() {
+        let cases = [
+            ("all", PanicThreshold::AllErrors),
+            ("ALL_ERRORS", PanicThreshold::AllErrors),
+            ("none", PanicThreshold::None),
+            ("NONE", PanicThreshold::None),
+            ("critical", PanicThreshold::CriticalErrors),
+            ("unknown", PanicThreshold::CriticalErrors),
+        ];
+        for (input, expected) in cases {
+            let map = HashMap::from([("panicThreshold".to_string(), input.to_string())]);
+            let opts = PluginOptions::from_map(&map);
+            assert_eq!(opts.panic_threshold, expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn from_map_multiple_keys() {
+        let map = HashMap::from([
+            ("compilationMode".to_string(), "all".to_string()),
+            ("outputMode".to_string(), "ssr".to_string()),
+            ("target".to_string(), "react17".to_string()),
+            ("panicThreshold".to_string(), "none".to_string()),
+        ]);
+        let opts = PluginOptions::from_map(&map);
+        assert_eq!(opts.compilation_mode, CompilationMode::All);
+        assert_eq!(opts.output_mode, OutputMode::SSR);
+        assert_eq!(opts.target, ReactTarget::React17);
+        assert_eq!(opts.panic_threshold, PanicThreshold::None);
+    }
+
+    #[test]
+    fn from_map_unknown_keys_ignored() {
+        let map = HashMap::from([
+            ("unknownKey".to_string(), "value".to_string()),
+            ("another".to_string(), "thing".to_string()),
+        ]);
+        let opts = PluginOptions::from_map(&map);
+        // Should produce defaults, not panic
+        assert_eq!(opts.compilation_mode, CompilationMode::Infer);
+    }
+
+    #[test]
+    fn gating_config_wrapper() {
+        let config = GatingConfig {
+            import_source: "my-flags".to_string(),
+            function_name: "isFeatureEnabled".to_string(),
+        };
+        let wrapper = config.generate_wrapper("  console.log('compiled');");
+        assert!(wrapper.contains("import { isFeatureEnabled } from \"my-flags\""));
+        assert!(wrapper.contains("if (isFeatureEnabled())"));
+        assert!(wrapper.contains("console.log('compiled')"));
+    }
+
+    #[test]
+    fn source_filter_construction() {
+        let filter = SourceFilter {
+            include: vec!["src/**/*.tsx".to_string()],
+            exclude: vec!["**/*.test.tsx".to_string()],
+        };
+        assert_eq!(filter.include.len(), 1);
+        assert_eq!(filter.exclude.len(), 1);
+        assert_eq!(filter.include[0], "src/**/*.tsx");
+        assert_eq!(filter.exclude[0], "**/*.test.tsx");
+    }
+}

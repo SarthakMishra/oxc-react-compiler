@@ -7,9 +7,9 @@ Last updated: 2026-03-11
 
 ---
 
-## Priority 1 -- Core memoization (scopes created but boundaries wrong)
+## Priority 1 -- Core memoization
 
-- [~] Fix scope boundary alignment so scopes wrap computation instructions, not discriminant markers -- [memoization-codegen.md](memoization-codegen.md)#gap-1-debug-memoization-pipeline----reactivescopeblock-generation
+- [x] Fix scope boundary alignment so scopes wrap computation instructions, not discriminant markers -- [memoization-codegen.md](memoization-codegen.md)#gap-1-debug-memoization-pipeline----reactivescopeblock-generation
 
 ## Priority 3 -- Test coverage (upstream parity)
 
@@ -32,7 +32,7 @@ Last updated: 2026-03-11
 
 ## Active Work
 
-- [~] Fix scope boundary alignment so scopes wrap computation instructions, not discriminant markers -- [memoization-codegen.md](memoization-codegen.md)#gap-1-debug-memoization-pipeline----reactivescopeblock-generation
+_(Nothing active)_
 
 ---
 
@@ -47,7 +47,7 @@ _(Nothing blocked)_
 All previously planned workstreams have been completed:
 
 - **Codegen Correctness** -- Fixed `promote_used_temporaries` to walk all places (operands, terminals, scope deps/decls), fixed `place_name()` fallback to use `t{id}` instead of `_t{id}`, JSX naming fixed as a consequence
-- **Memoization Pipeline (partial)** -- Fixed scope assignment in `infer_reactive_scope_variables`, reactive param marking in `infer_reactive_places`, range extension in `infer_mutation_aliasing_ranges`, dependency/declaration population in `propagate_scope_dependencies_hir`, instruction dedup in `build_reactive_function`, added E2E memoization snapshot test
+- **Memoization Pipeline** -- Fixed scope assignment in `infer_reactive_scope_variables`, reactive param marking in `infer_reactive_places`, range extension in `infer_mutation_aliasing_ranges`, dependency/declaration population in `propagate_scope_dependencies_hir`, instruction dedup in `build_reactive_function`, added E2E memoization snapshot test. Fixed scope boundary alignment: name-based reactivity propagation in `infer_reactive_places` (resolves HIR builder fresh-ID-per-Place issue), hook detection via LoadGlobal binding name resolution, scope terminal self-referential fallthrough fix, destructure pattern target propagation
 - **Tier 2 Lint Rules** -- Full Rules of Hooks with CFG analysis, immutability checking, manual memoization preservation, exhaustive memo deps, exhaustive effect deps, structured DiagnosticKind filtering
 - **Source Maps** -- Source map generation from codegen, NAPI passthrough, Vite plugin wiring, whole-file source map composition
 - **Upstream Conformance** -- Fixture download, upstream oracle runner, differential comparison harness, output normalization
