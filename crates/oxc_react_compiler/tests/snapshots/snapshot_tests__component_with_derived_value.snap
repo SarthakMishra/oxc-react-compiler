@@ -1,0 +1,16 @@
+---
+source: crates/oxc_react_compiler/tests/snapshot_tests.rs
+expression: result.code
+---
+import { c as _c } from "react/compiler-runtime";
+
+function Display(_t0) {
+  /* t25 = Discriminant(4) */
+  const t26 = items;
+  const t27 = _t26.length;
+  const count = _t27;
+  /* t29 = Discriminant(4) */
+  const t30 = count;
+  const t31 = 0;
+  const t32 = _t30 > _t31;
+}

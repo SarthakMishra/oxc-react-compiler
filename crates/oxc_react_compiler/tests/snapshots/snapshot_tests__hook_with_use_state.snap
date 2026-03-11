@@ -1,0 +1,21 @@
+---
+source: crates/oxc_react_compiler/tests/snapshot_tests.rs
+expression: result.code
+---
+import { c as _c } from "react/compiler-runtime";
+
+function useToggle(initial) {
+  const t21 = useState;
+  const t22 = initial;
+  const t23 = _t21(_t22);
+  /* t24 = Discriminant(4) */
+  /* t25 = Discriminant(4) */
+  /* t26 = Discriminant(6) */
+  /* t27 = Discriminant(4) */
+  /* t28 = Discriminant(28) */
+  const toggle = _t28;
+  const t30 = value;
+  const t31 = toggle;
+  const t32 = [_t30, _t31];
+  return _t32;
+}
