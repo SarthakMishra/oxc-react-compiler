@@ -38,11 +38,11 @@ These passes exist but are incomplete. Incorrect behavior here means wrong memoi
 These are real optimization passes that are currently no-ops. They affect output quality
 but not correctness. The compiler will work without them.
 
-- [ ] Implement inline_iife -- [optimization.md](optimization.md)#gap-1-inline-iife
-- [ ] Implement optimize_props_method_calls -- [optimization.md](optimization.md)#gap-2-optimize-props-method-calls
-- [ ] Implement outline_jsx -- [optimization.md](optimization.md)#gap-3-outline-jsx
-- [ ] Implement outline_functions -- [optimization.md](optimization.md)#gap-4-outline-functions
-- [ ] Implement optimize_for_ssr -- [optimization.md](optimization.md)#gap-5-optimize-for-ssr
+- [x] Implement inline_iife -- [optimization.md](optimization.md)#gap-1-inline-iife
+- [x] Implement optimize_props_method_calls -- [optimization.md](optimization.md)#gap-2-optimize-props-method-calls
+- [x] Implement outline_jsx -- [optimization.md](optimization.md)#gap-3-outline-jsx
+- [x] Implement outline_functions -- [optimization.md](optimization.md)#gap-4-outline-functions
+- [x] Implement optimize_for_ssr -- [optimization.md](optimization.md)#gap-5-optimize-for-ssr
 
 ---
 
