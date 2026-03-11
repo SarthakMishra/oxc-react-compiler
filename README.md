@@ -8,8 +8,19 @@ Native [OXC](https://oxc.rs/) port of Meta's [React Compiler](https://github.com
 
 ### Installation
 
+This is a native Rust package — prebuilt binaries are not yet published to npm. Install locally via [yalc](https://github.com/wclr/yalc):
+
 ```bash
-npm install @oxc-react/vite
+# Requires: Rust toolchain (1.90+), Node.js, @napi-rs/cli
+npm install -g yalc
+
+git clone https://github.com/SarthakMishra/oxc-react-compiler
+cd oxc-react-compiler/napi/react-compiler
+npm install && npm run build
+yalc publish
+
+# Then in your project:
+yalc add oxc-react-compiler
 ```
 
 ### Basic Setup
@@ -18,7 +29,7 @@ npm install @oxc-react/vite
 // vite.config.ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { reactCompiler } from '@oxc-react/vite';
+import { reactCompiler } from 'oxc-react-compiler/vite';
 
 export default defineConfig({
   plugins: [
@@ -133,7 +144,7 @@ These rules require the full compiler pipeline (HIR, effect system, reactive sco
 ### Using Lint Rules via NAPI
 
 ```ts
-import { lintReactFile } from '@oxc-react/vite';
+import { lintReactFile } from 'oxc-react-compiler';
 
 const result = lintReactFile(sourceCode, 'component.tsx');
 for (const diag of result.diagnostics) {

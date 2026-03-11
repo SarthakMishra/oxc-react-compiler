@@ -2,7 +2,7 @@
  * OXC React Compiler Vite Plugin
  *
  * Usage:
- *   import { reactCompiler } from '@oxc-react/vite';
+ *   import { reactCompiler } from 'oxc-react-compiler/vite';
  *
  *   export default defineConfig({
  *     plugins: [reactCompiler()],

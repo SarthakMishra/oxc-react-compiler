@@ -1,5 +1,5 @@
 {
-  "name": "@oxc-react/vite",
+  "name": "oxc-react-compiler",
   "version": "0.1.0",
   "description": "OXC React Compiler - Native Rust implementation of the React Compiler for Vite/Rolldown",
   "main": "index.js",
@@ -32,7 +32,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/oxc-react-compiler"
+    "url": "https://github.com/SarthakMishra/oxc-react-compiler"
   },
   "napi": {
     "name": "oxc-react-compiler",

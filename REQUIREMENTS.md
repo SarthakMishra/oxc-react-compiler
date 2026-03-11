@@ -28,7 +28,7 @@
 ## 1. Project Goals
 
 1. **Native OXC compiler plugin** — A Rust implementation of the React Compiler that operates on OXC's AST, replacing the Babel-based `babel-plugin-react-compiler`.
-2. **Rolldown/Vite integration** — Ship as a Vite plugin (`@oxc-react/vite` or similar) using NAPI-RS bindings, following the pattern established by `@oxc-angular/vite`.
+2. **Rolldown/Vite integration** — Ship as a Vite plugin (`oxc-react-compiler` or similar) using NAPI-RS bindings, following the pattern established by `@oxc-angular/vite`.
 3. **Oxlint rules** — Implement the React 19 compiler-based lint rules natively in oxlint, replacing `eslint-plugin-react-compiler`.
 4. **Performance** — Leverage Rust's performance for the 62-pass compilation pipeline; the compiler is CPU-intensive (abstract interpretation, fixpoint iteration, disjoint set operations).
 5. **Upstream compatibility** — Maintain a clear mapping to the upstream TypeScript source so that upstream changes can be merged incrementally.
@@ -169,7 +169,7 @@ oxc-react-compiler/
 │       ├── vite-plugin/                # Vite/Rolldown plugin (TypeScript)
 │       │   ├── index.ts                # Main plugin: reactCompiler()
 │       │   └── options.ts
-│       ├── package.json                # Published as @oxc-react/vite
+│       ├── package.json                # Published as oxc-react-compiler
 │       ├── Cargo.toml
 │       └── test/
 │
