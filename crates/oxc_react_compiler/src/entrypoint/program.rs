@@ -7,8 +7,13 @@ use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
 
 use super::options::{CompilationMode, PluginOptions};
+use super::pipeline::run_full_pipeline;
+use crate::error::ErrorCollector;
+use crate::hir::build::HIRBuilder;
+use crate::hir::environment::EnvironmentConfig;
 use crate::hir::globals::{is_component_name, is_hook_name};
 use crate::hir::types::ReactFunctionType;
+use crate::reactive_scopes::codegen::{apply_compilation, codegen_function};
 
 /// Result of compiling a program.
 pub struct CompileResult {
@@ -20,8 +25,8 @@ pub struct CompileResult {
 /// Compile a single source file.
 ///
 /// 1. Parse with oxc_parser
-/// 2. Discover compilable functions
-/// 3. For each function, lower to HIR -> run pipeline -> codegen
+/// 2. Walk AST to find compilable functions
+/// 3. For each function: lower to HIR → run pipeline → codegen
 /// 4. Apply edits to produce output
 pub fn compile_program(source: &str, filename: &str, options: &PluginOptions) -> CompileResult {
     let allocator = Allocator::default();
@@ -36,10 +41,22 @@ pub fn compile_program(source: &str, filename: &str, options: &PluginOptions) ->
         };
     }
 
-    let diagnostics = Vec::new();
-    let functions = discover_functions(&parser_ret.program, options);
+    let config = EnvironmentConfig::default();
+    let mut compiled_functions: Vec<(Span, String)> = Vec::new();
+    let mut diagnostics = Vec::new();
 
-    if functions.is_empty() || functions.iter().all(|f| f.opt_out) {
+    // Walk the AST and compile each discovered function in place.
+    for stmt in &parser_ret.program.body {
+        compile_statement(
+            stmt,
+            options,
+            &config,
+            &mut compiled_functions,
+            &mut diagnostics,
+        );
+    }
+
+    if compiled_functions.is_empty() {
         return CompileResult {
             code: source.to_string(),
             transformed: false,
@@ -47,21 +64,213 @@ pub fn compile_program(source: &str, filename: &str, options: &PluginOptions) ->
         };
     }
 
-    // For now, report discovered functions but don't transform.
-    // Full implementation would:
-    // 1. For each function, build HIR using HIRBuilder
-    // 2. Run pipeline on the HIR
-    // 3. Codegen the result
-    // 4. Apply text edits to the source
-
-    let transformed = false; // Will become true when full pipeline works
+    let code = apply_compilation(source, &compiled_functions);
 
     CompileResult {
-        code: source.to_string(),
-        transformed,
+        code,
+        transformed: true,
         diagnostics,
     }
 }
+
+/// Try to compile a single function, returning the compiled code on success.
+fn try_compile_function(
+    builder: HIRBuilder,
+    func: &Function<'_>,
+    fn_type: ReactFunctionType,
+    config: &EnvironmentConfig,
+    diagnostics: &mut Vec<OxcDiagnostic>,
+) -> Option<String> {
+    let hir_func = builder.build_function(func, fn_type);
+    let mut errors = ErrorCollector::default();
+
+    match run_full_pipeline(hir_func, config, &mut errors) {
+        Ok(rf) => {
+            let code = codegen_function(&rf);
+            diagnostics.extend(errors.into_diagnostics());
+            Some(code)
+        }
+        Err(()) => {
+            diagnostics.extend(errors.into_diagnostics());
+            None
+        }
+    }
+}
+
+/// Try to compile an arrow function, returning the compiled code on success.
+fn try_compile_arrow(
+    builder: HIRBuilder,
+    arrow: &ArrowFunctionExpression<'_>,
+    name: Option<String>,
+    fn_type: ReactFunctionType,
+    config: &EnvironmentConfig,
+    diagnostics: &mut Vec<OxcDiagnostic>,
+) -> Option<String> {
+    let hir_func = builder.build_arrow_function(arrow, name, fn_type);
+    let mut errors = ErrorCollector::default();
+
+    match run_full_pipeline(hir_func, config, &mut errors) {
+        Ok(rf) => {
+            let code = codegen_function(&rf);
+            diagnostics.extend(errors.into_diagnostics());
+            Some(code)
+        }
+        Err(()) => {
+            diagnostics.extend(errors.into_diagnostics());
+            None
+        }
+    }
+}
+
+/// Walk a statement, discover compilable functions, and compile them immediately.
+fn compile_statement<'a>(
+    stmt: &'a Statement<'a>,
+    options: &PluginOptions,
+    config: &EnvironmentConfig,
+    compiled: &mut Vec<(Span, String)>,
+    diagnostics: &mut Vec<OxcDiagnostic>,
+) {
+    match stmt {
+        Statement::FunctionDeclaration(func) => {
+            if let Some(id) = func.id.as_ref() {
+                let name = id.name.to_string();
+                let fn_type = classify_function_name(&name);
+
+                if should_compile(
+                    &name,
+                    fn_type,
+                    func.body.as_ref().map(|b| b.directives.as_slice()),
+                    options,
+                ) {
+                    let builder = HIRBuilder::new(config.clone());
+                    if let Some(code) =
+                        try_compile_function(builder, func, fn_type, config, diagnostics)
+                    {
+                        compiled.push((func.span, code));
+                    }
+                }
+            }
+        }
+        Statement::ExportDefaultDeclaration(export) => match &export.declaration {
+            ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
+                let name = func.id.as_ref().map(|id| id.name.to_string());
+                let fn_type = name
+                    .as_deref()
+                    .map(classify_function_name)
+                    .unwrap_or(ReactFunctionType::Component);
+
+                if should_compile_default_export(name.as_deref(), fn_type, options) {
+                    let builder = HIRBuilder::new(config.clone());
+                    if let Some(code) =
+                        try_compile_function(builder, func, fn_type, config, diagnostics)
+                    {
+                        compiled.push((func.span, code));
+                    }
+                }
+            }
+            _ => {}
+        },
+        Statement::ExportNamedDeclaration(export) => {
+            if let Some(decl) = &export.declaration {
+                compile_declaration(decl, options, config, compiled, diagnostics);
+            }
+        }
+        Statement::VariableDeclaration(decl) => {
+            compile_variable_declaration(decl, options, config, compiled, diagnostics);
+        }
+        _ => {}
+    }
+}
+
+fn compile_declaration<'a>(
+    decl: &'a Declaration<'a>,
+    options: &PluginOptions,
+    config: &EnvironmentConfig,
+    compiled: &mut Vec<(Span, String)>,
+    diagnostics: &mut Vec<OxcDiagnostic>,
+) {
+    match decl {
+        Declaration::FunctionDeclaration(func) => {
+            if let Some(id) = func.id.as_ref() {
+                let name = id.name.to_string();
+                let fn_type = classify_function_name(&name);
+
+                if should_compile(
+                    &name,
+                    fn_type,
+                    func.body.as_ref().map(|b| b.directives.as_slice()),
+                    options,
+                ) {
+                    let builder = HIRBuilder::new(config.clone());
+                    if let Some(code) =
+                        try_compile_function(builder, func, fn_type, config, diagnostics)
+                    {
+                        compiled.push((func.span, code));
+                    }
+                }
+            }
+        }
+        Declaration::VariableDeclaration(decl) => {
+            compile_variable_declaration(decl, options, config, compiled, diagnostics);
+        }
+        _ => {}
+    }
+}
+
+fn compile_variable_declaration<'a>(
+    decl: &'a VariableDeclaration<'a>,
+    options: &PluginOptions,
+    config: &EnvironmentConfig,
+    compiled: &mut Vec<(Span, String)>,
+    diagnostics: &mut Vec<OxcDiagnostic>,
+) {
+    for declarator in &decl.declarations {
+        if let Some(init) = &declarator.init {
+            if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+                let name = id.name.to_string();
+                let fn_type = classify_function_name(&name);
+
+                if !should_compile(&name, fn_type, None, options) {
+                    continue;
+                }
+
+                match init.without_parentheses() {
+                    Expression::ArrowFunctionExpression(arrow) => {
+                        // Check for "use no memo" directive in arrow body
+                        if has_opt_out_directive(Some(arrow.body.directives.as_slice())) {
+                            continue;
+                        }
+                        let builder = HIRBuilder::new(config.clone());
+                        if let Some(code) = try_compile_arrow(
+                            builder,
+                            arrow,
+                            Some(name),
+                            fn_type,
+                            config,
+                            diagnostics,
+                        ) {
+                            compiled.push((arrow.span, code));
+                        }
+                    }
+                    Expression::FunctionExpression(func) => {
+                        let builder = HIRBuilder::new(config.clone());
+                        if let Some(code) =
+                            try_compile_function(builder, func, fn_type, config, diagnostics)
+                        {
+                            compiled.push((func.span, code));
+                        }
+                    }
+                    // TODO: Handle React.forwardRef, React.memo wrappers
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Classification and filtering helpers (unchanged from discovery)
+// ---------------------------------------------------------------------------
 
 /// A function discovered in the AST that should be compiled.
 #[derive(Debug)]
@@ -76,7 +285,7 @@ pub struct DiscoveredFunction {
     pub opt_out: bool,
 }
 
-/// Walk the program to find functions that should be compiled.
+/// Walk the program to find functions that should be compiled (for lint/discovery only).
 pub fn discover_functions<'a>(
     program: &'a Program<'a>,
     options: &PluginOptions,

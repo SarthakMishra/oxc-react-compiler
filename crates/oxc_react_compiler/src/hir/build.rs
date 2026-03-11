@@ -359,6 +359,72 @@ impl HIRBuilder {
         }
     }
 
+    /// Lower a top-level arrow function expression into an `HIRFunction` for compilation.
+    ///
+    /// Unlike `build_arrow` (which handles nested arrows within a function body),
+    /// this consumes the builder and produces a standalone HIRFunction suitable for
+    /// the compilation pipeline.
+    pub fn build_arrow_function(
+        mut self,
+        arrow: &ast::ArrowFunctionExpression<'_>,
+        id: Option<String>,
+        fn_type: ReactFunctionType,
+    ) -> HIRFunction {
+        let loc = arrow.span;
+        let params = self.lower_formal_params(&arrow.params);
+
+        let directives = arrow
+            .body
+            .directives
+            .iter()
+            .map(|d| d.directive.to_string())
+            .collect::<Vec<_>>();
+
+        if arrow.expression {
+            if let Some(stmt) = arrow.body.statements.first() {
+                if let Statement::ExpressionStatement(expr_stmt) = stmt {
+                    let val = self.lower_expression(&expr_stmt.expression);
+                    self.emit_terminal(Terminal::Return { value: val });
+                } else {
+                    self.lower_statement(stmt);
+                }
+            }
+        } else {
+            for stmt in arrow.body.statements.iter() {
+                self.lower_statement(stmt);
+            }
+        }
+
+        if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
+            let undef = self.emit(
+                InstructionValue::Primitive {
+                    value: Primitive::Undefined,
+                },
+                loc,
+            );
+            self.emit_terminal(Terminal::Return { value: undef });
+        }
+
+        let returns = self.make_temp(loc);
+        let entry = self.blocks.first().map(|(id, _)| *id).unwrap();
+
+        HIRFunction {
+            loc,
+            id,
+            fn_type,
+            params,
+            returns,
+            context: Vec::new(),
+            body: HIR {
+                entry,
+                blocks: self.blocks,
+            },
+            is_async: arrow.r#async,
+            is_generator: false,
+            directives,
+        }
+    }
+
     /// Lower an arrow function expression into an `HIRFunction`.
     fn build_arrow(&mut self, arrow: &ast::ArrowFunctionExpression<'_>) -> HIRFunction {
         let mut inner = HIRBuilder::new(EnvironmentConfig::default());

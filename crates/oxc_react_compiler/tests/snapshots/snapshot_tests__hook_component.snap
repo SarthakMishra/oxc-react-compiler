@@ -2,8 +2,17 @@
 source: crates/oxc_react_compiler/tests/snapshot_tests.rs
 expression: result.code
 ---
+import { c as _c } from "react/compiler-runtime";
 
 function useCounter() {
-    const [count, setCount] = useState(0);
-    return { count, increment: () => setCount(count + 1) };
+  const t14 = useState;
+  const t15 = 0;
+  const t16 = _t14(_t15);
+  /* t17 = Discriminant(4) */
+  /* t18 = Discriminant(4) */
+  /* t19 = Discriminant(6) */
+  const t20 = count;
+  /* t21 = Discriminant(28) */
+  const t22 = { count, increment: _t21 };
+  return _t22;
 }
