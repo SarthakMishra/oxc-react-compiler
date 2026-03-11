@@ -10,4 +10,4 @@ pub mod validation;
 
 // Public API
 pub use entrypoint::options::PluginOptions;
-pub use entrypoint::program::{CompileResult, compile_program};
+pub use entrypoint::program::{CompileResult, compile_program, compile_program_with_source_map};

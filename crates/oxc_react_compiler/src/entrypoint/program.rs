@@ -13,13 +13,17 @@ use crate::hir::build::HIRBuilder;
 use crate::hir::environment::EnvironmentConfig;
 use crate::hir::globals::{is_component_name, is_hook_name};
 use crate::hir::types::ReactFunctionType;
-use crate::reactive_scopes::codegen::{apply_compilation, codegen_function};
+use crate::reactive_scopes::codegen::{
+    SourceMap, apply_compilation, codegen_function, codegen_function_with_source_map,
+};
 
 /// Result of compiling a program.
 pub struct CompileResult {
     pub code: String,
     pub transformed: bool,
     pub diagnostics: Vec<OxcDiagnostic>,
+    /// JSON-serialized v3 source map, if source maps were requested.
+    pub source_map: Option<String>,
 }
 
 /// Compile a single source file.
@@ -29,30 +33,153 @@ pub struct CompileResult {
 /// 3. For each function: lower to HIR → run pipeline → codegen
 /// 4. Apply edits to produce output
 pub fn compile_program(source: &str, filename: &str, options: &PluginOptions) -> CompileResult {
+    compile_program_inner(source, filename, options, false)
+}
+
+/// Compile a single source file with optional source map generation.
+pub fn compile_program_with_source_map(
+    source: &str,
+    filename: &str,
+    options: &PluginOptions,
+) -> CompileResult {
+    compile_program_inner(source, filename, options, true)
+}
+
+fn compile_program_inner(
+    source: &str,
+    filename: &str,
+    options: &PluginOptions,
+    generate_source_map: bool,
+) -> CompileResult {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(filename).unwrap_or_default();
     let parser_ret = Parser::new(&allocator, source, source_type).parse();
 
     if parser_ret.panicked {
-        return CompileResult { code: source.to_string(), transformed: false, diagnostics: vec![] };
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics: vec![],
+            source_map: None,
+        };
     }
 
     let config = EnvironmentConfig::default();
     let mut compiled_functions: Vec<(Span, String)> = Vec::new();
+    let mut function_source_maps: Vec<(Span, SourceMap)> = Vec::new();
     let mut diagnostics = Vec::new();
 
     // Walk the AST and compile each discovered function in place.
     for stmt in &parser_ret.program.body {
-        compile_statement(stmt, options, &config, &mut compiled_functions, &mut diagnostics);
+        compile_statement(
+            stmt,
+            options,
+            &config,
+            source,
+            generate_source_map,
+            &mut compiled_functions,
+            &mut function_source_maps,
+            &mut diagnostics,
+        );
     }
 
     if compiled_functions.is_empty() {
-        return CompileResult { code: source.to_string(), transformed: false, diagnostics };
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics,
+            source_map: None,
+        };
     }
 
     let code = apply_compilation(source, &compiled_functions);
 
-    CompileResult { code, transformed: true, diagnostics }
+    let source_map = if generate_source_map {
+        let composed = compose_source_maps(source, &compiled_functions, &function_source_maps);
+        Some(composed.to_json(filename, filename))
+    } else {
+        None
+    };
+
+    CompileResult { code, transformed: true, diagnostics, source_map }
+}
+
+/// Compose per-function source maps into a single source map for the whole file.
+///
+/// This offsets each per-function source map's generated positions to account for
+/// the import statement added at the top and any preceding unmodified code.
+fn compose_source_maps(
+    original_source: &str,
+    compiled_functions: &[(Span, String)],
+    function_source_maps: &[(Span, SourceMap)],
+) -> SourceMap {
+    let mut composed = SourceMap::new();
+
+    // The import statement adds 1 line at the top.
+    let import_line_offset: u32 = 1;
+
+    // Build a sorted list of (span, compiled_code) to compute output positions.
+    let mut edits: Vec<(usize, usize, &str)> = compiled_functions
+        .iter()
+        .map(|(span, code)| (span.start as usize, span.end as usize, code.as_str()))
+        .collect();
+    edits.sort_by_key(|e| e.0);
+
+    // For each function source map, compute the line offset in the output.
+    for (func_span, func_sm) in function_source_maps {
+        // Count lines in the original source before this function's span start.
+        // After apply_compilation, the import is prepended, and earlier edits
+        // may have changed the line count.
+        let output_line_offset = compute_output_line_offset(
+            original_source,
+            func_span.start as usize,
+            &edits,
+            import_line_offset,
+        );
+
+        for entry in &func_sm.mappings {
+            composed.add_mapping(
+                entry.generated_line + output_line_offset,
+                entry.generated_column,
+                entry.original_line,
+                entry.original_column,
+            );
+        }
+    }
+
+    composed
+}
+
+/// Compute the line offset in the output for a function at the given byte offset.
+///
+/// Accounts for the import line and any earlier compiled functions whose line
+/// count may differ from the original code they replaced.
+fn compute_output_line_offset(
+    original_source: &str,
+    func_start: usize,
+    edits: &[(usize, usize, &str)],
+    import_line_offset: u32,
+) -> u32 {
+    let mut line_delta: i32 = import_line_offset as i32;
+
+    // Count lines before func_start, adjusting for earlier edits.
+    for &(edit_start, edit_end, replacement) in edits {
+        if edit_start >= func_start {
+            break;
+        }
+        // Lines removed from original
+        let original_lines =
+            original_source[edit_start..edit_end].chars().filter(|&c| c == '\n').count() as i32;
+        // Lines added by replacement
+        let replacement_lines = replacement.chars().filter(|&c| c == '\n').count() as i32;
+        line_delta += replacement_lines - original_lines;
+    }
+
+    // Lines in the original source before func_start
+    let original_lines_before =
+        original_source[..func_start].chars().filter(|&c| c == '\n').count() as u32;
+
+    (original_lines_before as i32 + line_delta) as u32
 }
 
 /// Try to compile a single function, returning the compiled code on success.
@@ -61,16 +188,23 @@ fn try_compile_function(
     func: &Function<'_>,
     fn_type: ReactFunctionType,
     config: &EnvironmentConfig,
+    source_text: &str,
+    generate_source_map: bool,
     diagnostics: &mut Vec<OxcDiagnostic>,
-) -> Option<String> {
+) -> Option<(String, Option<SourceMap>)> {
     let hir_func = builder.build_function(func, fn_type);
     let mut errors = ErrorCollector::default();
 
     match run_full_pipeline(hir_func, config, &mut errors) {
         Ok(rf) => {
-            let code = codegen_function(&rf);
+            let (code, sm) = if generate_source_map {
+                let (code, sm) = codegen_function_with_source_map(&rf, source_text);
+                (code, Some(sm))
+            } else {
+                (codegen_function(&rf), None)
+            };
             diagnostics.extend(errors.into_diagnostics());
-            Some(code)
+            Some((code, sm))
         }
         Err(()) => {
             diagnostics.extend(errors.into_diagnostics());
@@ -86,16 +220,23 @@ fn try_compile_arrow(
     name: Option<String>,
     fn_type: ReactFunctionType,
     config: &EnvironmentConfig,
+    source_text: &str,
+    generate_source_map: bool,
     diagnostics: &mut Vec<OxcDiagnostic>,
-) -> Option<String> {
+) -> Option<(String, Option<SourceMap>)> {
     let hir_func = builder.build_arrow_function(arrow, name, fn_type);
     let mut errors = ErrorCollector::default();
 
     match run_full_pipeline(hir_func, config, &mut errors) {
         Ok(rf) => {
-            let code = codegen_function(&rf);
+            let (code, sm) = if generate_source_map {
+                let (code, sm) = codegen_function_with_source_map(&rf, source_text);
+                (code, Some(sm))
+            } else {
+                (codegen_function(&rf), None)
+            };
             diagnostics.extend(errors.into_diagnostics());
-            Some(code)
+            Some((code, sm))
         }
         Err(()) => {
             diagnostics.extend(errors.into_diagnostics());
@@ -105,11 +246,15 @@ fn try_compile_arrow(
 }
 
 /// Walk a statement, discover compilable functions, and compile them immediately.
+#[allow(clippy::too_many_arguments)]
 fn compile_statement<'a>(
     stmt: &'a Statement<'a>,
     options: &PluginOptions,
     config: &EnvironmentConfig,
+    source_text: &str,
+    generate_source_map: bool,
     compiled: &mut Vec<(Span, String)>,
+    source_maps: &mut Vec<(Span, SourceMap)>,
     diagnostics: &mut Vec<OxcDiagnostic>,
 ) {
     match stmt {
@@ -125,9 +270,18 @@ fn compile_statement<'a>(
                     options,
                 ) {
                     let builder = HIRBuilder::new(config.clone());
-                    if let Some(code) =
-                        try_compile_function(builder, func, fn_type, config, diagnostics)
-                    {
+                    if let Some((code, sm)) = try_compile_function(
+                        builder,
+                        func,
+                        fn_type,
+                        config,
+                        source_text,
+                        generate_source_map,
+                        diagnostics,
+                    ) {
+                        if let Some(sm) = sm {
+                            source_maps.push((func.span, sm));
+                        }
                         compiled.push((func.span, code));
                     }
                 }
@@ -143,9 +297,18 @@ fn compile_statement<'a>(
 
                 if should_compile_default_export(name.as_deref(), fn_type, options) {
                     let builder = HIRBuilder::new(config.clone());
-                    if let Some(code) =
-                        try_compile_function(builder, func, fn_type, config, diagnostics)
-                    {
+                    if let Some((code, sm)) = try_compile_function(
+                        builder,
+                        func,
+                        fn_type,
+                        config,
+                        source_text,
+                        generate_source_map,
+                        diagnostics,
+                    ) {
+                        if let Some(sm) = sm {
+                            source_maps.push((func.span, sm));
+                        }
                         compiled.push((func.span, code));
                     }
                 }
@@ -154,21 +317,43 @@ fn compile_statement<'a>(
         },
         Statement::ExportNamedDeclaration(export) => {
             if let Some(decl) = &export.declaration {
-                compile_declaration(decl, options, config, compiled, diagnostics);
+                compile_declaration(
+                    decl,
+                    options,
+                    config,
+                    source_text,
+                    generate_source_map,
+                    compiled,
+                    source_maps,
+                    diagnostics,
+                );
             }
         }
         Statement::VariableDeclaration(decl) => {
-            compile_variable_declaration(decl, options, config, compiled, diagnostics);
+            compile_variable_declaration(
+                decl,
+                options,
+                config,
+                source_text,
+                generate_source_map,
+                compiled,
+                source_maps,
+                diagnostics,
+            );
         }
         _ => {}
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compile_declaration<'a>(
     decl: &'a Declaration<'a>,
     options: &PluginOptions,
     config: &EnvironmentConfig,
+    source_text: &str,
+    generate_source_map: bool,
     compiled: &mut Vec<(Span, String)>,
+    source_maps: &mut Vec<(Span, SourceMap)>,
     diagnostics: &mut Vec<OxcDiagnostic>,
 ) {
     match decl {
@@ -184,26 +369,48 @@ fn compile_declaration<'a>(
                     options,
                 ) {
                     let builder = HIRBuilder::new(config.clone());
-                    if let Some(code) =
-                        try_compile_function(builder, func, fn_type, config, diagnostics)
-                    {
+                    if let Some((code, sm)) = try_compile_function(
+                        builder,
+                        func,
+                        fn_type,
+                        config,
+                        source_text,
+                        generate_source_map,
+                        diagnostics,
+                    ) {
+                        if let Some(sm) = sm {
+                            source_maps.push((func.span, sm));
+                        }
                         compiled.push((func.span, code));
                     }
                 }
             }
         }
         Declaration::VariableDeclaration(decl) => {
-            compile_variable_declaration(decl, options, config, compiled, diagnostics);
+            compile_variable_declaration(
+                decl,
+                options,
+                config,
+                source_text,
+                generate_source_map,
+                compiled,
+                source_maps,
+                diagnostics,
+            );
         }
         _ => {}
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compile_variable_declaration<'a>(
     decl: &'a VariableDeclaration<'a>,
     options: &PluginOptions,
     config: &EnvironmentConfig,
+    source_text: &str,
+    generate_source_map: bool,
     compiled: &mut Vec<(Span, String)>,
+    source_maps: &mut Vec<(Span, SourceMap)>,
     diagnostics: &mut Vec<OxcDiagnostic>,
 ) {
     for declarator in &decl.declarations {
@@ -223,22 +430,36 @@ fn compile_variable_declaration<'a>(
                             continue;
                         }
                         let builder = HIRBuilder::new(config.clone());
-                        if let Some(code) = try_compile_arrow(
+                        if let Some((code, sm)) = try_compile_arrow(
                             builder,
                             arrow,
                             Some(name),
                             fn_type,
                             config,
+                            source_text,
+                            generate_source_map,
                             diagnostics,
                         ) {
+                            if let Some(sm) = sm {
+                                source_maps.push((arrow.span, sm));
+                            }
                             compiled.push((arrow.span, code));
                         }
                     }
                     Expression::FunctionExpression(func) => {
                         let builder = HIRBuilder::new(config.clone());
-                        if let Some(code) =
-                            try_compile_function(builder, func, fn_type, config, diagnostics)
-                        {
+                        if let Some((code, sm)) = try_compile_function(
+                            builder,
+                            func,
+                            fn_type,
+                            config,
+                            source_text,
+                            generate_source_map,
+                            diagnostics,
+                        ) {
+                            if let Some(sm) = sm {
+                                source_maps.push((func.span, sm));
+                            }
                             compiled.push((func.span, code));
                         }
                     }
