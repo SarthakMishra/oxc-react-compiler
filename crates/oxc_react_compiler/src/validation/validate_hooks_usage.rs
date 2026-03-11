@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::globals::is_hook_name;
 use crate::hir::types::{BlockId, HIR, InstructionValue, Terminal};
 use rustc_hash::FxHashSet;
@@ -17,13 +17,14 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
             if let InstructionValue::CallExpression { callee, .. } = &instr.value {
                 if let Some(name) = &callee.identifier.name {
                     if is_hook_name(name) && conditional_blocks.contains(block_id) {
-                        errors.push(CompilerError::invalid_react(
+                        errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             format!(
                                 "React Hook \"{}\" is called conditionally. \
                                  Hooks must be called in the exact same order in every render.",
                                 name
                             ),
+                            DiagnosticKind::HooksViolation,
                         ));
                     }
                 }

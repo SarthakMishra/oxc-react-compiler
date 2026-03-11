@@ -16,6 +16,48 @@ pub enum ErrorCategory {
     InvariantViolation,
 }
 
+/// Fine-grained diagnostic kind for filtering in lint rules (Tier 2).
+///
+/// Each variant maps to a specific validation pass, enabling lint rules to
+/// filter diagnostics by kind rather than fragile string matching.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DiagnosticKind {
+    /// Hooks called conditionally or in wrong order (validate_hooks_usage)
+    HooksViolation,
+    /// Mutation of frozen/immutable values (validate_no_freezing_known_mutable_functions)
+    ImmutabilityViolation,
+    /// Compiler memoization doesn't preserve manual useMemo/useCallback (validate_preserved_manual_memoization)
+    MemoizationPreservation,
+    /// Missing or extraneous deps in useMemo/useCallback (validate_exhaustive_dependencies for memo hooks)
+    MemoDependency,
+    /// Missing or extraneous deps in useEffect/useLayoutEffect (validate_exhaustive_dependencies for effect hooks)
+    EffectDependency,
+    /// Ref.current accessed during render (validate_no_ref_access_in_render)
+    RefAccessInRender,
+    /// setState called during render (validate_no_set_state_in_render)
+    SetStateInRender,
+    /// setState called directly in effect body (validate_no_set_state_in_effects)
+    SetStateInEffects,
+    /// JSX inside try block (validate_no_jsx_in_try)
+    JsxInTry,
+    /// Capitalized function calls that aren't components (validate_no_capitalized_calls)
+    CapitalizedCalls,
+    /// Context variable reassignment (validate_context_variable_lvalues)
+    ContextVariableLvalues,
+    /// Static component detection (validate_static_components)
+    StaticComponents,
+    /// Derived computations in effects (validate_no_derived_computations_in_effects)
+    DerivedComputationsInEffects,
+    /// Locals reassigned after render (validate_locals_not_reassigned_after_render)
+    LocalsReassignedAfterRender,
+    /// useMemo/useCallback validation (validate_use_memo)
+    UseMemoValidation,
+    /// Internal invariant violation (assert_valid_mutable_ranges)
+    InvariantViolation,
+    /// General/unclassified diagnostic
+    Other,
+}
+
 /// Severity level derived from the error category.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorSeverity {
@@ -47,10 +89,11 @@ pub enum PanicThreshold {
     None,
 }
 
-/// A compiler error with source location, category, and optional detail.
+/// A compiler error with source location, category, diagnostic kind, and optional detail.
 #[derive(Debug)]
 pub struct CompilerError {
     pub category: ErrorCategory,
+    pub kind: DiagnosticKind,
     pub span: Span,
     pub message: String,
     pub detail: Option<String>,
@@ -72,6 +115,17 @@ impl CompilerError {
         }
     }
 
+    /// Creates an `OxcDiagnostic` from this error without consuming it.
+    pub fn to_diagnostic(&self) -> OxcDiagnostic {
+        let diag = match self.severity() {
+            ErrorSeverity::Error => OxcDiagnostic::error(self.message.clone()),
+            ErrorSeverity::Warning | ErrorSeverity::Todo => {
+                OxcDiagnostic::warn(self.message.clone())
+            }
+        };
+        diag.with_label(self.span)
+    }
+
     /// Converts this error into an `OxcDiagnostic`, using error or warn
     /// based on severity.
     pub fn into_diagnostic(self) -> OxcDiagnostic {
@@ -82,25 +136,62 @@ impl CompilerError {
         diag.with_label(self.span)
     }
 
-    /// Creates an `InvalidReact` error.
-    pub fn invalid_react(span: Span, message: impl Into<String>) -> Self {
-        Self { category: ErrorCategory::InvalidReact, span, message: message.into(), detail: None }
+    /// Creates an `InvalidReact` error with a specific diagnostic kind.
+    pub fn invalid_react_with_kind(
+        span: Span,
+        message: impl Into<String>,
+        kind: DiagnosticKind,
+    ) -> Self {
+        Self {
+            category: ErrorCategory::InvalidReact,
+            kind,
+            span,
+            message: message.into(),
+            detail: None,
+        }
     }
 
-    /// Creates an `InvalidJS` error.
+    /// Creates an `InvalidReact` error with `DiagnosticKind::Other`.
+    pub fn invalid_react(span: Span, message: impl Into<String>) -> Self {
+        Self::invalid_react_with_kind(span, message, DiagnosticKind::Other)
+    }
+
+    /// Creates an `InvalidJS` error with a specific diagnostic kind.
+    pub fn invalid_js_with_kind(
+        span: Span,
+        message: impl Into<String>,
+        kind: DiagnosticKind,
+    ) -> Self {
+        Self {
+            category: ErrorCategory::InvalidJS,
+            kind,
+            span,
+            message: message.into(),
+            detail: None,
+        }
+    }
+
+    /// Creates an `InvalidJS` error with `DiagnosticKind::Other`.
     pub fn invalid_js(span: Span, message: impl Into<String>) -> Self {
-        Self { category: ErrorCategory::InvalidJS, span, message: message.into(), detail: None }
+        Self::invalid_js_with_kind(span, message, DiagnosticKind::Other)
     }
 
     /// Creates a `Todo` error for unimplemented features.
     pub fn todo(span: Span, message: impl Into<String>) -> Self {
-        Self { category: ErrorCategory::Todo, span, message: message.into(), detail: None }
+        Self {
+            category: ErrorCategory::Todo,
+            kind: DiagnosticKind::Other,
+            span,
+            message: message.into(),
+            detail: None,
+        }
     }
 
     /// Creates an `InvariantViolation` error for internal compiler bugs.
     pub fn invariant(span: Span, message: impl Into<String>) -> Self {
         Self {
             category: ErrorCategory::InvariantViolation,
+            kind: DiagnosticKind::InvariantViolation,
             span,
             message: message.into(),
             detail: None,
@@ -157,5 +248,29 @@ impl ErrorCollector {
     /// Returns `true` if no errors have been collected.
     pub fn is_empty(&self) -> bool {
         self.errors.is_empty()
+    }
+
+    /// Returns a reference to the collected errors.
+    pub fn errors(&self) -> &[CompilerError] {
+        &self.errors
+    }
+
+    /// Appends all errors from another collector into this one.
+    pub fn extend(&mut self, other: &mut ErrorCollector) {
+        self.errors.append(&mut other.errors);
+    }
+
+    /// Filters errors by diagnostic kind and converts them to diagnostics.
+    pub fn diagnostics_by_kind(&self, kind: DiagnosticKind) -> Vec<OxcDiagnostic> {
+        self.errors.iter().filter(|e| e.kind == kind).map(CompilerError::to_diagnostic).collect()
+    }
+
+    /// Filters errors by multiple diagnostic kinds and converts them to diagnostics.
+    pub fn diagnostics_by_kinds(&self, kinds: &[DiagnosticKind]) -> Vec<OxcDiagnostic> {
+        self.errors
+            .iter()
+            .filter(|e| kinds.contains(&e.kind))
+            .map(CompilerError::to_diagnostic)
+            .collect()
     }
 }

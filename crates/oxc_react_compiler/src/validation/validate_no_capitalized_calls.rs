@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue};
 
 /// Validate that PascalCase functions are not called as regular functions.
@@ -22,13 +22,14 @@ pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
 
                     // Check if the callee starts with an uppercase letter
                     if name.as_bytes().first().map_or(false, |b| b.is_ascii_uppercase()) {
-                        errors.push(CompilerError::invalid_react(
+                        errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             format!(
                                 "\"{}\" is a component and cannot be called directly. \
                                  Use JSX syntax (<{} />) instead of calling it as a function.",
                                 name, name
                             ),
+                            DiagnosticKind::CapitalizedCalls,
                         ));
                     }
                 }

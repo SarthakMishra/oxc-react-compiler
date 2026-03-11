@@ -1,11 +1,14 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue, Place};
 use rustc_hash::FxHashSet;
 
 /// Known hooks that accept a dependency array as their second argument.
 const HOOKS_WITH_DEPS: &[&str] = &["useMemo", "useCallback", "useEffect", "useLayoutEffect"];
+
+/// Effect hooks (for distinguishing MemoDependency vs EffectDependency).
+const EFFECT_HOOKS: &[&str] = &["useEffect", "useLayoutEffect"];
 
 /// Validate that dependency arrays for memoization/effect hooks are exhaustive.
 ///
@@ -40,9 +43,16 @@ pub fn validate_exhaustive_dependencies(hir: &HIR, errors: &mut ErrorCollector) 
                 let declared_deps = collect_declared_deps(hir, deps_place);
 
                 // Report missing dependencies
+                // Determine the diagnostic kind based on whether this is an effect or memo hook
+                let kind = if EFFECT_HOOKS.contains(&name) {
+                    DiagnosticKind::EffectDependency
+                } else {
+                    DiagnosticKind::MemoDependency
+                };
+
                 for dep_name in &callback_deps {
                     if !declared_deps.contains(dep_name) {
-                        errors.push(CompilerError::invalid_react(
+                        errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             format!(
                                 "React Hook \"{}\" has a missing dependency: \"{}\". \
@@ -50,6 +60,7 @@ pub fn validate_exhaustive_dependencies(hir: &HIR, errors: &mut ErrorCollector) 
                                  the dependency array.",
                                 name, dep_name
                             ),
+                            kind,
                         ));
                     }
                 }

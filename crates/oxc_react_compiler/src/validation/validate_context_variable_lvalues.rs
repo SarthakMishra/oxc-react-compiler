@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionKind, InstructionValue};
 
 /// Validate that context variables (captured from outer scope) are not reassigned
@@ -34,13 +34,14 @@ pub fn validate_context_variable_lvalues(hir: &HIR, errors: &mut ErrorCollector)
             if let InstructionValue::StoreContext { lvalue, .. } = &instr.value {
                 if let Some(name) = &lvalue.identifier.name {
                     if const_context_ids.contains(name) {
-                        errors.push(CompilerError::invalid_js(
+                        errors.push(CompilerError::invalid_js_with_kind(
                             instr.loc,
                             format!(
                                 "Cannot reassign context variable \"{}\". \
                                  It was declared as a const binding and is immutable.",
                                 name
                             ),
+                            DiagnosticKind::ContextVariableLvalues,
                         ));
                     }
                 }

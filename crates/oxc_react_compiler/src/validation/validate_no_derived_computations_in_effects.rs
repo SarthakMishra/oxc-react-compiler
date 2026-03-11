@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue, Place};
 
 /// Known effect hook names.
@@ -59,7 +59,7 @@ fn check_effect_callback_for_derived_state(
                         } = &inner_instr.value
                         {
                             if is_set_state_call(inner_callee) && !inner_args.is_empty() {
-                                errors.push(CompilerError::invalid_react(
+                                errors.push(CompilerError::invalid_react_with_kind(
                                     inner_instr.loc,
                                     format!(
                                         "Derived computation inside \"{}\". \
@@ -68,6 +68,7 @@ fn check_effect_callback_for_derived_state(
                                          render instead (e.g., with useMemo).",
                                         hook_name
                                     ),
+                                    DiagnosticKind::DerivedComputationsInEffects,
                                 ));
                             }
                         }

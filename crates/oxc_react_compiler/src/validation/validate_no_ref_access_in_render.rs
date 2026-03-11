@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue, Place};
 
 /// Validate that ref values are not accessed during render.
@@ -12,11 +12,12 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
         for instr in &block.instructions {
             if let InstructionValue::PropertyLoad { object, property } = &instr.value {
                 if property == "current" && is_likely_ref(object) {
-                    errors.push(CompilerError::invalid_react(
+                    errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
                         "Accessing ref.current during render. \
                          Refs are mutable and reading them during render can cause tearing."
                             .to_string(),
+                        DiagnosticKind::RefAccessInRender,
                     ));
                 }
             }

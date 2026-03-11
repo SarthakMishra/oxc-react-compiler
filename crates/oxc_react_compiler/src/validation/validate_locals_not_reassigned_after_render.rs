@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue};
 use rustc_hash::FxHashSet;
 
@@ -59,7 +59,7 @@ fn check_nested_reassignments(
             if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value {
                 if let Some(name) = &lvalue.identifier.name {
                     if render_assigned.contains(name) {
-                        errors.push(CompilerError::invalid_react(
+                        errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             format!(
                                 "Local variable \"{}\" is assigned during render but \
@@ -67,6 +67,7 @@ fn check_nested_reassignments(
                                  This prevents the compiler from memoizing correctly.",
                                 name
                             ),
+                            DiagnosticKind::LocalsReassignedAfterRender,
                         ));
                     }
                 }

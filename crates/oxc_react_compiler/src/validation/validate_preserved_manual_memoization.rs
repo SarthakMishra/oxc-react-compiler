@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{
     Instruction, InstructionValue, ReactiveBlock, ReactiveFunction, ReactiveInstruction, ScopeId,
 };
@@ -27,7 +27,7 @@ pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &m
         // If start and finish are in different scopes, the manual memo is split
         if region.start_scope != region.finish_scope {
             let loc = region.loc;
-            errors.push(CompilerError::invalid_react(
+            errors.push(CompilerError::invalid_react_with_kind(
                 loc,
                 format!(
                     "Manual memoization (memo id {}) is not preserved. \
@@ -35,12 +35,13 @@ pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &m
                      the compiler cannot guarantee the same memoization semantics.",
                     memo_id
                 ),
+                DiagnosticKind::MemoizationPreservation,
             ));
         }
 
         // If the memo region has been pruned, warn that it was removed
         if region.pruned {
-            errors.push(CompilerError::invalid_react(
+            errors.push(CompilerError::invalid_react_with_kind(
                 region.loc,
                 format!(
                     "Manual memoization (memo id {}) was pruned. \
@@ -48,6 +49,7 @@ pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &m
                      memoization, but this may change the program's semantics.",
                     memo_id
                 ),
+                DiagnosticKind::MemoizationPreservation,
             ));
         }
     }

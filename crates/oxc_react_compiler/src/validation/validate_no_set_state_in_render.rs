@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue, Place};
 
 /// Validate that setState is not called unconditionally during render.
@@ -13,11 +13,12 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
         for instr in &block.instructions {
             if let InstructionValue::CallExpression { callee, .. } = &instr.value {
                 if is_set_state_call(callee) {
-                    errors.push(CompilerError::invalid_react(
+                    errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
                         "setState is called unconditionally during render. \
                          This will cause an infinite re-render loop."
                             .to_string(),
+                        DiagnosticKind::SetStateInRender,
                     ));
                 }
             }

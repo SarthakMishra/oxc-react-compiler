@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{AliasingEffect, HIR, IdentifierId, InstructionValue};
 use rustc_hash::FxHashSet;
 
@@ -22,7 +22,7 @@ pub fn validate_no_freezing_known_mutable_functions(hir: &HIR, errors: &mut Erro
                     if let AliasingEffect::Freeze { value, .. } = effect {
                         if mutable_fn_ids.contains(&value.identifier.id) {
                             let name = value.identifier.name.as_deref().unwrap_or("<unknown>");
-                            errors.push(CompilerError::invalid_react(
+                            errors.push(CompilerError::invalid_react_with_kind(
                                 instr.loc,
                                 format!(
                                     "Cannot freeze mutable function \"{}\". \
@@ -30,6 +30,7 @@ pub fn validate_no_freezing_known_mutable_functions(hir: &HIR, errors: &mut Erro
                                      and should not be frozen by the compiler.",
                                     name
                                 ),
+                                DiagnosticKind::ImmutabilityViolation,
                             ));
                         }
                     }

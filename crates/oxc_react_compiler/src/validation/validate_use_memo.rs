@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue};
 
 /// Validate correct usage of `useMemo` and `useCallback`.
@@ -25,7 +25,7 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
 
                 // Check argument count: must be exactly 2 (callback + deps)
                 if args.len() != 2 {
-                    errors.push(CompilerError::invalid_react(
+                    errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
                         format!(
                             "\"{}\" requires exactly 2 arguments (a callback and a dependency array), \
@@ -33,6 +33,7 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
                             name,
                             args.len()
                         ),
+                        DiagnosticKind::UseMemoValidation,
                     ));
                 }
 
@@ -63,11 +64,12 @@ fn check_memo_callback_async(
             }
             if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
                 if lowered_func.is_async {
-                    errors.push(CompilerError::invalid_react(
+                    errors.push(CompilerError::invalid_react_with_kind(
                         call_loc,
                         "useMemo callback must not be async. \
                          The callback should return a value synchronously."
                             .to_string(),
+                        DiagnosticKind::UseMemoValidation,
                     ));
                 }
             }

@@ -13,24 +13,25 @@ use oxc_span::SourceType;
 use oxc_react_compiler::entrypoint::options::PluginOptions;
 use oxc_react_compiler::entrypoint::pipeline::run_lint_pipeline;
 use oxc_react_compiler::entrypoint::program::discover_functions;
-use oxc_react_compiler::error::{ErrorCategory, ErrorCollector};
+use oxc_react_compiler::error::{DiagnosticKind, ErrorCollector};
 use oxc_react_compiler::hir::build::HIRBuilder;
 use oxc_react_compiler::hir::environment::EnvironmentConfig;
 use oxc_react_compiler::hir::types::ReactFunctionType;
 
-/// Run the compiler pipeline in lint mode for a source file, collecting all diagnostics.
-fn run_lint_analysis(source: &str, filename: &str) -> Vec<OxcDiagnostic> {
+/// Run the compiler pipeline in lint mode for a source file, collecting all errors
+/// with their structured diagnostic kinds intact.
+fn run_lint_analysis(source: &str, filename: &str) -> ErrorCollector {
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(filename).unwrap_or_default();
     let parser_ret = Parser::new(&allocator, source, source_type).parse();
 
     if parser_ret.panicked {
-        return Vec::new();
+        return ErrorCollector::default();
     }
 
     let options = PluginOptions::default();
     let config = EnvironmentConfig::default();
-    let mut all_diagnostics = Vec::new();
+    let mut all_errors = ErrorCollector::default();
 
     let functions = discover_functions(&parser_ret.program, &options);
 
@@ -40,7 +41,6 @@ fn run_lint_analysis(source: &str, filename: &str) -> Vec<OxcDiagnostic> {
         }
 
         // Find the function in the AST by span and build HIR.
-        // We need to walk the AST to find the matching function node.
         let hir_func = find_and_build_function(
             &parser_ret.program,
             func_info.span,
@@ -55,10 +55,10 @@ fn run_lint_analysis(source: &str, filename: &str) -> Vec<OxcDiagnostic> {
         let mut errors = ErrorCollector::default();
         let _ = run_lint_pipeline(&mut hir_func.body, &config, &mut errors);
 
-        all_diagnostics.extend(errors.into_diagnostics());
+        all_errors.extend(&mut errors);
     }
 
-    all_diagnostics
+    all_errors
 }
 
 /// Find a function in the AST by span and build its HIR.
@@ -125,7 +125,7 @@ fn find_and_build_function<'a>(
 /// Full Rules of Hooks validation using HIR control flow analysis.
 /// Goes beyond the AST-level check by analyzing the actual CFG for
 /// conditional and loop paths.
-pub fn check_hooks_tier2(program: &Program) -> Vec<OxcDiagnostic> {
+pub fn check_hooks_tier2(_program: &Program) -> Vec<OxcDiagnostic> {
     // The hooks validation is performed inside run_lint_pipeline when
     // validate_hooks_usage is enabled. We can't easily re-run just for
     // hooks without the source string. Return empty for the AST-only API.
@@ -135,10 +135,7 @@ pub fn check_hooks_tier2(program: &Program) -> Vec<OxcDiagnostic> {
 
 /// Run Tier 2 hooks validation with source text.
 pub fn check_hooks_tier2_with_source(source: &str, filename: &str) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename)
-        .into_iter()
-        .filter(|d| d.message.to_string().contains("hook"))
-        .collect()
+    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::HooksViolation)
 }
 
 /// Detect mutation of frozen (immutable) values.
@@ -150,13 +147,7 @@ pub fn check_immutability(_program: &Program) -> Vec<OxcDiagnostic> {
 
 /// Run Tier 2 immutability checks with source text.
 pub fn check_immutability_with_source(source: &str, filename: &str) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename)
-        .into_iter()
-        .filter(|d| {
-            let msg = d.message.to_string();
-            msg.contains("frozen") || msg.contains("immutable") || msg.contains("mutate")
-        })
-        .collect()
+    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::ImmutabilityViolation)
 }
 
 /// Validate that the compiler's memoization preserves manual
@@ -170,13 +161,7 @@ pub fn check_preserve_manual_memoization_with_source(
     source: &str,
     filename: &str,
 ) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename)
-        .into_iter()
-        .filter(|d| {
-            let msg = d.message.to_string();
-            msg.contains("memoiz") || msg.contains("useMemo") || msg.contains("useCallback")
-        })
-        .collect()
+    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::MemoizationPreservation)
 }
 
 /// Validate exhaustive dependencies for useMemo/useCallback.
@@ -187,13 +172,7 @@ pub fn check_memo_dependencies(_program: &Program) -> Vec<OxcDiagnostic> {
 
 /// Run Tier 2 memo dependency checks with source text.
 pub fn check_memo_dependencies_with_source(source: &str, filename: &str) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename)
-        .into_iter()
-        .filter(|d| {
-            let msg = d.message.to_string();
-            msg.contains("dependency") || msg.contains("dependencies")
-        })
-        .collect()
+    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::MemoDependency)
 }
 
 /// Validate exhaustive dependencies for useEffect/useLayoutEffect.
@@ -207,11 +186,5 @@ pub fn check_exhaustive_effect_deps_with_source(
     source: &str,
     filename: &str,
 ) -> Vec<OxcDiagnostic> {
-    run_lint_analysis(source, filename)
-        .into_iter()
-        .filter(|d| {
-            let msg = d.message.to_string();
-            msg.contains("effect") || msg.contains("useEffect") || msg.contains("useLayoutEffect")
-        })
-        .collect()
+    run_lint_analysis(source, filename).diagnostics_by_kind(DiagnosticKind::EffectDependency)
 }

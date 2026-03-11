@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{BlockId, HIR, InstructionValue, Terminal};
 use rustc_hash::FxHashSet;
 
@@ -22,11 +22,12 @@ pub fn validate_no_jsx_in_try(hir: &HIR, errors: &mut ErrorCollector) {
         for instr in &block.instructions {
             match &instr.value {
                 InstructionValue::JsxExpression { .. } | InstructionValue::JsxFragment { .. } => {
-                    errors.push(CompilerError::invalid_react(
+                    errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
                         "JSX inside a try block. Use an error boundary component \
                          instead of try/catch for handling errors in JSX rendering."
                             .to_string(),
+                        DiagnosticKind::JsxInTry,
                     ));
                 }
                 _ => {}

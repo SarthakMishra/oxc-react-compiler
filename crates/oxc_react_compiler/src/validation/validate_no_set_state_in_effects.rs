@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::{CompilerError, ErrorCollector};
+use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue, Place};
 
 /// Known effect hook names.
@@ -65,7 +65,7 @@ fn check_effect_body_for_set_state(
                             &inner_instr.value
                         {
                             if is_set_state_call(inner_callee) {
-                                errors.push(CompilerError::invalid_react(
+                                errors.push(CompilerError::invalid_react_with_kind(
                                     inner_instr.loc,
                                     format!(
                                         "setState is called directly inside \"{}\". \
@@ -74,6 +74,7 @@ fn check_effect_body_for_set_state(
                                          or moving the update into a callback.",
                                         hook_name
                                     ),
+                                    DiagnosticKind::SetStateInEffects,
                                 ));
                             }
                         }
