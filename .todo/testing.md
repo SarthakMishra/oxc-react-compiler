@@ -1,85 +1,51 @@
-# Testing Strategy
+# Testing Gaps
 
-> Test infrastructure for verifying upstream behavioral equivalence.
-> See REQUIREMENTS.md Section 15.
-
----
-
-### Gap 1: Upstream Fixture Test Harness
-
-**Upstream:** `compiler/packages/babel-plugin-react-compiler/src/__tests__/fixtures/`
-**Current state:** Nothing implemented.
-**What's needed:**
-
-- Test runner that loads upstream fixture files (input React source + expected output)
-- Run input through the full pipeline
-- Compare output with expected output
-- Handle fixture format:
-  - Input: `.js`/`.tsx` React component source
-  - Expected: compiled output JavaScript
-- Fixture categories: basic components, hooks, control flow, edge cases
-- Initially: port a small subset of fixtures for end-to-end validation
-- Goal: pass the full upstream fixture suite
-
-Infrastructure:
-- Conformance test crate or test module
-- Fixture file discovery and loading
-- Diff-friendly test failure output
-
-**Depends on:** Pipeline orchestration, Codegen (must produce output to compare)
+> The current test suite has 6 tests that verify the compiler doesn't crash, but none
+> verify that it actually transforms code correctly.
 
 ---
 
-### Gap 2: Per-Pass Snapshot Tests
+## Gap 1: Upstream Fixture Test Harness
 
-**Current state:** `insta` is in dev-dependencies but no tests exist.
+**Upstream:** `packages/babel-plugin-react-compiler/src/__tests__/fixtures/`
+(thousands of fixture files with expected output)
+**Current state:** No fixture test infrastructure exists. The 6 tests in
+`tests/snapshot_tests.rs` all assert on `transformed: false` because the pipeline
+doesn't work end-to-end.
 **What's needed:**
-
-- For each implemented pass, snapshot tests using `insta`:
-  - Create small HIR fixtures programmatically
-  - Run the pass
-  - Snapshot the HIR state after the pass
-- HIR pretty-printer for snapshot output:
-  - Print blocks, instructions, terminals in a human-readable format
-  - Include effect annotations, types, mutable ranges
-- Snapshot naming convention: `pass_name__test_case_name`
-
-**Depends on:** HIR types (must have Display/Debug implementations)
+- Download or vendored subset of upstream fixture files (input JS + expected output)
+- Build a test harness that:
+  1. Compiles each input with `compile_program`
+  2. Compares output against expected (or generates snapshots for review)
+  3. Tracks pass/fail rates to measure upstream compatibility
+- Start with the simplest fixtures (basic components, simple hooks) and expand
+- Pin to a specific upstream commit (see `UPSTREAM_VERSION.md`)
+**Depends on:** Gap 1-4 in pipeline.md (end-to-end compilation must work first)
 
 ---
 
-### Gap 3: Comparison Tests
+## Gap 2: End-to-End Snapshot Tests
 
-**Current state:** Nothing implemented.
+**Current state:** `tests/snapshot_tests.rs` uses insta but all snapshots are of
+the original source (untransformed).
 **What's needed:**
-
-- Run the same input through both the Babel plugin and the OXC plugin
-- Diff the outputs
-- Track which fixtures produce identical output vs divergent
-- Report divergence percentage
-- Useful for incremental progress tracking
-
-Infrastructure:
-- Script to run Babel plugin on fixture inputs
-- Script to run OXC plugin on same inputs
-- Diffing and reporting tool
-
-**Depends on:** Full pipeline working end-to-end
+- Add test cases that exercise the full pipeline:
+  - Simple component with props -> should produce `_c(N)` + conditional blocks
+  - Hook with useState -> should memoize derived values
+  - Component with multiple JSX elements -> should produce multiple scopes
+  - Component with conditional rendering -> should handle if/else scopes
+- Use insta snapshots so output changes are reviewable
+**Depends on:** Gap 1-4 in pipeline.md
 
 ---
 
-### Gap 4: Performance Benchmarking
+## Gap 3: Per-Pass Unit Tests
 
-**Current state:** Nothing implemented.
+**Current state:** No unit tests for individual passes (inference, reactive scopes, etc.)
 **What's needed:**
-
-- Benchmark suite using `criterion` or similar
-- Key benchmarks:
-  - Parse + compile a single component (various sizes)
-  - Full file compilation (multiple components)
-  - Individual pass timing (which passes are hotspots)
-- Comparison with Babel plugin (JS vs Rust performance)
-- Memory usage profiling
-- CI integration for performance regression detection
-
-**Depends on:** Full pipeline working end-to-end
+- Test `infer_reactive_places` with hand-crafted HIR
+- Test `infer_reactive_scope_variables` with known mutable ranges
+- Test `propagate_scope_dependencies_hir` with known scope structures
+- Test `codegen_function` with hand-crafted ReactiveFunction trees
+- Test `build_reactive_function` with known CFG shapes
+**Depends on:** None (can be written against the existing pass functions)

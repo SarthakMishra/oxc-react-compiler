@@ -1,127 +1,79 @@
-# Optimization Passes
+# Optimization Pass Gaps
 
-> Early optimization passes that simplify the HIR before analysis.
-> Upstream: `src/Optimization/*.ts`
-> Rust modules: `crates/oxc_react_compiler/src/optimization/*.rs`
-
----
-
-### Gap 1: ConstantPropagation
-
-**Upstream:** `src/Optimization/ConstantPropagation.ts`
-**Pipeline position:** Pass #10, Phase 3
-**Current state:** `optimization/constant_propagation.rs` is a stub.
-**What's needed:**
-
-Propagate known constant values through the HIR:
-
-- Track which SSA identifiers hold known constant values (primitives)
-- When an instruction reads a constant identifier, substitute the constant directly
-- Fold constant binary/unary expressions: `1 + 2` -> `Primitive(3)`
-- Fold constant conditionals: `if (true) { A } else { B }` -> just A
-- Propagate through `LoadLocal` / `StoreLocal` chains
-- Do NOT propagate across function boundaries (closures may observe mutations)
-
-Standard constant propagation on SSA form. Single pass over all blocks in order.
-
-**Depends on:** SSA (pass #8-9)
+> These passes improve memoization quality and code size but are not required for
+> correctness. The compiler will produce valid output without them -- just with
+> sub-optimal memoization granularity.
 
 ---
 
-### Gap 2: InlineIIFE
+## Gap 1: inline_iife
 
-**Upstream:** `src/Optimization/InlineImmediatelyInvokedFunctionExpressions.ts`
-**Pipeline position:** Pass #6, Phase 1 (pre-SSA)
-**Current state:** `optimization/inline_iife.rs` is a stub.
+**Upstream:** `packages/babel-plugin-react-compiler/src/Optimization/InlineIIFE.ts` (~200 lines)
+**Current state:** `optimization/inline_iife.rs` is a no-op stub (30 lines).
 **What's needed:**
-
-Inline immediately-invoked function expressions into the calling scope:
-
-- Detect pattern: `(function() { ... })()` or `(() => { ... })()`
-- Only inline if:
-  - No arguments (or simple argument mapping)
-  - Not recursive (doesn't reference itself)
-  - No `this` binding issues
-- Replace the call with the inlined function body
+- Detect `CallExpression` where callee is a `FunctionExpression` with no captures
+- Inline the function body: create new blocks, remap instruction/block IDs
 - Map parameters to arguments
-- Handle return value -> becomes the result of the inlined block
-
-**Depends on:** HIR types (complete)
-
----
-
-### Gap 3: MergeConsecutiveBlocks
-
-**Upstream:** `src/Optimization/MergeConsecutiveBlocks.ts` (inferred from pipeline)
-**Pipeline position:** Pass #7, Phase 1
-**Current state:** No file exists yet — need to create `optimization/merge_consecutive_blocks.rs`.
-**What's needed:**
-
-Merge basic blocks that have a single predecessor/successor relationship:
-
-- If block A's terminal is `Goto { block: B }` and B has only A as predecessor
-- Merge B's instructions into A, replace A's terminal with B's terminal
-- Update all references from B to A
-- Remove B from the block map
-- Repeat until no more merges possible
-
-This simplifies the CFG after control flow lowering, which often creates unnecessary intermediate blocks.
-
-**Depends on:** HIR types (complete)
+- Replace the call result with the function's return value
+- Handle single-expression arrow functions (common pattern)
+- Handle functions with multiple return points (need phi at join)
+- Skip functions that capture mutable state
+**Depends on:** None (runs at pass 6, before SSA)
 
 ---
 
-### Gap 4: DeadCodeElimination
+## Gap 2: optimize_props_method_calls
 
-**Upstream:** `src/Optimization/DeadCodeElimination.ts`
-**Pipeline position:** Pass #18, Phase 5
-**Current state:** `optimization/dead_code_elimination.rs` is a stub.
+**Upstream:** `packages/babel-plugin-react-compiler/src/Optimization/OptimizePropsMethodCalls.ts`
+(~100 lines)
+**Current state:** `optimization/optimize_props_method_calls.rs` is a no-op stub (41 lines)
+with a pseudocode sketch in comments.
 **What's needed:**
-
-Remove instructions whose results are never used:
-
-- Build use-def chains from SSA form
-- Mark instructions whose lvalues are never referenced by other instructions or terminals
-- Remove marked instructions (unless they have side effects)
-- Preserve instructions with observable effects (calls, stores, mutations)
-- May need to iterate if removing an instruction makes its operands unused
-
-Note: This runs after mutation analysis (pass #18), so it can use effect information to determine which instructions are side-effect-free.
-
-**Depends on:** SSA, InferMutationAliasingEffects (for effect-aware DCE)
+- Identify places typed as component props (requires type information from `infer_types`)
+- For `MethodCall { receiver: props, property, args }`, split into:
+  1. `PropertyLoad { object: props, property }` -> new temp
+  2. `CallExpression { callee: new_temp, args }`
+- Allocate new instruction IDs and identifier IDs via an IdGenerator
+- Insert the PropertyLoad instruction before the transformed call
+**Depends on:** `infer_types` (needs to know which identifiers are props)
 
 ---
 
-### Gap 5: PruneMaybeThrows
+## Gap 3: outline_jsx
 
-**Upstream:** `src/HIR/PruneMaybeThrows.ts` (inferred from pipeline)
-**Pipeline position:** Pass #2 and Pass #19, Phase 1 and Phase 5
-**Current state:** No file exists yet.
+**Upstream:** `packages/babel-plugin-react-compiler/src/Optimization/OutlineJSX.ts` (~250 lines)
+**Current state:** `optimization/outline_jsx.rs` is a no-op stub (11 lines).
 **What's needed:**
-
-Remove `MaybeThrow` terminals that are not inside a try/catch:
-
-- Walk the CFG and track whether we are inside a try block
-- `MaybeThrow` terminals outside of try blocks serve no purpose (the exception will propagate normally)
-- Replace `MaybeThrow { continuation, handler }` with `Goto { block: continuation }` when not in a try
-- Remove now-unreachable handler blocks
-- Runs twice: once in Phase 1 (cleanup after lowering) and once in Phase 5 (after optimization may have removed try blocks)
-
-**Depends on:** HIR types (complete)
+- Walk instructions and find `JsxExpression` nodes used as inline arguments
+- Extract them into separate instructions with their own temporaries
+- This makes JSX elements individually memoizable (each gets its own scope)
+- Conditional on `config.enable_jsx_outlining`
+**Depends on:** None (optional pass, runs at pass 35)
 
 ---
 
-### Gap 6: OptimizePropsMethodCalls
+## Gap 4: outline_functions
 
-**Upstream:** `src/Optimization/OptimizePropsMethodCalls.ts`
-**Pipeline position:** Pass #14, Phase 5
-**Current state:** No file exists yet — need to create `optimization/optimize_props_method_calls.rs`.
+**Upstream:** `packages/babel-plugin-react-compiler/src/Optimization/OutlineFunctions.ts` (~200 lines)
+**Current state:** `optimization/outline_functions.rs` is a no-op stub (9 lines).
 **What's needed:**
+- Identify `FunctionExpression` instructions that don't capture mutable state
+- Hoist them to module level (outside the component function)
+- Replace the original instruction with a reference to the hoisted function
+- This reduces closure overhead and allows the function to be shared across renders
+- Conditional on `config.enable_function_outlining`
+**Depends on:** `infer_mutation_aliasing_effects` (needs to know which captures are mutable)
 
-Optimize method calls on props to avoid unnecessary memoization:
+---
 
-- Detect `props.onClick()` patterns
-- Convert `MethodCall { receiver: props, property: "onClick", args }` into `PropertyLoad` + `CallExpression`
-- This allows the property load and the call to be in different reactive scopes, improving granularity
+## Gap 5: optimize_for_ssr
 
-**Depends on:** SSA, InferTypes (needs type info to identify props)
+**Upstream:** `packages/babel-plugin-react-compiler/src/Optimization/OptimizeForSSR.ts` (~100 lines)
+**Current state:** `optimization/optimize_for_ssr.rs` is a no-op stub (13 lines).
+**What's needed:**
+- In SSR mode, memoization is unnecessary (each render is fresh)
+- Remove reactive scope tracking
+- Simplify effect hooks (effects don't run on server)
+- Keep basic structure for correctness
+- Conditional on `config.enable_ssr`
+**Depends on:** None (runs at pass 17, between aliasing effects and DCE)
