@@ -5,12 +5,16 @@ use napi_derive::napi;
 pub struct TransformResult {
     pub code: String,
     pub transformed: bool,
+    /// JSON-serialized v3 source map, if source maps are enabled.
+    pub source_map: Option<String>,
 }
 
 #[napi(object)]
 pub struct TransformOptions {
     pub compilation_mode: Option<String>,
     pub output_mode: Option<String>,
+    /// Enable source map generation.
+    pub source_map: Option<bool>,
 }
 
 #[napi]
@@ -19,6 +23,8 @@ pub fn transform_react_file(
     filename: String,
     options: Option<TransformOptions>,
 ) -> TransformResult {
+    let generate_source_map = options.as_ref().and_then(|o| o.source_map).unwrap_or(false);
+
     let plugin_options = match options {
         Some(opts) => {
             let mut po = oxc_react_compiler::PluginOptions::default();
@@ -37,9 +43,17 @@ pub fn transform_react_file(
         None => oxc_react_compiler::PluginOptions::default(),
     };
 
-    let result = oxc_react_compiler::compile_program(&source, &filename, &plugin_options);
+    let result = if generate_source_map {
+        oxc_react_compiler::compile_program_with_source_map(&source, &filename, &plugin_options)
+    } else {
+        oxc_react_compiler::compile_program(&source, &filename, &plugin_options)
+    };
 
-    TransformResult { code: result.code, transformed: result.transformed }
+    TransformResult {
+        code: result.code,
+        transformed: result.transformed,
+        source_map: result.source_map,
+    }
 }
 
 #[napi(object)]

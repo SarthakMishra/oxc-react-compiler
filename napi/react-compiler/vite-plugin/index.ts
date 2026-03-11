@@ -15,15 +15,25 @@ interface ReactCompilerOptions {
   target?: 'react17' | 'react18' | 'react19';
   include?: string[];
   exclude?: string[];
+  /** Enable source map generation (default: true in dev, false in build) */
+  sourceMap?: boolean;
 }
 
 export function reactCompiler(options: ReactCompilerOptions = {}): any {
   // Dynamic import of the native binding
   let binding: any;
+  let enableSourceMap = options.sourceMap;
 
   return {
     name: 'oxc-react-compiler',
     enforce: 'pre' as const,
+
+    configResolved(config: any) {
+      // Default: enable source maps in dev mode, disable in production build
+      if (enableSourceMap === undefined) {
+        enableSourceMap = config.command === 'serve';
+      }
+    },
 
     async buildStart() {
       try {
@@ -47,13 +57,17 @@ export function reactCompiler(options: ReactCompilerOptions = {}): any {
         const result = binding.transformReactFile(code, id, {
           compilationMode: options.compilationMode,
           outputMode: options.outputMode,
+          sourceMap: enableSourceMap,
         });
 
         if (!result.transformed) return null;
 
+        // Parse source map JSON if available, Vite accepts object or string
+        const map = result.sourceMap ? JSON.parse(result.sourceMap) : null;
+
         return {
           code: result.code,
-          map: null, // TODO: source map support
+          map,
         };
       } catch (e) {
         console.error(`[oxc-react-compiler] Error transforming ${id}:`, e);
