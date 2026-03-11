@@ -7,3 +7,7 @@ pub mod reactive_scopes;
 pub mod ssa;
 pub mod utils;
 pub mod validation;
+
+// Public API
+pub use entrypoint::options::PluginOptions;
+pub use entrypoint::program::{compile_program, CompileResult};

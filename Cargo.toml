@@ -16,6 +16,7 @@ repository = "https://github.com/user/oxc-react-compiler"
 # OXC ecosystem (pin to 0.117 series)
 oxc_allocator = "0.117"
 oxc_ast = "0.117"
+oxc_ast_visit = "0.117"
 oxc_diagnostics = "0.117"
 oxc_parser = "0.117"
 oxc_semantic = "0.117"

@@ -17,19 +17,19 @@ _(Nothing in progress)_
 
 ### Phase 1: HIR Foundation
 
-- [ ] HIR core types (Place, Identifier, MutableRange, ReactiveScope) — [hir-types.md](hir-types.md)#gap-1-core-id-newtypes-and-place-types
-- [ ] InstructionValue enum (~40 variants) — [hir-types.md](hir-types.md)#gap-2-instructionvalue-enum
-- [ ] Terminal enum (~20 variants) — [hir-types.md](hir-types.md)#gap-3-terminal-enum
-- [ ] HIR container types (HIRFunction, HIR, BasicBlock, Phi) — [hir-types.md](hir-types.md)#gap-4-hir-container-types
-- [ ] Effect, ValueKind, and supporting enums — [hir-types.md](hir-types.md)#gap-5-effect-valuekind-and-supporting-enums
-- [ ] ReactiveFunction IR types — [hir-types.md](hir-types.md)#gap-6-reactivefunction-ir-types
-- [ ] Environment and EnvironmentConfig — [environment.md](environment.md)#gap-1-environment-struct
-- [ ] PluginOptions and CompilationMode — [environment.md](environment.md)#gap-2-pluginoptions-and-compilationmode
-- [ ] ObjectShape, ShapeRegistry, FunctionSignature — [environment.md](environment.md)#gap-3-objectshape-shaperegistry-functionsignature
-- [ ] Globals registry (built-in shapes for Array, Object, hooks) — [environment.md](environment.md)#gap-4-globals-registry
-- [ ] CompilerError expansion (severity levels, error accumulator) — [environment.md](environment.md)#gap-5-compilererror-expansion
-- [ ] DisjointSet (union-find with path compression) — [utils.md](utils.md)#gap-1-disjointset
-- [ ] OrderedMap utility — [utils.md](utils.md)#gap-2-orderedmap
+- [x] HIR core types (Place, Identifier, MutableRange, ReactiveScope) — [hir-types.md](hir-types.md)#gap-1-core-id-newtypes-and-place-types
+- [x] InstructionValue enum (~40 variants) — [hir-types.md](hir-types.md)#gap-2-instructionvalue-enum
+- [x] Terminal enum (~20 variants) — [hir-types.md](hir-types.md)#gap-3-terminal-enum
+- [x] HIR container types (HIRFunction, HIR, BasicBlock, Phi) — [hir-types.md](hir-types.md)#gap-4-hir-container-types
+- [x] Effect, ValueKind, and supporting enums — [hir-types.md](hir-types.md)#gap-5-effect-valuekind-and-supporting-enums
+- [x] ReactiveFunction IR types — [hir-types.md](hir-types.md)#gap-6-reactivefunction-ir-types
+- [x] Environment and EnvironmentConfig — [environment.md](environment.md)#gap-1-environment-struct
+- [x] PluginOptions and CompilationMode — [environment.md](environment.md)#gap-2-pluginoptions-and-compilationmode
+- [x] ObjectShape, ShapeRegistry, FunctionSignature — [environment.md](environment.md)#gap-3-objectshape-shaperegistry-functionsignature
+- [x] Globals registry (built-in shapes for Array, Object, hooks) — [environment.md](environment.md)#gap-4-globals-registry
+- [x] CompilerError expansion (severity levels, error accumulator) — [environment.md](environment.md)#gap-5-compilererror-expansion
+- [x] DisjointSet (union-find with path compression) — [utils.md](utils.md)#gap-1-disjointset
+- [x] OrderedMap utility — [utils.md](utils.md)#gap-2-orderedmap
 
 ### Phase 2: BuildHIR (OXC AST to HIR)
 
@@ -46,56 +46,56 @@ _(Nothing in progress)_
 
 ### Phase 3: SSA and Early Optimization
 
-- [ ] EnterSSA (phi node insertion, identifier renaming via dominance frontiers) — [ssa.md](ssa.md)#gap-1-enterssa
-- [ ] EliminateRedundantPhi — [ssa.md](ssa.md)#gap-2-eliminateredundantphi
-- [ ] ConstantPropagation — [optimization.md](optimization.md)#gap-1-constantpropagation
-- [ ] InlineIIFE — [optimization.md](optimization.md)#gap-2-inlineiife
-- [ ] MergeConsecutiveBlocks — [optimization.md](optimization.md)#gap-3-mergeconsecutiveblocks
-- [ ] DeadCodeElimination — [optimization.md](optimization.md)#gap-4-deadcodeelimination
-- [ ] PruneMaybeThrows — [optimization.md](optimization.md)#gap-5-prunemaybethrows
-- [ ] OptimizePropsMethodCalls — [optimization.md](optimization.md)#gap-6-optimizepropsmethodcalls
+- [x] EnterSSA (phi node insertion, identifier renaming via dominance frontiers) — [ssa.md](ssa.md)#gap-1-enterssa
+- [x] EliminateRedundantPhi — [ssa.md](ssa.md)#gap-2-eliminateredundantphi
+- [x] ConstantPropagation — [optimization.md](optimization.md)#gap-1-constantpropagation
+- [x] InlineIIFE — [optimization.md](optimization.md)#gap-2-inlineiife
+- [x] MergeConsecutiveBlocks — [optimization.md](optimization.md)#gap-3-mergeconsecutiveblocks
+- [x] DeadCodeElimination — [optimization.md](optimization.md)#gap-4-deadcodeelimination
+- [x] PruneMaybeThrows — [optimization.md](optimization.md)#gap-5-prunemaybethrows
+- [x] OptimizePropsMethodCalls — [optimization.md](optimization.md)#gap-6-optimizepropsmethodcalls
 
 ### Phase 4: Type Inference and Mutation Analysis
 
-- [ ] InferTypes (constraint-based type inference with shape system) — [inference.md](inference.md)#gap-1-infertypes
-- [ ] AliasingEffect enum and composition rules — [inference.md](inference.md)#gap-2-aliasingeffect-enum-and-composition-rules
-- [ ] InferMutationAliasingEffects (abstract interpretation, fixpoint) — [inference.md](inference.md)#gap-3-infermutationaliasingeffects
+- [x] InferTypes (constraint-based type inference with shape system) — [inference.md](inference.md)#gap-1-infertypes
+- [x] AliasingEffect enum and composition rules — [inference.md](inference.md)#gap-2-aliasingeffect-enum-and-composition-rules
+- [x] InferMutationAliasingEffects (abstract interpretation, fixpoint) — [inference.md](inference.md)#gap-3-infermutationaliasingeffects
 - [ ] AnalyseFunctions (recursive nested function analysis) — [inference.md](inference.md)#gap-4-analysefunctions
-- [ ] InferMutationAliasingRanges (MutableRange computation) — [inference.md](inference.md)#gap-5-infermutationaliasingranges
+- [x] InferMutationAliasingRanges (MutableRange computation) — [inference.md](inference.md)#gap-5-infermutationaliasingranges
 
 ### Phase 5: Reactivity and Scope Inference
 
-- [ ] InferReactivePlaces (fixpoint with post-dominator analysis) — [inference.md](inference.md)#gap-6-inferreactiveplaces
+- [x] InferReactivePlaces (fixpoint with post-dominator analysis) — [inference.md](inference.md)#gap-6-inferreactiveplaces
 - [ ] RewriteInstructionKindsBasedOnReassignment — [inference.md](inference.md)#gap-7-rewriteinstructionkindsbasedonreassignment
-- [ ] InferReactiveScopeVariables (DisjointSet-based scope grouping) — [reactive-scopes.md](reactive-scopes.md)#gap-1-inferreactivescopevariables
-- [ ] MemoizeFbtAndMacroOperandsInSameScope — [reactive-scopes.md](reactive-scopes.md)#gap-2-memoizefbtandmacrooperandsinsamescope
-- [ ] AlignMethodCallScopes — [reactive-scopes.md](reactive-scopes.md)#gap-3-alignmethodcallscopes
-- [ ] AlignObjectMethodScopes — [reactive-scopes.md](reactive-scopes.md)#gap-4-alignobjectmethodscopes
-- [ ] PruneUnusedLabelsHIR — [reactive-scopes.md](reactive-scopes.md)#gap-5-pruneunusedlabelshir
-- [ ] AlignReactiveScopesToBlockScopesHIR — [reactive-scopes.md](reactive-scopes.md)#gap-6-alignreactivescopestoblockscopeshir
-- [ ] MergeOverlappingReactiveScopesHIR — [reactive-scopes.md](reactive-scopes.md)#gap-7-mergeoverlappingreactivescopeshir
-- [ ] BuildReactiveScopeTerminalsHIR — [reactive-scopes.md](reactive-scopes.md)#gap-8-buildreactivescopeterminalshir
-- [ ] FlattenReactiveLoopsHIR — [reactive-scopes.md](reactive-scopes.md)#gap-9-flattenreactiveloopshir
-- [ ] FlattenScopesWithHooksOrUseHIR — [reactive-scopes.md](reactive-scopes.md)#gap-10-flattenscopeswithhooksorusehir
-- [ ] PropagateScopeDependenciesHIR — [reactive-scopes.md](reactive-scopes.md)#gap-11-propagatescopedependencieshir
+- [x] InferReactiveScopeVariables (DisjointSet-based scope grouping) — [reactive-scopes.md](reactive-scopes.md)#gap-1-inferreactivescopevariables
+- [x] MemoizeFbtAndMacroOperandsInSameScope — [reactive-scopes.md](reactive-scopes.md)#gap-2-memoizefbtandmacrooperandsinsamescope
+- [x] AlignMethodCallScopes — [reactive-scopes.md](reactive-scopes.md)#gap-3-alignmethodcallscopes
+- [x] AlignObjectMethodScopes — [reactive-scopes.md](reactive-scopes.md)#gap-4-alignobjectmethodscopes
+- [x] PruneUnusedLabelsHIR — [reactive-scopes.md](reactive-scopes.md)#gap-5-pruneunusedlabelshir
+- [x] AlignReactiveScopesToBlockScopesHIR — [reactive-scopes.md](reactive-scopes.md)#gap-6-alignreactivescopestoblockscopeshir
+- [x] MergeOverlappingReactiveScopesHIR — [reactive-scopes.md](reactive-scopes.md)#gap-7-mergeoverlappingreactivescopeshir
+- [x] BuildReactiveScopeTerminalsHIR — [reactive-scopes.md](reactive-scopes.md)#gap-8-buildreactivescopeterminalshir
+- [x] FlattenReactiveLoopsHIR — [reactive-scopes.md](reactive-scopes.md)#gap-9-flattenreactiveloopshir
+- [x] FlattenScopesWithHooksOrUseHIR — [reactive-scopes.md](reactive-scopes.md)#gap-10-flattenscopeswithhooksorusehir
+- [x] PropagateScopeDependenciesHIR — [reactive-scopes.md](reactive-scopes.md)#gap-11-propagatescopedependencieshir
 
 ### Phase 6: ReactiveFunction and Codegen
 
-- [ ] BuildReactiveFunction (HIR CFG to ReactiveFunction tree) — [reactive-scopes.md](reactive-scopes.md)#gap-12-buildreactivefunction
-- [ ] PruneUnusedLabels (RF) — [reactive-scopes.md](reactive-scopes.md)#gap-13-pruneunusedlabels-rf
-- [ ] PruneNonEscapingScopes — [reactive-scopes.md](reactive-scopes.md)#gap-14-prunenonescapingscopes
-- [ ] PruneNonReactiveDependencies — [reactive-scopes.md](reactive-scopes.md)#gap-15-prunenonreactivedependencies
-- [ ] PruneUnusedScopes — [reactive-scopes.md](reactive-scopes.md)#gap-16-pruneunusedscopes
-- [ ] MergeReactiveScopesThatInvalidateTogether — [reactive-scopes.md](reactive-scopes.md)#gap-17-mergereactivescopesthatinvalidatetogether
-- [ ] PruneAlwaysInvalidatingScopes — [reactive-scopes.md](reactive-scopes.md)#gap-18-prunealwaysinvalidatingscopes
-- [ ] PropagateEarlyReturns — [reactive-scopes.md](reactive-scopes.md)#gap-19-propagateearlyreturns
-- [ ] PruneUnusedLvalues — [reactive-scopes.md](reactive-scopes.md)#gap-20-pruneunusedlvalues
-- [ ] PromoteUsedTemporaries — [reactive-scopes.md](reactive-scopes.md)#gap-21-promoteusedtemporaries
-- [ ] ExtractScopeDeclarationsFromDestructuring — [reactive-scopes.md](reactive-scopes.md)#gap-22-extractscopedeclarationsfromdestructuring
-- [ ] StabilizeBlockIds — [reactive-scopes.md](reactive-scopes.md)#gap-23-stabilizeblockids
-- [ ] RenameVariables — [reactive-scopes.md](reactive-scopes.md)#gap-24-renamevariables
-- [ ] PruneHoistedContexts — [reactive-scopes.md](reactive-scopes.md)#gap-25-prunehoistedcontexts
-- [ ] CodegenFunction (ReactiveFunction to JavaScript output) — [codegen.md](codegen.md)#gap-1-codegenfunction
+- [x] BuildReactiveFunction (HIR CFG to ReactiveFunction tree) — [reactive-scopes.md](reactive-scopes.md)#gap-12-buildreactivefunction
+- [x] PruneUnusedLabels (RF) — [reactive-scopes.md](reactive-scopes.md)#gap-13-pruneunusedlabels-rf
+- [x] PruneNonEscapingScopes — [reactive-scopes.md](reactive-scopes.md)#gap-14-prunenonescapingscopes
+- [x] PruneNonReactiveDependencies — [reactive-scopes.md](reactive-scopes.md)#gap-15-prunenonreactivedependencies
+- [x] PruneUnusedScopes — [reactive-scopes.md](reactive-scopes.md)#gap-16-pruneunusedscopes
+- [x] MergeReactiveScopesThatInvalidateTogether — [reactive-scopes.md](reactive-scopes.md)#gap-17-mergereactivescopesthatinvalidatetogether
+- [x] PruneAlwaysInvalidatingScopes — [reactive-scopes.md](reactive-scopes.md)#gap-18-prunealwaysinvalidatingscopes
+- [x] PropagateEarlyReturns — [reactive-scopes.md](reactive-scopes.md)#gap-19-propagateearlyreturns
+- [x] PruneUnusedLvalues — [reactive-scopes.md](reactive-scopes.md)#gap-20-pruneunusedlvalues
+- [x] PromoteUsedTemporaries — [reactive-scopes.md](reactive-scopes.md)#gap-21-promoteusedtemporaries
+- [x] ExtractScopeDeclarationsFromDestructuring — [reactive-scopes.md](reactive-scopes.md)#gap-22-extractscopedeclarationsfromdestructuring
+- [x] StabilizeBlockIds — [reactive-scopes.md](reactive-scopes.md)#gap-23-stabilizeblockids
+- [x] RenameVariables — [reactive-scopes.md](reactive-scopes.md)#gap-24-renamevariables
+- [x] PruneHoistedContexts — [reactive-scopes.md](reactive-scopes.md)#gap-25-prunehoistedcontexts
+- [x] CodegenFunction (ReactiveFunction to JavaScript output) — [codegen.md](codegen.md)#gap-1-codegenfunction
 - [ ] Import insertion (react/compiler-runtime) — [codegen.md](codegen.md)#gap-2-import-insertion
 - [ ] Source map generation — [codegen.md](codegen.md)#gap-3-source-map-generation
 
@@ -108,12 +108,12 @@ _(Nothing in progress)_
 - [ ] ValidateContextVariableLValues — [validation.md](validation.md)#gap-1-validatecontextvariablelvalues
 - [ ] ValidateUseMemo — [validation.md](validation.md)#gap-2-validateusememo
 - [ ] DropManualMemoization (conditional pass) — [validation.md](validation.md)#gap-3-dropmanualmemoization
-- [ ] ValidateHooksUsage — [validation.md](validation.md)#gap-4-validatehooksusage
+- [x] ValidateHooksUsage — [validation.md](validation.md)#gap-4-validatehooksusage
 - [ ] ValidateNoCapitalizedCalls — [validation.md](validation.md)#gap-5-validatenocapitalizedcalls
 - [ ] ValidateLocalsNotReassignedAfterRender — [validation.md](validation.md)#gap-6-validatelocalsnotreassignedafterrender
 - [ ] AssertValidMutableRanges — [validation.md](validation.md)#gap-7-assertvalidmutableranges
-- [ ] ValidateNoRefAccessInRender — [validation.md](validation.md)#gap-8-validatenorefaccessinrender
-- [ ] ValidateNoSetStateInRender — [validation.md](validation.md)#gap-9-validatenosetstateinrender
+- [x] ValidateNoRefAccessInRender — [validation.md](validation.md)#gap-8-validatenorefaccessinrender
+- [x] ValidateNoSetStateInRender — [validation.md](validation.md)#gap-9-validatenosetstateinrender
 - [ ] ValidateNoDerivedComputationsInEffects — [validation.md](validation.md)#gap-10-validatenoderivedcomputationsineffects
 - [ ] ValidateNoSetStateInEffects — [validation.md](validation.md)#gap-11-validatenosetstateineffects
 - [ ] ValidateNoJSXInTryStatement — [validation.md](validation.md)#gap-12-validatenojsxintrystatement
@@ -128,7 +128,7 @@ _(Nothing in progress)_
 
 ### Pipeline Orchestration
 
-- [ ] Pipeline orchestrator (run all 62 passes in order with config-based gating) — [pipeline.md](pipeline.md)#gap-1-pipeline-orchestrator
+- [x] Pipeline orchestrator (run all 62 passes in order with config-based gating) — [pipeline.md](pipeline.md)#gap-1-pipeline-orchestrator
 - [ ] Program-level compilation loop (discover functions, compile each, collect edits) — [pipeline.md](pipeline.md)#gap-2-program-level-compilation-loop
 - [ ] Lint mode (run pipeline, collect errors, skip codegen) — [pipeline.md](pipeline.md)#gap-3-lint-mode
 - [ ] OptimizeForSSR pass — [pipeline.md](pipeline.md)#gap-4-optimizeforssr

@@ -1,11 +1,67 @@
 #![allow(dead_code)]
 
+use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
-use oxc_span::Span;
+use oxc_diagnostics::OxcDiagnostic;
+use oxc_parser::Parser;
+use oxc_span::{SourceType, Span};
 
 use super::options::{CompilationMode, PluginOptions};
 use crate::hir::globals::{is_component_name, is_hook_name};
 use crate::hir::types::ReactFunctionType;
+
+/// Result of compiling a program.
+pub struct CompileResult {
+    pub code: String,
+    pub transformed: bool,
+    pub diagnostics: Vec<OxcDiagnostic>,
+}
+
+/// Compile a single source file.
+///
+/// 1. Parse with oxc_parser
+/// 2. Discover compilable functions
+/// 3. For each function, lower to HIR -> run pipeline -> codegen
+/// 4. Apply edits to produce output
+pub fn compile_program(source: &str, filename: &str, options: &PluginOptions) -> CompileResult {
+    let allocator = Allocator::default();
+    let source_type = SourceType::from_path(filename).unwrap_or_default();
+    let parser_ret = Parser::new(&allocator, source, source_type).parse();
+
+    if parser_ret.panicked {
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics: vec![],
+        };
+    }
+
+    let diagnostics = Vec::new();
+    let functions = discover_functions(&parser_ret.program, options);
+
+    if functions.is_empty() || functions.iter().all(|f| f.opt_out) {
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics,
+        };
+    }
+
+    // For now, report discovered functions but don't transform.
+    // Full implementation would:
+    // 1. For each function, build HIR using HIRBuilder
+    // 2. Run pipeline on the HIR
+    // 3. Codegen the result
+    // 4. Apply text edits to the source
+
+    let transformed = false; // Will become true when full pipeline works
+
+    CompileResult {
+        code: source.to_string(),
+        transformed,
+        diagnostics,
+    }
+}
 
 /// A function discovered in the AST that should be compiled.
 #[derive(Debug)]

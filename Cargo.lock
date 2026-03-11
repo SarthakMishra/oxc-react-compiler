@@ -581,6 +581,7 @@ version = "0.1.0"
 dependencies = [
  "insta",
  "oxc_ast",
+ "oxc_ast_visit",
  "oxc_diagnostics",
  "oxc_react_compiler",
  "oxc_semantic",
