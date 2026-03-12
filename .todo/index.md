@@ -14,28 +14,28 @@ _(Nothing active)_
 
 ## Priority 1 -- Correctness
 
-- [ ] Fix availability-schedule truncated output (zero memoization) -- [render-equivalence.md](render-equivalence.md)#gap-1-availability-schedule-truncated-output
-- [ ] Fix phi-node / temporary variable resolution in ternary/logical branches -- [render-equivalence.md](render-equivalence.md)#gap-2-phi-node--temporary-variable-resolution
-- [ ] Fix JSX hyphenated attribute name quoting (aria-label, data-*) -- [render-equivalence.md](render-equivalence.md)#gap-3-jsx-hyphenated-attribute-names
-- [ ] Investigate multi-step-form timeout/segfault -- [render-equivalence.md](render-equivalence.md)#gap-4-multi-step-form-timeoutsegfault
+- [x] Fix availability-schedule truncated output (zero memoization) -- [render-equivalence.md](render-equivalence.md)#gap-1-availability-schedule-truncated-output
+- [x] Fix phi-node / temporary variable resolution in ternary/logical branches -- [render-equivalence.md](render-equivalence.md)#gap-2-phi-node--temporary-variable-resolution
+- [x] Fix JSX hyphenated attribute name quoting (aria-label, data-*) -- [render-equivalence.md](render-equivalence.md)#gap-3-jsx-hyphenated-attribute-names
+- [x] Investigate multi-step-form timeout/segfault -- [render-equivalence.md](render-equivalence.md)#gap-4-multi-step-form-timeoutsegfault
 
 ## Priority 2 -- Upstream Parity
 
-- [ ] Download upstream fixtures and generate expected outputs -- [upstream-conformance.md](upstream-conformance.md)#gap-1-download-and-catalog-upstream-fixtures
-- [ ] Run baseline conformance and triage results -- [upstream-conformance.md](upstream-conformance.md)#gap-3-run-baseline-conformance-and-triage-results
-- [ ] Populate known-failures.txt -- [upstream-conformance.md](upstream-conformance.md)#gap-4-populate-known-failurestxt
-- [ ] Add conformance to CI as non-blocking check -- [upstream-conformance.md](upstream-conformance.md)#gap-5-add-conformance-to-ci-as-non-blocking-check
-- [ ] Fix panics to increase upstream pass rate -- [upstream-conformance.md](upstream-conformance.md)#gap-6-iteratively-fix-panics-to-increase-pass-rate
-- [ ] Fix high-priority upstream divergences -- [upstream-conformance.md](upstream-conformance.md)#gap-7-fix-high-priority-divergences
+- [x] Download upstream fixtures and generate expected outputs -- [upstream-conformance.md](upstream-conformance.md)#gap-1-download-and-catalog-upstream-fixtures
+- [x] Run baseline conformance and triage results -- [upstream-conformance.md](upstream-conformance.md)#gap-3-run-baseline-conformance-and-triage-results
+- [x] Populate known-failures.txt -- [upstream-conformance.md](upstream-conformance.md)#gap-4-populate-known-failurestxt
+- [x] Add conformance to CI as non-blocking check -- [upstream-conformance.md](upstream-conformance.md)#gap-5-add-conformance-to-ci-as-non-blocking-check
+- [x] Fix panics to increase upstream pass rate -- [upstream-conformance.md](upstream-conformance.md)#gap-6-iteratively-fix-panics-to-increase-pass-rate
+- [x] Fix high-priority upstream divergences -- [upstream-conformance.md](upstream-conformance.md)#gap-7-fix-high-priority-divergences (JSX parsing for .js files, conformance normalization; baseline 158/1717 pass, 0 panics)
 - [ ] Address conservative memoization misses -- [render-equivalence.md](render-equivalence.md)#gap-5-conservative-memoization-misses
 
 ## Priority 3 -- Performance / Polish
 
-- [ ] Add in-memory content-hash cache to Vite plugin -- [vite-caching.md](vite-caching.md)#gap-1-in-memory-content-hash-cache
-- [ ] Add config change invalidation for cache -- [vite-caching.md](vite-caching.md)#gap-2-config-change-invalidation
-- [ ] Optional disk cache for large projects -- [vite-caching.md](vite-caching.md)#gap-3-optional-disk-cache-for-large-projects
-- [ ] Measure Vite plugin caching performance improvement -- [vite-caching.md](vite-caching.md)#gap-4-performance-measurement
-- [ ] Add render equivalence tracking to CI -- [render-equivalence.md](render-equivalence.md)#gap-6-test-infrastructure-for-render-equivalence
+- [x] Add in-memory content-hash cache to Vite plugin -- [vite-caching.md](vite-caching.md)#gap-1-in-memory-content-hash-cache
+- [x] Add config change invalidation for cache -- [vite-caching.md](vite-caching.md)#gap-2-config-change-invalidation
+- [x] Optional disk cache for large projects -- [vite-caching.md](vite-caching.md)#gap-3-optional-disk-cache-for-large-projects
+- [x] Measure Vite plugin caching performance improvement -- [vite-caching.md](vite-caching.md)#gap-4-performance-measurement (vite-cache-bench.mjs script)
+- [x] Add render equivalence tracking to CI -- [render-equivalence.md](render-equivalence.md)#gap-6-test-infrastructure-for-render-equivalence
 
 ---
 
