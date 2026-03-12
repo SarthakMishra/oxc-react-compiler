@@ -23,35 +23,35 @@ _(Nothing active)_
 
 ## P1: Correctness (missing passes that affect output precision)
 
-- [ ] ComputeUnconditionalBlocks -- unconditional execution analysis for CFG -- [pipeline-completeness.md](pipeline-completeness.md)#gap-11-computeunconditionalblocks----unconditional-execution-analysis
-- [ ] CollectHoistablePropertyLoads -- property load hoisting via non-null guarantees -- [pipeline-completeness.md](pipeline-completeness.md)#gap-7-collecthoistablepropertyloads----critical-for-dependency-precision
-- [ ] CollectOptionalChainDependencies -- optional chain dependency semantics -- [pipeline-completeness.md](pipeline-completeness.md)#gap-8-collectoptionalchaindependencies----critical-for-optional-chain-correctness
-- [ ] DeriveMinimalDependenciesHIR -- tree-based dependency minimization -- [pipeline-completeness.md](pipeline-completeness.md)#gap-9-deriveminimaldependencieshir----dependency-tree-minimization
-- [ ] ScopeDependencyUtils -- shared dependency manipulation utilities -- [pipeline-completeness.md](pipeline-completeness.md)#gap-10-scopedependencyutils----shared-dependency-utilities
-- [ ] validate_no_ref_access_in_render: type-based ref detection instead of naming heuristic -- [pipeline-completeness.md](pipeline-completeness.md)#gap-2-validate_no_ref_access_in_renderrs----naming-heuristic-only
-- [ ] validate_no_set_state_in_render: type-based setState detection instead of naming heuristic -- [pipeline-completeness.md](pipeline-completeness.md)#gap-3-validate_no_set_state_in_renderrs----naming-heuristic-only
+- [x] ComputeUnconditionalBlocks -- unconditional execution analysis for CFG -- [pipeline-completeness.md](pipeline-completeness.md)#gap-11-computeunconditionalblocks----unconditional-execution-analysis
+- [x] CollectHoistablePropertyLoads -- property load hoisting via non-null guarantees -- [pipeline-completeness.md](pipeline-completeness.md)#gap-7-collecthoistablepropertyloads----critical-for-dependency-precision
+- [x] CollectOptionalChainDependencies -- optional chain dependency semantics -- [pipeline-completeness.md](pipeline-completeness.md)#gap-8-collectoptionalchaindependencies----critical-for-optional-chain-correctness
+- [x] DeriveMinimalDependenciesHIR -- tree-based dependency minimization -- [pipeline-completeness.md](pipeline-completeness.md)#gap-9-deriveminimaldependencieshir----dependency-tree-minimization
+- [x] ScopeDependencyUtils -- shared dependency manipulation utilities -- [pipeline-completeness.md](pipeline-completeness.md)#gap-10-scopedependencyutils----shared-dependency-utilities
+- [x] validate_no_ref_access_in_render: type-based ref detection instead of naming heuristic -- [pipeline-completeness.md](pipeline-completeness.md)#gap-2-validate_no_ref_access_in_renderrs----naming-heuristic-only
+- [x] validate_no_set_state_in_render: type-based setState detection instead of naming heuristic -- [pipeline-completeness.md](pipeline-completeness.md)#gap-3-validate_no_set_state_in_renderrs----naming-heuristic-only
 
 ---
 
 ## P2: Upstream Parity (config flags, output modes, missing validation passes)
 
 - [x] OutputMode::ClientNoMemo variant for benchmarking -- [config-parity.md](config-parity.md)#gap-5-outputmodeclientnomemo-variant-missing
-- [ ] validateExhaustiveEffectDependencies enum (off/all/missing-only/extra-only) -- [config-parity.md](config-parity.md)#gap-1-validateexhaustiveeffectdependencies-should-be-an-enum
-- [ ] enableEmitHookGuards ExternalFunction config -- [config-parity.md](config-parity.md)#gap-2-enableemithookguards-should-accept-externalfunction-config
-- [ ] validateNoImpureFunctionsInRender validation pass -- [config-parity.md](config-parity.md)#gap-6-validatenoimpurefunctionsinrender-validation-pass-missing
-- [ ] validateBlocklistedImports validation pass -- [config-parity.md](config-parity.md)#gap-7-validateblocklistedimports-validation-pass-missing
-- [ ] validateNoVoidUseMemo overlap check -- [config-parity.md](config-parity.md)#gap-8-validatenovoidusememo-overlap-check
-- [ ] enableTreatSetIdentifiersAsStateSetters heuristic -- [config-parity.md](config-parity.md)#gap-9-enabletreatsetidentifiersasstatesetters-heuristic
-- [ ] enableAllowSetStateFromRefsInEffects nuance -- [config-parity.md](config-parity.md)#gap-10-enableallowsetstatefromrefsineffects-nuance
-- [ ] enableVerboseNoSetStateInEffect richer diagnostics -- [config-parity.md](config-parity.md)#gap-11-enableverbosenosetstateineffect-richer-diagnostics
+- [x] validateExhaustiveEffectDependencies enum (off/all/missing-only/extra-only) -- [config-parity.md](config-parity.md)#gap-1-validateexhaustiveeffectdependencies-should-be-an-enum
+- [x] enableEmitHookGuards ExternalFunction config -- [config-parity.md](config-parity.md)#gap-2-enableemithookguards-should-accept-externalfunction-config
+- [x] validateNoImpureFunctionsInRender validation pass -- [config-parity.md](config-parity.md)#gap-6-validatenoimpurefunctionsinrender-validation-pass-missing
+- [x] validateBlocklistedImports validation pass -- [config-parity.md](config-parity.md)#gap-7-validateblocklistedimports-validation-pass-missing
+- [x] validateNoVoidUseMemo overlap check -- [config-parity.md](config-parity.md)#gap-8-validatenovoidusememo-overlap-check
+- [x] enableTreatSetIdentifiersAsStateSetters heuristic -- [config-parity.md](config-parity.md)#gap-9-enabletreatsetidentifiersasstatesetters-heuristic
+- [x] enableAllowSetStateFromRefsInEffects nuance -- [config-parity.md](config-parity.md)#gap-10-enableallowsetstatefromrefsineffects-nuance
+- [x] enableVerboseNoSetStateInEffect richer diagnostics -- [config-parity.md](config-parity.md)#gap-11-enableverbosenosetstateineffect-richer-diagnostics
 - [x] assertValidMutableRanges config gate -- [config-parity.md](config-parity.md)#gap-3-assertvalidmutableranges-should-be-config-gated
 - [x] enableNameAnonymousFunctions config gate -- [config-parity.md](config-parity.md)#gap-4-enablenameanonymousfunctions-config-gate-missing
 - [ ] optimize_for_ssr.rs: comprehensive memoization stripping -- [pipeline-completeness.md](pipeline-completeness.md)#gap-1-optimize_for_ssrrs----minimal-ssr-stripping
 - [ ] validate_static_components.rs: React.memo detection, scope analysis -- [pipeline-completeness.md](pipeline-completeness.md)#gap-4-validate_static_componentsrs----pascalcase-check-only
 - [x] outline_jsx.rs: verify no-op claim or implement outlining -- [pipeline-completeness.md](pipeline-completeness.md)#gap-5-outline_jsxrs----effectively-a-no-op
 - [ ] outline_functions.rs: actual hoisting + codegen support -- [pipeline-completeness.md](pipeline-completeness.md)#gap-6-outline_functionsrs----identifies-candidates-but-no-hoisting
-- [ ] assertWellFormedBreakTargets validation -- [pipeline-completeness.md](pipeline-completeness.md)#gap-12-assertwellformedbreaktargets----break-target-validation
-- [ ] PruneTemporaryLValues optimization -- [pipeline-completeness.md](pipeline-completeness.md)#gap-13-prunetemporarylvalues----temporary-cleanup
+- [x] assertWellFormedBreakTargets validation -- [pipeline-completeness.md](pipeline-completeness.md)#gap-12-assertwellformedbreaktargets----break-target-validation
+- [x] PruneTemporaryLValues optimization -- [pipeline-completeness.md](pipeline-completeness.md)#gap-13-prunetemporarylvalues----temporary-cleanup
 
 ---
 
@@ -110,3 +110,7 @@ _(Nothing blocked)_
 - **Clippy Cleanup** -- 258 mechanical fixes, crate-level allows for style lints, zero warnings across workspace
 - **Test Coverage** -- Config parsing (10 tests), error diagnostics (17/17 variants, 26 tests), post-codegen validation (6 semantic tests), E2E dual-mode (31 tests), sprout runtime eval (11 tests)
 - **Benchmark Suite** -- Real-world fixtures (16, 4 per tier), benchmark harness v2 with NAPI timing, deep correctness analysis (AST diff + render comparison), differential snapshots, CI integration, correctness score documentation
+- **P0 Fixes (iteration 1)** -- Destructured param emission in build.rs + codegen, dependency filter fix in propagate_dependencies.rs + prune_scopes.rs
+- **P2 Config (iteration 2)** -- assertValidMutableRanges gate, enableNameAnonymousFunctions gate, OutputMode::ClientNoMemo, outline_jsx DIVERGENCE verification
+- **P1 Passes (iteration 3)** -- ComputeUnconditionalBlocks (post-dominator analysis with RPO), CollectHoistablePropertyLoads, CollectOptionalChainDependencies, DeriveMinimalDependenciesHIR, ScopeDependencyUtils, Type::Ref/SetState + type-based validation
+- **P2 Passes (iteration 4)** -- ExhaustiveDepsMode enum, ExternalFunctionConfig, validateNoImpureFunctionsInRender, validateBlocklistedImports, validateNoVoidUseMemo, assertWellFormedBreakTargets, PruneTemporaryLValues, enableTreatSetIdentifiersAsStateSetters/enableAllowSetStateFromRefsInEffects/enableVerboseNoSetStateInEffect config flags
