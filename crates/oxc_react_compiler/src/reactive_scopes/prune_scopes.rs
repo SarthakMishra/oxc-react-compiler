@@ -41,42 +41,167 @@ fn collect_used_outside_scopes(
 }
 
 fn collect_instruction_operand_ids(
-    value: &crate::hir::types::InstructionValue,
+    value: &InstructionValue,
     used: &mut FxHashSet<IdentifierId>,
 ) {
-    use crate::hir::types::InstructionValue;
+    fn insert_place(place: &Place, used: &mut FxHashSet<IdentifierId>) {
+        used.insert(place.identifier.id);
+    }
+
     match value {
+        // Locals & context
         InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
-            used.insert(place.identifier.id);
+            insert_place(place, used);
         }
-        InstructionValue::CallExpression { callee, args } => {
-            used.insert(callee.identifier.id);
-            for arg in args {
-                used.insert(arg.identifier.id);
+        InstructionValue::StoreLocal { lvalue, value, .. }
+        | InstructionValue::StoreContext { lvalue, value } => {
+            insert_place(lvalue, used);
+            insert_place(value, used);
+        }
+        InstructionValue::DeclareLocal { lvalue, .. }
+        | InstructionValue::DeclareContext { lvalue } => {
+            insert_place(lvalue, used);
+        }
+        InstructionValue::Destructure { value, .. } => {
+            insert_place(value, used);
+        }
+
+        // Literals — no operands
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
+
+        // Templates
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                insert_place(sub, used);
             }
         }
-        InstructionValue::PropertyLoad { object, .. } => {
-            used.insert(object.identifier.id);
-        }
+
+        // Operators
         InstructionValue::BinaryExpression { left, right, .. } => {
-            used.insert(left.identifier.id);
-            used.insert(right.identifier.id);
+            insert_place(left, used);
+            insert_place(right, used);
         }
         InstructionValue::UnaryExpression { value, .. } => {
-            used.insert(value.identifier.id);
+            insert_place(value, used);
         }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            insert_place(lvalue, used);
+        }
+
+        // Calls
+        InstructionValue::CallExpression { callee, args }
+        | InstructionValue::NewExpression { callee, args } => {
+            insert_place(callee, used);
+            for arg in args {
+                insert_place(arg, used);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            insert_place(receiver, used);
+            for arg in args {
+                insert_place(arg, used);
+            }
+        }
+
+        // Property access
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => {
+            insert_place(object, used);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            insert_place(object, used);
+            insert_place(value, used);
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            insert_place(object, used);
+            insert_place(property, used);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            insert_place(object, used);
+            insert_place(property, used);
+            insert_place(value, used);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            insert_place(object, used);
+            insert_place(property, used);
+        }
+
+        // Containers
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                insert_place(&prop.value, used);
+                if let ObjectPropertyKey::Computed(key) = &prop.key {
+                    insert_place(key, used);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    ArrayElement::Expression(p) | ArrayElement::Spread(p) => {
+                        insert_place(p, used);
+                    }
+                    ArrayElement::Hole => {}
+                }
+            }
+        }
+
+        // JSX
         InstructionValue::JsxExpression { tag, props, children } => {
-            used.insert(tag.identifier.id);
+            insert_place(tag, used);
             for attr in props {
-                used.insert(attr.value.identifier.id);
+                insert_place(&attr.value, used);
             }
             for child in children {
-                used.insert(child.identifier.id);
+                insert_place(child, used);
             }
         }
-        _ => {
-            // For other instruction types, a full operand walk would be ideal
-            // but this covers the most common cases
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                insert_place(child, used);
+            }
+        }
+
+        // Functions — no direct operands (lowered_func is self-contained)
+        InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. } => {}
+
+        // Globals
+        InstructionValue::StoreGlobal { value, .. } => {
+            insert_place(value, used);
+        }
+
+        // Async/Iterator
+        InstructionValue::Await { value }
+        | InstructionValue::GetIterator { collection: value }
+        | InstructionValue::IteratorNext { iterator: value, .. }
+        | InstructionValue::NextPropertyOf { value } => {
+            insert_place(value, used);
+        }
+
+        // Type
+        InstructionValue::TypeCastExpression { value, .. } => {
+            insert_place(value, used);
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            insert_place(tag, used);
+            for sub in &value.subexpressions {
+                insert_place(sub, used);
+            }
+        }
+
+        // Manual memoization
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            insert_place(decl, used);
+            for dep in deps {
+                insert_place(dep, used);
+            }
         }
     }
 }

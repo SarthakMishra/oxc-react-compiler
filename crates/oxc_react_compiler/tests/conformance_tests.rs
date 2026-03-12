@@ -254,6 +254,10 @@ fn tokenize(code: &str) -> Vec<String> {
             // This normalization avoids false divergences for this formatting difference.
             if word == "let" {
                 tokens.push("const".to_string());
+            } else if word == "component" {
+                // Flow `component` syntax → `function`: Babel converts Flow
+                // component declarations to regular functions.
+                tokens.push("function".to_string());
             } else {
                 tokens.push(word);
             }
@@ -302,6 +306,67 @@ fn tokenize(code: &str) -> Vec<String> {
         result.push(tokens[i].clone());
         i += 1;
     }
+
+    // Canonicalize label names: rename labels by first-occurrence order
+    // (e.g., `label:` vs `bb0:` differences between Babel and our compiler).
+    // A label is an identifier followed by `:` that is NOT part of a ternary or
+    // object literal context. We also canonicalize `break label` / `continue label`.
+    let mut label_remap: HashMap<String, String> = HashMap::new();
+    let mut label_counter = 0u32;
+    let mut labelled = Vec::with_capacity(result.len());
+    for (idx, token) in result.iter().enumerate() {
+        // Detect label definition: `ident :` where ident is not a keyword
+        if idx + 1 < result.len()
+            && result[idx + 1] == ":"
+            && token.chars().next().map_or(false, |c| c.is_ascii_alphabetic() || c == '_')
+            && !matches!(
+                token.as_str(),
+                "if" | "else"
+                    | "const"
+                    | "function"
+                    | "return"
+                    | "case"
+                    | "default"
+                    | "switch"
+                    | "for"
+                    | "while"
+                    | "do"
+                    | "break"
+                    | "continue"
+                    | "var"
+                    | "typeof"
+                    | "void"
+                    | "new"
+                    | "delete"
+                    | "throw"
+                    | "try"
+                    | "catch"
+                    | "finally"
+                    | "class"
+                    | "import"
+                    | "export"
+                    | "from"
+                    | "as"
+                    | "of"
+                    | "in"
+            )
+            && (idx == 0 || matches!(result[idx - 1].as_str(), "{" | "}" | ";" | ")" | "else"))
+        {
+            label_remap.entry(token.clone()).or_insert_with(|| {
+                let name = format!("L{label_counter}");
+                label_counter += 1;
+                name
+            });
+        }
+        labelled.push(token.clone());
+    }
+    // Apply label remapping
+    for token in &mut labelled {
+        if let Some(canonical) = label_remap.get(token) {
+            *token = canonical.clone();
+        }
+    }
+    let result = labelled;
 
     // Normalize temp variable names: rename `tN` → `t0`, `t1`, `t2`, ...
     // Babel and our compiler use different numbering schemes for temporary

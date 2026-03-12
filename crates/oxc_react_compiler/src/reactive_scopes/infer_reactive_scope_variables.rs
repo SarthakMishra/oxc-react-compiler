@@ -22,7 +22,6 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
     let mut dsu: DisjointSet<IdentifierId> = DisjointSet::new();
     let mut ranges: FxHashMap<IdentifierId, MutableRange> = FxHashMap::default();
     let mut is_reactive: FxHashMap<IdentifierId, bool> = FxHashMap::default();
-
     // Phase 1: Collect all identifiers and their mutable ranges
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -380,4 +379,5 @@ fn collect_destructure_target_inner(target: &DestructureTarget, ids: &mut Vec<Id
         }
     }
 }
+
 

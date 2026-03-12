@@ -1324,15 +1324,15 @@ fn codegen_terminal(
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForOf { init, test, body, .. } => {
-            output.push_str(&format!("{indent_str}for (const _ of _) {{\n"));
-            codegen_block(init, output, cache_slot, indent + 1, declared);
+            let (loop_var, collection) = extract_for_of_parts(init);
+            output.push_str(&format!("{indent_str}for (const {loop_var} of {collection}) {{\n"));
             codegen_block(test, output, cache_slot, indent + 1, declared);
             codegen_block(body, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForIn { init, test, body, .. } => {
-            output.push_str(&format!("{indent_str}for (const _ in _) {{\n"));
-            codegen_block(init, output, cache_slot, indent + 1, declared);
+            let (loop_var, collection) = extract_for_in_parts(init);
+            output.push_str(&format!("{indent_str}for (const {loop_var} in {collection}) {{\n"));
             codegen_block(test, output, cache_slot, indent + 1, declared);
             codegen_block(body, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}}\n"));
@@ -1608,6 +1608,67 @@ pub fn apply_compilation(
 /// Resolve a Place's display name without allocating when a name exists.
 /// Returns a borrowed `Cow` for named identifiers, avoiding the String clone
 /// that the previous implementation performed on every call.
+/// Extract the loop variable name and collection expression from a `ForIn` init block.
+/// The init block contains `NextPropertyOf { value: collection }` followed by
+/// `StoreLocal/DeclareLocal { lvalue: loop_var }`.
+fn extract_for_in_parts(init: &ReactiveBlock) -> (String, String) {
+    let mut collection_name = "_".to_string();
+    let mut loop_var_name = "_".to_string();
+
+    for instr in &init.instructions {
+        if let ReactiveInstruction::Instruction(instruction) = instr {
+            match &instruction.value {
+                InstructionValue::NextPropertyOf { value } => {
+                    collection_name = place_name(value).into_owned();
+                }
+                InstructionValue::StoreLocal { lvalue, .. }
+                | InstructionValue::DeclareLocal { lvalue, .. } => {
+                    if let Some(name) = &lvalue.identifier.name {
+                        loop_var_name = name.clone();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    (loop_var_name, collection_name)
+}
+
+/// Extract the loop variable name and collection expression from a `ForOf` init block.
+/// The init block contains `IteratorNext { iterator }` followed by
+/// `StoreLocal/DeclareLocal { lvalue: loop_var }`. The collection is found via
+/// `GetIterator { collection }` which may be in a preceding block, but the iterator
+/// place's name often reveals the collection.
+fn extract_for_of_parts(init: &ReactiveBlock) -> (String, String) {
+    let mut collection_name = "_".to_string();
+    let mut loop_var_name = "_".to_string();
+
+    for instr in &init.instructions {
+        if let ReactiveInstruction::Instruction(instruction) = instr {
+            match &instruction.value {
+                InstructionValue::GetIterator { collection } => {
+                    collection_name = place_name(collection).into_owned();
+                }
+                InstructionValue::IteratorNext { iterator, .. } => {
+                    // If we haven't found the collection via GetIterator yet,
+                    // try to use the iterator's place name
+                    if collection_name == "_" {
+                        collection_name = place_name(iterator).into_owned();
+                    }
+                }
+                InstructionValue::StoreLocal { lvalue, .. }
+                | InstructionValue::DeclareLocal { lvalue, .. } => {
+                    if let Some(name) = &lvalue.identifier.name {
+                        loop_var_name = name.clone();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    (loop_var_name, collection_name)
+}
+
 fn place_name(place: &Place) -> Cow<'_, str> {
     match &place.identifier.name {
         Some(name) => Cow::Borrowed(name.as_str()),

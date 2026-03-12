@@ -46,8 +46,6 @@ allow-reassignment-to-global-function-jsx-prop.js
 allow-ref-access-in-effect-indirect.js
 allow-ref-access-in-effect.js
 allow-ref-access-in-unused-callback-nested.js
-allow-ref-initialization-undefined.js
-allow-ref-initialization.js
 allow-ref-lazy-initialization-with-logical.js
 allow-ref-type-cast-in-render.js
 array-access-assignment.js
@@ -165,7 +163,6 @@ codegen-inline-iife-reassign.ts
 codegen-inline-iife-storeprop.ts
 codegen-inline-iife.ts
 codegen-instrument-forget-test.js
-complex-while.js
 component-declaration-basic.flow.js
 component-inner-function-with-many-args.tsx
 component.js
