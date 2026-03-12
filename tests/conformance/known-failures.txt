@@ -660,7 +660,6 @@ infer-global-object.js
 infer-nested-object-method.jsx
 infer-no-component-annot.ts
 infer-no-component-nested-jsx.js
-infer-phi-primitive.js
 infer-property-delete.js
 infer-sequential-optional-chain-nonnull.ts
 infer-types-through-type-cast.flow.js
@@ -749,7 +748,6 @@ lambda-reassign-primitive.js
 lambda-reassign-shadowed-primitive.js
 log-pruned-memoization.js
 logical-expression-object.js
-logical-expression.js
 logical-reorder.flow.js
 loop-unused-let.js
 maybe-mutate-object-in-callback.js
@@ -793,7 +791,6 @@ nested-function-with-param-as-captured-dep.ts
 nested-optional-chains.ts
 nested-optional-member-expr.js
 nested-scopes-begin-same-instr-valueblock.ts
-nested-scopes-hook-call.js
 new-does-not-mutate-class.ts
 new-mutability/aliased-nested-scope-truncated-dep.tsx
 new-mutability/array-filter.js
@@ -925,10 +922,7 @@ outlined-destructured-params.js
 outlined-helper.js
 outlining-in-func-expr.js
 outlining-in-react-memo.js
-overlapping-scopes-interleaved.js
-overlapping-scopes-shadowed.js
 overlapping-scopes-shadowing-within-block.js
-overlapping-scopes-while.js
 overlapping-scopes-within-block.js
 panresponder-ref-in-callback.js
 partial-early-return-within-reactive-scope.js
@@ -1281,7 +1275,6 @@ rest-param-with-identifier.js
 rest-param-with-object-spread-pattern.js
 return-ref-callback-structure.js
 return-ref-callback.js
-return-undefined.js
 reverse-postorder.js
 rewrite-phis-in-lambda-capture-context.js
 rules-of-hooks/allow-locals-named-like-hooks.js
@@ -1344,7 +1337,6 @@ ssa-complex-multiple-if.js
 ssa-complex-single-if.js
 ssa-for-of.js
 ssa-for-trivial-update.js
-ssa-for.js
 ssa-if-else.js
 ssa-leave-case.js
 ssa-multiple-phis.js
@@ -1405,7 +1397,6 @@ tagged-template-in-hook.js
 tagged-template-literal.js
 target-flag-meta-internal.js
 target-flag.js
-template-literal.js
 temporary-accessed-outside-scope.js
 temporary-at-start-of-value-block.js
 temporary-property-load-accessed-outside-scope.js
@@ -1419,7 +1410,6 @@ todo-optional-call-chain-in-optional.ts
 todo.error.object-pattern-computed-key.js
 todo.memoize-loops-that-produce-memoizeable-values.js
 todo.unnecessary-lambda-memoization.js
-transitive-alias-fields.js
 transitive-freeze-array.js
 transitive-freeze-function-expressions.js
 try-catch-alias-try-values.js
@@ -1563,6 +1553,4 @@ value-block-mutates-outer-value.ts
 weakmap-constructor.js
 weakset-constructor.js
 while-conditional-continue.js
-while-logical.js
-while-property.js
 while-with-assignment-in-test.js
