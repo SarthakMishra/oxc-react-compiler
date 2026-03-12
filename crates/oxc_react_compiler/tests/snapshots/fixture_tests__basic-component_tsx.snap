@@ -9,12 +9,11 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 function Counter(t0) {
   const $ = _c(3);
-  let count;
+  const { count } = t0;
   if ($[0] !== count) {
     $[0] = count;
   } else {
   }
-  ({ count } = t0);
   let t13;
   if ($[1] !== count) {
     const t11 = "div";

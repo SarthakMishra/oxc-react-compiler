@@ -11,12 +11,11 @@ interface StatusBadgeProps {
 
 export function StatusBadge(t0) {
   const $ = _c(8);
-  let status;
+  const { status } = t0;
   if ($[0] !== status) {
     $[0] = status;
   } else {
   }
-  ({ status } = t0);
   let config;
   if ($[1] !== config) {
     $[1] = config;
@@ -31,24 +30,30 @@ export function StatusBadge(t0) {
       const t3 = "pending";
       const t4 = "cancelled";
       const t5 = "completed";
+      switch (t1) {
+        case t2:
+          const t6 = "Confirmed";
+          const t7 = "bg-green-100 text-green-800";
+          const t8 = { label: t6, color: t7 };
+          return t8;
+        case t3:
+          const t9 = "Pending";
+          const t10 = "bg-yellow-100 text-yellow-800";
+          const t11 = { label: t9, color: t10 };
+          return t11;
+        case t4:
+          const t12 = "Cancelled";
+          const t13 = "bg-red-100 text-red-800";
+          const t14 = { label: t12, color: t13 };
+          return t14;
+        case t5:
+          const t15 = "Completed";
+          const t16 = "bg-gray-100 text-gray-800";
+          const t17 = { label: t15, color: t16 };
+          return t17;
+      }
       const t18 = undefined;
       return t18;
-      const t6 = "Confirmed";
-      const t7 = "bg-green-100 text-green-800";
-      const t8 = { label: t6, color: t7 };
-      return t8;
-      const t9 = "Pending";
-      const t10 = "bg-yellow-100 text-yellow-800";
-      const t11 = { label: t9, color: t10 };
-      return t11;
-      const t12 = "Cancelled";
-      const t13 = "bg-red-100 text-red-800";
-      const t14 = { label: t12, color: t13 };
-      return t14;
-      const t15 = "Completed";
-      const t16 = "bg-gray-100 text-gray-800";
-      const t17 = { label: t15, color: t16 };
-      return t17;
     };
     const t31 = status;
     const t32 = [t31];

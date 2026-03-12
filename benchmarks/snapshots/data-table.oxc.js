@@ -17,14 +17,12 @@ type SortDir = 'asc' | 'desc';
 
 export function DataTable(t0) {
   const $ = _c(41);
-  let data;
-  let columns;
+  const { data, columns } = t0;
   if ($[0] !== data || $[1] !== columns) {
     $[0] = data;
     $[1] = columns;
   } else {
   }
-  ({ data, columns } = t0);
   const t172 = useState;
   const t173 = null;
   const t174 = t172(t173);
@@ -87,8 +85,11 @@ export function DataTable(t0) {
     const t201 = () => {
       const t1 = filter;
       const t2 = !t1;
-      const t4 = data;
-      return t4;
+      if (t2) {
+        const t4 = data;
+        return t4;
+      } else {
+      }
       let lowerFilter;
       const t8 = filter;
       const t9 = t8.toLowerCase();
@@ -113,16 +114,12 @@ export function DataTable(t0) {
           const t20 = lowerFilter;
           const t21 = t18.includes(t20);
           return t22;
-          const t23 = undefined;
-          return t23;
         };
         const t4 = t2.some(t3);
         return t4;
       };
       const t14 = t12.filter(t13);
       return t14;
-      const t15 = undefined;
-      return t15;
     };
     const t202 = data;
     const t203 = columns;
@@ -145,8 +142,11 @@ export function DataTable(t0) {
     const t210 = () => {
       const t1 = sortKey;
       const t2 = !t1;
-      const t4 = filteredData;
-      return t4;
+      if (t2) {
+        const t4 = filteredData;
+        return t4;
+      } else {
+      }
       const t6 = filteredData;
       const t7 = [...t6];
       const t8 = (a, b) => {
@@ -174,17 +174,16 @@ export function DataTable(t0) {
         const t35 = sortDir;
         const t36 = "asc";
         const t37 = t35 === t36;
-        const t39 = cmp;
-        const t41 = cmp;
-        const t42 = -t41;
+        if (t37) {
+          const t39 = cmp;
+        } else {
+          const t41 = cmp;
+          const t42 = -t41;
+        }
         return t43;
-        const t44 = undefined;
-        return t44;
       };
       const t9 = t7.sort(t8);
       return t9;
-      const t10 = undefined;
-      return t10;
     };
     const t211 = filteredData;
     const t212 = sortKey;
@@ -245,25 +244,29 @@ export function DataTable(t0) {
       const t2 = prev;
       const t4 = key;
       const t5 = t2 === t4;
-      const t7 = setSortDir;
-      const t8 = (d) => {
-        const t2 = d;
-        const t3 = "asc";
-        const t4 = t2 === t3;
-        const t5 = "desc";
-        const t6 = "asc";
-        return t7;
-      };
-      const t9 = t7(t8);
-      const t11 = key;
-      return t11;
+      if (t5) {
+        const t7 = setSortDir;
+        const t8 = (d) => {
+          const t2 = d;
+          const t3 = "asc";
+          const t4 = t2 === t3;
+          if (t4) {
+            const t5 = "desc";
+          } else {
+            const t6 = "asc";
+          }
+          return t7;
+        };
+        const t9 = t7(t8);
+        const t11 = key;
+        return t11;
+      } else {
+      }
       const t13 = setSortDir;
       const t14 = "asc";
       const t15 = t13(t14);
       const t17 = key;
       return t17;
-      const t18 = undefined;
-      return t18;
     };
     const t4 = t2(t3);
     const t5 = undefined;
@@ -301,14 +304,17 @@ export function DataTable(t0) {
       const t4 = t3.key;
       const t6 = col;
       const t7 = t6.sortable;
-      const t8 = () => {
-        const t1 = handleSort;
-        const t3 = col;
-        const t4 = t3.key;
-        const t5 = t1(t4);
-        return t5;
-      };
-      const t9 = undefined;
+      if (t7) {
+        const t8 = () => {
+          const t1 = handleSort;
+          const t3 = col;
+          const t4 = t3.key;
+          const t5 = t1(t4);
+          return t5;
+        };
+      } else {
+        const t9 = undefined;
+      }
       const t12 = col;
       const t13 = t12.label;
       const t15 = sortKey;
@@ -318,10 +324,13 @@ export function DataTable(t0) {
       const t21 = sortDir;
       const t22 = "asc";
       const t23 = t21 === t22;
+      if (t23) {
+        const t24 = " ↑";
+      } else {
+        const t25 = " ↓";
+      }
       const t28 = _jsxs(t1, { key: t4, onClick: t10, children: [t13, t27] });
       return t28;
-      const t24 = " ↑";
-      const t25 = " ↓";
     };
     const t250 = t248.map(t249);
     const t251 = _jsx(t247, { children: t250 });

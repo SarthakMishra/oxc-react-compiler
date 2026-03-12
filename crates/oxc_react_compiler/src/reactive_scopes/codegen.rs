@@ -51,8 +51,42 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     // re-declaring with const/let.
     let mut declared = HashSet::new();
 
-    // Generate body
-    codegen_block(&rf.body, &mut output, &mut cache_slot, 1, &mut declared);
+    // Collect parameter names for destructuring hoisting
+    let param_names: HashSet<String> = rf
+        .params
+        .iter()
+        .map(|p| match p {
+            crate::hir::types::Param::Identifier(place) => place_name(place).to_string(),
+            crate::hir::types::Param::Spread(place) => place_name(place).to_string(),
+        })
+        .collect();
+
+    // Hoist Destructure instructions that destructure from function parameters
+    // (e.g., `const { status } = t0;`) to the top of the function body,
+    // before any reactive scope checks that may reference those variables.
+    let mut hoisted_indices = HashSet::new();
+    for (i, instr) in rf.body.instructions.iter().enumerate() {
+        if let ReactiveInstruction::Instruction(instruction) = instr {
+            if let InstructionValue::Destructure { value, .. } = &instruction.value {
+                let value_name = place_name(value);
+                if param_names.contains(value_name.as_ref()) {
+                    let indent_str = "  ";
+                    codegen_instruction(instruction, &mut output, indent_str, &mut declared);
+                    hoisted_indices.insert(i);
+                }
+            }
+        }
+    }
+
+    // Generate body, skipping hoisted instructions
+    codegen_block_skip_hoisted(
+        &rf.body,
+        &mut output,
+        &mut cache_slot,
+        1,
+        &mut declared,
+        &hoisted_indices,
+    );
 
     output.push_str("}\n");
     output
@@ -66,6 +100,34 @@ fn codegen_block(
     declared: &mut HashSet<String>,
 ) {
     for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                let indent_str = "  ".repeat(indent);
+                codegen_instruction(instruction, output, &indent_str, declared);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                codegen_terminal(terminal, output, cache_slot, indent, declared);
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                codegen_scope(scope_block, output, cache_slot, indent, declared);
+            }
+        }
+    }
+}
+
+/// Like `codegen_block` but skips instructions at specific indices (already hoisted).
+fn codegen_block_skip_hoisted(
+    block: &ReactiveBlock,
+    output: &mut String,
+    cache_slot: &mut u32,
+    indent: usize,
+    declared: &mut HashSet<String>,
+    hoisted_indices: &HashSet<usize>,
+) {
+    for (i, instr) in block.instructions.iter().enumerate() {
+        if hoisted_indices.contains(&i) {
+            continue;
+        }
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
                 let indent_str = "  ".repeat(indent);
@@ -375,10 +437,16 @@ fn codegen_instruction(
                 output.push_str(&format!("{indent}const "));
                 codegen_destructure_pattern(lvalue_pattern, output);
                 output.push_str(&format!(" = {value_name};\n"));
+                // Register destructured names so later DeclareLocal/scopes don't re-declare
+                collect_pattern_names(lvalue_pattern, declared);
             }
         }
         InstructionValue::DeclareLocal { lvalue, type_ } => {
             let name = place_name(lvalue);
+            // Skip if already declared (e.g., by hoisted param destructuring)
+            if declared.contains(name.as_ref()) {
+                return;
+            }
             let keyword = match type_ {
                 crate::hir::types::InstructionKind::Const
                 | crate::hir::types::InstructionKind::HoistedConst
@@ -777,39 +845,18 @@ fn codegen_scope(
 /// Generate JavaScript from a lowered HIR function body (used for nested
 /// function expressions and object methods whose body hasn't been through
 /// the reactive transform).
+///
+/// Converts the HIR to a ReactiveBlock via `build_reactive_block` and then
+/// reuses the standard codegen pipeline, ensuring proper CFG traversal
+/// (no duplicate blocks, correct ordering, ternary/logical lowering).
 fn codegen_hir_body(hir: &crate::hir::types::HIR, output: &mut String, indent: usize) {
+    let reactive_block =
+        crate::reactive_scopes::build_reactive_function::build_reactive_block_from_hir(
+            hir, hir.entry,
+        );
     let mut declared = HashSet::new();
-    for (_block_id, block) in &hir.blocks {
-        let indent_str = "  ".repeat(indent);
-        for instruction in &block.instructions {
-            codegen_instruction(instruction, output, &indent_str, &mut declared);
-        }
-        codegen_hir_terminal(&block.terminal, output, indent);
-    }
-}
-
-/// Emit JavaScript for an HIR terminal (Return, Throw, etc.).
-/// Other control-flow terminals (Goto, If, Branch, Switch, loops) are structural
-/// in the CFG and their semantics are already captured in block ordering, so we
-/// only emit the ones that produce visible JavaScript statements.
-fn codegen_hir_terminal(
-    terminal: &crate::hir::types::Terminal,
-    output: &mut String,
-    indent: usize,
-) {
-    use crate::hir::types::Terminal;
-    let indent_str = "  ".repeat(indent);
-
-    match terminal {
-        Terminal::Return { value } => {
-            output.push_str(&format!("{}return {};\n", indent_str, place_name(value)));
-        }
-        Terminal::Throw { value } => {
-            output.push_str(&format!("{}throw {};\n", indent_str, place_name(value)));
-        }
-        // Structural CFG terminals — no JS output needed
-        _ => {}
-    }
+    let mut cache_slot = 0u32;
+    codegen_block(&reactive_block, output, &mut cache_slot, indent, &mut declared);
 }
 
 fn count_cache_slots(block: &ReactiveBlock) -> u32 {
@@ -1007,6 +1054,49 @@ fn pattern_has_declared_names(
                 }
             }
             false
+        }
+    }
+}
+
+/// Collect all variable names from a destructure pattern into the declared set.
+fn collect_pattern_names(
+    pattern: &crate::hir::types::DestructurePattern,
+    declared: &mut HashSet<String>,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        declared.insert(place_name(place).to_string());
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        collect_pattern_names(nested, declared);
+                    }
+                }
+            }
+            if let Some(rest_place) = rest {
+                declared.insert(place_name(rest_place).to_string());
+            }
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(target) => match target {
+                        DestructureTarget::Place(place) => {
+                            declared.insert(place_name(place).to_string());
+                        }
+                        DestructureTarget::Pattern(nested) => {
+                            collect_pattern_names(nested, declared);
+                        }
+                    },
+                    DestructureArrayItem::Hole | DestructureArrayItem::Spread(_) => {}
+                }
+            }
+            if let Some(rest_place) = rest {
+                declared.insert(place_name(rest_place).to_string());
+            }
         }
     }
 }

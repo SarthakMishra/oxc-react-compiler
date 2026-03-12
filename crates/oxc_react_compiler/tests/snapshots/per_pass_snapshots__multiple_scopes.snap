@@ -6,15 +6,13 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Summary(t0) {
-  const $ = _c(9);
-  let items;
-  let threshold;
+  const $ = _c(12);
+  const { items, threshold } = t0;
   if ($[0] !== items || $[1] !== threshold) {
     $[0] = items;
     $[1] = threshold;
   } else {
   }
-  ({ items, threshold } = t0);
   let count;
   let hasMany;
   let label;
@@ -36,4 +34,27 @@ function Summary(t0) {
     $[8] = hasMany;
   } else {
   }
+  if (t54) {
+  } else {
+  }
+  label = t26;
+  let t68;
+  if ($[9] !== label || $[10] !== count) {
+    const t59 = "div";
+    const t60 = "span";
+    const t61 = label;
+    const t62 = _jsx(t60, { children: t61 });
+    const t63 = "span";
+    const t64 = "(";
+    const t65 = count;
+    const t66 = ")";
+    const t67 = _jsxs(t63, { children: [t64, t65, t66] });
+    t68 = _jsxs(t59, { children: [t62, t67] });
+    $[11] = t68;
+    $[9] = label;
+    $[10] = count;
+  } else {
+    t68 = $[11];
+  }
+  return t68;
 }

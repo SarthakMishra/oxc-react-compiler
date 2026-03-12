@@ -7,12 +7,11 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 
 function Toggle(t0) {
   const $ = _c(3);
-  let isOn;
+  const { isOn } = t0;
   if ($[0] !== isOn) {
     $[0] = isOn;
   } else {
   }
-  ({ isOn } = t0);
   let t15;
   if ($[1] !== isOn) {
     t15 = isOn;
@@ -27,10 +26,6 @@ function Toggle(t0) {
     const t21 = _jsx(t19, { children: t20 });
     return t21;
   } else {
-    const t16 = "div";
-    const t17 = "OFF";
-    const t18 = _jsx(t16, { children: t17 });
-    return t18;
   }
   const t16 = "div";
   const t17 = "OFF";

@@ -16,11 +16,8 @@ interface TimeSlotPickerProps {
 }
 
 export function TimeSlotPicker(t0) {
-  const $ = _c(19);
-  let slots;
-  let selectedDate;
-  let onSelect;
-  let timezone;
+  const $ = _c(34);
+  const { slots, selectedDate, onSelect, timezone } = t0;
   if ($[0] !== slots || $[1] !== selectedDate || $[2] !== onSelect || $[3] !== timezone) {
     $[0] = slots;
     $[1] = selectedDate;
@@ -28,7 +25,6 @@ export function TimeSlotPicker(t0) {
     $[3] = timezone;
   } else {
   }
-  ({ slots, selectedDate, onSelect, timezone } = t0);
   const t123 = useState;
   const t124 = null;
   const t125 = t123(t124);
@@ -148,5 +144,112 @@ export function TimeSlotPicker(t0) {
   const t165 = t164.length;
   const t166 = 0;
   const t167 = t165 === t166;
+  if (t167) {
+    const t238 = "p";
+    const t239 = "No available slots";
+  } else {
+    if ($[19] !== morningSlots) {
+      const t197 = morningSlots;
+      const t198 = t197.length;
+      $[19] = morningSlots;
+    } else {
+    }
+    const t199 = 0;
+    const t230 = "div";
+    const t231 = "h4";
+    const t232 = "Morning";
+    const t233 = _jsx(t231, { children: t232 });
+    if ($[20] !== morningSlots || $[21] !== t235) {
+      const t234 = morningSlots;
+      const t235 = (slot) => {
+        const t1 = "button";
+        const t3 = slot;
+        const t4 = t3.time;
+        const t5 = () => {
+          const t1 = handleSelect;
+          const t3 = slot;
+          const t4 = t3.time;
+          const t5 = t1(t4);
+          return t5;
+        };
+        const t7 = selectedSlot;
+        const t9 = slot;
+        const t10 = t9.time;
+        const t11 = t7 === t10;
+        if (t11) {
+          const t12 = "selected";
+        } else {
+          const t13 = "";
+        }
+        const t16 = slot;
+        const t17 = t16.time;
+        const t18 = _jsx(t1, { key: t4, onClick: t5, className: t14, children: t17 });
+        return t18;
+      };
+      const t236 = t234.map(t235);
+      $[20] = morningSlots;
+      $[21] = t235;
+    } else {
+    }
+    if ($[22] !== afternoonSlots) {
+      const t209 = afternoonSlots;
+      const t210 = t209.length;
+      $[22] = afternoonSlots;
+    } else {
+    }
+    const t211 = 0;
+    const t222 = "div";
+    const t223 = "h4";
+    const t224 = "Afternoon";
+    const t225 = _jsx(t223, { children: t224 });
+    if ($[23] !== afternoonSlots || $[24] !== t227) {
+      const t226 = afternoonSlots;
+      const t227 = (slot) => {
+        const t1 = "button";
+        const t3 = slot;
+        const t4 = t3.time;
+        const t5 = () => {
+          const t1 = handleSelect;
+          const t3 = slot;
+          const t4 = t3.time;
+          const t5 = t1(t4);
+          return t5;
+        };
+        const t7 = selectedSlot;
+        const t9 = slot;
+        const t10 = t9.time;
+        const t11 = t7 === t10;
+        if (t11) {
+          const t12 = "selected";
+        } else {
+          const t13 = "";
+        }
+        const t16 = slot;
+        const t17 = t16.time;
+        const t18 = _jsx(t1, { key: t4, onClick: t5, className: t14, children: t17 });
+        return t18;
+      };
+      const t228 = t226.map(t227);
+      $[23] = afternoonSlots;
+      $[24] = t227;
+    } else {
+    }
+  }
+  let t196;
+  if ($[25] !== useCallback || $[26] !== onSelect || $[27] !== handleSelect || $[28] !== selectedDate || $[29] !== timezone || $[30] !== availableSlots || $[31] !== t166 || $[32] !== t115) {
+    t196 = _jsxs(t157, { children: [t163, t115] });
+    $[33] = t196;
+    $[25] = useCallback;
+    $[26] = onSelect;
+    $[27] = handleSelect;
+    $[28] = selectedDate;
+    $[29] = timezone;
+    $[30] = availableSlots;
+    $[31] = t166;
+    $[32] = t115;
+  } else {
+    t196 = $[33];
+  }
+  return t196;
 }
 

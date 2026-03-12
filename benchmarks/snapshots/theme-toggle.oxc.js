@@ -4,7 +4,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useState, useCallback } from 'react';
 
 export function ThemeToggle() {
-  const $ = _c(3);
+  const $ = _c(11);
   const t38 = useState;
   const t39 = "light";
   const t40 = t38(t39);
@@ -28,8 +28,11 @@ export function ThemeToggle() {
       const t2 = t;
       const t3 = "light";
       const t4 = t2 === t3;
-      const t5 = "dark";
-      const t6 = "light";
+      if (t4) {
+        const t5 = "dark";
+      } else {
+        const t6 = "light";
+      }
       return t7;
     };
     const t3 = t1(t2);
@@ -44,5 +47,32 @@ export function ThemeToggle() {
   const t52 = theme;
   const t53 = "dark";
   const t54 = t52 === t53;
+  if (t54) {
+  } else {
+  }
+  if ($[3] !== theme || $[4] !== t58) {
+    const t57 = theme;
+    const t58 = "dark";
+    const t59 = t57 === t58;
+    $[3] = theme;
+    $[4] = t58;
+  } else {
+  }
+  if (t59) {
+  } else {
+  }
+  let t63;
+  if ($[5] !== toggle || $[6] !== theme || $[7] !== t53 || $[8] !== t28 || $[9] !== t35) {
+    t63 = _jsx(t50, { onClick: t51, className: t28, children: t35 });
+    $[10] = t63;
+    $[5] = toggle;
+    $[6] = theme;
+    $[7] = t53;
+    $[8] = t28;
+    $[9] = t35;
+  } else {
+    t63 = $[10];
+  }
+  return t63;
 }
 

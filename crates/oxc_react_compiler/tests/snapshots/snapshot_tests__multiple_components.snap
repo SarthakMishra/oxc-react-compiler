@@ -7,12 +7,11 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 
 function Header(t0) {
   const $ = _c(3);
-  let title;
+  const { title } = t0;
   if ($[0] !== title) {
     $[0] = title;
   } else {
   }
-  ({ title } = t0);
   let t13;
   if ($[1] !== title) {
     const t11 = "h1";
@@ -29,12 +28,11 @@ function Header(t0) {
 
 function Footer(t0) {
   const $ = _c(3);
-  let text;
+  const { text } = t0;
   if ($[0] !== text) {
     $[0] = text;
   } else {
   }
-  ({ text } = t0);
   let t13;
   if ($[1] !== text) {
     const t11 = "footer";

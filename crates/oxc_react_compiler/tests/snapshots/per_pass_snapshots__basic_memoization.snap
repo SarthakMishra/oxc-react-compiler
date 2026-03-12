@@ -7,12 +7,11 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 
 function Doubler(t0) {
   const $ = _c(5);
-  let value;
+  const { value } = t0;
   if ($[0] !== value) {
     $[0] = value;
   } else {
   }
-  ({ value } = t0);
   let doubled;
   let t25;
   if ($[1] !== doubled || $[2] !== value || $[3] !== doubled) {

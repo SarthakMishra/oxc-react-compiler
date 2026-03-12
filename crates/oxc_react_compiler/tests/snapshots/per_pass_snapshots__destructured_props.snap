@@ -7,16 +7,13 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 
 function UserCard(t0) {
   const $ = _c(7);
-  let name;
-  let age;
-  let role;
+  const { name, age, role } = t0;
   if ($[0] !== name || $[1] !== age || $[2] !== role) {
     $[0] = name;
     $[1] = age;
     $[2] = role;
   } else {
   }
-  ({ name, age, role } = t0);
   let t41;
   if ($[3] !== name || $[4] !== age || $[5] !== role) {
     const t29 = "div";

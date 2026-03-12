@@ -7,12 +7,11 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 
 export default function Page(t0) {
   const $ = _c(3);
-  let content;
+  const { content } = t0;
   if ($[0] !== content) {
     $[0] = content;
   } else {
   }
-  ({ content } = t0);
   let t13;
   if ($[1] !== content) {
     const t11 = "main";

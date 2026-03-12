@@ -10,17 +10,14 @@ interface SearchInputProps {
 }
 
 export function SearchInput(t0) {
-  const $ = _c(12);
-  let onSearch;
-  let placeholder;
-  let debounceMs;
+  const $ = _c(21);
+  const { onSearch, placeholder, debounceMs } = t0;
   if ($[0] !== onSearch || $[1] !== placeholder || $[2] !== debounceMs) {
     $[0] = onSearch;
     $[1] = placeholder;
     $[2] = debounceMs;
   } else {
   }
-  ({ onSearch, placeholder, debounceMs } = t0);
   const t82 = useState;
   const t83 = "";
   const t84 = t82(t83);
@@ -46,16 +43,17 @@ export function SearchInput(t0) {
     const t0 = () => {
       const t1 = timerRef;
       const t2 = t1.current;
-      const t3 = clearTimeout;
-      const t5 = timerRef;
-      const t6 = t5.current;
-      const t7 = t3(t6);
+      if (t2) {
+        const t3 = clearTimeout;
+        const t5 = timerRef;
+        const t6 = t5.current;
+        const t7 = t3(t6);
+      } else {
+      }
       const t8 = undefined;
       return t8;
     };
     return t0;
-    const t1 = undefined;
-    return t1;
   };
   const t95 = [];
   const t96 = t93(t94, t95);
@@ -78,10 +76,13 @@ export function SearchInput(t0) {
       const t12 = t9(t11);
       const t14 = timerRef;
       const t15 = t14.current;
-      const t16 = clearTimeout;
-      const t18 = timerRef;
-      const t19 = t18.current;
-      const t20 = t16(t19);
+      if (t15) {
+        const t16 = clearTimeout;
+        const t18 = timerRef;
+        const t19 = t18.current;
+        const t20 = t16(t19);
+      } else {
+      }
       const t21 = setTimeout;
       const t22 = () => {
         const t1 = onSearch;
@@ -119,10 +120,13 @@ export function SearchInput(t0) {
     const t7 = t5(t6);
     const t9 = timerRef;
     const t10 = t9.current;
-    const t11 = clearTimeout;
-    const t13 = timerRef;
-    const t14 = t13.current;
-    const t15 = t11(t14);
+    if (t10) {
+      const t11 = clearTimeout;
+      const t13 = timerRef;
+      const t14 = t13.current;
+      const t15 = t11(t14);
+    } else {
+    }
     const t16 = undefined;
     return t16;
   };
@@ -139,5 +143,28 @@ export function SearchInput(t0) {
   const t118 = placeholder;
   const t119 = "w-full px-3 py-2 border rounded";
   const t120 = _jsx(t114, { type: t115, value: t116, onChange: t117, placeholder: t118, className: t119 });
+  const t122 = "button";
+  if ($[12] !== handleClear) {
+    const t123 = handleClear;
+    $[12] = handleClear;
+  } else {
+  }
+  const t124 = "absolute right-2 top-2 text-gray-400";
+  const t125 = "\n          ×\n        ";
+  let t132;
+  if ($[13] !== useCallback || $[14] !== onSearch || $[15] !== handleClear || $[16] !== value || $[17] !== handleChange || $[18] !== placeholder || $[19] !== t75) {
+    t132 = _jsxs(t112, { className: t113, children: [t120, t75] });
+    $[20] = t132;
+    $[13] = useCallback;
+    $[14] = onSearch;
+    $[15] = handleClear;
+    $[16] = value;
+    $[17] = handleChange;
+    $[18] = placeholder;
+    $[19] = t75;
+  } else {
+    t132 = $[20];
+  }
+  return t132;
 }
 

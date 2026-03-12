@@ -22,11 +22,8 @@ const TOOLS: { id: Tool; label: string; shortcut: string }[] = [
 ];
 
 export function Toolbar(t0) {
-  const $ = _c(15);
-  let activeTool;
-  let onToolChange;
-  let locked;
-  let onLockToggle;
+  const $ = _c(23);
+  const { activeTool, onToolChange, locked, onLockToggle } = t0;
   if ($[0] !== activeTool || $[1] !== onToolChange || $[2] !== locked || $[3] !== onLockToggle) {
     $[0] = activeTool;
     $[1] = onToolChange;
@@ -34,7 +31,6 @@ export function Toolbar(t0) {
     $[3] = onLockToggle;
   } else {
   }
-  ({ activeTool, onToolChange, locked, onLockToggle } = t0);
   const t85 = useState;
   const t86 = null;
   const t87 = t85(t86);
@@ -120,8 +116,11 @@ export function Toolbar(t0) {
       const t11 = tool;
       const t12 = t11.id;
       const t13 = t9 === t12;
-      const t14 = "bg-blue-100";
-      const t15 = "hover:bg-gray-100";
+      if (t13) {
+        const t14 = "bg-blue-100";
+      } else {
+        const t15 = "hover:bg-gray-100";
+      }
       const t18 = tool;
       const t19 = t18.label;
       const t21 = showTooltip;
@@ -153,5 +152,41 @@ export function Toolbar(t0) {
     $[14] = locked;
   } else {
   }
+  if (t115) {
+  } else {
+  }
+  if ($[15] !== locked) {
+    const t118 = locked;
+    $[15] = locked;
+  } else {
+  }
+  if (t118) {
+  } else {
+  }
+  let t133;
+  if ($[16] !== t59 || $[17] !== t64 || $[18] !== activeIndex || $[19] !== TOOLS || $[20] !== TOOLS || $[21] !== onLockToggle) {
+    const t122 = _jsx(t113, { onClick: t114, className: t59, children: t64 });
+    const t123 = "span";
+    const t124 = "text-xs text-gray-500";
+    const t125 = "Tool ";
+    const t126 = activeIndex;
+    const t127 = 1;
+    const t128 = t126 + t127;
+    const t129 = "/";
+    const t130 = TOOLS;
+    const t131 = t130.length;
+    const t132 = _jsxs(t123, { className: t124, children: [t125, t128, t129, t131] });
+    t133 = _jsxs(t105, { className: t106, children: [t109, t112, t122, t132] });
+    $[22] = t133;
+    $[16] = t59;
+    $[17] = t64;
+    $[18] = activeIndex;
+    $[19] = TOOLS;
+    $[20] = TOOLS;
+    $[21] = onLockToggle;
+  } else {
+    t133 = $[22];
+  }
+  return t133;
 }
 

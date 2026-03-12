@@ -9,7 +9,7 @@ interface FormState {
 }
 
 export function FormValidation() {
-  const $ = _c(18);
+  const $ = _c(39);
   const t172 = useState;
   const t173 = "";
   const t174 = "";
@@ -52,29 +52,36 @@ export function FormValidation() {
       const t7 = "@";
       const t8 = t6.includes(t7);
       const t9 = !t8;
-      const t10 = "Invalid email address";
-      const t12 = errs;
-      t12.email = t10;
+      if (t9) {
+        const t10 = "Invalid email address";
+        const t12 = errs;
+        t12.email = t10;
+      } else {
+      }
       const t15 = form;
       const t16 = t15.password;
       const t17 = t16.length;
       const t18 = 8;
       const t19 = t17 < t18;
-      const t20 = "Password must be at least 8 characters";
-      const t22 = errs;
-      t22.password = t20;
+      if (t19) {
+        const t20 = "Password must be at least 8 characters";
+        const t22 = errs;
+        t22.password = t20;
+      } else {
+      }
       const t25 = form;
       const t26 = t25.password;
       const t28 = form;
       const t29 = t28.confirmPassword;
       const t30 = t26 !== t29;
-      const t31 = "Passwords do not match";
-      const t33 = errs;
-      t33.confirmPassword = t31;
+      if (t30) {
+        const t31 = "Passwords do not match";
+        const t33 = errs;
+        t33.confirmPassword = t31;
+      } else {
+      }
       const t36 = errs;
       return t36;
-      const t37 = undefined;
-      return t37;
     };
     const t190 = form;
     const t191 = [t190];
@@ -142,10 +149,13 @@ export function FormValidation() {
       const t2 = true;
       const t3 = t1(t2);
       const t5 = isValid;
-      const t6 = console;
-      const t7 = "Form submitted:";
-      const t9 = form;
-      const t10 = t6.log(t7, t9);
+      if (t5) {
+        const t6 = console;
+        const t7 = "Form submitted:";
+        const t9 = form;
+        const t10 = t6.log(t7, t9);
+      } else {
+      }
       const t11 = undefined;
       return t11;
     };
@@ -174,5 +184,103 @@ export function FormValidation() {
   const t226 = t224(t225);
   const t227 = "Email";
   const t228 = _jsx(t220, { type: t221, value: t223, onChange: t226, placeholder: t227 });
+  if ($[18] !== errors) {
+    const t331 = errors;
+    $[18] = errors;
+  } else {
+  }
+  const t326 = "span";
+  const t327 = "error";
+  if ($[19] !== errors) {
+    const t328 = errors;
+    const t329 = t328.email;
+    $[19] = errors;
+  } else {
+  }
+  let t302;
+  if ($[20] !== t123 || $[21] !== form || $[22] !== handleChange || $[23] !== t149 || $[24] !== handleSubmit || $[25] !== t159 || $[26] !== t168 || $[27] !== form || $[28] !== handleChange || $[29] !== t97 || $[30] !== form || $[31] !== handleChange) {
+    const t240 = _jsxs(t219, { children: [t228, t97] });
+    const t241 = "div";
+    const t242 = "input";
+    const t243 = "password";
+    const t244 = form;
+    const t245 = t244.password;
+    const t246 = handleChange;
+    const t247 = "password";
+    const t248 = t246(t247);
+    const t249 = "Password";
+    const t250 = _jsx(t242, { type: t243, value: t245, onChange: t248, placeholder: t249 });
+    $[32] = t302;
+    $[20] = t123;
+    $[21] = form;
+    $[22] = handleChange;
+    $[23] = t149;
+    $[24] = handleSubmit;
+    $[25] = t159;
+    $[26] = t168;
+    $[27] = form;
+    $[28] = handleChange;
+    $[29] = t97;
+    $[30] = form;
+    $[31] = handleChange;
+  } else {
+    t302 = $[32];
+  }
+  if ($[33] !== errors) {
+    const t314 = errors;
+    $[33] = errors;
+  } else {
+  }
+  const t318 = "span";
+  const t319 = "error";
+  if ($[34] !== errors) {
+    const t320 = errors;
+    const t321 = t320.password;
+    $[34] = errors;
+  } else {
+  }
+  const t262 = _jsxs(t241, { children: [t250, t123] });
+  const t263 = "div";
+  const t264 = "input";
+  const t265 = "password";
+  const t266 = form;
+  const t267 = t266.confirmPassword;
+  const t268 = handleChange;
+  const t269 = "confirmPassword";
+  const t270 = t268(t269);
+  const t271 = "Confirm Password";
+  const t272 = _jsx(t264, { type: t265, value: t267, onChange: t270, placeholder: t271 });
+  if ($[35] !== errors) {
+    const t304 = errors;
+    $[35] = errors;
+  } else {
+  }
+  const t308 = "span";
+  const t309 = "error";
+  if ($[36] !== errors) {
+    const t310 = errors;
+    const t311 = t310.confirmPassword;
+    $[36] = errors;
+  } else {
+  }
+  const t284 = _jsxs(t263, { children: [t272, t149] });
+  const t285 = "button";
+  const t286 = handleSubmit;
+  if ($[37] !== isValid) {
+    const t288 = isValid;
+    $[37] = isValid;
+  } else {
+  }
+  if ($[38] !== isValid) {
+    const t293 = isValid;
+    $[38] = isValid;
+  } else {
+  }
+  if (t165) {
+  } else {
+  }
+  const t301 = _jsx(t285, { onClick: t286, disabled: t159, children: t168 });
+  t302 = _jsxs(t215, { children: [t218, t240, t262, t284, t301] });
+  return t302;
 }
 

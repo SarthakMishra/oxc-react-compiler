@@ -9,15 +9,13 @@ interface AvatarGroupProps {
 }
 
 export function AvatarGroup(t0) {
-  const $ = _c(3);
-  let users;
-  let max;
+  const $ = _c(15);
+  const { users, max } = t0;
   if ($[0] !== users || $[1] !== max) {
     $[0] = users;
     $[1] = max;
   } else {
   }
-  ({ users, max } = t0);
   let visible;
   if ($[2] !== visible) {
     $[2] = visible;
@@ -53,21 +51,50 @@ export function AvatarGroup(t0) {
     const t8 = t7.name;
     const t10 = user;
     const t11 = t10.image;
-    const t12 = "img";
-    const t14 = user;
-    const t15 = t14.image;
-    const t17 = user;
-    const t18 = t17.name;
-    const t19 = _jsx(t12, { src: t15, alt: t18 });
-    const t21 = user;
-    const t22 = t21.name;
-    const t23 = 0;
-    const t24 = t22[t23];
+    if (t11) {
+      const t12 = "img";
+      const t14 = user;
+      const t15 = t14.image;
+      const t17 = user;
+      const t18 = t17.name;
+      const t19 = _jsx(t12, { src: t15, alt: t18 });
+    } else {
+      const t21 = user;
+      const t22 = t21.name;
+      const t23 = 0;
+      const t24 = t22[t23];
+    }
     const t26 = _jsx(t2, { key: t4, className: t5, title: t8, children: t25 });
     return t26;
   };
   const t69 = t67.map(t68);
-  const t70 = remaining;
+  let t83;
+  if ($[3] !== t45 || $[4] !== useMemo || $[5] !== users || $[6] !== max || $[7] !== visible || $[8] !== remaining || $[9] !== users || $[10] !== max || $[11] !== visible || $[12] !== remaining) {
+    const t70 = remaining;
+    $[13] = t83;
+    $[3] = t45;
+    $[4] = useMemo;
+    $[5] = users;
+    $[6] = max;
+    $[7] = visible;
+    $[8] = remaining;
+    $[9] = users;
+    $[10] = max;
+    $[11] = visible;
+    $[12] = remaining;
+  } else {
+    t83 = $[13];
+  }
   const t71 = 0;
+  const t73 = "div";
+  const t74 = "rounded-full w-8 h-8 bg-gray-200";
+  const t75 = "+";
+  if ($[14] !== remaining) {
+    const t76 = remaining;
+    $[14] = remaining;
+  } else {
+  }
+  t83 = _jsxs(t65, { className: t66, children: [t69, t45] });
+  return t83;
 }
 

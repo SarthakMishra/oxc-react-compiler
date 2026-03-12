@@ -43,21 +43,24 @@ export function TodoList() {
     const t97 = () => {
       const t1 = input;
       const t2 = t1.trim();
-      const t4 = setTodos;
-      const t5 = (prev) => {
-        const t2 = prev;
-        const t3 = Date;
-        const t4 = t3.now();
-        const t6 = input;
-        const t7 = false;
-        const t8 = { id: t4, text: t6, done: t7 };
-        const t9 = [...t2, t8];
-        return t9;
-      };
-      const t6 = t4(t5);
-      const t8 = setInput;
-      const t9 = "";
-      const t10 = t8(t9);
+      if (t2) {
+        const t4 = setTodos;
+        const t5 = (prev) => {
+          const t2 = prev;
+          const t3 = Date;
+          const t4 = t3.now();
+          const t6 = input;
+          const t7 = false;
+          const t8 = { id: t4, text: t6, done: t7 };
+          const t9 = [...t2, t8];
+          return t9;
+        };
+        const t6 = t4(t5);
+        const t8 = setInput;
+        const t9 = "";
+        const t10 = t8(t9);
+      } else {
+      }
       const t11 = undefined;
       return t11;
     };
@@ -81,12 +84,15 @@ export function TodoList() {
         const t3 = t2.id;
         const t5 = id;
         const t6 = t3 === t5;
-        const t8 = t;
-        const t10 = t;
-        const t11 = t10.done;
-        const t12 = !t11;
-        const t13 = { ...t8, done: t12 };
-        const t15 = t;
+        if (t6) {
+          const t8 = t;
+          const t10 = t;
+          const t11 = t10.done;
+          const t12 = !t11;
+          const t13 = { ...t8, done: t12 };
+        } else {
+          const t15 = t;
+        }
         return t16;
       };
       const t4 = t2.map(t3);
@@ -168,8 +174,11 @@ export function TodoList() {
       const t4 = t3.id;
       const t6 = todo;
       const t7 = t6.done;
-      const t8 = "line-through";
-      const t9 = "none";
+      if (t7) {
+        const t8 = "line-through";
+      } else {
+        const t9 = "none";
+      }
       const t11 = { textDecoration: t10 };
       const t12 = "span";
       const t13 = () => {

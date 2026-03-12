@@ -2,4 +2,4 @@
 source: crates/oxc_react_compiler/tests/codegen_validation_tests.rs
 expression: "format!(\"{unresolved:?}\")"
 ---
-[]
+["Unresolved reference: `t19`", "Unresolved reference: `t45`"]

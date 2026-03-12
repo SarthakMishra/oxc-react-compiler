@@ -7,14 +7,12 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 
 function Greeting(t0) {
   const $ = _c(5);
-  let name;
-  let age;
+  const { name, age } = t0;
   if ($[0] !== name || $[1] !== age) {
     $[0] = name;
     $[1] = age;
   } else {
   }
-  ({ name, age } = t0);
   let t23;
   if ($[2] !== name || $[3] !== age) {
     const t18 = "div";
