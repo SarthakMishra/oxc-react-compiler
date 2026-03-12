@@ -43,6 +43,9 @@ pub fn run_pipeline(
     // Pass 9: Eliminate redundant phi
     crate::ssa::eliminate_redundant_phi::eliminate_redundant_phi(hir);
 
+    // Pass 9.5: Prune temporary lvalues (post-SSA cleanup)
+    crate::optimization::prune_temporary_lvalues::prune_temporary_lvalues(hir);
+
     // Phase 3: Optimization & Type Inference
     // Pass 10: Constant propagation
     crate::optimization::constant_propagation::constant_propagation(hir);
@@ -140,13 +143,36 @@ pub fn run_pipeline(
     // Pass 28: validate_no_freezing_known_mutable_functions
     crate::validation::validate_no_freezing_known_mutable_functions::validate_no_freezing_known_mutable_functions(hir, errors);
 
+    // Pass 28.5: validate_no_impure_functions_in_render (conditional)
+    if config.validate_no_impure_functions_in_render {
+        crate::validation::validate_no_impure_functions_in_render::validate_no_impure_functions_in_render(hir, errors);
+    }
+
+    // Pass 28.6: validate_blocklisted_imports (conditional)
+    if !config.blocklisted_imports.is_empty() {
+        crate::validation::validate_blocklisted_imports::validate_blocklisted_imports(
+            hir,
+            &config.blocklisted_imports,
+            errors,
+        );
+    }
+
+    // Pass 28.7: assert_well_formed_break_targets
+    crate::validation::assert_well_formed_break_targets::assert_well_formed_break_targets(
+        hir, errors,
+    );
+
     // Phase 7: Reactivity Inference
     // Pass 29: infer_reactive_places
     crate::inference::infer_reactive_places::infer_reactive_places(hir);
 
     // Pass 30: validate_exhaustive_dependencies (conditional)
+    // Runs if either memo deps validation is on, or effect deps mode is not Off,
+    // or the legacy bool flag is set.
     if config.validate_exhaustive_memo_dependencies
         || config.validate_exhaustive_effect_dependencies
+        || config.validate_exhaustive_effect_dependencies_mode
+            != crate::hir::environment::ExhaustiveDepsMode::Off
     {
         crate::validation::validate_exhaustive_dependencies::validate_exhaustive_dependencies(
             hir, errors,

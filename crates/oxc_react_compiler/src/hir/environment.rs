@@ -35,6 +35,12 @@ pub struct EnvironmentConfig {
     pub enable_transitively_freeze_function_expressions: bool,
     pub enable_optional_dependencies: bool,
     pub enable_treat_ref_like_identifiers_as_refs: bool,
+    /// When true, treat `setX` naming pattern as state setters even without type info.
+    pub enable_treat_set_identifiers_as_state_setters: bool,
+    /// When true, allow setState calls inside effects when value comes from ref.current.
+    pub enable_allow_set_state_from_refs_in_effects: bool,
+    /// When true, show verbose diagnostics for setState-in-effect violations.
+    pub enable_verbose_no_set_state_in_effect: bool,
 
     // Output mode
     pub enable_ssr: bool,
@@ -42,6 +48,16 @@ pub struct EnvironmentConfig {
     // Dev/HMR
     pub enable_reset_cache_on_source_file_changes: bool,
     pub enable_emit_hook_guards: bool,
+    /// External function config for hook guards (import source + function name).
+    pub emit_hook_guards_external_function: Option<ExternalFunctionConfig>,
+
+    // Validation passes
+    /// Mode for exhaustive effect dependency validation (off/all/missing-only/extra-only).
+    pub validate_exhaustive_effect_dependencies_mode: ExhaustiveDepsMode,
+    /// Validate that no impure functions (console.log, Math.random, etc.) are called in render.
+    pub validate_no_impure_functions_in_render: bool,
+    /// List of import sources that should be blocked from compiled code.
+    pub blocklisted_imports: Vec<String>,
 
     // Extensibility
     pub custom_macros: Vec<String>,
@@ -70,9 +86,16 @@ impl Default for EnvironmentConfig {
             enable_transitively_freeze_function_expressions: true,
             enable_optional_dependencies: true,
             enable_treat_ref_like_identifiers_as_refs: false,
+            enable_treat_set_identifiers_as_state_setters: true,
+            enable_allow_set_state_from_refs_in_effects: false,
+            enable_verbose_no_set_state_in_effect: false,
             enable_ssr: false,
             enable_reset_cache_on_source_file_changes: false,
             enable_emit_hook_guards: false,
+            emit_hook_guards_external_function: None,
+            validate_exhaustive_effect_dependencies_mode: ExhaustiveDepsMode::Off,
+            validate_no_impure_functions_in_render: false,
+            blocklisted_imports: Vec::new(),
             custom_macros: Vec::new(),
             custom_hooks: FxHashMap::default(),
         }
@@ -98,6 +121,29 @@ impl EnvironmentConfig {
             ..Self::default()
         }
     }
+}
+
+/// Mode for exhaustive effect dependency validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ExhaustiveDepsMode {
+    /// Disabled (no checking)
+    #[default]
+    Off,
+    /// Report all issues (both missing and extra)
+    All,
+    /// Only report missing dependencies
+    MissingOnly,
+    /// Only report extraneous dependencies
+    ExtraOnly,
+}
+
+/// External function configuration for hook guards or gating.
+#[derive(Debug, Clone)]
+pub struct ExternalFunctionConfig {
+    /// Import source (e.g. "react-compiler-runtime")
+    pub source: String,
+    /// Function name to import
+    pub function_name: String,
 }
 
 /// Configuration for a custom hook's behavior.

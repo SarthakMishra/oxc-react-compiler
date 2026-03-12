@@ -8,3 +8,4 @@ pub mod optimize_props_method_calls;
 pub mod outline_functions;
 pub mod outline_jsx;
 pub mod prune_maybe_throws;
+pub mod prune_temporary_lvalues;

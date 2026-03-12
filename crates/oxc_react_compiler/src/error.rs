@@ -52,6 +52,14 @@ pub enum DiagnosticKind {
     LocalsReassignedAfterRender,
     /// useMemo/useCallback validation (validate_use_memo)
     UseMemoValidation,
+    /// Impure function called during render (validate_no_impure_functions_in_render)
+    ImpureFunctionInRender,
+    /// Blocklisted import used (validate_blocklisted_imports)
+    BlocklistedImport,
+    /// useMemo returns void (validate_no_void_use_memo)
+    VoidUseMemo,
+    /// Break target validation failure (assert_well_formed_break_targets)
+    MalformedBreakTarget,
     /// Internal invariant violation (assert_valid_mutable_ranges)
     InvariantViolation,
     /// General/unclassified diagnostic
