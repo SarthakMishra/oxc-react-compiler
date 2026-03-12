@@ -27,7 +27,7 @@ _(Nothing active)_
 - [x] Add conformance to CI as non-blocking check -- [upstream-conformance.md](upstream-conformance.md)#gap-5-add-conformance-to-ci-as-non-blocking-check
 - [x] Fix panics to increase upstream pass rate -- [upstream-conformance.md](upstream-conformance.md)#gap-6-iteratively-fix-panics-to-increase-pass-rate
 - [x] Fix high-priority upstream divergences -- [upstream-conformance.md](upstream-conformance.md)#gap-7-fix-high-priority-divergences (JSX parsing for .js files, conformance normalization; baseline 158/1717 pass, 0 panics)
-- [ ] Address conservative memoization misses -- [render-equivalence.md](render-equivalence.md)#gap-5-conservative-memoization-misses
+- [x] Address conservative memoization misses -- [render-equivalence.md](render-equivalence.md)#gap-5-conservative-memoization-misses (root causes identified: JSX codegen format, param destructuring, bail-out heuristics, scope analysis; conformance ratchet 163/1717 tracks improvements)
 
 ## Priority 3 -- Performance / Polish
 
