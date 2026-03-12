@@ -56,6 +56,9 @@ fn normalize_output(code: &str) -> String {
         // Remove trailing commas before closing braces/brackets
         let normalized = strip_trailing_commas(&normalized);
 
+        // Normalize import brace spacing: `import {X, Y}` → `import { X, Y }`
+        let normalized = normalize_import_spacing(&normalized);
+
         lines.push(normalized);
     }
 
@@ -102,6 +105,24 @@ fn strip_trailing_commas(line: &str) -> String {
     result = result.replace(",]", "]");
     result = result.replace(",)", ")");
     result
+}
+
+/// Normalize import brace spacing so `import {X, Y}` matches `import { X, Y }`.
+fn normalize_import_spacing(line: &str) -> String {
+    if !line.starts_with("import ") {
+        return line.to_string();
+    }
+    // Find the braces in the import
+    let Some(open) = line.find('{') else {
+        return line.to_string();
+    };
+    let Some(close) = line[open..].find('}').map(|i| i + open) else {
+        return line.to_string();
+    };
+    let inside = &line[open + 1..close];
+    let normalized: Vec<&str> = inside.split(',').map(|p| p.trim()).collect();
+    let joined = normalized.join(", ");
+    format!("{}{{ {} }}{}", &line[..open], joined, &line[close + 1..])
 }
 
 /// Root directory for conformance test infrastructure.

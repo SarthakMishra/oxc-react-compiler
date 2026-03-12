@@ -2,13 +2,8 @@
 # One fixture filename per line. Lines starting with '#' are comments.
 #
 # Format: <relative-path-from-upstream-fixtures/>
-# Example: array-spread.tsx
 #
-# These fixtures are expected to diverge from upstream output.
-# The conformance test will not fail on these, but will fail if a
-# previously passing fixture starts failing (regression).
-#
-# Baseline: 158/1717 pass (9.2%), 0 panics, 1559 divergences
+# Baseline: 163/1717 pass (9.5%), 0 panics, 1554 divergences
 # Generated: 2026-03-12
 
 alias-capture-in-method-receiver-and-mutate.js
@@ -196,7 +191,6 @@ context-variable-reassigned-objectmethod.js
 context-variable-reassigned-outside-of-lambda.js
 context-variable-reassigned-reactive-capture.js
 context-variable-reassigned-two-lambdas.js
-controlled-input.js
 createElement-freeze.js
 custom-opt-out-directive.tsx
 dce-loop.js
@@ -448,7 +442,6 @@ error.todo-invalid-jsx-in-try-with-finally.js
 error.todo-kitchensink.js
 error.todo-missing-source-locations.js
 error.todo-nested-method-calls-lower-property-load-into-temporary.js
-error.todo-new-target-meta-property.js
 error.todo-object-expression-get-syntax.js
 error.todo-object-expression-set-syntax.js
 error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js
@@ -610,7 +603,6 @@ gating/multi-arrow-expr-export-default-gating-test.js
 gating/multi-arrow-expr-export-gating-test.js
 gating/multi-arrow-expr-gating-test.js
 gating/reassigned-fnexpr-variable.js
-gating/repro-no-gating-import-without-compiled-functions.js
 global-jsx-tag-lowered-between-mutations.js
 global-types/call-spread-argument-set.ts
 global-types/map-constructor.ts
@@ -637,7 +629,6 @@ hoisting-functionexpr-conditional-dep.tsx
 hoisting-invalid-tdz-let.js
 hoisting-let-declaration-without-initialization.js
 hoisting-member-expression.js
-hoisting-nested-block-statements.js
 hoisting-reassigned-let-declaration.js
 hoisting-reassigned-twice-let-declaration.js
 hoisting-recursive-call-within-lambda.js
@@ -1553,7 +1544,6 @@ useMemo-nested-ifs.js
 useMemo-switch-no-fallthrough.js
 useMemo-switch-return.js
 useMemo-with-optional.js
-useReducer-returned-dispatcher-is-non-reactive.js
 valid-set-state-in-useEffect-from-ref.js
 valid-setState-in-effect-from-ref-arithmetic.js
 valid-setState-in-effect-from-ref-array-index.js
