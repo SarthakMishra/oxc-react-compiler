@@ -1,4 +1,3 @@
-
 use crate::hir::types::{HIR, IdentifierId, InstructionValue, Primitive};
 use rustc_hash::FxHashMap;
 
@@ -22,9 +21,10 @@ pub fn constant_propagation(hir: &mut HIR) {
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if let InstructionValue::LoadLocal { place } = &instr.value
-                && let Some(constant) = constants.get(&place.identifier.id) {
-                    instr.value = InstructionValue::Primitive { value: constant.clone() };
-                }
+                && let Some(constant) = constants.get(&place.identifier.id)
+            {
+                instr.value = InstructionValue::Primitive { value: constant.clone() };
+            }
         }
     }
 }

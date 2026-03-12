@@ -587,12 +587,18 @@ pub enum Terminal {
         left: BlockId,
         right: BlockId,
         fallthrough: BlockId,
+        /// The place that receives the logical expression result value.
+        result: Option<Place>,
     },
     Ternary {
         test: Place,
         consequent: BlockId,
         alternate: BlockId,
         fallthrough: BlockId,
+        /// The place that receives the ternary result value.
+        /// Set during HIR building; never renamed by SSA (since it's never a def).
+        /// Used by build_reactive_function to emit let/assign for the ternary result.
+        result: Option<Place>,
     },
     Optional {
         test: Place,
@@ -1012,6 +1018,6 @@ impl Default for IdGenerator {
 // at compile time, signalling that the change should be reviewed for impact.
 // ---------------------------------------------------------------------------
 const _: () = assert!(std::mem::size_of::<InstructionValue>() <= 256);
-const _: () = assert!(std::mem::size_of::<Terminal>() <= 128);
+const _: () = assert!(std::mem::size_of::<Terminal>() <= 192);
 const _: () = assert!(std::mem::size_of::<Place>() <= 128);
 const _: () = assert!(std::mem::size_of::<Instruction>() <= 512);

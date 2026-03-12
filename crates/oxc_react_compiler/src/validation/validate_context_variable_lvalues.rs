@@ -1,4 +1,3 @@
-
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionKind, InstructionValue};
 
@@ -32,16 +31,17 @@ pub fn validate_context_variable_lvalues(hir: &HIR, errors: &mut ErrorCollector)
         for instr in &block.instructions {
             if let InstructionValue::StoreContext { lvalue, .. } = &instr.value
                 && let Some(name) = &lvalue.identifier.name
-                    && const_context_ids.contains(name) {
-                        errors.push(CompilerError::invalid_js_with_kind(
-                            instr.loc,
-                            format!(
-                                "Cannot reassign context variable \"{name}\". \
+                && const_context_ids.contains(name)
+            {
+                errors.push(CompilerError::invalid_js_with_kind(
+                    instr.loc,
+                    format!(
+                        "Cannot reassign context variable \"{name}\". \
                                  It was declared as a const binding and is immutable."
-                            ),
-                            DiagnosticKind::ContextVariableLvalues,
-                        ));
-                    }
+                    ),
+                    DiagnosticKind::ContextVariableLvalues,
+                ));
+            }
         }
     }
 }

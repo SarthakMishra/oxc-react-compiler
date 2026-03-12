@@ -1,4 +1,3 @@
-
 //! Shared utilities for manipulating reactive scope dependencies.
 //!
 //! These utilities are used by:

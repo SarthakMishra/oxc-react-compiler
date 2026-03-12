@@ -1,4 +1,3 @@
-
 use crate::hir::types::{HIR, InstructionId, ReactiveFunction, ScopeId};
 
 /// Merge overlapping reactive scopes in the HIR.
@@ -50,14 +49,15 @@ pub fn merge_overlapping_reactive_scopes_hir(hir: &mut HIR) {
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if let Some(ref mut scope) = instr.lvalue.identifier.scope
-                && let Some(&target) = merge_map.get(&scope.id) {
-                    // Find the merged range for the target
-                    if let Some(merged) = merged_ranges.iter().find(|m| m.0 == target) {
-                        scope.id = target;
-                        scope.range.start = InstructionId(merged.1);
-                        scope.range.end = InstructionId(merged.2);
-                    }
+                && let Some(&target) = merge_map.get(&scope.id)
+            {
+                // Find the merged range for the target
+                if let Some(merged) = merged_ranges.iter().find(|m| m.0 == target) {
+                    scope.id = target;
+                    scope.range.start = InstructionId(merged.1);
+                    scope.range.end = InstructionId(merged.2);
                 }
+            }
         }
     }
 }
@@ -102,15 +102,15 @@ fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock) {
             if let crate::hir::types::ReactiveInstruction::Scope(second_scope) = second
                 && let Some(crate::hir::types::ReactiveInstruction::Scope(first_scope)) =
                     block.instructions.get_mut(first_idx)
-                {
-                    // Merge: extend first scope's instructions with second's
-                    first_scope
-                        .instructions
-                        .instructions
-                        .extend(second_scope.instructions.instructions);
-                    // Merge the merged list
-                    first_scope.scope.merged.push(second_scope.scope.id);
-                }
+            {
+                // Merge: extend first scope's instructions with second's
+                first_scope
+                    .instructions
+                    .instructions
+                    .extend(second_scope.instructions.instructions);
+                // Merge the merged list
+                first_scope.scope.merged.push(second_scope.scope.id);
+            }
         }
     }
 

@@ -1,4 +1,3 @@
-
 use crate::hir::types::{HIR, IdentifierId, InstructionKind, InstructionValue};
 use rustc_hash::FxHashSet;
 
@@ -38,9 +37,11 @@ pub fn rewrite_instruction_kinds_based_on_reassignment(hir: &mut HIR) {
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if let InstructionValue::DeclareLocal { lvalue, type_ } = &mut instr.value
-                && reassigned.contains(&lvalue.identifier.id) && *type_ == InstructionKind::Const {
-                    *type_ = InstructionKind::Let;
-                }
+                && reassigned.contains(&lvalue.identifier.id)
+                && *type_ == InstructionKind::Const
+            {
+                *type_ = InstructionKind::Let;
+            }
         }
     }
 }

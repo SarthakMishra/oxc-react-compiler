@@ -1,4 +1,3 @@
-
 /// Top-level plugin options controlling the compiler behavior.
 #[derive(Debug, Clone)]
 pub struct PluginOptions {

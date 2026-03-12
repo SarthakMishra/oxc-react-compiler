@@ -1,4 +1,3 @@
-
 use crate::hir::types::{HIR, IdentifierId, Phi, Place};
 use rustc_hash::FxHashMap;
 
@@ -108,10 +107,11 @@ fn resolve_transitive(
             resolved.iter().map(|(&k, &v)| (k, v)).collect();
         for (key, value) in snapshot {
             if let Some(&further) = resolved.get(&value)
-                && further != value {
-                    resolved.insert(key, further);
-                    changed = true;
-                }
+                && further != value
+            {
+                resolved.insert(key, further);
+                changed = true;
+            }
         }
     }
     resolved

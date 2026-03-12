@@ -1,4 +1,3 @@
-
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue, Place, Type};
 

@@ -1,4 +1,3 @@
-
 //! Validate that known impure functions are not called during render.
 //!
 //! Functions like `console.log`, `Math.random`, `Date.now`, etc. have side

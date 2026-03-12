@@ -1,4 +1,3 @@
-
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{BlockId, HIR, InstructionValue, Terminal};
 use rustc_hash::FxHashSet;
@@ -56,7 +55,8 @@ fn mark_reachable(hir: &HIR, start: BlockId, visited: &mut FxHashSet<BlockId>) {
     }
 
     if let Some((_, block)) = hir.blocks.iter().find(|(id, _)| *id == start)
-        && let Terminal::Goto { block: next } = &block.terminal {
-            mark_reachable(hir, *next, visited);
-        }
+        && let Terminal::Goto { block: next } = &block.terminal
+    {
+        mark_reachable(hir, *next, visited);
+    }
 }

@@ -1,4 +1,3 @@
-
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue, Place};
 
@@ -56,18 +55,20 @@ fn check_effect_callback_for_derived_state(
                             callee: inner_callee,
                             args: inner_args,
                         } = &inner_instr.value
-                            && is_set_state_call(inner_callee) && !inner_args.is_empty() {
-                                errors.push(CompilerError::invalid_react_with_kind(
-                                    inner_instr.loc,
-                                    format!(
-                                        "Derived computation inside \"{hook_name}\". \
+                            && is_set_state_call(inner_callee)
+                            && !inner_args.is_empty()
+                        {
+                            errors.push(CompilerError::invalid_react_with_kind(
+                                inner_instr.loc,
+                                format!(
+                                    "Derived computation inside \"{hook_name}\". \
                                          setState is called with a value that may be derived \
                                          from props or state. Compute derived values during \
                                          render instead (e.g., with useMemo)."
-                                    ),
-                                    DiagnosticKind::DerivedComputationsInEffects,
-                                ));
-                            }
+                                ),
+                                DiagnosticKind::DerivedComputationsInEffects,
+                            ));
+                        }
                     }
                 }
             }

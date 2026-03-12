@@ -1,4 +1,3 @@
-
 //! Collect property loads that can be safely hoisted to scope entry.
 //!
 //! A property load `a.b` is hoistable if `a` is guaranteed non-null at that

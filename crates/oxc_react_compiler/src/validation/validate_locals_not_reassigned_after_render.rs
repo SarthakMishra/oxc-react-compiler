@@ -1,4 +1,3 @@
-
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue};
 use rustc_hash::FxHashSet;
@@ -57,17 +56,18 @@ fn check_nested_reassignments(
         for instr in &block.instructions {
             if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value
                 && let Some(name) = &lvalue.identifier.name
-                    && render_assigned.contains(name) {
-                        errors.push(CompilerError::invalid_react_with_kind(
-                            instr.loc,
-                            format!(
-                                "Local variable \"{name}\" is assigned during render but \
+                && render_assigned.contains(name)
+            {
+                errors.push(CompilerError::invalid_react_with_kind(
+                    instr.loc,
+                    format!(
+                        "Local variable \"{name}\" is assigned during render but \
                                  reassigned inside a nested function (effect or event handler). \
                                  This prevents the compiler from memoizing correctly."
-                            ),
-                            DiagnosticKind::LocalsReassignedAfterRender,
-                        ));
-                    }
+                    ),
+                    DiagnosticKind::LocalsReassignedAfterRender,
+                ));
+            }
         }
     }
 }

@@ -1,4 +1,3 @@
-
 use crate::hir::types::{BlockId, HIR, IdentifierId, InstructionValue, Terminal};
 use rustc_hash::FxHashSet;
 

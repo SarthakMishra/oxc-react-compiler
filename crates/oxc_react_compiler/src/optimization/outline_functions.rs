@@ -1,4 +1,3 @@
-
 use crate::hir::types::{HIR, InstructionValue};
 
 // DIVERGENCE: Upstream's OutlineFunctions pass fully hoists function definitions

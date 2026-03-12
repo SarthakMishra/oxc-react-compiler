@@ -1,4 +1,3 @@
-
 use crate::hir::types::{
     DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId, InstructionId,
     InstructionValue, MutableRange, ReactiveScope, ScopeId, SourceLocation,
@@ -51,10 +50,11 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
                 let operand_ids = collect_operand_ids(&instr.value);
                 for op_id in operand_ids {
                     if let Some(&op_range) = ranges.get(&op_id)
-                        && op_range.end.0 > op_range.start.0 + 1 {
-                            // Both lvalue_id and op_id are registered via make_set in Phase 1
-                            let _ = dsu.union(lvalue_id, op_id);
-                        }
+                        && op_range.end.0 > op_range.start.0 + 1
+                    {
+                        // Both lvalue_id and op_id are registered via make_set in Phase 1
+                        let _ = dsu.union(lvalue_id, op_id);
+                    }
                 }
             }
         }

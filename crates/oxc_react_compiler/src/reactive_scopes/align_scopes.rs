@@ -1,4 +1,3 @@
-
 use crate::hir::types::{HIR, InstructionValue, Terminal};
 
 /// Align method call scopes: ensure receiver and method call are in the same scope.

@@ -1,4 +1,3 @@
-
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue};
 
@@ -68,9 +67,10 @@ fn check_memo_callback_void(
                     if let crate::hir::types::Terminal::Return { value } = &b.terminal {
                         // Check if the return value is a named variable or non-trivial
                         value.identifier.name.is_some()
-                            || value.identifier.type_ != crate::hir::types::Type::Primitive(
-                                crate::hir::types::PrimitiveType::Undefined,
-                            )
+                            || value.identifier.type_
+                                != crate::hir::types::Type::Primitive(
+                                    crate::hir::types::PrimitiveType::Undefined,
+                                )
                     } else {
                         false
                     }
@@ -103,15 +103,16 @@ fn check_memo_callback_async(
                 continue;
             }
             if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
-                && lowered_func.is_async {
-                    errors.push(CompilerError::invalid_react_with_kind(
-                        call_loc,
-                        "useMemo callback must not be async. \
+                && lowered_func.is_async
+            {
+                errors.push(CompilerError::invalid_react_with_kind(
+                    call_loc,
+                    "useMemo callback must not be async. \
                          The callback should return a value synchronously."
-                            .to_string(),
-                        DiagnosticKind::UseMemoValidation,
-                    ));
-                }
+                        .to_string(),
+                    DiagnosticKind::UseMemoValidation,
+                ));
+            }
         }
     }
 }

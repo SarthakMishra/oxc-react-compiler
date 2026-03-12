@@ -1,4 +1,3 @@
-
 //! Validate that all break/continue targets are well-formed.
 //!
 //! Checks that:

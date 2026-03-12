@@ -1,4 +1,3 @@
-
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue, Place};
 
@@ -62,18 +61,19 @@ fn check_effect_body_for_set_state(
 
                         if let InstructionValue::CallExpression { callee: inner_callee, .. } =
                             &inner_instr.value
-                            && is_set_state_call(inner_callee) {
-                                errors.push(CompilerError::invalid_react_with_kind(
-                                    inner_instr.loc,
-                                    format!(
-                                        "setState is called directly inside \"{hook_name}\". \
+                            && is_set_state_call(inner_callee)
+                        {
+                            errors.push(CompilerError::invalid_react_with_kind(
+                                inner_instr.loc,
+                                format!(
+                                    "setState is called directly inside \"{hook_name}\". \
                                          Synchronous setState in effects causes an extra \
                                          re-render. Consider deriving the value during render \
                                          or moving the update into a callback."
-                                    ),
-                                    DiagnosticKind::SetStateInEffects,
-                                ));
-                            }
+                                ),
+                                DiagnosticKind::SetStateInEffects,
+                            ));
+                        }
                     }
                 }
             }

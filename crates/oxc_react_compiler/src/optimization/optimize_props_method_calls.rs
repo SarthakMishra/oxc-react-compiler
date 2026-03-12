@@ -1,4 +1,3 @@
-
 use crate::hir::types::{
     Effect, HIR, Identifier, IdentifierId, Instruction, InstructionId, InstructionValue,
     MutableRange, Place, Type,

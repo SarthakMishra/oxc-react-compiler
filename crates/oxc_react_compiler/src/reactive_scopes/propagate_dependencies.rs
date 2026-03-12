@@ -1,4 +1,3 @@
-
 use crate::hir::types::{
     HIR, IdentifierId, InstructionValue, ReactiveScopeDeclaration, ReactiveScopeDependency, ScopeId,
 };

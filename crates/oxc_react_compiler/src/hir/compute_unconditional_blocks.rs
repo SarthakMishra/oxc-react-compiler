@@ -1,4 +1,3 @@
-
 //! Compute which HIR blocks execute unconditionally.
 //!
 //! A block is **unconditional** if every execution path from the function entry

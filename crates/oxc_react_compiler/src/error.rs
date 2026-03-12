@@ -1,4 +1,3 @@
-
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::Span;
 

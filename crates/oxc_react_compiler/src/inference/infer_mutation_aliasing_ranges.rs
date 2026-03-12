@@ -1,4 +1,3 @@
-
 use rustc_hash::FxHashMap;
 
 use crate::hir::types::{AliasingEffect, Effect, HIR, IdentifierId, InstructionId, MutableRange};

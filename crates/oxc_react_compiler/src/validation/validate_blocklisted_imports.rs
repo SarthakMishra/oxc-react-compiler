@@ -1,4 +1,3 @@
-
 //! Validate that no blocklisted imports are used in compiled code.
 //!
 //! Checks for `LoadGlobal` instructions whose binding names match

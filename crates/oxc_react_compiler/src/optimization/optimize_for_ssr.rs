@@ -1,4 +1,3 @@
-
 //! Optimize HIR for server-side rendering.
 //!
 //! In SSR mode, memoization is unnecessary since each render produces fresh output.

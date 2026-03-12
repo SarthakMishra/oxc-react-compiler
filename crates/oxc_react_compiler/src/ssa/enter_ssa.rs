@@ -128,17 +128,20 @@ fn compute_dominators(
             let mut new_idom = None;
             for p in pred_list {
                 if let Some(&pi) = id_to_idx.get(p)
-                    && doms[pi].is_some() {
-                        new_idom = Some(pi);
-                        break;
-                    }
+                    && doms[pi].is_some()
+                {
+                    new_idom = Some(pi);
+                    break;
+                }
             }
             if let Some(mut new_idom_val) = new_idom {
                 for p in pred_list {
                     if let Some(&pi) = id_to_idx.get(p)
-                        && doms[pi].is_some() && pi != new_idom_val {
-                            new_idom_val = intersect(&doms, pi, new_idom_val);
-                        }
+                        && doms[pi].is_some()
+                        && pi != new_idom_val
+                    {
+                        new_idom_val = intersect(&doms, pi, new_idom_val);
+                    }
                 }
                 if doms[b] != Some(new_idom_val) {
                     doms[b] = Some(new_idom_val);
@@ -151,9 +154,10 @@ fn compute_dominators(
     let mut result = FxHashMap::default();
     for (i, dom) in doms.iter().enumerate() {
         if let Some(d) = dom
-            && i != entry_idx {
-                result.insert(block_ids[i], block_ids[*d]);
-            }
+            && i != entry_idx
+        {
+            result.insert(block_ids[i], block_ids[*d]);
+        }
     }
     result
 }
@@ -824,17 +828,19 @@ fn rename_block(
                             // Check if this is the right variable by comparing
                             // declaration IDs via the HIR
                             if let Some(orig_decl) = find_declaration_id_for_var(hir, orig_id)
-                                && orig_decl == phi_decl_id {
-                                    matched_original = Some(orig_id);
-                                    break;
-                                }
+                                && orig_decl == phi_decl_id
+                            {
+                                matched_original = Some(orig_id);
+                                break;
+                            }
                             // Fallback: match by name
                             if matched_original.is_none()
                                 && let Some(orig_name) = find_name_for_var(hir, orig_id)
-                                    && Some(&orig_name) == phi_name.as_ref() {
-                                        matched_original = Some(orig_id);
-                                        break;
-                                    }
+                                && Some(&orig_name) == phi_name.as_ref()
+                            {
+                                matched_original = Some(orig_id);
+                                break;
+                            }
                         }
                     }
 

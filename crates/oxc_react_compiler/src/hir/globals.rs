@@ -1,4 +1,3 @@
-
 use super::object_shape::{
     CallKind, FunctionSignature, ObjectShape, ParamEffect, PropertyShape, ShapeId, ShapeRegistry,
 };

@@ -1,4 +1,3 @@
-
 use crate::error::ErrorCollector;
 use crate::hir::types::{HIR, HIRFunction, InstructionValue};
 

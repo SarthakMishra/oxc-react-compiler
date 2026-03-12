@@ -1,4 +1,3 @@
-
 use crate::hir::types::{HIR, InstructionValue, Param, Place, Terminal};
 
 /// Inline immediately-invoked function expressions (IIFEs).
@@ -45,11 +44,13 @@ pub fn inline_iife(hir: &mut HIR) {
             // Check if prev is a simple FunctionExpression.
             if let InstructionValue::FunctionExpression { ref lowered_func, .. } = prev.value {
                 // Only inline if the function has a single block and no context.
-                if lowered_func.context.is_empty() && lowered_func.body.blocks.len() == 1
+                if lowered_func.context.is_empty()
+                    && lowered_func.body.blocks.len() == 1
                     && let Some((_, entry_block)) = lowered_func.body.blocks.first()
-                        && matches!(entry_block.terminal, Terminal::Return { .. }) {
-                            iife_sites.push((block_idx, i, i - 1));
-                        }
+                    && matches!(entry_block.terminal, Terminal::Return { .. })
+                {
+                    iife_sites.push((block_idx, i, i - 1));
+                }
             }
         }
     }

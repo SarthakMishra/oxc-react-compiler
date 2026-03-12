@@ -1,4 +1,3 @@
-
 use crate::hir::types::{HIR, Instruction, InstructionValue};
 
 // DIVERGENCE: This pass is intentionally a no-op. Our HIR lowering (build.rs)

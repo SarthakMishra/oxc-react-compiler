@@ -1,4 +1,3 @@
-
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{AliasingEffect, HIR, IdentifierId, InstructionValue};
 use rustc_hash::FxHashSet;
@@ -19,18 +18,19 @@ pub fn validate_no_freezing_known_mutable_functions(hir: &HIR, errors: &mut Erro
             if let Some(effects) = &instr.effects {
                 for effect in effects {
                     if let AliasingEffect::Freeze { value, .. } = effect
-                        && mutable_fn_ids.contains(&value.identifier.id) {
-                            let name = value.identifier.name.as_deref().unwrap_or("<unknown>");
-                            errors.push(CompilerError::invalid_react_with_kind(
-                                instr.loc,
-                                format!(
-                                    "Cannot freeze mutable function \"{name}\". \
+                        && mutable_fn_ids.contains(&value.identifier.id)
+                    {
+                        let name = value.identifier.name.as_deref().unwrap_or("<unknown>");
+                        errors.push(CompilerError::invalid_react_with_kind(
+                            instr.loc,
+                            format!(
+                                "Cannot freeze mutable function \"{name}\". \
                                      This function reference is inherently mutable \
                                      and should not be frozen by the compiler."
-                                ),
-                                DiagnosticKind::ImmutabilityViolation,
-                            ));
-                        }
+                            ),
+                            DiagnosticKind::ImmutabilityViolation,
+                        ));
+                    }
                 }
             }
         }
@@ -46,19 +46,20 @@ fn collect_known_mutable_function_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
             // Look for destructuring patterns from useState/useReducer calls
             // that extract the setter/dispatch function.
             if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value
-                && let Some(name) = &lvalue.identifier.name {
-                    // setState-like: setX where X starts with uppercase
-                    if name.starts_with("set")
-                        && name.len() > 3
-                        && name.as_bytes()[3].is_ascii_uppercase()
-                    {
-                        mutable_ids.insert(lvalue.identifier.id);
-                    }
-                    // dispatch from useReducer
-                    if name == "dispatch" {
-                        mutable_ids.insert(lvalue.identifier.id);
-                    }
+                && let Some(name) = &lvalue.identifier.name
+            {
+                // setState-like: setX where X starts with uppercase
+                if name.starts_with("set")
+                    && name.len() > 3
+                    && name.as_bytes()[3].is_ascii_uppercase()
+                {
+                    mutable_ids.insert(lvalue.identifier.id);
                 }
+                // dispatch from useReducer
+                if name == "dispatch" {
+                    mutable_ids.insert(lvalue.identifier.id);
+                }
+            }
         }
     }
 

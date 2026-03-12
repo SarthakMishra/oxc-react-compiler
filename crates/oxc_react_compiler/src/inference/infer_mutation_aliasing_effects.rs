@@ -133,10 +133,7 @@ impl AbstractHeap {
 
     /// Check if a value is frozen.
     fn is_frozen(&self, id: IdentifierId) -> bool {
-        self.id_to_value
-            .get(&id)
-            .and_then(|&idx| self.values.get(idx))
-            .is_some_and(|v| v.frozen)
+        self.id_to_value.get(&id).and_then(|&idx| self.values.get(idx)).is_some_and(|v| v.frozen)
     }
 
     /// Compute the effect for a place based on heap state.
@@ -216,9 +213,11 @@ pub fn infer_mutation_aliasing_effects(hir: &mut HIR) {
 
             for cap_id in captured {
                 if let Some(&cap_idx) = heap.id_to_value.get(&cap_id)
-                    && !heap.values[cap_idx].mutated && is_mutated {
-                        to_mutate.push(cap_idx);
-                    }
+                    && !heap.values[cap_idx].mutated
+                    && is_mutated
+                {
+                    to_mutate.push(cap_idx);
+                }
             }
         }
 

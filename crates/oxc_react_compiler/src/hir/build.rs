@@ -1031,10 +1031,8 @@ impl HIRBuilder {
 
         // Init: get next value
         self.switch_block(init_block);
-        let next_val = self.emit(
-            InstructionValue::IteratorNext { iterator, loc: for_of.span },
-            for_of.span,
-        );
+        let next_val =
+            self.emit(InstructionValue::IteratorNext { iterator, loc: for_of.span }, for_of.span);
         self.lower_for_left(&for_of.left, next_val, for_of.span);
         self.emit_terminal(Terminal::Goto { block: test_block });
 
@@ -1189,13 +1187,14 @@ impl HIRBuilder {
         if let Some(handler) = &try_stmt.handler {
             // Declare catch param if present
             if let Some(param) = &handler.param
-                && let BindingPattern::BindingIdentifier(id) = &param.pattern {
-                    let lvalue = self.make_named_place(&id.name, id.span);
-                    self.emit(
-                        InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::Let },
-                        id.span,
-                    );
-                }
+                && let BindingPattern::BindingIdentifier(id) = &param.pattern
+            {
+                let lvalue = self.make_named_place(&id.name, id.span);
+                self.emit(
+                    InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::Let },
+                    id.span,
+                );
+            }
             for stmt in &handler.body.body {
                 self.lower_statement(stmt);
             }
@@ -1286,10 +1285,7 @@ impl HIRBuilder {
         };
 
         self.emit(
-            InstructionValue::DeclareLocal {
-                lvalue,
-                type_: InstructionKind::HoistedFunction,
-            },
+            InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::HoistedFunction },
             loc,
         );
 
@@ -1420,9 +1416,10 @@ impl HIRBuilder {
                     .quasis
                     .iter()
                     .map(|q| {
-                        q.value
-                            .cooked
-                            .as_ref().map_or_else(|| q.value.raw.to_string(), std::string::ToString::to_string)
+                        q.value.cooked.as_ref().map_or_else(
+                            || q.value.raw.to_string(),
+                            std::string::ToString::to_string,
+                        )
                     })
                     .collect();
                 let subexpressions =
@@ -1437,9 +1434,10 @@ impl HIRBuilder {
                     .quasis
                     .iter()
                     .map(|q| {
-                        q.value
-                            .cooked
-                            .as_ref().map_or_else(|| q.value.raw.to_string(), std::string::ToString::to_string)
+                        q.value.cooked.as_ref().map_or_else(
+                            || q.value.raw.to_string(),
+                            std::string::ToString::to_string,
+                        )
                     })
                     .collect();
                 let subexpressions =
@@ -1681,28 +1679,29 @@ impl HIRBuilder {
     fn lower_call_expression(&mut self, call: &ast::CallExpression<'_>, loc: Span) -> Place {
         // Detect useMemo / useCallback for manual memoization markers
         if let Some(callee_name) = extract_callee_name(&call.callee)
-            && (callee_name == "useMemo" || callee_name == "useCallback") {
-                let memo_id = self.next_memo_id;
-                self.next_memo_id += 1;
-                self.emit(InstructionValue::StartMemoize { manual_memo_id: memo_id }, loc);
-                // Lower the call normally
-                let callee = self.lower_expression(&call.callee);
-                let args = self.lower_arguments(&call.arguments);
-                let result =
-                    self.emit(InstructionValue::CallExpression { callee, args: args.clone() }, loc);
-                // The deps array is the second argument, if present
-                let deps = if args.len() > 1 { vec![args[1].clone()] } else { Vec::new() };
-                self.emit(
-                    InstructionValue::FinishMemoize {
-                        manual_memo_id: memo_id,
-                        decl: result.clone(),
-                        deps,
-                        pruned: false,
-                    },
-                    loc,
-                );
-                return result;
-            }
+            && (callee_name == "useMemo" || callee_name == "useCallback")
+        {
+            let memo_id = self.next_memo_id;
+            self.next_memo_id += 1;
+            self.emit(InstructionValue::StartMemoize { manual_memo_id: memo_id }, loc);
+            // Lower the call normally
+            let callee = self.lower_expression(&call.callee);
+            let args = self.lower_arguments(&call.arguments);
+            let result =
+                self.emit(InstructionValue::CallExpression { callee, args: args.clone() }, loc);
+            // The deps array is the second argument, if present
+            let deps = if args.len() > 1 { vec![args[1].clone()] } else { Vec::new() };
+            self.emit(
+                InstructionValue::FinishMemoize {
+                    manual_memo_id: memo_id,
+                    decl: result.clone(),
+                    deps,
+                    pruned: false,
+                },
+                loc,
+            );
+            return result;
+        }
 
         // Check if callee is a member expression → MethodCall
         match &call.callee {
@@ -1716,8 +1715,8 @@ impl HIRBuilder {
                 // Computed method call: obj[prop](args)
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
-                let computed_access = self
-                    .emit(InstructionValue::ComputedLoad { object, property }, loc);
+                let computed_access =
+                    self.emit(InstructionValue::ComputedLoad { object, property }, loc);
                 let args = self.lower_arguments(&call.arguments);
                 self.emit(InstructionValue::CallExpression { callee: computed_access, args }, loc)
             }
@@ -1914,28 +1913,53 @@ impl HIRBuilder {
         let alternate_block = self.new_block(BlockKind::Value);
         let fallthrough = self.new_block(BlockKind::Block);
 
+        // Create result place and declare it. The DeclareLocal must be in the HIR
+        // (not just synthesized later) so that DCE doesn't remove the branch values.
+        let result_place = self.make_temp(loc);
+        self.emit(
+            InstructionValue::DeclareLocal {
+                lvalue: result_place.clone(),
+                type_: InstructionKind::Let,
+            },
+            loc,
+        );
+
         self.emit_terminal(Terminal::Ternary {
             test,
             consequent: consequent_block,
             alternate: alternate_block,
             fallthrough,
+            result: Some(result_place.clone()),
         });
 
         // Consequent
         self.switch_block(consequent_block);
-        let _cons_val = self.lower_expression(&cond.consequent);
+        let cons_val = self.lower_expression(&cond.consequent);
+        self.emit(
+            InstructionValue::StoreLocal {
+                lvalue: result_place.clone(),
+                value: cons_val,
+                type_: Some(InstructionKind::Reassign),
+            },
+            loc,
+        );
         self.emit_terminal(Terminal::Goto { block: fallthrough });
 
         // Alternate
         self.switch_block(alternate_block);
-        let _alt_val = self.lower_expression(&cond.alternate);
+        let alt_val = self.lower_expression(&cond.alternate);
+        self.emit(
+            InstructionValue::StoreLocal {
+                lvalue: result_place.clone(),
+                value: alt_val,
+                type_: Some(InstructionKind::Reassign),
+            },
+            loc,
+        );
         self.emit_terminal(Terminal::Goto { block: fallthrough });
 
         self.switch_block(fallthrough);
-
-        // The result is a phi between cons_val and alt_val.
-        // For now, return a temp — phi insertion happens in a later pass.
-        self.make_temp(loc)
+        result_place
     }
 
     // ------------------------------------------------------------------
@@ -1952,26 +1976,53 @@ impl HIRBuilder {
         let fallthrough = self.new_block(BlockKind::Block);
 
         let op = map_logical_op(logical.operator);
+        let result_place = self.make_temp(loc);
+        self.emit(
+            InstructionValue::DeclareLocal {
+                lvalue: result_place.clone(),
+                type_: InstructionKind::Let,
+            },
+            loc,
+        );
 
         // Emit left into left_block
         self.emit_terminal(Terminal::Goto { block: left_block });
         self.switch_block(left_block);
-        let _left_val = self.lower_expression(&logical.left);
+        let left_val = self.lower_expression(&logical.left);
+        // Store left value into result (for short-circuit case)
+        self.emit(
+            InstructionValue::StoreLocal {
+                lvalue: result_place.clone(),
+                value: left_val,
+                type_: Some(InstructionKind::Reassign),
+            },
+            loc,
+        );
 
         self.emit_terminal(Terminal::Logical {
             operator: op,
             left: left_block,
             right: right_block,
             fallthrough,
+            result: Some(result_place.clone()),
         });
 
         // Right
         self.switch_block(right_block);
-        let _right_val = self.lower_expression(&logical.right);
+        let right_val = self.lower_expression(&logical.right);
+        // Store right value into result (for non-short-circuit case)
+        self.emit(
+            InstructionValue::StoreLocal {
+                lvalue: result_place.clone(),
+                value: right_val,
+                type_: Some(InstructionKind::Reassign),
+            },
+            loc,
+        );
         self.emit_terminal(Terminal::Goto { block: fallthrough });
 
         self.switch_block(fallthrough);
-        self.make_temp(loc)
+        result_place
     }
 
     // ------------------------------------------------------------------
@@ -2389,9 +2440,9 @@ fn stmt_kind_name(stmt: &Statement<'_>) -> &'static str {
 fn for_init_as_expression<'a>(init: &'a ForStatementInit<'a>) -> Option<&'a Expression<'a>> {
     // ForStatementInit inherits Expression variants
     match init {
-        ForStatementInit::BooleanLiteral(e) => {
-            Some(unsafe { &*std::ptr::from_ref::<ast::BooleanLiteral>(e.as_ref()).cast::<Expression<'a>>() })
-        }
+        ForStatementInit::BooleanLiteral(e) => Some(unsafe {
+            &*std::ptr::from_ref::<ast::BooleanLiteral>(e.as_ref()).cast::<Expression<'a>>()
+        }),
         // For simplicity, handle the common case by emitting UnsupportedNode
         // A full implementation would match all Expression variants
         _ => None,
@@ -2423,7 +2474,9 @@ fn array_elem_as_expression<'a>(
         ArrayExpressionElement::SpreadElement(_) | ArrayExpressionElement::Elision(_) => None,
         _ => {
             // SAFETY: inherited Expression variants have the same layout
-            Some(unsafe { &*std::ptr::from_ref::<ArrayExpressionElement<'a>>(elem).cast::<Expression<'a>>() })
+            Some(unsafe {
+                &*std::ptr::from_ref::<ArrayExpressionElement<'a>>(elem).cast::<Expression<'a>>()
+            })
         }
     }
 }
@@ -2434,7 +2487,9 @@ fn jsx_expression_as_expression<'a>(expr: &'a JSXExpression<'a>) -> Option<&'a E
         JSXExpression::EmptyExpression(_) => None,
         _ => {
             // SAFETY: inherited Expression variants
-            Some(unsafe { &*std::ptr::from_ref::<JSXExpression<'a>>(expr).cast::<Expression<'a>>() })
+            Some(unsafe {
+                &*std::ptr::from_ref::<JSXExpression<'a>>(expr).cast::<Expression<'a>>()
+            })
         }
     }
 }
@@ -2456,12 +2511,26 @@ use oxc_span::GetSpan;
 fn regex_flags_to_string(flags: oxc_ast::ast::RegExpFlags) -> String {
     use oxc_ast::ast::RegExpFlags;
     let mut s = String::new();
-    if flags.contains(RegExpFlags::D) { s.push('d'); }
-    if flags.contains(RegExpFlags::G) { s.push('g'); }
-    if flags.contains(RegExpFlags::I) { s.push('i'); }
-    if flags.contains(RegExpFlags::M) { s.push('m'); }
-    if flags.contains(RegExpFlags::S) { s.push('s'); }
-    if flags.contains(RegExpFlags::U) { s.push('u'); }
-    if flags.contains(RegExpFlags::Y) { s.push('y'); }
+    if flags.contains(RegExpFlags::D) {
+        s.push('d');
+    }
+    if flags.contains(RegExpFlags::G) {
+        s.push('g');
+    }
+    if flags.contains(RegExpFlags::I) {
+        s.push('i');
+    }
+    if flags.contains(RegExpFlags::M) {
+        s.push('m');
+    }
+    if flags.contains(RegExpFlags::S) {
+        s.push('s');
+    }
+    if flags.contains(RegExpFlags::U) {
+        s.push('u');
+    }
+    if flags.contains(RegExpFlags::Y) {
+        s.push('y');
+    }
     s
 }

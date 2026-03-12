@@ -1,4 +1,3 @@
-
 use rustc_hash::FxHashMap;
 
 /// Unique identifier for a registered shape.

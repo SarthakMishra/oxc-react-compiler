@@ -608,11 +608,7 @@ fn promote_places_in_value(value: &mut InstructionValue) {
             promote_place(object);
             promote_place(property);
         }
-        InstructionValue::ComputedStore {
-            object,
-            property,
-            value,
-        } => {
+        InstructionValue::ComputedStore { object, property, value } => {
             promote_place(object);
             promote_place(property);
             promote_place(value);
@@ -642,11 +638,7 @@ fn promote_places_in_value(value: &mut InstructionValue) {
                 }
             }
         }
-        InstructionValue::JsxExpression {
-            tag,
-            props,
-            children,
-        } => {
+        InstructionValue::JsxExpression { tag, props, children } => {
             promote_place(tag);
             for attr in props {
                 promote_place(&mut attr.value);
@@ -1083,10 +1075,11 @@ pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
         for instr in &block.instructions {
             if let crate::hir::types::InstructionValue::CallExpression { callee, .. } = &instr.value
                 && let Some(name) = &callee.identifier.name
-                    && is_hook_name(name)
-                        && let Some(ref scope) = instr.lvalue.identifier.scope {
-                            scopes_with_hooks.insert(scope.id);
-                        }
+                && is_hook_name(name)
+                && let Some(ref scope) = instr.lvalue.identifier.scope
+            {
+                scopes_with_hooks.insert(scope.id);
+            }
         }
     }
 
@@ -1098,9 +1091,10 @@ pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if let Some(ref scope) = instr.lvalue.identifier.scope
-                && scopes_with_hooks.contains(&scope.id) {
-                    instr.lvalue.identifier.scope = None;
-                }
+                && scopes_with_hooks.contains(&scope.id)
+            {
+                instr.lvalue.identifier.scope = None;
+            }
         }
     }
 }

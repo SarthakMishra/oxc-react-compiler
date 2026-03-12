@@ -1,4 +1,3 @@
-
 use crate::hir::types::HIR;
 
 /// Remove unnecessary `MaybeThrow` terminals from the HIR.

@@ -1,4 +1,3 @@
-
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{HIR, InstructionValue, Place};
 use rustc_hash::FxHashSet;
@@ -86,9 +85,10 @@ fn collect_callback_dependencies(hir: &HIR, callback: &Place) -> FxHashSet<Strin
                             InstructionValue::LoadLocal { place }
                             | InstructionValue::LoadContext { place } => {
                                 if place.reactive
-                                    && let Some(name) = &place.identifier.name {
-                                        deps.insert(name.clone());
-                                    }
+                                    && let Some(name) = &place.identifier.name
+                                {
+                                    deps.insert(name.clone());
+                                }
                             }
                             _ => {}
                         }
@@ -115,9 +115,10 @@ fn collect_declared_deps(hir: &HIR, deps_place: &Place) -> FxHashSet<String> {
             if let InstructionValue::ArrayExpression { elements } = &instr.value {
                 for element in elements {
                     if let crate::hir::types::ArrayElement::Expression(place) = element
-                        && let Some(name) = &place.identifier.name {
-                            declared.insert(name.clone());
-                        }
+                        && let Some(name) = &place.identifier.name
+                    {
+                        declared.insert(name.clone());
+                    }
                 }
             }
         }

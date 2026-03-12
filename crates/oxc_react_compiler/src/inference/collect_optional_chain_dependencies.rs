@@ -1,4 +1,3 @@
-
 //! Collect optional chain dependency semantics.
 //!
 //! Maps optional chain expressions (`a?.b?.c`) to their safe dependency

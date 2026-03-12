@@ -7,9 +7,10 @@ pub fn name_anonymous_functions(hir: &mut HIR) {
         for instr in &mut block.instructions {
             if let InstructionValue::FunctionExpression { name, .. } = &mut instr.value
                 && name.is_none()
-                    && let Some(ref lvalue_name) = instr.lvalue.identifier.name {
-                        *name = Some(lvalue_name.clone());
-                    }
+                && let Some(ref lvalue_name) = instr.lvalue.identifier.name
+            {
+                *name = Some(lvalue_name.clone());
+            }
         }
     }
 }

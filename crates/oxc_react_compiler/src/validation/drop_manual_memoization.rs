@@ -1,4 +1,3 @@
-
 use crate::hir::types::{HIR, InstructionValue};
 
 /// Remove manual memoization markers (StartMemoize/FinishMemoize)

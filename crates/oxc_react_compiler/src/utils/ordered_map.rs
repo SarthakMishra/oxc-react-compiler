@@ -1,4 +1,3 @@
-
 use std::ops::Index;
 
 /// Insertion-ordered map, used throughout the compiler pipeline.

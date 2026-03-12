@@ -1,4 +1,3 @@
-
 use rustc_hash::FxHashSet;
 
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};

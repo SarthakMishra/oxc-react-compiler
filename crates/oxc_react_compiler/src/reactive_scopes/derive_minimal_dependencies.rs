@@ -1,4 +1,3 @@
-
 //! Derive minimal set of dependencies for each reactive scope.
 //!
 //! If a scope depends on both `props.a` and `props.a.b`, we only need to track

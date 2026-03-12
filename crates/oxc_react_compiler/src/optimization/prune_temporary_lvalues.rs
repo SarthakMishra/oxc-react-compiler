@@ -1,4 +1,3 @@
-
 //! Prune unnecessary temporary lvalue instructions.
 //!
 //! After SSA construction, the HIR may contain patterns like:
