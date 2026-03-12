@@ -3,7 +3,7 @@
 #
 # Format: <relative-path-from-upstream-fixtures/>
 #
-# Baseline: 260/1717 pass (15.1%), 0 panics, 1418 divergences
+# Baseline: 284/1717 pass (16.5%), 0 panics, 1394 divergences
 # Generated: 2026-03-12
 alias-capture-in-method-receiver-and-mutate.js
 alias-capture-in-method-receiver.js
@@ -98,11 +98,8 @@ capturing-func-alias-captured-mutate-arr.js
 capturing-func-alias-captured-mutate.js
 capturing-func-alias-computed-mutate.js
 capturing-func-alias-mutate.js
-capturing-func-alias-receiver-computed-mutate.js
-capturing-func-alias-receiver-mutate.js
 capturing-func-mutate.js
 capturing-func-no-mutate.js
-capturing-func-simple-alias.js
 capturing-function-capture-ref-before-rename.js
 capturing-function-conditional-capture-mutate.js
 capturing-function-member-expr-arguments.js
@@ -111,7 +108,6 @@ capturing-function-runs-inference.js
 capturing-function-shadow-captured.js
 capturing-function-skip-computed-path.js
 capturing-reference-changes-type.js
-chained-assignment-context-variable.js
 codegen-inline-iife-reassign.ts
 codegen-inline-iife-storeprop.ts
 codegen-inline-iife.ts
@@ -140,12 +136,7 @@ constant-propagate-global-phis.js
 constant-propagation-into-function-expressions.js
 constructor.js
 context-variable-as-jsx-element-tag.js
-context-variable-reactive-explicit-control-flow.js
-context-variable-reactive-implicit-control-flow.js
-context-variable-reassigned-objectmethod.js
 context-variable-reassigned-outside-of-lambda.js
-context-variable-reassigned-reactive-capture.js
-context-variable-reassigned-two-lambdas.js
 createElement-freeze.js
 custom-opt-out-directive.tsx
 dce-unused-const.js
@@ -153,7 +144,6 @@ dce-unused-postfix-update.js
 dce-unused-prefix-update.js
 debugger-memoized.js
 debugger.js
-declare-reassign-variable-in-closure.js
 deeply-nested-function-expressions-with-params.js
 default-param-array-with-unary.js
 default-param-calls-global-function.js
@@ -161,12 +151,9 @@ default-param-with-empty-callback.js
 default-param-with-reorderable-callback.js
 delete-computed-property.js
 delete-property.js
-destructure-array-assignment-to-context-var.js
 destructure-array-declaration-to-context-var.js
 destructure-default-array-with-unary.js
 destructure-in-branch-ssa.ts
-destructure-object-assignment-to-context-var.js
-destructure-object-declaration-to-context-var.js
 destructuring-array-default.js
 destructuring-array-param-default.js
 destructuring-assignment-array-default.js
@@ -247,7 +234,6 @@ error.declare-reassign-variable-in-function-declaration.js
 error.default-param-accesses-local.js
 error.dont-hoist-inline-reference.js
 error.fault-tolerance-reports-multiple-errors.js
-error.function-expression-references-variable-its-assigned-to.js
 error.handle-unexpected-exception-pipeline.ts
 error.hoist-optional-member-expression-with-conditional-optional.js
 error.hoist-optional-member-expression-with-conditional.js
@@ -309,7 +295,6 @@ error.invalid-props-mutation-in-effect-indirect.js
 error.invalid-read-ref-prop-in-render-destructure.js
 error.invalid-read-ref-prop-in-render-property-load.js
 error.invalid-reassign-const.js
-error.invalid-reassign-local-in-hook-return-value.js
 error.invalid-reassign-local-variable-in-async-callback.js
 error.invalid-reassign-local-variable-in-effect.js
 error.invalid-reassign-local-variable-in-hook-argument.js
@@ -339,7 +324,6 @@ error.invalid-write-ref-prop-in-render.js
 error.modify-state-2.js
 error.modify-state.js
 error.modify-useReducer-state.js
-error.mutable-range-shared-inner-outer-function.js
 error.mutate-function-property.js
 error.mutate-global-increment-op-invalid-react.js
 error.mutate-hook-argument.js
@@ -361,7 +345,6 @@ error.todo-for-await-loops.js
 error.todo-for-in-loop-with-context-variable-iterator.js
 error.todo-for-loop-with-context-variable-iterator.js
 error.todo-for-of-loop-with-context-variable-iterator.js
-error.todo-function-expression-references-later-variable-declaration.js
 error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-hoist-function-decls.js
@@ -372,9 +355,7 @@ error.todo-invalid-jsx-in-try-with-finally.js
 error.todo-missing-source-locations.js
 error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-object-expression-get-syntax.js
-error.todo-object-expression-set-syntax.js
 error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js
-error.todo-reassign-const.js
 error.todo-repro-named-function-with-shadowed-local-same-name.js
 error.todo-repro-unmemoized-callback-captured-in-context-variable.tsx
 error.todo-useCallback-set-ref-nested-property-ref-modified-later-preserve-memoization.js
@@ -674,8 +655,6 @@ lambda-array-access-member-expr-captured.ts
 lambda-array-access-member-expr-param.ts
 lambda-capture-returned-alias.js
 lambda-mutate-shadowed-object.js
-lambda-reassign-primitive.js
-lambda-reassign-shadowed-primitive.js
 lambda-return-expression.ts
 log-pruned-memoization.js
 loop-unused-let.js
@@ -1002,7 +981,6 @@ reactive-control-dependency-from-interleaved-reactivity-if.js
 reactive-control-dependency-from-interleaved-reactivity-switch.js
 reactive-control-dependency-from-interleaved-reactivity-while.js
 reactive-control-dependency-if.js
-reactive-control-dependency-on-context-variable.js
 reactive-control-dependency-phi-setState-type.js
 reactive-control-dependency-reactive-after-fixpoint.js
 reactive-control-dependency-switch-case-test.js
@@ -1030,8 +1008,6 @@ reanimated-shared-value-writes.jsx
 reassign-global-hook-arg.js
 reassign-global-return.js
 reassign-in-while-loop-condition.js
-reassign-object-in-context.js
-reassign-primitive-in-context.js
 reassigned-phi-in-returned-function-expression.js
 reassignment-conditional.js
 reassignment.js

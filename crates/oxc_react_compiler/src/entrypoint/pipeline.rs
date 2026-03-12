@@ -2,6 +2,13 @@ use crate::error::{ErrorCollector, PanicThreshold};
 use crate::hir::environment::EnvironmentConfig;
 use crate::hir::types::{HIR, HIRFunction, ReactiveFunction};
 
+/// Default bail-out threshold used throughout the pipeline.
+///
+/// `AllErrors` causes the pipeline to bail on any validation error
+/// (InvalidReact, InvalidJS, Todo, InvariantViolation), matching
+/// Babel's behavior of skipping functions that have validation issues.
+const PIPELINE_BAIL_THRESHOLD: PanicThreshold = PanicThreshold::AllErrors;
+
 /// Run the HIR compilation pipeline (passes 2–46).
 ///
 /// This executes all HIR-level passes in the correct order, with config-based gating.
@@ -70,7 +77,7 @@ pub fn run_pipeline(
     }
 
     // Bail early if hooks validation found critical errors
-    if errors.should_bail(PanicThreshold::CriticalErrors) {
+    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
         return Err(());
     }
 
@@ -254,7 +261,7 @@ pub fn run_pipeline(
     crate::reactive_scopes::derive_minimal_dependencies::derive_minimal_dependencies_hir(hir);
 
     // Check if we should bail before building reactive function
-    if errors.should_bail(PanicThreshold::CriticalErrors) {
+    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
         return Err(());
     }
 
@@ -305,7 +312,7 @@ pub fn run_full_pipeline(
     }
 
     // Check for errors after RF passes
-    if errors.should_bail(PanicThreshold::CriticalErrors) {
+    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
         return Err(());
     }
 
