@@ -36,10 +36,24 @@ export interface ReactCompilerOptions {
   exclude?: string[];
 
   /**
+   * Enable source map generation.
+   * Defaults to true in dev mode, false in production.
+   */
+  sourceMap?: boolean;
+
+  /**
    * Gating configuration for feature flag wrapping.
    */
   gating?: {
     importSource: string;
     functionName: string;
   };
+
+  /**
+   * Directory to persist the transform cache across builds.
+   * When set, the cache is written to `<cacheDir>/oxc-react-compiler-cache.json`
+   * and reloaded on the next build, skipping re-compilation of unchanged files.
+   * Leave unset (default) to use only the in-memory cache for the current build.
+   */
+  cacheDir?: string;
 }

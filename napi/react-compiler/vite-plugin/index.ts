@@ -9,14 +9,51 @@
  *   });
  */
 
+import { createHash } from 'node:crypto';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ReactCompilerOptions } from './options';
 
 export type { ReactCompilerOptions };
+
+interface CacheEntry {
+  contentHash: string;
+  code: string;
+  map: object | null;
+}
+
+const CACHE_VERSION = 1;
+const CACHE_FILE_NAME = 'oxc-react-compiler-cache.json';
+
+interface DiskCache {
+  version: number;
+  optionsHash: string;
+  entries: Record<string, CacheEntry>;
+}
 
 export function reactCompiler(options: ReactCompilerOptions = {}): any {
   // Dynamic import of the native binding
   let binding: any;
   let enableSourceMap = options.sourceMap;
+  let optionsHash: string;
+
+  // In-memory cache: file ID → cached transform result
+  const cache = new Map<string, CacheEntry>();
+
+  function computeOptionsHash(): string {
+    const h = createHash('md5');
+    h.update(JSON.stringify({
+      compilationMode: options.compilationMode,
+      outputMode: options.outputMode,
+      sourceMap: enableSourceMap,
+      gating: options.gating,
+    }));
+    return h.digest('hex');
+  }
+
+  function contentHash(code: string): string {
+    return createHash('md5').update(code).digest('hex');
+  }
 
   return {
     name: 'oxc-react-compiler',
@@ -27,6 +64,7 @@ export function reactCompiler(options: ReactCompilerOptions = {}): any {
       if (enableSourceMap === undefined) {
         enableSourceMap = config.command === 'serve';
       }
+      optionsHash = computeOptionsHash();
     },
 
     async buildStart() {
@@ -35,6 +73,29 @@ export function reactCompiler(options: ReactCompilerOptions = {}): any {
         binding = await import('../index.js');
       } catch (e) {
         console.warn('[oxc-react-compiler] Failed to load native binding:', e);
+      }
+
+      // Recompute options hash and clear cache if options changed
+      const newHash = computeOptionsHash();
+      if (optionsHash && newHash !== optionsHash) {
+        cache.clear();
+      }
+      optionsHash = newHash;
+
+      // Load disk cache if cacheDir is configured
+      if (options.cacheDir) {
+        const cacheFile = join(options.cacheDir, CACHE_FILE_NAME);
+        try {
+          const raw = readFileSync(cacheFile, 'utf8');
+          const disk: DiskCache = JSON.parse(raw);
+          if (disk.version === CACHE_VERSION && disk.optionsHash === optionsHash) {
+            for (const [id, entry] of Object.entries(disk.entries)) {
+              cache.set(id, entry);
+            }
+          }
+        } catch {
+          // File missing or unreadable — start with empty cache
+        }
       }
     },
 
@@ -47,6 +108,13 @@ export function reactCompiler(options: ReactCompilerOptions = {}): any {
 
       if (!binding) return null;
 
+      // Check cache
+      const hash = contentHash(code);
+      const cached = cache.get(id);
+      if (cached && cached.contentHash === hash) {
+        return cached.code ? { code: cached.code, map: cached.map } : null;
+      }
+
       try {
         const result = binding.transformReactFile(code, id, {
           compilationMode: options.compilationMode,
@@ -56,10 +124,16 @@ export function reactCompiler(options: ReactCompilerOptions = {}): any {
           gatingFunctionName: options.gating?.functionName,
         });
 
-        if (!result.transformed) return null;
+        if (!result.transformed) {
+          // Cache the "not transformed" result too
+          cache.set(id, { contentHash: hash, code: '', map: null });
+          return null;
+        }
 
         // Parse source map JSON if available, Vite accepts object or string
         const map = result.sourceMap ? JSON.parse(result.sourceMap) : null;
+
+        cache.set(id, { contentHash: hash, code: result.code, map });
 
         return {
           code: result.code,
@@ -74,12 +148,39 @@ export function reactCompiler(options: ReactCompilerOptions = {}): any {
     handleHotUpdate({ file, server }: { file: string; server: any }) {
       if (!isReactFile(file)) return;
 
+      // Evict cache entry so next transform recompiles
+      cache.delete(file);
+
       // Invalidate the module to force re-transform with the compiler.
-      // This ensures the compiled output is regenerated when React files change,
-      // which matters when compiler transforms affect dependency tracking.
       const mod = server.moduleGraph.getModuleById(file);
       if (mod) {
         server.moduleGraph.invalidateModule(mod);
+      }
+    },
+
+    closeBundle() {
+      if (!options.cacheDir || cache.size === 0) return;
+
+      const entries: Record<string, CacheEntry> = {};
+      for (const [id, entry] of cache) {
+        entries[id] = entry;
+      }
+
+      const disk: DiskCache = {
+        version: CACHE_VERSION,
+        optionsHash,
+        entries,
+      };
+
+      try {
+        mkdirSync(options.cacheDir, { recursive: true });
+        writeFileSync(
+          join(options.cacheDir, CACHE_FILE_NAME),
+          JSON.stringify(disk),
+          'utf8',
+        );
+      } catch (e) {
+        console.warn('[oxc-react-compiler] Failed to write disk cache:', e);
       }
     },
   };
