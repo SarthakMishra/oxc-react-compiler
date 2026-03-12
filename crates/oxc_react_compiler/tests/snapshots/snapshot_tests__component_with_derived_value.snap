@@ -5,19 +5,27 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function Display(t0) {
-  const $ = _c(2);
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t25 = Discriminant(4) */
+  const $ = _c(6);
+  if ($[0] !== items) {
+    /* t28 = Discriminant(4) */
+    $[0] = items;
   } else {
   }
-  const t26 = items;
-  const t27 = t26.length;
-  const count = t27;
-  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t29 = Discriminant(4) */
-    const t30 = count;
-    const t31 = 0;
-    const t32 = t30 > t31;
+  const { items } = t0;
+  if ($[1] !== count || $[2] !== items || $[3] !== label || $[4] !== count || $[5] !== t36) {
+    /* t30 = Discriminant(4) */
+    const t31 = items;
+    const t32 = t31.length;
+    const count = t32;
+    /* t34 = Discriminant(4) */
+    const t35 = count;
+    const t36 = 0;
+    const t37 = t35 > t36;
+    $[1] = count;
+    $[2] = items;
+    $[3] = label;
+    $[4] = count;
+    $[5] = t36;
   } else {
   }
 }

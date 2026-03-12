@@ -7,9 +7,22 @@ diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
 function Layout(t0) {
-  const t7 = "div";
-  const t8 = "container";
-  const t9 = children;
-  const t10 = <t7 className={t8}>{t9}</t7>;
-  return t10;
+  const $ = _c(3);
+  if ($[0] !== children) {
+    /* t10 = Discriminant(4) */
+    $[0] = children;
+  } else {
+  }
+  const { children } = t0;
+  if ($[1] !== children) {
+    const t12 = "div";
+    const t13 = "container";
+    const t14 = children;
+    const t15 = <t12 className={t13}>{t14}</t12>;
+    $[2] = t15;
+    $[1] = children;
+  } else {
+    t15 = $[2];
+  }
+  return t15;
 }

@@ -5,11 +5,27 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function Greeting(t0) {
-  const t10 = "div";
-  /* t11 = Discriminant(8) */
-  const t12 = name;
-  /* t13 = Discriminant(8) */
-  const t14 = age;
-  const t15 = <t10>{t11}{t12}{t13}{t14}</t10>;
-  return t15;
+  const $ = _c(5);
+  if ($[0] !== name || $[1] !== age) {
+    /* t15 = Discriminant(4) */
+    /* t16 = Discriminant(4) */
+    $[0] = name;
+    $[1] = age;
+  } else {
+  }
+  const { name, age } = t0;
+  if ($[2] !== name || $[3] !== age) {
+    const t18 = "div";
+    /* t19 = Discriminant(8) */
+    const t20 = name;
+    /* t21 = Discriminant(8) */
+    const t22 = age;
+    const t23 = <t18>{t19}{t20}{t21}{t22}</t18>;
+    $[4] = t23;
+    $[2] = name;
+    $[3] = age;
+  } else {
+    t23 = $[4];
+  }
+  return t23;
 }

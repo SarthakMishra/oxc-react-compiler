@@ -447,14 +447,22 @@ impl HIRBuilder {
 
     fn lower_formal_params(&mut self, params: &ast::FormalParameters<'_>) -> Vec<Param> {
         let mut result = Vec::new();
+        // Collect destructured params to emit after all params are registered.
+        let mut destructures: Vec<(Place, &BindingPattern<'_>, Span)> = Vec::new();
+
         for param in &params.items {
-            if let BindingPattern::BindingIdentifier(id) = &param.pattern {
-                let place = self.make_named_place(&id.name, id.span);
-                result.push(Param::Identifier(place));
-            } else {
-                // For destructured params, create a temp and emit destructure later.
-                let place = self.make_temp(param.span);
-                result.push(Param::Identifier(place));
+            match &param.pattern {
+                BindingPattern::BindingIdentifier(id) => {
+                    let place = self.make_named_place(&id.name, id.span);
+                    result.push(Param::Identifier(place));
+                }
+                BindingPattern::ObjectPattern(_)
+                | BindingPattern::ArrayPattern(_)
+                | BindingPattern::AssignmentPattern(_) => {
+                    let place = self.make_temp(param.span);
+                    result.push(Param::Identifier(place.clone()));
+                    destructures.push((place, &param.pattern, param.span));
+                }
             }
         }
         if let Some(rest) = &params.rest {
@@ -463,10 +471,49 @@ impl HIRBuilder {
                 result.push(Param::Spread(place));
             } else {
                 let place = self.make_temp(rest.span);
-                result.push(Param::Spread(place));
+                result.push(Param::Spread(place.clone()));
+                destructures.push((place, &rest.rest.argument, rest.span));
             }
         }
+
+        // Emit Destructure instructions for destructured params at the top of the
+        // function body. This ensures the extracted bindings are available to all
+        // subsequent code.
+        for (temp_place, pattern, span) in destructures {
+            self.emit_destructure_for_param(temp_place, pattern, span);
+        }
+
         result
+    }
+
+    /// Emit a `Destructure` instruction for a destructured formal parameter.
+    /// The `value` is the temp place holding the parameter value.
+    fn emit_destructure_for_param(
+        &mut self,
+        value: Place,
+        pattern: &BindingPattern<'_>,
+        span: Span,
+    ) {
+        let kind = InstructionKind::Const;
+        match pattern {
+            BindingPattern::ObjectPattern(obj_pat) => {
+                let lvalue_pattern = self.lower_object_binding_pattern(obj_pat, kind);
+                self.emit(InstructionValue::Destructure { lvalue_pattern, value }, span);
+            }
+            BindingPattern::ArrayPattern(arr_pat) => {
+                let lvalue_pattern = self.lower_array_binding_pattern(arr_pat, kind);
+                self.emit(InstructionValue::Destructure { lvalue_pattern, value }, span);
+            }
+            BindingPattern::AssignmentPattern(assign_pat) => {
+                // Default parameter value: `function f({ x } = defaultVal)`
+                // The param already has the temp; just destructure the inner pattern.
+                self.emit_destructure_for_param(value, &assign_pat.left, span);
+            }
+            BindingPattern::BindingIdentifier(_) => {
+                // Should not reach here (simple identifiers handled in caller),
+                // but handle gracefully as a no-op.
+            }
+        }
     }
 
     // ------------------------------------------------------------------

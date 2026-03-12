@@ -7,7 +7,7 @@ Last updated: 2026-03-12
 
 ---
 
-## Bug 1: Destructured parameters not emitted
+## Bug 1: Destructured parameters not emitted ✅ FIXED
 
 **Symptom:** ALL 16 compiled fixtures fail to render. Error: `"X is not defined"` where X is a destructured prop (e.g., `status`, `count`, `users`).
 
@@ -43,7 +43,7 @@ export function StatusBadge(t0) {
 
 ---
 
-## Bug 2: Dependency filter drops all scope dependencies
+## Bug 2: Dependency filter drops all scope dependencies ✅ FIXED
 
 **Symptom:** ALL 16 fixtures use sentinel checks (`$[N] === Symbol.for('react.memo_cache_sentinel')`) but ZERO use dependency checks (`$[N] !== dep`). This means every memoized scope runs only once (on first render) and never invalidates.
 

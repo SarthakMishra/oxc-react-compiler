@@ -5,23 +5,26 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function useCounter() {
-  const $ = _c(3);
+  const $ = _c(4);
   const t14 = useState;
   const t15 = 0;
   const t16 = t14(t15);
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[0] !== count || $[1] !== setCount) {
     /* t17 = Discriminant(4) */
     /* t18 = Discriminant(4) */
+    $[0] = count;
+    $[1] = setCount;
   } else {
   }
-  /* t19 = Discriminant(6) */
-  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+  const [count, setCount] = t16;
+  if ($[2] !== count) {
     const t20 = count;
     /* t21 = Discriminant(28) */
     const t22 = { count, increment: t21 };
-    $[2] = t22;
+    $[3] = t22;
+    $[2] = count;
   } else {
-    t22 = $[2];
+    t22 = $[3];
   }
   return t22;
 }

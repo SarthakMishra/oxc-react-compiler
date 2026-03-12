@@ -269,6 +269,12 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 place_name(value)
             ));
         }
+        InstructionValue::Destructure { lvalue_pattern, value } => {
+            let value_name = place_name(value);
+            output.push_str(&format!("{indent}const "));
+            codegen_destructure_pattern(lvalue_pattern, output);
+            output.push_str(&format!(" = {value_name};\n"));
+        }
         _ => {
             // Generic instruction codegen — emit as comment for unsupported patterns
             output.push_str(&format!(
@@ -576,6 +582,80 @@ fn binary_op_str(op: crate::hir::types::BinaryOp) -> &'static str {
         BinaryOp::In => "in",
         BinaryOp::InstanceOf => "instanceof",
         BinaryOp::NullishCoalescing => "??",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Destructure pattern codegen
+// ---------------------------------------------------------------------------
+
+fn codegen_destructure_pattern(
+    pattern: &crate::hir::types::DestructurePattern,
+    output: &mut String,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            output.push_str("{ ");
+            for (i, prop) in properties.iter().enumerate() {
+                if i > 0 {
+                    output.push_str(", ");
+                }
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        let name = place_name(place);
+                        if prop.shorthand && prop.key == name {
+                            output.push_str(&name);
+                        } else {
+                            output.push_str(&format!("{}: {}", prop.key, name));
+                        }
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        output.push_str(&format!("{}: ", prop.key));
+                        codegen_destructure_pattern(nested, output);
+                    }
+                }
+            }
+            if let Some(rest_place) = rest {
+                if !properties.is_empty() {
+                    output.push_str(", ");
+                }
+                output.push_str(&format!("...{}", place_name(rest_place)));
+            }
+            output.push_str(" }");
+        }
+        DestructurePattern::Array { items, rest } => {
+            output.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    output.push_str(", ");
+                }
+                match item {
+                    DestructureArrayItem::Value(target) => match target {
+                        DestructureTarget::Place(place) => {
+                            output.push_str(&place_name(place));
+                        }
+                        DestructureTarget::Pattern(nested) => {
+                            codegen_destructure_pattern(nested, output);
+                        }
+                    },
+                    DestructureArrayItem::Hole => {
+                        // Leave empty for hole
+                    }
+                    DestructureArrayItem::Spread(place) => {
+                        output.push_str(&format!("...{}", place_name(place)));
+                    }
+                }
+            }
+            if let Some(rest_place) = rest {
+                if !items.is_empty() {
+                    output.push_str(", ");
+                }
+                output.push_str(&format!("...{}", place_name(rest_place)));
+            }
+            output.push(']');
+        }
     }
 }
 

@@ -15,8 +15,8 @@ _(Nothing active)_
 
 ## P0: Critical Bugs (blocking all memoization correctness and render equivalence)
 
-- [ ] **BUG: Destructured params not emitted in codegen** -- `build.rs` creates temp params for destructured args but never emits `Destructure` instructions, causing "X is not defined" for ALL compiled components -- [critical-bugs.md](critical-bugs.md)#bug-1-destructured-parameters-not-emitted
-- [ ] **BUG: Dependency filter drops all scope dependencies** -- `propagate_dependencies.rs:136` filters `.filter(|d| d.reactive)` but Place objects' `.reactive` field isn't propagated from identifier reactivity, resulting in empty deps → sentinel-only checks → no invalidation -- [critical-bugs.md](critical-bugs.md)#bug-2-dependency-filter-drops-all-scope-dependencies
+- [x] **BUG: Destructured params not emitted in codegen** -- `build.rs` creates temp params for destructured args but never emits `Destructure` instructions, causing "X is not defined" for ALL compiled components -- [critical-bugs.md](critical-bugs.md)#bug-1-destructured-parameters-not-emitted
+- [x] **BUG: Dependency filter drops all scope dependencies** -- `propagate_dependencies.rs:136` filters `.filter(|d| d.reactive)` but Place objects' `.reactive` field isn't propagated from identifier reactivity, resulting in empty deps → sentinel-only checks → no invalidation -- [critical-bugs.md](critical-bugs.md)#bug-2-dependency-filter-drops-all-scope-dependencies
 - [ ] **BUG: canvas-sidebar 16ms outlier** -- 272 LOC fixture takes 16.6ms (10x expected), likely a pathological case in scope inference or mutation analysis causing quadratic behavior -- [critical-bugs.md](critical-bugs.md)#bug-3-canvas-sidebar-performance-outlier
 
 ---

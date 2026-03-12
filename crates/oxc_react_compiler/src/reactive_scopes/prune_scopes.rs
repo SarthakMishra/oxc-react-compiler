@@ -224,8 +224,9 @@ fn prune_non_reactive_deps_in_block(block: &mut ReactiveBlock) {
     for instr in &mut block.instructions {
         match instr {
             ReactiveInstruction::Scope(scope_block) => {
-                // Remove non-reactive dependencies
-                scope_block.scope.dependencies.retain(|dep| dep.reactive);
+                // Keep all dependencies — reactivity determines which scopes to
+                // create, not which dependencies to track. All external values
+                // read inside a scope are needed for cache invalidation.
                 prune_non_reactive_deps_in_block(&mut scope_block.instructions);
             }
             ReactiveInstruction::Terminal(terminal) => {

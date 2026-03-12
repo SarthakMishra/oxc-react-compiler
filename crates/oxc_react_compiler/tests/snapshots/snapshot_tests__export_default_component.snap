@@ -5,8 +5,21 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 export default function Page(t0) {
-  const t6 = "main";
-  const t7 = content;
-  const t8 = <t6>{t7}</t6>;
-  return t8;
+  const $ = _c(3);
+  if ($[0] !== content) {
+    /* t9 = Discriminant(4) */
+    $[0] = content;
+  } else {
+  }
+  const { content } = t0;
+  if ($[1] !== content) {
+    const t11 = "main";
+    const t12 = content;
+    const t13 = <t11>{t12}</t11>;
+    $[2] = t13;
+    $[1] = content;
+  } else {
+    t13 = $[2];
+  }
+  return t13;
 }

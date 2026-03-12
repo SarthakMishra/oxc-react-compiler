@@ -2,4 +2,4 @@
 source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
 expression: "format!(\"{errors:?}\")"
 ---
-[]
+["Manual memoization (memo id 0) is not preserved. The memoized region spans multiple reactive scopes, which means the compiler cannot guarantee the same memoization semantics."]

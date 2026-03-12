@@ -127,16 +127,17 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
         }
     }
 
-    // Phase 4: Write the dependencies and declarations back onto the scopes
+    // Phase 4: Write the dependencies and declarations back onto ALL instructions
+    // in each scope (not just the first one), because `find_scope_in_block` in
+    // `build_reactive_function` may read the scope from any instruction.
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if let Some(ref mut scope) = instr.lvalue.identifier.scope {
-                if let Some(deps) = scope_deps.remove(&scope.id) {
-                    // Only include reactive dependencies
-                    scope.dependencies = deps.into_iter().filter(|d| d.reactive).collect();
+                if let Some(deps) = scope_deps.get(&scope.id) {
+                    scope.dependencies = deps.clone();
                 }
-                if let Some(decls) = scope_decls.remove(&scope.id) {
-                    scope.declarations = decls;
+                if let Some(decls) = scope_decls.get(&scope.id) {
+                    scope.declarations = decls.clone();
                 }
             }
         }
