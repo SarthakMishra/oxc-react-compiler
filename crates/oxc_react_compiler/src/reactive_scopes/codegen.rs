@@ -296,7 +296,13 @@ fn codegen_instruction(
             for attr in props {
                 match &attr.name {
                     crate::hir::types::JsxAttributeName::Named(name) => {
-                        props_parts.push(format!("{}: {}", name, place_name(&attr.value)));
+                        // Quote attribute names that aren't valid JS identifiers (e.g. aria-label, data-testid)
+                        let key = if name.contains('-') || name.contains(':') {
+                            format!("\"{}\"", name)
+                        } else {
+                            name.clone()
+                        };
+                        props_parts.push(format!("{}: {}", key, place_name(&attr.value)));
                     }
                     crate::hir::types::JsxAttributeName::Spread => {
                         has_spread = true;

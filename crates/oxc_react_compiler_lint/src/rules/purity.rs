@@ -36,20 +36,21 @@ impl<'a> Visit<'a> for PurityVisitor {
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
         // Check member expression calls like Math.random()
         if let Expression::StaticMemberExpression(member) = &it.callee
-            && let Expression::Identifier(obj) = &member.object {
-                let obj_name = obj.name.as_str();
-                let prop_name = member.property.name.as_str();
-                for (impure_obj, impure_prop) in IMPURE_MEMBER_CALLS {
-                    if obj_name == *impure_obj && prop_name == *impure_prop {
-                        self.diagnostics.push(
+            && let Expression::Identifier(obj) = &member.object
+        {
+            let obj_name = obj.name.as_str();
+            let prop_name = member.property.name.as_str();
+            for (impure_obj, impure_prop) in IMPURE_MEMBER_CALLS {
+                if obj_name == *impure_obj && prop_name == *impure_prop {
+                    self.diagnostics.push(
                             OxcDiagnostic::warn(format!(
                                 "{obj_name}.{prop_name}() is impure and should not be called during render."
                             ))
                             .with_label(it.span),
                         );
-                    }
                 }
             }
+        }
 
         // Check global function calls like fetch()
         if let Expression::Identifier(ident) = &it.callee {

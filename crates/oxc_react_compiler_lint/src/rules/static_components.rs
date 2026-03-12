@@ -54,26 +54,27 @@ impl<'a> Visit<'a> for StaticComponentsVisitor {
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         // Check for const MyComponent = () => { ... } or const MyComponent = function() { ... }
         if self.component_depth > 0
-            && let BindingPattern::BindingIdentifier(ident) = &it.id {
-                let name = ident.name.as_str();
-                if is_component_name(name)
-                    && let Some(init) = &it.init {
-                        let is_fn = matches!(
-                            init,
-                            Expression::ArrowFunctionExpression(_)
-                                | Expression::FunctionExpression(_)
-                        );
-                        if is_fn {
-                            self.diagnostics.push(
-                                OxcDiagnostic::warn(format!(
-                                    "Component \"{name}\" is defined inside another component. \
+            && let BindingPattern::BindingIdentifier(ident) = &it.id
+        {
+            let name = ident.name.as_str();
+            if is_component_name(name)
+                && let Some(init) = &it.init
+            {
+                let is_fn = matches!(
+                    init,
+                    Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+                );
+                if is_fn {
+                    self.diagnostics.push(
+                        OxcDiagnostic::warn(format!(
+                            "Component \"{name}\" is defined inside another component. \
                                      Move it outside to avoid remounting on every render."
-                                ))
-                                .with_label(it.span),
-                            );
-                        }
-                    }
+                        ))
+                        .with_label(it.span),
+                    );
+                }
             }
+        }
 
         walk::walk_variable_declarator(self, it);
     }

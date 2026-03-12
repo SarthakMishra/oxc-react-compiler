@@ -68,8 +68,7 @@ fn find_and_build_function<'a>(
                 return Some(builder.build_function(func, fn_type));
             }
             Statement::ExportDefaultDeclaration(export) => {
-                if let ExportDefaultDeclarationKind::FunctionDeclaration(func) =
-                    &export.declaration
+                if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration
                     && func.span == span
                 {
                     let builder = HIRBuilder::new(config.clone());
@@ -88,16 +87,13 @@ fn find_and_build_function<'a>(
                 for declarator in &decl.declarations {
                     if let Some(init) = &declarator.init {
                         match init.without_parentheses() {
-                            Expression::ArrowFunctionExpression(arrow)
-                                if arrow.span == span =>
-                            {
-                                let name = if let BindingPattern::BindingIdentifier(id) =
-                                    &declarator.id
-                                {
-                                    Some(id.name.to_string())
-                                } else {
-                                    None
-                                };
+                            Expression::ArrowFunctionExpression(arrow) if arrow.span == span => {
+                                let name =
+                                    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+                                        Some(id.name.to_string())
+                                    } else {
+                                        None
+                                    };
                                 let builder = HIRBuilder::new(config.clone());
                                 return Some(builder.build_arrow_function(arrow, name, fn_type));
                             }

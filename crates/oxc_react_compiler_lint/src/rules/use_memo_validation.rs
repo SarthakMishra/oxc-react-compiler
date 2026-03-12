@@ -25,37 +25,38 @@ struct UseMemoValidationVisitor {
 impl<'a> Visit<'a> for UseMemoValidationVisitor {
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
         if let Some(name) = get_callee_name(it)
-            && (name == "useMemo" || name == "useCallback") {
-                // Must have exactly 2 arguments
-                if it.arguments.len() == 2 {
-                    // First argument should be a function
-                    let first = &it.arguments[0];
-                    let is_fn = matches!(
-                        first,
-                        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
-                    );
-                    if !is_fn {
-                        self.diagnostics.push(
-                            OxcDiagnostic::warn(format!(
-                                "The first argument to \"{name}\" should be a function expression."
-                            ))
-                            .with_label(it.span),
-                        );
-                    }
-
-                    // Second argument should be an array
-                    let second = &it.arguments[1];
-                    let is_array = matches!(second, Argument::ArrayExpression(_));
-                    if !is_array {
-                        self.diagnostics.push(
-                            OxcDiagnostic::warn(format!(
-                                "The second argument to \"{name}\" should be a dependency array."
-                            ))
-                            .with_label(it.span),
-                        );
-                    }
-                } else {
+            && (name == "useMemo" || name == "useCallback")
+        {
+            // Must have exactly 2 arguments
+            if it.arguments.len() == 2 {
+                // First argument should be a function
+                let first = &it.arguments[0];
+                let is_fn = matches!(
+                    first,
+                    Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+                );
+                if !is_fn {
                     self.diagnostics.push(
+                        OxcDiagnostic::warn(format!(
+                            "The first argument to \"{name}\" should be a function expression."
+                        ))
+                        .with_label(it.span),
+                    );
+                }
+
+                // Second argument should be an array
+                let second = &it.arguments[1];
+                let is_array = matches!(second, Argument::ArrayExpression(_));
+                if !is_array {
+                    self.diagnostics.push(
+                        OxcDiagnostic::warn(format!(
+                            "The second argument to \"{name}\" should be a dependency array."
+                        ))
+                        .with_label(it.span),
+                    );
+                }
+            } else {
+                self.diagnostics.push(
                         OxcDiagnostic::warn(format!(
                             "\"{}\" requires exactly 2 arguments (a callback and a dependency array), but received {}.",
                             name,
@@ -63,8 +64,8 @@ impl<'a> Visit<'a> for UseMemoValidationVisitor {
                         ))
                         .with_label(it.span),
                     );
-                }
             }
+        }
 
         walk::walk_call_expression(self, it);
     }

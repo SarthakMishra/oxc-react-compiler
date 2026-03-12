@@ -1,8 +1,4 @@
-#![allow(
-    clippy::needless_pass_by_value,
-    clippy::only_used_in_recursion,
-    clippy::match_same_arms
-)]
+#![allow(clippy::needless_pass_by_value, clippy::only_used_in_recursion, clippy::match_same_arms)]
 
 pub mod rules;
 pub mod utils;

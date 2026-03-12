@@ -23,14 +23,15 @@ fn check_statement_for_global_mutation(stmt: &Statement, diagnostics: &mut Vec<O
 fn check_expr_for_global_mutation(expr: &Expression, diagnostics: &mut Vec<OxcDiagnostic>) {
     // Check for assignments to global properties: Array.prototype.foo = ...
     if let Expression::AssignmentExpression(assign) = expr
-        && is_global_prototype_mutation(&assign.left) {
-            diagnostics.push(
-                OxcDiagnostic::warn(
-                    "Mutating global prototype is not compatible with the React Compiler",
-                )
-                .with_label(assign.span),
-            );
-        }
+        && is_global_prototype_mutation(&assign.left)
+    {
+        diagnostics.push(
+            OxcDiagnostic::warn(
+                "Mutating global prototype is not compatible with the React Compiler",
+            )
+            .with_label(assign.span),
+        );
+    }
 }
 
 fn is_global_prototype_mutation(target: &AssignmentTarget) -> bool {
@@ -39,22 +40,23 @@ fn is_global_prototype_mutation(target: &AssignmentTarget) -> bool {
         AssignmentTarget::StaticMemberExpression(member) => {
             if let Expression::StaticMemberExpression(inner) = &member.object
                 && inner.property.name == "prototype"
-                    && let Expression::Identifier(id) = &inner.object {
-                        return matches!(
-                            id.name.as_str(),
-                            "Array"
-                                | "Object"
-                                | "String"
-                                | "Number"
-                                | "Boolean"
-                                | "Function"
-                                | "Symbol"
-                                | "Map"
-                                | "Set"
-                                | "WeakMap"
-                                | "WeakSet"
-                        );
-                    }
+                && let Expression::Identifier(id) = &inner.object
+            {
+                return matches!(
+                    id.name.as_str(),
+                    "Array"
+                        | "Object"
+                        | "String"
+                        | "Number"
+                        | "Boolean"
+                        | "Function"
+                        | "Symbol"
+                        | "Map"
+                        | "Set"
+                        | "WeakMap"
+                        | "WeakSet"
+                );
+            }
             false
         }
         _ => false,

@@ -143,26 +143,27 @@ impl<'a> Visit<'a> for NoRefAccessInRenderVisitor {
         // Track `const myRef = useRef(...)`.
         if let Some(init) = &it.init
             && let Expression::CallExpression(call) = init
-                && is_use_ref_call(call)
-                    && let Some(name) = Self::function_name_from_id(&it.id) {
-                        self.register_ref(name.to_string());
-                    }
+            && is_use_ref_call(call)
+            && let Some(name) = Self::function_name_from_id(&it.id)
+        {
+            self.register_ref(name.to_string());
+        }
 
         walk::walk_variable_declarator(self, it);
     }
 
     fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
         // Check for `ref.current` access during render.
-        if self.is_in_render_phase() && it.property.name.as_str() == "current"
+        if self.is_in_render_phase()
+            && it.property.name.as_str() == "current"
             && let Expression::Identifier(ident) = &it.object
-                && self.is_known_ref(ident.name.as_str()) {
-                    self.diagnostics.push(
-                        OxcDiagnostic::warn(
-                            "Accessing ref.current during render can lead to bugs.",
-                        )
-                        .with_label(it.span),
-                    );
-                }
+            && self.is_known_ref(ident.name.as_str())
+        {
+            self.diagnostics.push(
+                OxcDiagnostic::warn("Accessing ref.current during render can lead to bugs.")
+                    .with_label(it.span),
+            );
+        }
         walk::walk_static_member_expression(self, it);
     }
 }

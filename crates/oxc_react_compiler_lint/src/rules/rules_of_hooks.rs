@@ -178,19 +178,18 @@ impl<'a> Visit<'a> for RulesOfHooksVisitor {
     }
 
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
-        if is_hook_call(it)
-            && !self.is_hook_allowed() {
-                match self.current_context() {
-                    Some(frame) if frame.kind == FunctionContext::ComponentOrHook => {
-                        // Inside a component/hook but in a conditional/loop.
-                        self.report_conditional(it.span);
-                    }
-                    _ => {
-                        // Not in a component/hook at all.
-                        self.report_not_in_component(it.span);
-                    }
+        if is_hook_call(it) && !self.is_hook_allowed() {
+            match self.current_context() {
+                Some(frame) if frame.kind == FunctionContext::ComponentOrHook => {
+                    // Inside a component/hook but in a conditional/loop.
+                    self.report_conditional(it.span);
+                }
+                _ => {
+                    // Not in a component/hook at all.
+                    self.report_not_in_component(it.span);
                 }
             }
+        }
         // Continue walking into arguments (there may be nested arrow functions etc.)
         walk::walk_call_expression(self, it);
     }
