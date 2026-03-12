@@ -6,29 +6,21 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Counter() {
-  const $ = _c(6);
-  let count;
-  let setCount;
-  if ($[0] !== count || $[1] !== setCount) {
-    $[0] = count;
-    $[1] = setCount;
-  } else {
-  }
+  const $ = _c(3);
   let next;
   let t36;
-  if ($[2] !== next || $[3] !== count || $[4] !== count) {
+  if ($[0] !== count || $[1] !== count) {
     next = count + 1;
     const t34 = () => {
       const t4 = setCount(next);
       return t4;
     };
     t36 = _jsx("button", { onClick: t34, children: count });
-    $[5] = t36;
-    $[2] = next;
-    $[3] = count;
-    $[4] = count;
+    $[2] = t36;
+    $[0] = count;
+    $[1] = count;
   } else {
-    t36 = $[5];
+    t36 = $[2];
   }
   return t36;
 }

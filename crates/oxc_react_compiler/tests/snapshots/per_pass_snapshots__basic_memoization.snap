@@ -6,23 +6,17 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Doubler(t0) {
-  const $ = _c(5);
+  const $ = _c(2);
   const { value } = t0;
-  if ($[0] !== value) {
-    $[0] = value;
-  } else {
-  }
   let doubled;
   let t25;
-  if ($[1] !== doubled || $[2] !== value || $[3] !== doubled) {
+  if ($[0] !== value) {
     doubled = value * 2;
     t25 = _jsx("span", { children: doubled });
-    $[4] = t25;
-    $[1] = doubled;
-    $[2] = value;
-    $[3] = doubled;
+    $[1] = t25;
+    $[0] = value;
   } else {
-    t25 = $[4];
+    t25 = $[1];
   }
   return t25;
 }

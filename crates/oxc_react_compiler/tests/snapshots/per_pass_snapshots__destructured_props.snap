@@ -6,23 +6,17 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function UserCard(t0) {
-  const $ = _c(7);
+  const $ = _c(4);
   const { name, age, role } = t0;
+  let t41;
   if ($[0] !== name || $[1] !== age || $[2] !== role) {
+    t41 = _jsxs("div", { children: [_jsx("h2", { children: name }), _jsxs("p", { children: ["Age: ", age] }), _jsxs("p", { children: ["Role: ", role] })] });
+    $[3] = t41;
     $[0] = name;
     $[1] = age;
     $[2] = role;
   } else {
-  }
-  let t41;
-  if ($[3] !== name || $[4] !== age || $[5] !== role) {
-    t41 = _jsxs("div", { children: [_jsx("h2", { children: name }), _jsxs("p", { children: ["Age: ", age] }), _jsxs("p", { children: ["Role: ", role] })] });
-    $[6] = t41;
-    $[3] = name;
-    $[4] = age;
-    $[5] = role;
-  } else {
-    t41 = $[6];
+    t41 = $[3];
   }
   return t41;
 }

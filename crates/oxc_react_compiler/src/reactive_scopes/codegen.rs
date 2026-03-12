@@ -1227,8 +1227,10 @@ fn codegen_terminal(
         ReactiveTerminal::If { test, consequent, alternate, .. } => {
             output.push_str(&format!("{}if ({}) {{\n", indent_str, place_name(test)));
             codegen_block(consequent, output, cache_slot, indent + 1, declared);
-            output.push_str(&format!("{indent_str}}} else {{\n"));
-            codegen_block(alternate, output, cache_slot, indent + 1, declared);
+            if !alternate.instructions.is_empty() {
+                output.push_str(&format!("{indent_str}}} else {{\n"));
+                codegen_block(alternate, output, cache_slot, indent + 1, declared);
+            }
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Switch { test, cases, .. } => {
@@ -1399,18 +1401,21 @@ fn codegen_scope(
         }
     }
 
-    output.push_str(&format!("{indent_str}}} else {{\n"));
+    // Only emit else block if there are declarations to load from cache
+    if !scope.scope.declarations.is_empty() {
+        output.push_str(&format!("{indent_str}}} else {{\n"));
 
-    // Load cached declarations
-    for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
-        let decl_name = identifier_display_name(&decl.identifier);
-        let inner_indent = "  ".repeat(indent + 1);
-        output.push_str(&format!(
-            "{}{} = $[{}];\n",
-            inner_indent,
-            decl_name,
-            decl_slot_start + i as u32
-        ));
+        // Load cached declarations
+        for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
+            let decl_name = identifier_display_name(&decl.identifier);
+            let inner_indent = "  ".repeat(indent + 1);
+            output.push_str(&format!(
+                "{}{} = $[{}];\n",
+                inner_indent,
+                decl_name,
+                decl_slot_start + i as u32
+            ));
+        }
     }
 
     output.push_str(&format!("{indent_str}}}\n"));
@@ -1494,8 +1499,14 @@ fn count_terminal_slots(terminal: &ReactiveTerminal) -> u32 {
 }
 
 /// Generate the import statement for the compiler runtime.
-pub fn generate_import_statement() -> String {
-    "import { c as _c } from \"react/compiler-runtime\";\nimport { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from \"react/jsx-runtime\";\n".to_string()
+///
+/// When `needs_jsx` is true, also emits the JSX runtime import for `_jsx`/`_jsxs`/`_Fragment`.
+pub fn generate_import_statement(needs_jsx: bool) -> String {
+    let mut s = "import { c as _c } from \"react/compiler-runtime\";\n".to_string();
+    if needs_jsx {
+        s.push_str("import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from \"react/jsx-runtime\";\n");
+    }
+    s
 }
 
 /// Apply compiled function to original source code.
@@ -1510,8 +1521,12 @@ pub fn apply_compilation(
 
     let mut result = String::with_capacity(original_source.len() + 256);
 
+    // Check if any compiled function uses JSX runtime calls
+    let needs_jsx = compiled_functions.iter().any(|(_, code)| {
+        code.contains("_jsx(") || code.contains("_jsxs(") || code.contains("_Fragment")
+    });
     // Add import at the top
-    result.push_str(&generate_import_statement());
+    result.push_str(&generate_import_statement(needs_jsx));
 
     // Apply edits in reverse order (to preserve offsets)
     let mut edits: Vec<(usize, usize, &str)> = compiled_functions

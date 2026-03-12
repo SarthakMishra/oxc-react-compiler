@@ -380,3 +380,4 @@ fn collect_destructure_target_inner(target: &DestructureTarget, ids: &mut Vec<Id
         }
     }
 }
+

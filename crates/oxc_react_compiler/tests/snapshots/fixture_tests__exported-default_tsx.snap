@@ -8,19 +8,15 @@ diagnostics: 0
 import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 export default function Page(t0) {
-  const $ = _c(3);
+  const $ = _c(2);
   const { content } = t0;
+  let t13;
   if ($[0] !== content) {
+    t13 = _jsx("main", { children: content });
+    $[1] = t13;
     $[0] = content;
   } else {
-  }
-  let t13;
-  if ($[1] !== content) {
-    t13 = _jsx("main", { children: content });
-    $[2] = t13;
-    $[1] = content;
-  } else {
-    t13 = $[2];
+    t13 = $[1];
   }
   return t13;
 }

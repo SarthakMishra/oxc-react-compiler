@@ -3,7 +3,7 @@
 #
 # Format: <relative-path-from-upstream-fixtures/>
 #
-# Baseline: 63/1419 pass (4.4%), 0 panics, 1356 divergences
+# Baseline: 69/1419 pass (4.9%), 0 panics, 1350 divergences
 # (Uses corrected .expected files extracted from upstream .expect.md)
 # 298 upstream error fixtures excluded from comparison
 alias-capture-in-method-receiver-and-mutate.js
@@ -211,7 +211,6 @@ context-variable-reassigned-reactive-capture.js
 context-variable-reassigned-two-lambdas.js
 controlled-input.js
 createElement-freeze.js
-custom-opt-out-directive.tsx
 dce-loop.js
 dce-unused-const.js
 dce-unused-postfix-update.js
@@ -289,7 +288,6 @@ effect-derived-computations/derived-state-from-ref-and-state-no-error.js
 effect-derived-computations/effect-contains-local-function-call.js
 effect-derived-computations/effect-contains-prop-function-call-no-error.js
 effect-derived-computations/effect-used-in-dep-array-still-errors.js
-effect-derived-computations/effect-with-cleanup-function-depending-on-derived-computation-value.js
 effect-derived-computations/effect-with-global-function-call-no-error.js
 effect-derived-computations/from-props-setstate-in-effect-no-error.js
 effect-derived-computations/function-expression-mutation-edge-case.js
@@ -523,7 +521,6 @@ for-empty-update-with-continue.js
 for-empty-update.js
 for-in-statement-break.js
 for-in-statement-continue.js
-for-in-statement-empty-body.js
 for-in-statement-type-inference.js
 for-in-statement.js
 for-logical.js
@@ -563,9 +560,6 @@ gating/dynamic-gating-annotation.js
 gating/dynamic-gating-bailout-nopanic.js
 gating/dynamic-gating-disabled.js
 gating/dynamic-gating-enabled.js
-gating/dynamic-gating-invalid-identifier-nopanic.js
-gating/dynamic-gating-invalid-multiple.js
-gating/dynamic-gating-noemit.js
 gating/error.dynamic-gating-invalid-identifier.js
 gating/gating-access-function-name-in-component.js
 gating/gating-nonreferenced-identifier-collision.js
@@ -668,7 +662,6 @@ infer-global-object.js
 infer-nested-object-method.jsx
 infer-no-component-annot.ts
 infer-no-component-nested-jsx.js
-infer-no-component-obj-return.js
 infer-phi-primitive.js
 infer-property-delete.js
 infer-sequential-optional-chain-nonnull.ts
@@ -1321,7 +1314,6 @@ rules-of-hooks/error.invalid-rules-of-hooks-9bf17c174134.js
 rules-of-hooks/error.invalid-rules-of-hooks-b4dcda3d60ed.js
 rules-of-hooks/error.invalid-rules-of-hooks-f69800950ff0.js
 rules-of-hooks/error.invalid.invalid-rules-of-hooks-76a74b4666e9.js
-rules-of-hooks/rules-of-hooks-2e405c78cb80.js
 rules-of-hooks/rules-of-hooks-4f6c78a14bf7.js
 rules-of-hooks/rules-of-hooks-69521d94fa03.js
 rules-of-hooks/rules-of-hooks-93dc5d5e538a.js
@@ -1512,11 +1504,7 @@ update-expression.ts
 update-global-in-callback.tsx
 use-callback-simple.js
 use-effect-cleanup-reassigns.js
-use-memo-noemit.js
 use-memo-simple.js
-use-no-forget-multiple-with-eslint-suppression.js
-use-no-forget-with-eslint-suppression.js
-use-no-memo-module-scope-usememo-function-scope.js
 use-operator-call-expression.js
 use-operator-conditional.js
 use-operator-method-call.js

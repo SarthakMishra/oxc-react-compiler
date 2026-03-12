@@ -562,6 +562,16 @@ fn upstream_conformance() {
     println!("Known failures:    {}", results.iter().filter(|r| r.known_failure).count());
     println!();
 
+    // Report passing fixtures that are in known-failures (can be removed).
+    let newly_passing: Vec<&&FixtureResult> = matched.iter().filter(|r| r.known_failure).collect();
+    if !newly_passing.is_empty() {
+        println!("--- NEWLY PASSING (remove from known-failures.txt) ---");
+        for r in &newly_passing {
+            println!("  PASS: {}", r.relative_path);
+        }
+        println!();
+    }
+
     // Report panics (these are always bugs).
     if !panicked.is_empty() {
         println!("--- PANICS (compiler crashed) ---");

@@ -281,7 +281,11 @@ fn prune_unused_scopes_in_block(block: &mut ReactiveBlock, referenced: &FxHashSe
                 let has_used_decls =
                     scope_block.scope.declarations.iter().any(|(id, _)| referenced.contains(id));
 
-                if has_used_decls || scope_block.scope.declarations.is_empty() {
+                // Keep scopes that either have used declarations or have dependencies
+                // (even if decls are empty, deps mean the scope is doing useful work).
+                // Only prune scopes with NO used declarations AND NO dependencies.
+                let has_deps = !scope_block.scope.dependencies.is_empty();
+                if has_used_decls || has_deps {
                     new_instructions.push(ReactiveInstruction::Scope(scope_block));
                 } else {
                     for inner in scope_block.instructions.instructions {

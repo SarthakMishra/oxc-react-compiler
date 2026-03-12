@@ -8,24 +8,15 @@ diagnostics: 0
 import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 function Display(t0) {
-  const $ = _c(10);
+  const $ = _c(5);
   const { items } = t0;
-  if ($[0] !== items) {
-    $[0] = items;
-  } else {
-  }
   let count;
   let label;
   let t16;
-  if ($[1] !== count || $[2] !== items || $[3] !== label || $[4] !== count || $[5] !== t39 || $[6] !== t16) {
+  if ($[0] !== items || $[1] !== t39) {
     count = items.length;
-    $[1] = count;
-    $[2] = items;
-    $[3] = label;
-    $[4] = count;
-    $[5] = t39;
-    $[6] = t16;
-  } else {
+    $[0] = items;
+    $[1] = t39;
   }
   if (t40) {
     t16 = "Has items";
@@ -34,13 +25,13 @@ function Display(t0) {
   }
   label = t16;
   let t53;
-  if ($[7] !== label || $[8] !== count) {
+  if ($[2] !== label || $[3] !== count) {
     t53 = _jsxs("div", { children: [label, ": ", count] });
-    $[9] = t53;
-    $[7] = label;
-    $[8] = count;
+    $[4] = t53;
+    $[2] = label;
+    $[3] = count;
   } else {
-    t53 = $[9];
+    t53 = $[4];
   }
   return t53;
 }

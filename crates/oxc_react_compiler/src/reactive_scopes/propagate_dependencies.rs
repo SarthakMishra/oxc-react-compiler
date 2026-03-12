@@ -9,13 +9,29 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// These become the "deps" that are checked at runtime to decide whether
 /// to recompute the scope's output.
 pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
-    // Phase 1: Build a map of scope_id -> set of identifier ids declared in that scope
-    let mut scope_declarations: FxHashMap<ScopeId, FxHashSet<IdentifierId>> = FxHashMap::default();
+    // Phase 1: Build maps of scope_id -> identifier IDs and declaration IDs that belong to the scope.
+    // We track both IdentifierId (SSA-unique) and DeclarationId (shared across SSA versions of the
+    // same source variable). This ensures that when a scope writes `x = a + 1`, subsequent reads
+    // of `x` within the scope are NOT treated as external dependencies, even though the read may
+    // use a different SSA IdentifierId than the write.
+    let mut scope_ids: FxHashMap<ScopeId, FxHashSet<IdentifierId>> = FxHashMap::default();
+    let mut scope_written_names: FxHashMap<ScopeId, FxHashSet<String>> = FxHashMap::default();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let Some(ref scope) = instr.lvalue.identifier.scope {
-                scope_declarations.entry(scope.id).or_default().insert(instr.lvalue.identifier.id);
+                scope_ids.entry(scope.id).or_default().insert(instr.lvalue.identifier.id);
+                // Track names of variables written to by store instructions
+                match &instr.value {
+                    InstructionValue::StoreLocal { lvalue, .. }
+                    | InstructionValue::StoreContext { lvalue, .. } => {
+                        scope_ids.entry(scope.id).or_default().insert(lvalue.identifier.id);
+                        if let Some(name) = &lvalue.identifier.name {
+                            scope_written_names.entry(scope.id).or_default().insert(name.clone());
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -30,14 +46,31 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                 None => continue,
             };
 
-            let declared = scope_declarations.get(&scope_id).cloned().unwrap_or_default();
+            let declared_ids = scope_ids.get(&scope_id);
+            let written_names = scope_written_names.get(&scope_id);
 
-            // Collect operands from the instruction value
-            let operands = collect_operand_places(&instr.value);
+            // Check if an operand belongs to this scope by:
+            // 1. Exact SSA IdentifierId match (instruction lvalues + StoreLocal targets), or
+            // 2. Name match against variables written to inside the scope (handles SSA versioning
+            //    where the LoadLocal of `x` has a different ID than the StoreLocal that wrote `x`)
+            let is_scope_internal = |place: &crate::hir::types::Place| -> bool {
+                if declared_ids.is_some_and(|s| s.contains(&place.identifier.id)) {
+                    return true;
+                }
+                if let Some(name) = &place.identifier.name {
+                    if written_names.is_some_and(|s| s.contains(name)) {
+                        return true;
+                    }
+                }
+                false
+            };
+
+            // Collect READ operands — only values that are consumed (not written to)
+            let operands = collect_read_operand_places(&instr.value);
             for place in operands {
                 let op_id = place.identifier.id;
-                // If this operand is not declared within the same scope, it's a dependency
-                if !declared.contains(&op_id) {
+                // If this operand is not declared/written within the same scope, it's a dependency
+                if !is_scope_internal(place) {
                     // Check if already added
                     let deps = scope_deps.entry(scope_id).or_default();
                     let already_added = deps.iter().any(|d| d.identifier.id == op_id);
@@ -54,7 +87,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
             // Handle property loads: build dependency paths
             if let InstructionValue::PropertyLoad { object, property } = &instr.value {
                 let obj_id = object.identifier.id;
-                if !declared.contains(&obj_id) {
+                if !is_scope_internal(object) {
                     let deps = scope_deps.entry(scope_id).or_default();
                     // Check if we already have a dep for this object and can extend its path
                     let existing = deps.iter_mut().find(|d| d.identifier.id == obj_id);
@@ -142,7 +175,157 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
     }
 }
 
-/// Collect all places referenced as operands in an instruction value.
+/// Collect only READ operands — places that are read by the instruction.
+/// This excludes write targets (StoreLocal lvalue, DeclareLocal lvalue, etc.)
+/// because writes don't constitute dependencies: the scope produces these values,
+/// it doesn't consume them.
+fn collect_read_operand_places(value: &InstructionValue) -> Vec<&crate::hir::types::Place> {
+    let mut places = Vec::new();
+
+    match value {
+        InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+            places.push(place);
+        }
+        InstructionValue::StoreLocal { value, .. }
+        | InstructionValue::StoreContext { value, .. } => {
+            // Only the value being stored is a read; the lvalue is a write target
+            places.push(value);
+        }
+        InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. } => {
+            // Declarations are pure writes — no read operands
+        }
+        InstructionValue::Destructure { value, .. } => {
+            places.push(value);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            places.push(left);
+            places.push(right);
+        }
+        InstructionValue::UnaryExpression { value, .. } => {
+            places.push(value);
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            // These read AND write the lvalue — include as read
+            places.push(lvalue);
+        }
+        InstructionValue::CallExpression { callee, args } => {
+            places.push(callee);
+            for arg in args {
+                places.push(arg);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            places.push(receiver);
+            for arg in args {
+                places.push(arg);
+            }
+        }
+        InstructionValue::NewExpression { callee, args } => {
+            places.push(callee);
+            for arg in args {
+                places.push(arg);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => {
+            places.push(object);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            places.push(object);
+            places.push(value);
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            places.push(object);
+            places.push(property);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            places.push(object);
+            places.push(property);
+            places.push(value);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            places.push(object);
+            places.push(property);
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                places.push(&prop.value);
+                if let crate::hir::types::ObjectPropertyKey::Computed(place) = &prop.key {
+                    places.push(place);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    crate::hir::types::ArrayElement::Expression(p)
+                    | crate::hir::types::ArrayElement::Spread(p) => {
+                        places.push(p);
+                    }
+                    crate::hir::types::ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            places.push(tag);
+            for attr in props {
+                places.push(&attr.value);
+            }
+            for child in children {
+                places.push(child);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                places.push(child);
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                places.push(sub);
+            }
+        }
+        InstructionValue::Await { value }
+        | InstructionValue::GetIterator { collection: value }
+        | InstructionValue::NextPropertyOf { value }
+        | InstructionValue::TypeCastExpression { value, .. } => {
+            places.push(value);
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            places.push(iterator);
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            places.push(tag);
+            for sub in &value.subexpressions {
+                places.push(sub);
+            }
+        }
+        InstructionValue::StoreGlobal { value, .. } => {
+            places.push(value);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            places.push(decl);
+            for dep in deps {
+                places.push(dep);
+            }
+        }
+        // No operands
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. } => {}
+    }
+
+    places
+}
+
+/// Collect all places referenced as operands in an instruction value (both reads and writes).
+/// Used for consumer tracking where we need to know ALL uses of an identifier.
 fn collect_operand_places(value: &InstructionValue) -> Vec<&crate::hir::types::Place> {
     let mut places = Vec::new();
 

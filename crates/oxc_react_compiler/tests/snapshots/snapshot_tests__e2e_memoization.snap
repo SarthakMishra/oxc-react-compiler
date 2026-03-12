@@ -6,21 +6,14 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Counter() {
-  const $ = _c(4);
-  let count;
-  let setCount;
-  if ($[0] !== count || $[1] !== setCount) {
-    $[0] = count;
-    $[1] = setCount;
-  } else {
-  }
+  const $ = _c(2);
   let t22;
-  if ($[2] !== count) {
+  if ($[0] !== count) {
     t22 = _jsx("div", { children: count });
-    $[3] = t22;
-    $[2] = count;
+    $[1] = t22;
+    $[0] = count;
   } else {
-    t22 = $[3];
+    t22 = $[1];
   }
   return t22;
 }

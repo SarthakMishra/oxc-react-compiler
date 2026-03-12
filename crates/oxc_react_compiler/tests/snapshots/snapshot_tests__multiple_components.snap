@@ -6,38 +6,30 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Header(t0) {
-  const $ = _c(3);
+  const $ = _c(2);
   const { title } = t0;
+  let t13;
   if ($[0] !== title) {
+    t13 = _jsx("h1", { children: title });
+    $[1] = t13;
     $[0] = title;
   } else {
-  }
-  let t13;
-  if ($[1] !== title) {
-    t13 = _jsx("h1", { children: title });
-    $[2] = t13;
-    $[1] = title;
-  } else {
-    t13 = $[2];
+    t13 = $[1];
   }
   return t13;
 }
 
 
 function Footer(t0) {
-  const $ = _c(3);
+  const $ = _c(2);
   const { text } = t0;
+  let t13;
   if ($[0] !== text) {
+    t13 = _jsx("footer", { children: text });
+    $[1] = t13;
     $[0] = text;
   } else {
-  }
-  let t13;
-  if ($[1] !== text) {
-    t13 = _jsx("footer", { children: text });
-    $[2] = t13;
-    $[1] = text;
-  } else {
-    t13 = $[2];
+    t13 = $[1];
   }
   return t13;
 }

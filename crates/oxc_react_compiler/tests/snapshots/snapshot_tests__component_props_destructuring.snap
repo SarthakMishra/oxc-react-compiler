@@ -6,21 +6,16 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Greeting(t0) {
-  const $ = _c(5);
+  const $ = _c(3);
   const { name, age } = t0;
+  let t23;
   if ($[0] !== name || $[1] !== age) {
+    t23 = _jsxs("div", { children: ["Hello ", name, ", you are ", age] });
+    $[2] = t23;
     $[0] = name;
     $[1] = age;
   } else {
-  }
-  let t23;
-  if ($[2] !== name || $[3] !== age) {
-    t23 = _jsxs("div", { children: ["Hello ", name, ", you are ", age] });
-    $[4] = t23;
-    $[2] = name;
-    $[3] = age;
-  } else {
-    t23 = $[4];
+    t23 = $[2];
   }
   return t23;
 }

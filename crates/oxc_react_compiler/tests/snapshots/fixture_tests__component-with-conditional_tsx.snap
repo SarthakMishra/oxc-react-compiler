@@ -6,25 +6,19 @@ transformed: true
 diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 function Toggle(t0) {
-  const $ = _c(3);
+  const $ = _c(2);
   const { isOn } = t0;
+  let t15;
   if ($[0] !== isOn) {
+    t15 = isOn;
+    $[1] = t15;
     $[0] = isOn;
   } else {
-  }
-  let t15;
-  if ($[1] !== isOn) {
-    t15 = isOn;
-    $[2] = t15;
-    $[1] = isOn;
-  } else {
-    t15 = $[2];
+    t15 = $[1];
   }
   if (t15) {
     return t21;
-  } else {
   }
   return t18;
 }

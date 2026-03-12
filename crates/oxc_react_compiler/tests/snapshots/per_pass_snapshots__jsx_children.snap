@@ -6,21 +6,16 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Card(t0) {
-  const $ = _c(5);
+  const $ = _c(3);
   const { title, children } = t0;
+  let t31;
   if ($[0] !== title || $[1] !== children) {
+    t31 = _jsxs("div", { className: "card", children: [_jsx("h3", { children: title }), _jsx("div", { className: "body", children: children })] });
+    $[2] = t31;
     $[0] = title;
     $[1] = children;
   } else {
-  }
-  let t31;
-  if ($[2] !== title || $[3] !== children) {
-    t31 = _jsxs("div", { className: "card", children: [_jsx("h3", { children: title }), _jsx("div", { className: "body", children: children })] });
-    $[4] = t31;
-    $[2] = title;
-    $[3] = children;
-  } else {
-    t31 = $[4];
+    t31 = $[2];
   }
   return t31;
 }

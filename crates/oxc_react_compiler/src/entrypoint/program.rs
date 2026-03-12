@@ -92,6 +92,17 @@ fn compile_program_inner_with_config(
     }
 
     let config = config.clone();
+
+    // Check for module-level opt-out directives: 'use no memo' / 'use no forget'
+    if has_opt_out_directive(Some(parser_ret.program.directives.as_slice())) {
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics: vec![],
+            source_map: None,
+        };
+    }
+
     let mut compiled_functions: Vec<(Span, String)> = Vec::new();
     let mut function_source_maps: Vec<(Span, SourceMap)> = Vec::new();
     let mut diagnostics = Vec::new();
@@ -426,6 +437,7 @@ fn compile_statement<'a>(
                     fn_type,
                     func.body.as_ref().map(|b| b.directives.as_slice()),
                     options,
+                    func.params.items.len(),
                 ) {
                     let builder = HIRBuilder::new(config.clone());
                     if let Some((code, sm)) = try_compile_function(
@@ -496,6 +508,28 @@ fn compile_statement<'a>(
                 diagnostics,
             );
         }
+        Statement::ExpressionStatement(expr_stmt) => {
+            // Handle bare expression: React.memo(props => { ... });
+            if let Expression::CallExpression(call) = &expr_stmt.expression {
+                if is_react_wrapper_call(call) {
+                    // For standalone wrapper calls, the wrapper name itself acts as
+                    // the function type hint (Component by default for memo/forwardRef).
+                    let fn_type = ReactFunctionType::Component;
+                    let name = extract_wrapper_name(call);
+                    try_compile_wrapper_call(
+                        call,
+                        &name,
+                        fn_type,
+                        config,
+                        source_text,
+                        generate_source_map,
+                        compiled,
+                        source_maps,
+                        diagnostics,
+                    );
+                }
+            }
+        }
         _ => {}
     }
 }
@@ -522,6 +556,7 @@ fn compile_declaration<'a>(
                     fn_type,
                     func.body.as_ref().map(|b| b.directives.as_slice()),
                     options,
+                    func.params.items.len(),
                 ) {
                     let builder = HIRBuilder::new(config.clone());
                     if let Some((code, sm)) = try_compile_function(
@@ -575,7 +610,15 @@ fn compile_variable_declaration<'a>(
             let name = id.name.to_string();
             let fn_type = classify_function_name(&name);
 
-            if !should_compile(&name, fn_type, None, options) {
+            // Extract param count from the init expression for component filtering
+            let param_count = match init.without_parentheses() {
+                Expression::ArrowFunctionExpression(arrow) => arrow.params.items.len(),
+                Expression::FunctionExpression(func) => func.params.items.len(),
+                Expression::CallExpression(_) => 1, // React.memo/forwardRef wraps a component
+                _ => 0,
+            };
+
+            if !should_compile(&name, fn_type, None, options, param_count) {
                 continue;
             }
 
@@ -687,6 +730,7 @@ fn discover_in_statement<'a>(
                     fn_type,
                     func.body.as_ref().map(|b| b.directives.as_slice()),
                     options,
+                    func.params.items.len(),
                 ) {
                     let opt_out =
                         has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
@@ -740,6 +784,7 @@ fn discover_in_declaration<'a>(
                     fn_type,
                     func.body.as_ref().map(|b| b.directives.as_slice()),
                     options,
+                    func.params.items.len(),
                 ) {
                     let opt_out =
                         has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
@@ -786,7 +831,7 @@ fn discover_in_variable_declaration<'a>(
                 _ => (false, Span::default()),
             };
 
-            if is_function && should_compile(&name, fn_type, None, options) {
+            if is_function && should_compile(&name, fn_type, None, options, usize::MAX) {
                 functions.push(DiscoveredFunction {
                     name: Some(name),
                     fn_type,
@@ -809,6 +854,34 @@ fn classify_function_name(name: &str) -> ReactFunctionType {
     }
 }
 
+/// Extract a synthetic name from a React wrapper call for use as the compiled function name.
+/// For standalone `React.memo(fn)` without a variable binding, we use the inner function's
+/// name if available, or fall back to a generic name.
+fn extract_wrapper_name(call: &CallExpression<'_>) -> String {
+    // Try to get the name from the first argument (inner function)
+    if let Some(first_arg) = call.arguments.first() {
+        if !matches!(first_arg, Argument::SpreadElement(_)) {
+            let inner_expr: &Expression<'_> =
+                unsafe { &*std::ptr::from_ref::<Argument<'_>>(first_arg).cast::<Expression<'_>>() };
+            let inner = inner_expr.without_parentheses();
+            match inner {
+                Expression::FunctionExpression(func) => {
+                    if let Some(id) = func.id.as_ref() {
+                        return id.name.to_string();
+                    }
+                }
+                // Nested wrapper: React.memo(React.forwardRef(fn))
+                Expression::CallExpression(inner_call) if is_react_wrapper_call(inner_call) => {
+                    return extract_wrapper_name(inner_call);
+                }
+                _ => {}
+            }
+        }
+    }
+    // No inner name found — use a generic placeholder
+    "Component".to_string()
+}
+
 /// Check if a call expression is React.forwardRef/memo/lazy
 fn is_react_wrapper_call(call: &CallExpression<'_>) -> bool {
     match &call.callee {
@@ -827,12 +900,17 @@ fn is_react_wrapper_call(call: &CallExpression<'_>) -> bool {
     }
 }
 
-/// Decide if a function should be compiled based on options
+/// Decide if a function should be compiled based on options.
+///
+/// `param_count` is the number of formal parameters. In `Infer` mode, components
+/// must have at most 1 parameter (props). Functions with 2+ params are not
+/// considered components even if the name starts with an uppercase letter.
 fn should_compile(
     _name: &str,
     fn_type: ReactFunctionType,
     directives: Option<&[Directive<'_>]>,
     options: &PluginOptions,
+    param_count: usize,
 ) -> bool {
     // Check for opt-out
     if has_opt_out_directive(directives) {
@@ -842,8 +920,15 @@ fn should_compile(
     match options.compilation_mode {
         CompilationMode::All => true,
         CompilationMode::Infer => {
-            // Infer mode: compile components and hooks
-            matches!(fn_type, ReactFunctionType::Component | ReactFunctionType::Hook)
+            match fn_type {
+                ReactFunctionType::Hook => true,
+                ReactFunctionType::Component => {
+                    // Components take at most 1 parameter (props).
+                    // Functions with >1 param aren't components.
+                    param_count <= 1
+                }
+                ReactFunctionType::Other => false,
+            }
         }
         CompilationMode::Syntax => {
             // Only compile functions with "use memo" directive
@@ -874,7 +959,13 @@ fn should_compile_default_export(
 }
 
 fn has_opt_out_directive(directives: Option<&[Directive<'_>]>) -> bool {
-    directives.is_some_and(|dirs| dirs.iter().any(|d| d.directive.as_str() == "use no memo"))
+    directives.is_some_and(|dirs| {
+        dirs.iter().any(|d| {
+            let s = d.directive.as_str();
+            // "use no memo" is the current name; "use no forget" is the legacy name.
+            s == "use no memo" || s == "use no forget"
+        })
+    })
 }
 
 fn has_memo_directive(directives: Option<&[Directive<'_>]>) -> bool {
