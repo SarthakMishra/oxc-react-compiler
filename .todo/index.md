@@ -14,28 +14,15 @@ _(Nothing active)_
 
 ## Priority 1 -- Correctness
 
-- [x] Fix availability-schedule truncated output (zero memoization) -- [render-equivalence.md](render-equivalence.md)#gap-1-availability-schedule-truncated-output
-- [x] Fix phi-node / temporary variable resolution in ternary/logical branches -- [render-equivalence.md](render-equivalence.md)#gap-2-phi-node--temporary-variable-resolution
-- [x] Fix JSX hyphenated attribute name quoting (aria-label, data-*) -- [render-equivalence.md](render-equivalence.md)#gap-3-jsx-hyphenated-attribute-names
-- [x] Investigate multi-step-form timeout/segfault -- [render-equivalence.md](render-equivalence.md)#gap-4-multi-step-form-timeoutsegfault
+_(All items complete)_
 
 ## Priority 2 -- Upstream Parity
 
-- [x] Download upstream fixtures and generate expected outputs -- [upstream-conformance.md](upstream-conformance.md)#gap-1-download-and-catalog-upstream-fixtures
-- [x] Run baseline conformance and triage results -- [upstream-conformance.md](upstream-conformance.md)#gap-3-run-baseline-conformance-and-triage-results
-- [x] Populate known-failures.txt -- [upstream-conformance.md](upstream-conformance.md)#gap-4-populate-known-failurestxt
-- [x] Add conformance to CI as non-blocking check -- [upstream-conformance.md](upstream-conformance.md)#gap-5-add-conformance-to-ci-as-non-blocking-check
-- [x] Fix panics to increase upstream pass rate -- [upstream-conformance.md](upstream-conformance.md)#gap-6-iteratively-fix-panics-to-increase-pass-rate
-- [x] Fix high-priority upstream divergences -- [upstream-conformance.md](upstream-conformance.md)#gap-7-fix-high-priority-divergences (JSX parsing for .js files, conformance normalization; baseline 158/1717 pass, 0 panics)
-- [x] Address conservative memoization misses -- [render-equivalence.md](render-equivalence.md)#gap-5-conservative-memoization-misses (root causes identified: JSX codegen format, param destructuring, bail-out heuristics, scope analysis; conformance ratchet 163/1717 tracks improvements)
+_(All items complete)_
 
 ## Priority 3 -- Performance / Polish
 
-- [x] Add in-memory content-hash cache to Vite plugin -- [vite-caching.md](vite-caching.md)#gap-1-in-memory-content-hash-cache
-- [x] Add config change invalidation for cache -- [vite-caching.md](vite-caching.md)#gap-2-config-change-invalidation
-- [x] Optional disk cache for large projects -- [vite-caching.md](vite-caching.md)#gap-3-optional-disk-cache-for-large-projects
-- [x] Measure Vite plugin caching performance improvement -- [vite-caching.md](vite-caching.md)#gap-4-performance-measurement (vite-cache-bench.mjs script)
-- [x] Add render equivalence tracking to CI -- [render-equivalence.md](render-equivalence.md)#gap-6-test-infrastructure-for-render-equivalence
+_(All items complete)_
 
 ---
 
@@ -48,6 +35,29 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Render Equivalence (formerly render-equivalence.md)
+
+- Availability-schedule truncated output (zero memoization) fixed
+- Phi-node / temporary variable resolution in ternary/logical branches fixed
+- JSX hyphenated attribute name quoting (aria-label, data-*) fixed
+- Multi-step-form timeout/segfault investigated and resolved
+- Conservative memoization misses addressed (JSX codegen format, param destructuring, bail-out heuristics, scope analysis; conformance ratchet 163/1717)
+- Render equivalence tracking added to CI
+
+### Upstream Conformance (formerly upstream-conformance.md)
+
+- Upstream fixtures downloaded with expected outputs generated
+- Baseline conformance run and triaged (158/1717 pass, 0 panics)
+- known-failures.txt populated; conformance added to CI as non-blocking check
+- Panics fixed; high-priority divergences resolved (JSX parsing for .js files, conformance normalization)
+
+### Vite Caching (formerly vite-caching.md)
+
+- In-memory content-hash cache added to Vite plugin
+- Config change invalidation implemented
+- Optional disk cache for large projects added
+- Performance measured via vite-cache-bench.mjs script
 
 ### P0: Critical Bugs
 
