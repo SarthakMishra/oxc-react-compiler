@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 /// Top-level plugin options controlling the compiler behavior.
 #[derive(Debug, Clone)]

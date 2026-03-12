@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Optimize HIR for server-side rendering.
 //!

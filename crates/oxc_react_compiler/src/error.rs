@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::Span;

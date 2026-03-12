@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::hir::types::{
     HIR, IdentifierId, InstructionValue, ReactiveScopeDeclaration, ReactiveScopeDependency, ScopeId,

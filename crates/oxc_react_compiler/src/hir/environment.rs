@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use super::types::IdGenerator;
 use rustc_hash::FxHashMap;

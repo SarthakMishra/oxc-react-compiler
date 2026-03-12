@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::hir::types::{
     DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId, InstructionId,
@@ -119,35 +118,35 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
     // Phase 4: Propagate scope membership to consuming instructions.
     // If an instruction uses a scoped operand, the instruction's lvalue should also be
     // in the same scope. Also propagate through Destructure pattern targets.
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for (_, block) in &hir.blocks {
-            for instr in &block.instructions {
-                let lvalue_id = instr.lvalue.identifier.id;
+    //
+    // PERF: The previous implementation used a `while changed` fixed-point loop that
+    // re-scanned all blocks on each iteration, yielding O(N*K) work where K is the
+    // longest chain of scope-propagating instructions (worst-case O(N^2) for deeply
+    // nested JSX trees like canvas-sidebar). Because HIR blocks and their instructions
+    // are in forward data-flow order (SSA), a single forward pass is sufficient:
+    // by the time we visit an instruction, all of its operands have already been
+    // processed, so scope membership propagates transitively in one sweep.
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            let lvalue_id = instr.lvalue.identifier.id;
 
-                // If this instruction is scoped, propagate to Destructure pattern targets
-                if let Some(&scope_idx) = id_to_scope_idx.get(&lvalue_id) {
-                    if let InstructionValue::Destructure { lvalue_pattern, .. } = &instr.value {
-                        let target_ids = collect_destructure_target_ids(lvalue_pattern);
-                        for tid in target_ids {
-                            if !id_to_scope_idx.contains_key(&tid) {
-                                id_to_scope_idx.insert(tid, scope_idx);
-                                changed = true;
-                            }
-                        }
+            // If this instruction is already scoped, propagate to Destructure pattern targets
+            if let Some(&scope_idx) = id_to_scope_idx.get(&lvalue_id) {
+                if let InstructionValue::Destructure { lvalue_pattern, .. } = &instr.value {
+                    let target_ids = collect_destructure_target_ids(lvalue_pattern);
+                    for tid in target_ids {
+                        id_to_scope_idx.entry(tid).or_insert(scope_idx);
                     }
-                    continue;
                 }
+                continue;
+            }
 
-                // Check if any operand is in a scope
-                let operand_ids = collect_operand_ids(&instr.value);
-                for op_id in &operand_ids {
-                    if let Some(&scope_idx) = id_to_scope_idx.get(op_id) {
-                        id_to_scope_idx.insert(lvalue_id, scope_idx);
-                        changed = true;
-                        break;
-                    }
+            // Check if any operand is in a scope
+            let operand_ids = collect_operand_ids(&instr.value);
+            for op_id in &operand_ids {
+                if let Some(&scope_idx) = id_to_scope_idx.get(op_id) {
+                    id_to_scope_idx.insert(lvalue_id, scope_idx);
+                    break;
                 }
             }
         }

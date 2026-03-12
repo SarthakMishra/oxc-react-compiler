@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use std::ops::Index;
 
@@ -84,6 +83,13 @@ impl<K: Eq, V> Default for OrderedMap<K, V> {
 ///
 /// Panics if the key is not present. Prefer `OrderedMap::get()` when key
 /// existence cannot be guaranteed at the call-site.
+///
+/// # Safety audit (2026-03-12)
+///
+/// Currently `OrderedMap` has **no external callers** — it is only exercised by
+/// the unit tests in this module (`test_index` and `test_index_missing_key_panics`).
+/// The `Index` impl is provided for API completeness and ergonomics; callers that
+/// cannot guarantee key presence should use `OrderedMap::get()` instead.
 impl<K: Eq, V> Index<&K> for OrderedMap<K, V> {
     type Output = V;
 

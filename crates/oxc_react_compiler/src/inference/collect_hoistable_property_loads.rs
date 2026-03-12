@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Collect property loads that can be safely hoisted to scope entry.
 //!

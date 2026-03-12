@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;

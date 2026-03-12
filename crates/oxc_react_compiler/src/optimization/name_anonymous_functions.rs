@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::hir::types::{HIR, InstructionValue};
 
 /// Give names to anonymous function expressions based on their assignment target.

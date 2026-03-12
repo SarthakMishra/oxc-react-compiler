@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Validate that known impure functions are not called during render.
 //!

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Shared utilities for manipulating reactive scope dependencies.
 //!

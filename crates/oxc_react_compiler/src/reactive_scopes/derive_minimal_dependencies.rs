@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Derive minimal set of dependencies for each reactive scope.
 //!

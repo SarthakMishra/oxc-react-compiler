@@ -46,10 +46,10 @@ _(Nothing active)_
 - [x] enableVerboseNoSetStateInEffect richer diagnostics -- [config-parity.md](config-parity.md)#gap-11-enableverbosenosetstateineffect-richer-diagnostics
 - [x] assertValidMutableRanges config gate -- [config-parity.md](config-parity.md)#gap-3-assertvalidmutableranges-should-be-config-gated
 - [x] enableNameAnonymousFunctions config gate -- [config-parity.md](config-parity.md)#gap-4-enablenameanonymousfunctions-config-gate-missing
-- [ ] optimize_for_ssr.rs: comprehensive memoization stripping -- [pipeline-completeness.md](pipeline-completeness.md)#gap-1-optimize_for_ssrrs----minimal-ssr-stripping
-- [ ] validate_static_components.rs: React.memo detection, scope analysis -- [pipeline-completeness.md](pipeline-completeness.md)#gap-4-validate_static_componentsrs----pascalcase-check-only
+- [x] optimize_for_ssr.rs: comprehensive memoization stripping -- [pipeline-completeness.md](pipeline-completeness.md)#gap-1-optimize_for_ssrrs----minimal-ssr-stripping
+- [x] validate_static_components.rs: React.memo detection, scope analysis -- [pipeline-completeness.md](pipeline-completeness.md)#gap-4-validate_static_componentsrs----pascalcase-check-only
 - [x] outline_jsx.rs: verify no-op claim or implement outlining -- [pipeline-completeness.md](pipeline-completeness.md)#gap-5-outline_jsxrs----effectively-a-no-op
-- [ ] outline_functions.rs: actual hoisting + codegen support -- [pipeline-completeness.md](pipeline-completeness.md)#gap-6-outline_functionsrs----identifies-candidates-but-no-hoisting
+- [x] outline_functions.rs: actual hoisting + codegen support -- [pipeline-completeness.md](pipeline-completeness.md)#gap-6-outline_functionsrs----identifies-candidates-but-no-hoisting
 - [x] assertWellFormedBreakTargets validation -- [pipeline-completeness.md](pipeline-completeness.md)#gap-12-assertwellformedbreaktargets----break-target-validation
 - [x] PruneTemporaryLValues optimization -- [pipeline-completeness.md](pipeline-completeness.md)#gap-13-prunetemporarylvalues----temporary-cleanup
 
@@ -57,16 +57,16 @@ _(Nothing active)_
 
 ## P3: Code Quality (error handling, performance, maintainability)
 
-- [ ] disjoint_set.rs: replace expect() with Result in public API -- [code-quality.md](code-quality.md)#gap-1-disjoint_setrs36----expect-in-public-api
-- [ ] hir/build.rs: improve expect() messages on block lookups -- [code-quality.md](code-quality.md)#gap-3-hirbuildrs----multiple-expectunwrap-on-block-existence
-- [ ] ssa/enter_ssa.rs: add context to unwrap() on dominator map -- [code-quality.md](code-quality.md)#gap-4-ssaenter_ssars160163----unwrap-on-dominator-map
+- [x] disjoint_set.rs: replace expect() with Result in public API -- [code-quality.md](code-quality.md)#gap-1-disjoint_setrs36----expect-in-public-api
+- [x] hir/build.rs: improve expect() messages on block lookups -- [code-quality.md](code-quality.md)#gap-3-hirbuildrs----multiple-expectunwrap-on-block-existence
+- [x] ssa/enter_ssa.rs: add context to unwrap() on dominator map -- [code-quality.md](code-quality.md)#gap-4-ssaenter_ssars160163----unwrap-on-dominator-map
 - [ ] ordered_map.rs: audit Index impl callers for safety -- [code-quality.md](code-quality.md)#gap-2-ordered_maprs87----expect-in-index-impl
-- [ ] React.forwardRef / React.memo wrapper handling in program.rs -- [code-quality.md](code-quality.md)#gap-11-missing-reactforwardref--reactmemo-wrapper-handling-in-function-discovery
-- [ ] Add DIVERGENCE comments for intentional algorithm differences -- [code-quality.md](code-quality.md)#gap-10-missing--divergence-comments-for-intentional-algorithm-differences
+- [x] React.forwardRef / React.memo wrapper handling in program.rs -- [code-quality.md](code-quality.md)#gap-11-missing-reactforwardref--reactmemo-wrapper-handling-in-function-discovery
+- [x] Add DIVERGENCE comments for intentional algorithm differences -- [code-quality.md](code-quality.md)#gap-10-missing--divergence-comments-for-intentional-algorithm-differences
 - [ ] Audit and remove #![allow(dead_code)] from ~40 files -- [code-quality.md](code-quality.md)#gap-9-allowdead_code-on-40-files
 - [ ] place.clone() proliferation -- consider Rc or arena allocation -- [code-quality.md](code-quality.md)#gap-5-placeclone-proliferation-in-reactive-scope-analysis
 - [ ] .to_string() on identifiers -- use Cow/Atom where possible -- [code-quality.md](code-quality.md)#gap-6-to_string-on-identifiers-in-hot-paths
-- [ ] infer_reactive_scope_variables.rs double allocation -- [code-quality.md](code-quality.md)#gap-7-infer_reactive_scope_variablesrs----double-allocation
+- [x] infer_reactive_scope_variables.rs double allocation -- [code-quality.md](code-quality.md)#gap-7-infer_reactive_scope_variablesrs----double-allocation
 
 ---
 

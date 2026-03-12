@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::hir::types::{HIR, IdentifierId, InstructionValue, Place};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -202,7 +200,7 @@ fn collect_pattern_names(
     pattern: &crate::hir::types::DestructurePattern,
     names: &mut FxHashSet<String>,
 ) {
-    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern};
 
     match pattern {
         DestructurePattern::Object { properties, rest } => {

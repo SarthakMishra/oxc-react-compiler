@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::hir::types::{
     BasicBlock, BlockId, HIR, Param, ReactiveBlock, ReactiveFunction, ReactiveInstruction,

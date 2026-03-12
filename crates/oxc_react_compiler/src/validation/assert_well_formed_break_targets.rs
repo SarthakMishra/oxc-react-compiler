@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Validate that all break/continue targets are well-formed.
 //!

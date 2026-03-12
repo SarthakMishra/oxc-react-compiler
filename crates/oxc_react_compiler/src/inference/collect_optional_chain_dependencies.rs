@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 //! Collect optional chain dependency semantics.
 //!

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::error::{CompilerError, ErrorCollector};
 use crate::hir::types::HIR;

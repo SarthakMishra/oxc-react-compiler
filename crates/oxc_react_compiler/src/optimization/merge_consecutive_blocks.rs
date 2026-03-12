@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::hir::types::{BlockId, HIR, Terminal};
 use rustc_hash::FxHashMap;

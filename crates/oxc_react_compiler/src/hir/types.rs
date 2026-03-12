@@ -4,8 +4,6 @@
 //! They represent the compiler's internal representation of React components
 //! and hooks after lowering from the AST.
 
-#![allow(dead_code)]
-
 use std::fmt;
 
 use oxc_span::Span;
@@ -1006,3 +1004,14 @@ impl Default for IdGenerator {
         Self::new()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Compile-time size assertions – prevent accidental size regressions.
+// Limits are set ~20% above current sizes, rounded to power-of-2 boundaries.
+// If a variant is added that pushes the size past the limit, this will fail
+// at compile time, signalling that the change should be reviewed for impact.
+// ---------------------------------------------------------------------------
+const _: () = assert!(std::mem::size_of::<InstructionValue>() <= 256);
+const _: () = assert!(std::mem::size_of::<Terminal>() <= 128);
+const _: () = assert!(std::mem::size_of::<Place>() <= 128);
+const _: () = assert!(std::mem::size_of::<Instruction>() <= 512);

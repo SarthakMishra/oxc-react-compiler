@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::globals::is_hook_name;

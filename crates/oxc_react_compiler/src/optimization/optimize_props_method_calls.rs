@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::hir::types::{
     Effect, HIR, Identifier, IdentifierId, Instruction, InstructionId, InstructionValue,

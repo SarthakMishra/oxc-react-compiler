@@ -552,6 +552,12 @@ pub fn apply_compilation(
     result
 }
 
+// Optimization opportunity: this clones the String when a name exists and
+// allocates via format!() for unnamed temporaries. Returning Cow<'_, str>
+// would avoid both allocations (Cow::Borrowed for named, Cow::Owned for
+// unnamed). However, many call sites collect into Vec<String> and feed into
+// join()/format!(), so the signature change cascades widely. Deferred until
+// profiling shows this is a measurable hotspot.
 fn place_name(place: &Place) -> String {
     place.identifier.name.clone().unwrap_or_else(|| format!("t{}", place.identifier.id.0))
 }

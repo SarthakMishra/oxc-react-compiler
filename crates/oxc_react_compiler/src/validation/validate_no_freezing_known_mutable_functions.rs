@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{AliasingEffect, HIR, IdentifierId, InstructionValue};

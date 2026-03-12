@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 use super::object_shape::{
     CallKind, FunctionSignature, ObjectShape, ParamEffect, PropertyShape, ShapeId, ShapeRegistry,
