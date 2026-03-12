@@ -42,6 +42,8 @@ pub enum CompilationMode {
 pub enum OutputMode {
     /// Normal client-side compilation with memoization
     Client,
+    /// Client-side without memoization (benchmarking/testing the raw transform)
+    ClientNoMemo,
     /// Server-side rendering mode (different memoization strategy)
     SSR,
     /// Lint-only mode: run analysis, collect errors, skip codegen
@@ -103,6 +105,7 @@ impl PluginOptions {
             opts.output_mode = match output.as_str() {
                 "ssr" => OutputMode::SSR,
                 "lint" => OutputMode::Lint,
+                "client-no-memo" => OutputMode::ClientNoMemo,
                 _ => OutputMode::Client,
             };
         }

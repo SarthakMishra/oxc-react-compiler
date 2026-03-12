@@ -26,6 +26,10 @@ pub struct EnvironmentConfig {
     pub validate_exhaustive_memo_dependencies: bool,
     pub validate_exhaustive_effect_dependencies: bool,
 
+    // Debug / internal flags
+    pub assert_valid_mutable_ranges: bool,
+    pub enable_name_anonymous_functions: bool,
+
     // Analysis behavior flags
     pub enable_assume_hooks_follow_rules_of_react: bool,
     pub enable_transitively_freeze_function_expressions: bool,
@@ -60,6 +64,8 @@ impl Default for EnvironmentConfig {
             validate_no_capitalized_calls: true,
             validate_exhaustive_memo_dependencies: false,
             validate_exhaustive_effect_dependencies: false,
+            assert_valid_mutable_ranges: false,
+            enable_name_anonymous_functions: true,
             enable_assume_hooks_follow_rules_of_react: false,
             enable_transitively_freeze_function_expressions: true,
             enable_optional_dependencies: true,

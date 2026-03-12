@@ -35,7 +35,7 @@ _(Nothing active)_
 
 ## P2: Upstream Parity (config flags, output modes, missing validation passes)
 
-- [ ] OutputMode::ClientNoMemo variant for benchmarking -- [config-parity.md](config-parity.md)#gap-5-outputmodeclientnomemo-variant-missing
+- [x] OutputMode::ClientNoMemo variant for benchmarking -- [config-parity.md](config-parity.md)#gap-5-outputmodeclientnomemo-variant-missing
 - [ ] validateExhaustiveEffectDependencies enum (off/all/missing-only/extra-only) -- [config-parity.md](config-parity.md)#gap-1-validateexhaustiveeffectdependencies-should-be-an-enum
 - [ ] enableEmitHookGuards ExternalFunction config -- [config-parity.md](config-parity.md)#gap-2-enableemithookguards-should-accept-externalfunction-config
 - [ ] validateNoImpureFunctionsInRender validation pass -- [config-parity.md](config-parity.md)#gap-6-validatenoimpurefunctionsinrender-validation-pass-missing
@@ -44,11 +44,11 @@ _(Nothing active)_
 - [ ] enableTreatSetIdentifiersAsStateSetters heuristic -- [config-parity.md](config-parity.md)#gap-9-enabletreatsetidentifiersasstatesetters-heuristic
 - [ ] enableAllowSetStateFromRefsInEffects nuance -- [config-parity.md](config-parity.md)#gap-10-enableallowsetstatefromrefsineffects-nuance
 - [ ] enableVerboseNoSetStateInEffect richer diagnostics -- [config-parity.md](config-parity.md)#gap-11-enableverbosenosetstateineffect-richer-diagnostics
-- [ ] assertValidMutableRanges config gate -- [config-parity.md](config-parity.md)#gap-3-assertvalidmutableranges-should-be-config-gated
-- [ ] enableNameAnonymousFunctions config gate -- [config-parity.md](config-parity.md)#gap-4-enablenameanonymousfunctions-config-gate-missing
+- [x] assertValidMutableRanges config gate -- [config-parity.md](config-parity.md)#gap-3-assertvalidmutableranges-should-be-config-gated
+- [x] enableNameAnonymousFunctions config gate -- [config-parity.md](config-parity.md)#gap-4-enablenameanonymousfunctions-config-gate-missing
 - [ ] optimize_for_ssr.rs: comprehensive memoization stripping -- [pipeline-completeness.md](pipeline-completeness.md)#gap-1-optimize_for_ssrrs----minimal-ssr-stripping
 - [ ] validate_static_components.rs: React.memo detection, scope analysis -- [pipeline-completeness.md](pipeline-completeness.md)#gap-4-validate_static_componentsrs----pascalcase-check-only
-- [ ] outline_jsx.rs: verify no-op claim or implement outlining -- [pipeline-completeness.md](pipeline-completeness.md)#gap-5-outline_jsxrs----effectively-a-no-op
+- [x] outline_jsx.rs: verify no-op claim or implement outlining -- [pipeline-completeness.md](pipeline-completeness.md)#gap-5-outline_jsxrs----effectively-a-no-op
 - [ ] outline_functions.rs: actual hoisting + codegen support -- [pipeline-completeness.md](pipeline-completeness.md)#gap-6-outline_functionsrs----identifies-candidates-but-no-hoisting
 - [ ] assertWellFormedBreakTargets validation -- [pipeline-completeness.md](pipeline-completeness.md)#gap-12-assertwellformedbreaktargets----break-target-validation
 - [ ] PruneTemporaryLValues optimization -- [pipeline-completeness.md](pipeline-completeness.md)#gap-13-prunetemporarylvalues----temporary-cleanup

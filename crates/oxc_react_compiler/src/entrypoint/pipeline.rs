@@ -100,8 +100,10 @@ pub fn run_pipeline(
     // Pass 21: validate_locals_not_reassigned_after_render
     crate::validation::validate_locals_not_reassigned_after_render::validate_locals_not_reassigned_after_render(hir, errors);
 
-    // Pass 22: assert_valid_mutable_ranges
-    crate::validation::assert_valid_mutable_ranges::assert_valid_mutable_ranges(hir, errors);
+    // Pass 22: assert_valid_mutable_ranges (config-gated, default off)
+    if config.assert_valid_mutable_ranges {
+        crate::validation::assert_valid_mutable_ranges::assert_valid_mutable_ranges(hir, errors);
+    }
 
     // Phase 6: Validation Battery
     // Pass 23: validate_no_ref_access_in_render (conditional)
@@ -171,8 +173,10 @@ pub fn run_pipeline(
         crate::optimization::outline_jsx::outline_jsx(hir);
     }
 
-    // Pass 36: name_anonymous_functions
-    crate::optimization::name_anonymous_functions::name_anonymous_functions(hir);
+    // Pass 36: name_anonymous_functions (config-gated, default on)
+    if config.enable_name_anonymous_functions {
+        crate::optimization::name_anonymous_functions::name_anonymous_functions(hir);
+    }
 
     // Pass 37: outline_functions (conditional)
     if config.enable_function_outlining {
