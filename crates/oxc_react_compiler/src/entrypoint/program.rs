@@ -1,4 +1,3 @@
-
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_diagnostics::OxcDiagnostic;
@@ -80,7 +79,7 @@ fn compile_program_inner_with_config(
     generate_source_map: bool,
 ) -> CompileResult {
     let allocator = Allocator::default();
-    let source_type = SourceType::from_path(filename).unwrap_or_default();
+    let source_type = SourceType::from_path(filename).unwrap_or_default().with_jsx(true);
     let parser_ret = Parser::new(&allocator, source, source_type).parse();
 
     if parser_ret.panicked {
@@ -227,10 +226,9 @@ fn compose_source_maps(
     if source_pos < original_source.len() {
         let remaining = &original_source[source_pos..];
         for ch in remaining.chars() {
-            if (output_col == 0 || ch == '\n')
-                && ch != '\n' {
-                    composed.add_mapping(output_line, output_col, orig_line, orig_col);
-                }
+            if (output_col == 0 || ch == '\n') && ch != '\n' {
+                composed.add_mapping(output_line, output_col, orig_line, orig_col);
+            }
             if ch == '\n' {
                 output_line += 1;
                 output_col = 0;
@@ -435,30 +433,31 @@ fn compile_statement<'a>(
                 }
             }
         }
-        Statement::ExportDefaultDeclaration(export) => if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration {
-            let name = func.id.as_ref().map(|id| id.name.to_string());
-            let fn_type = name
-                .as_deref()
-                .map_or(ReactFunctionType::Component, classify_function_name);
+        Statement::ExportDefaultDeclaration(export) => {
+            if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration {
+                let name = func.id.as_ref().map(|id| id.name.to_string());
+                let fn_type =
+                    name.as_deref().map_or(ReactFunctionType::Component, classify_function_name);
 
-            if should_compile_default_export(name.as_deref(), fn_type, options) {
-                let builder = HIRBuilder::new(config.clone());
-                if let Some((code, sm)) = try_compile_function(
-                    builder,
-                    func,
-                    fn_type,
-                    config,
-                    source_text,
-                    generate_source_map,
-                    diagnostics,
-                ) {
-                    if let Some(sm) = sm {
-                        source_maps.push((func.span, sm));
+                if should_compile_default_export(name.as_deref(), fn_type, options) {
+                    let builder = HIRBuilder::new(config.clone());
+                    if let Some((code, sm)) = try_compile_function(
+                        builder,
+                        func,
+                        fn_type,
+                        config,
+                        source_text,
+                        generate_source_map,
+                        diagnostics,
+                    ) {
+                        if let Some(sm) = sm {
+                            source_maps.push((func.span, sm));
+                        }
+                        compiled.push((func.span, code));
                     }
-                    compiled.push((func.span, code));
                 }
             }
-        },
+        }
         Statement::ExportNamedDeclaration(export) => {
             if let Some(decl) = &export.declaration {
                 compile_declaration(
@@ -559,72 +558,73 @@ fn compile_variable_declaration<'a>(
 ) {
     for declarator in &decl.declarations {
         if let Some(init) = &declarator.init
-            && let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                let name = id.name.to_string();
-                let fn_type = classify_function_name(&name);
+            && let BindingPattern::BindingIdentifier(id) = &declarator.id
+        {
+            let name = id.name.to_string();
+            let fn_type = classify_function_name(&name);
 
-                if !should_compile(&name, fn_type, None, options) {
-                    continue;
-                }
-
-                match init.without_parentheses() {
-                    Expression::ArrowFunctionExpression(arrow) => {
-                        // Check for "use no memo" directive in arrow body
-                        if has_opt_out_directive(Some(arrow.body.directives.as_slice())) {
-                            continue;
-                        }
-                        let builder = HIRBuilder::new(config.clone());
-                        if let Some((code, sm)) = try_compile_arrow(
-                            builder,
-                            arrow,
-                            Some(name),
-                            fn_type,
-                            config,
-                            source_text,
-                            generate_source_map,
-                            diagnostics,
-                        ) {
-                            if let Some(sm) = sm {
-                                source_maps.push((arrow.span, sm));
-                            }
-                            compiled.push((arrow.span, code));
-                        }
-                    }
-                    Expression::FunctionExpression(func) => {
-                        let builder = HIRBuilder::new(config.clone());
-                        if let Some((code, sm)) = try_compile_function(
-                            builder,
-                            func,
-                            fn_type,
-                            config,
-                            source_text,
-                            generate_source_map,
-                            diagnostics,
-                        ) {
-                            if let Some(sm) = sm {
-                                source_maps.push((func.span, sm));
-                            }
-                            compiled.push((func.span, code));
-                        }
-                    }
-                    // Handle React.forwardRef(() => ...) and React.memo(() => ...),
-                    // including nested: React.memo(React.forwardRef(() => ...))
-                    Expression::CallExpression(call) if is_react_wrapper_call(call) => {
-                        try_compile_wrapper_call(
-                            call,
-                            &name,
-                            fn_type,
-                            config,
-                            source_text,
-                            generate_source_map,
-                            compiled,
-                            source_maps,
-                            diagnostics,
-                        );
-                    }
-                    _ => {}
-                }
+            if !should_compile(&name, fn_type, None, options) {
+                continue;
             }
+
+            match init.without_parentheses() {
+                Expression::ArrowFunctionExpression(arrow) => {
+                    // Check for "use no memo" directive in arrow body
+                    if has_opt_out_directive(Some(arrow.body.directives.as_slice())) {
+                        continue;
+                    }
+                    let builder = HIRBuilder::new(config.clone());
+                    if let Some((code, sm)) = try_compile_arrow(
+                        builder,
+                        arrow,
+                        Some(name),
+                        fn_type,
+                        config,
+                        source_text,
+                        generate_source_map,
+                        diagnostics,
+                    ) {
+                        if let Some(sm) = sm {
+                            source_maps.push((arrow.span, sm));
+                        }
+                        compiled.push((arrow.span, code));
+                    }
+                }
+                Expression::FunctionExpression(func) => {
+                    let builder = HIRBuilder::new(config.clone());
+                    if let Some((code, sm)) = try_compile_function(
+                        builder,
+                        func,
+                        fn_type,
+                        config,
+                        source_text,
+                        generate_source_map,
+                        diagnostics,
+                    ) {
+                        if let Some(sm) = sm {
+                            source_maps.push((func.span, sm));
+                        }
+                        compiled.push((func.span, code));
+                    }
+                }
+                // Handle React.forwardRef(() => ...) and React.memo(() => ...),
+                // including nested: React.memo(React.forwardRef(() => ...))
+                Expression::CallExpression(call) if is_react_wrapper_call(call) => {
+                    try_compile_wrapper_call(
+                        call,
+                        &name,
+                        fn_type,
+                        config,
+                        source_text,
+                        generate_source_map,
+                        compiled,
+                        source_maps,
+                        diagnostics,
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -687,18 +687,19 @@ fn discover_in_statement<'a>(
                 }
             }
         }
-        Statement::ExportDefaultDeclaration(export) => if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration {
-            let name = func.id.as_ref().map(|id| id.name.to_string());
-            let fn_type = name
-                .as_deref()
-                .map_or(ReactFunctionType::Component, classify_function_name);
+        Statement::ExportDefaultDeclaration(export) => {
+            if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration {
+                let name = func.id.as_ref().map(|id| id.name.to_string());
+                let fn_type =
+                    name.as_deref().map_or(ReactFunctionType::Component, classify_function_name);
 
-            if should_compile_default_export(name.as_deref(), fn_type, options) {
-                let opt_out =
-                    has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
-                functions.push(DiscoveredFunction { name, fn_type, span: func.span, opt_out });
+                if should_compile_default_export(name.as_deref(), fn_type, options) {
+                    let opt_out =
+                        has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
+                    functions.push(DiscoveredFunction { name, fn_type, span: func.span, opt_out });
+                }
             }
-        },
+        }
         Statement::ExportNamedDeclaration(export) => {
             if let Some(decl) = &export.declaration {
                 discover_in_declaration(decl, options, functions);
@@ -753,34 +754,35 @@ fn discover_in_variable_declaration<'a>(
 ) {
     for declarator in &decl.declarations {
         if let Some(init) = &declarator.init
-            && let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                let name = id.name.to_string();
-                let fn_type = classify_function_name(&name);
+            && let BindingPattern::BindingIdentifier(id) = &declarator.id
+        {
+            let name = id.name.to_string();
+            let fn_type = classify_function_name(&name);
 
-                // Check if initializer is a function expression or arrow
-                let (is_function, span) = match init.without_parentheses() {
-                    Expression::ArrowFunctionExpression(arrow) => (true, arrow.span),
-                    Expression::FunctionExpression(func) => (true, func.span),
-                    // Handle React.forwardRef(() => ...) and React.memo(() => ...)
-                    Expression::CallExpression(call) => {
-                        if is_react_wrapper_call(call) {
-                            (true, call.span)
-                        } else {
-                            (false, Span::default())
-                        }
+            // Check if initializer is a function expression or arrow
+            let (is_function, span) = match init.without_parentheses() {
+                Expression::ArrowFunctionExpression(arrow) => (true, arrow.span),
+                Expression::FunctionExpression(func) => (true, func.span),
+                // Handle React.forwardRef(() => ...) and React.memo(() => ...)
+                Expression::CallExpression(call) => {
+                    if is_react_wrapper_call(call) {
+                        (true, call.span)
+                    } else {
+                        (false, Span::default())
                     }
-                    _ => (false, Span::default()),
-                };
-
-                if is_function && should_compile(&name, fn_type, None, options) {
-                    functions.push(DiscoveredFunction {
-                        name: Some(name),
-                        fn_type,
-                        span,
-                        opt_out: false,
-                    });
                 }
+                _ => (false, Span::default()),
+            };
+
+            if is_function && should_compile(&name, fn_type, None, options) {
+                functions.push(DiscoveredFunction {
+                    name: Some(name),
+                    fn_type,
+                    span,
+                    opt_out: false,
+                });
             }
+        }
     }
 }
 

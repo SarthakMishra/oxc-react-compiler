@@ -1,4 +1,3 @@
-
 use crate::error::{ErrorCollector, PanicThreshold};
 use crate::hir::environment::EnvironmentConfig;
 use crate::hir::types::{HIR, HIRFunction, ReactiveFunction};
@@ -284,40 +283,17 @@ pub fn run_full_pipeline(
     );
 
     // Phase 9: RF Optimization Passes (48–60)
-    // Pass 48: prune_unused_labels
     crate::reactive_scopes::prune_scopes::prune_unused_labels(&mut rf);
-
-    // Pass 49: prune_non_escaping_scopes
     crate::reactive_scopes::prune_scopes::prune_non_escaping_scopes(&mut rf);
-
-    // Pass 50: prune_non_reactive_dependencies
     crate::reactive_scopes::prune_scopes::prune_non_reactive_dependencies(&mut rf);
-
-    // Pass 51: prune_unused_scopes
     crate::reactive_scopes::prune_scopes::prune_unused_scopes(&mut rf);
-
-    // Pass 52: merge_reactive_scopes_that_invalidate_together
     crate::reactive_scopes::merge_scopes::merge_reactive_scopes_that_invalidate_together(&mut rf);
-
-    // Pass 53: prune_always_invalidating_scopes
     crate::reactive_scopes::prune_scopes::prune_always_invalidating_scopes(&mut rf);
-
-    // Pass 54: propagate_early_returns
     crate::reactive_scopes::prune_scopes::propagate_early_returns(&mut rf);
-
-    // Pass 55: prune_unused_lvalues
     crate::reactive_scopes::prune_scopes::prune_unused_lvalues(&mut rf);
-
-    // Pass 56: promote_used_temporaries
     crate::reactive_scopes::prune_scopes::promote_used_temporaries(&mut rf);
-
-    // Pass 57: extract_scope_declarations_from_destructuring
     crate::reactive_scopes::prune_scopes::extract_scope_declarations_from_destructuring(&mut rf);
-
-    // Pass 58: stabilize_block_ids
     crate::reactive_scopes::prune_scopes::stabilize_block_ids(&mut rf);
-
-    // Pass 59: rename_variables
     crate::reactive_scopes::prune_scopes::rename_variables(&mut rf);
 
     // Pass 60: prune_hoisted_contexts
