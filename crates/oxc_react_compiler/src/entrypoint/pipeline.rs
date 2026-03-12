@@ -159,8 +159,20 @@ pub fn run_pipeline(
     );
 
     // Pass 31.5: compute_unconditional_blocks (feeds CollectHoistablePropertyLoads)
-    let _unconditional =
-        crate::hir::compute_unconditional_blocks::compute_unconditional_blocks(hir);
+    let unconditional = crate::hir::compute_unconditional_blocks::compute_unconditional_blocks(hir);
+
+    // Pass 31.6: collect_hoistable_property_loads (non-null guarantees for dependency precision)
+    let _hoistable =
+        crate::inference::collect_hoistable_property_loads::collect_hoistable_property_loads(
+            hir,
+            &unconditional,
+        );
+
+    // Pass 31.7: collect_optional_chain_dependencies (safe dependency paths for ?. chains)
+    let _optional_chains =
+        crate::inference::collect_optional_chain_dependencies::collect_optional_chain_dependencies(
+            hir,
+        );
 
     // Pass 32: validate_static_components
     crate::validation::validate_static_components::validate_static_components(hir, errors);
