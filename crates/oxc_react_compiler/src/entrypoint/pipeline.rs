@@ -158,6 +158,10 @@ pub fn run_pipeline(
         hir,
     );
 
+    // Pass 31.5: compute_unconditional_blocks (feeds CollectHoistablePropertyLoads)
+    let _unconditional =
+        crate::hir::compute_unconditional_blocks::compute_unconditional_blocks(hir);
+
     // Pass 32: validate_static_components
     crate::validation::validate_static_components::validate_static_components(hir, errors);
 
