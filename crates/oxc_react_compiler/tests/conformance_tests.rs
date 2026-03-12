@@ -31,9 +31,20 @@ use std::path::{Path, PathBuf};
 /// - Trailing whitespace and newlines
 fn normalize_output(code: &str) -> String {
     let mut lines: Vec<String> = Vec::new();
+    let mut in_fixture_entrypoint = false;
 
     for line in code.lines() {
         let trimmed = line.trim();
+
+        // Skip the FIXTURE_ENTRYPOINT test harness block — it's not part of
+        // the actual compiled output and Babel reformats it differently.
+        if trimmed.starts_with("export const FIXTURE_ENTRYPOINT") {
+            in_fixture_entrypoint = true;
+            continue;
+        }
+        if in_fixture_entrypoint {
+            continue;
+        }
 
         // Skip import statements (our runtime import paths and JSX imports may differ)
         if trimmed.starts_with("import ")
@@ -44,10 +55,6 @@ fn normalize_output(code: &str) -> String {
         {
             continue;
         }
-
-        // Strip TypeScript type annotations (Babel strips them, we preserve in passthrough)
-        let stripped = strip_type_annotations(trimmed);
-        let trimmed = stripped.trim();
 
         // Normalize cache variable names and whitespace
         let normalized = normalize_cache_names(trimmed);
@@ -201,89 +208,6 @@ fn tokenize(code: &str) -> Vec<String> {
     }
 
     tokens
-}
-
-/// Strip TypeScript type annotations from a line for normalization.
-/// Handles `: type` after identifiers in variable declarations and parameters.
-fn strip_type_annotations(code: &str) -> String {
-    // Simple approach: remove patterns like `: Type` after identifiers
-    // and before `=`, `,`, `)`, `{`
-    let mut result = String::with_capacity(code.len());
-    let chars: Vec<char> = code.chars().collect();
-    let len = chars.len();
-    let mut i = 0;
-
-    while i < len {
-        // Check for type annotation pattern: `: Type` or `: {complex}`
-        if chars[i] == ':' && i > 0 {
-            // Look back: should be after identifier, `)`, or `]`
-            let prev = chars[..i].iter().rev().find(|c| !c.is_ascii_whitespace());
-            let is_type_annotation = matches!(prev, Some(c) if c.is_ascii_alphanumeric() || *c == '_' || *c == '$' || *c == ')' || *c == ']');
-
-            if is_type_annotation {
-                // Look ahead: skip whitespace, then check if it's a type
-                let mut j = i + 1;
-                while j < len && chars[j].is_ascii_whitespace() {
-                    j += 1;
-                }
-
-                // Type annotation if next is: identifier, {, (, [, or keywords like 'any', 'number', etc.
-                if j < len
-                    && (chars[j].is_ascii_alphabetic()
-                        || chars[j] == '{'
-                        || chars[j] == '('
-                        || chars[j] == '['
-                        || chars[j] == '"'
-                        || chars[j] == '\'')
-                {
-                    // Check it's not a ternary (`:` in `? x : y`) or object property
-                    // Object property: preceded by a string literal or at start of object
-                    // Ternary: preceded by `?` somewhere
-                    // Simple heuristic: if we're inside a function param list or after `let`/`const`/`var`,
-                    // it's likely a type annotation
-
-                    // Skip the type annotation by finding the next `=`, `,`, `)`, `{`, or `;`
-                    let mut depth = 0;
-                    let mut k = j;
-                    let mut found_end = false;
-                    while k < len {
-                        match chars[k] {
-                            '{' | '(' | '[' | '<' => depth += 1,
-                            '}' | ')' | ']' | '>' => {
-                                if depth > 0 {
-                                    depth -= 1;
-                                } else {
-                                    found_end = true;
-                                    break;
-                                }
-                            }
-                            '=' | ';' if depth == 0 => {
-                                found_end = true;
-                                break;
-                            }
-                            ',' if depth == 0 => {
-                                found_end = true;
-                                break;
-                            }
-                            _ => {}
-                        }
-                        k += 1;
-                    }
-
-                    if found_end {
-                        // Skip from `:` to the end marker (don't include the end marker)
-                        i = k;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        result.push(chars[i]);
-        i += 1;
-    }
-
-    result
 }
 
 /// Root directory for conformance test infrastructure.
