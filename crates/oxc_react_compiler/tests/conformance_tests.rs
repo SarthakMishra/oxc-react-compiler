@@ -25,20 +25,20 @@ use oxc_codegen::Codegen;
 use oxc_parser::Parser;
 use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
-use oxc_transformer::{JsxOptions, TransformOptions, Transformer};
+use oxc_transformer::{TransformOptions, Transformer};
 
 // ---------------------------------------------------------------------------
-// TypeScript type stripping via OXC parse→transform→print roundtrip
+// OXC parse→transform→print roundtrip for normalization
 // ---------------------------------------------------------------------------
 
-/// Strip TypeScript type annotations from source code using OXC's transformer.
+/// Normalize source code via OXC parse→transform→print roundtrip.
 ///
-/// Parses as TSX, runs the TypeScript transform (which removes type annotations,
-/// interfaces, type aliases, etc.), then prints the resulting JS-only AST.
-/// JSX transform is disabled so `<div>` stays as JSX, not `_jsx("div")`.
+/// Strips TypeScript type annotations AND lowers JSX to _jsx() calls,
+/// ensuring both our output (which already uses _jsx) and Babel's output
+/// (which preserves JSX syntax) end up in the same representation.
 ///
 /// Falls back to returning the original code if parsing fails.
-fn strip_typescript_types(code: &str) -> String {
+fn normalize_via_oxc(code: &str) -> String {
     let allocator = Allocator::default();
     let source_type = SourceType::tsx();
     let ret = Parser::new(&allocator, code, source_type).parse();
@@ -53,12 +53,13 @@ fn strip_typescript_types(code: &str) -> String {
     let semantic_ret = SemanticBuilder::new().build(&program);
     let scoping = semantic_ret.semantic.into_scoping();
 
-    // Configure: strip TypeScript types, but do NOT transform JSX
-    let options = TransformOptions { jsx: JsxOptions::disable(), ..TransformOptions::default() };
+    // Configure: strip TypeScript types AND lower JSX to _jsx() calls
+    // This ensures both our output and expected output use the same JSX representation
+    let options = TransformOptions::default(); // Default enables both TS stripping and JSX transform
     let transformer = Transformer::new(&allocator, Path::new("test.tsx"), &options);
     let _ = transformer.build_with_scoping(scoping, &mut program);
 
-    // Print the transformed (TS-stripped) AST
+    // Print the transformed AST
     Codegen::new().build(&program).code
 }
 
@@ -361,9 +362,9 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                 if expected.starts_with("// UPSTREAM ERROR:") {
                     None
                 } else {
-                    // Strip TypeScript types from both sides before comparing
-                    let our_stripped = strip_typescript_types(&compile_result.code);
-                    let expected_stripped = strip_typescript_types(&expected);
+                    // Normalize both sides: strip TS types + lower JSX to _jsx()
+                    let our_stripped = normalize_via_oxc(&compile_result.code);
+                    let expected_stripped = normalize_via_oxc(&expected);
                     // Use token-based comparison to ignore formatting differences
                     let our_normalized = normalize_output(&our_stripped);
                     let expected_normalized = normalize_output(&expected_stripped);
