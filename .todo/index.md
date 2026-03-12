@@ -7,15 +7,88 @@ Last updated: 2026-03-12
 
 ---
 
-## Priority 4 -- Tooling (parallel, not blocking)
-
-_(All items completed)_
-
----
-
 ## Active Work
 
 _(Nothing active)_
+
+---
+
+## P0: Critical Bugs (blocking all memoization correctness and render equivalence)
+
+- [ ] **BUG: Destructured params not emitted in codegen** -- `build.rs` creates temp params for destructured args but never emits `Destructure` instructions, causing "X is not defined" for ALL compiled components -- [critical-bugs.md](critical-bugs.md)#bug-1-destructured-parameters-not-emitted
+- [ ] **BUG: Dependency filter drops all scope dependencies** -- `propagate_dependencies.rs:136` filters `.filter(|d| d.reactive)` but Place objects' `.reactive` field isn't propagated from identifier reactivity, resulting in empty deps → sentinel-only checks → no invalidation -- [critical-bugs.md](critical-bugs.md)#bug-2-dependency-filter-drops-all-scope-dependencies
+- [ ] **BUG: canvas-sidebar 16ms outlier** -- 272 LOC fixture takes 16.6ms (10x expected), likely a pathological case in scope inference or mutation analysis causing quadratic behavior -- [critical-bugs.md](critical-bugs.md)#bug-3-canvas-sidebar-performance-outlier
+
+---
+
+## P1: Correctness (missing passes that affect output precision)
+
+- [ ] ComputeUnconditionalBlocks -- unconditional execution analysis for CFG -- [pipeline-completeness.md](pipeline-completeness.md)#gap-11-computeunconditionalblocks----unconditional-execution-analysis
+- [ ] CollectHoistablePropertyLoads -- property load hoisting via non-null guarantees -- [pipeline-completeness.md](pipeline-completeness.md)#gap-7-collecthoistablepropertyloads----critical-for-dependency-precision
+- [ ] CollectOptionalChainDependencies -- optional chain dependency semantics -- [pipeline-completeness.md](pipeline-completeness.md)#gap-8-collectoptionalchaindependencies----critical-for-optional-chain-correctness
+- [ ] DeriveMinimalDependenciesHIR -- tree-based dependency minimization -- [pipeline-completeness.md](pipeline-completeness.md)#gap-9-deriveminimaldependencieshir----dependency-tree-minimization
+- [ ] ScopeDependencyUtils -- shared dependency manipulation utilities -- [pipeline-completeness.md](pipeline-completeness.md)#gap-10-scopedependencyutils----shared-dependency-utilities
+- [ ] validate_no_ref_access_in_render: type-based ref detection instead of naming heuristic -- [pipeline-completeness.md](pipeline-completeness.md)#gap-2-validate_no_ref_access_in_renderrs----naming-heuristic-only
+- [ ] validate_no_set_state_in_render: type-based setState detection instead of naming heuristic -- [pipeline-completeness.md](pipeline-completeness.md)#gap-3-validate_no_set_state_in_renderrs----naming-heuristic-only
+
+---
+
+## P2: Upstream Parity (config flags, output modes, missing validation passes)
+
+- [ ] OutputMode::ClientNoMemo variant for benchmarking -- [config-parity.md](config-parity.md)#gap-5-outputmodeclientnomemo-variant-missing
+- [ ] validateExhaustiveEffectDependencies enum (off/all/missing-only/extra-only) -- [config-parity.md](config-parity.md)#gap-1-validateexhaustiveeffectdependencies-should-be-an-enum
+- [ ] enableEmitHookGuards ExternalFunction config -- [config-parity.md](config-parity.md)#gap-2-enableemithookguards-should-accept-externalfunction-config
+- [ ] validateNoImpureFunctionsInRender validation pass -- [config-parity.md](config-parity.md)#gap-6-validatenoimpurefunctionsinrender-validation-pass-missing
+- [ ] validateBlocklistedImports validation pass -- [config-parity.md](config-parity.md)#gap-7-validateblocklistedimports-validation-pass-missing
+- [ ] validateNoVoidUseMemo overlap check -- [config-parity.md](config-parity.md)#gap-8-validatenovoidusememo-overlap-check
+- [ ] enableTreatSetIdentifiersAsStateSetters heuristic -- [config-parity.md](config-parity.md)#gap-9-enabletreatsetidentifiersasstatesetters-heuristic
+- [ ] enableAllowSetStateFromRefsInEffects nuance -- [config-parity.md](config-parity.md)#gap-10-enableallowsetstatefromrefsineffects-nuance
+- [ ] enableVerboseNoSetStateInEffect richer diagnostics -- [config-parity.md](config-parity.md)#gap-11-enableverbosenosetstateineffect-richer-diagnostics
+- [ ] assertValidMutableRanges config gate -- [config-parity.md](config-parity.md)#gap-3-assertvalidmutableranges-should-be-config-gated
+- [ ] enableNameAnonymousFunctions config gate -- [config-parity.md](config-parity.md)#gap-4-enablenameanonymousfunctions-config-gate-missing
+- [ ] optimize_for_ssr.rs: comprehensive memoization stripping -- [pipeline-completeness.md](pipeline-completeness.md)#gap-1-optimize_for_ssrrs----minimal-ssr-stripping
+- [ ] validate_static_components.rs: React.memo detection, scope analysis -- [pipeline-completeness.md](pipeline-completeness.md)#gap-4-validate_static_componentsrs----pascalcase-check-only
+- [ ] outline_jsx.rs: verify no-op claim or implement outlining -- [pipeline-completeness.md](pipeline-completeness.md)#gap-5-outline_jsxrs----effectively-a-no-op
+- [ ] outline_functions.rs: actual hoisting + codegen support -- [pipeline-completeness.md](pipeline-completeness.md)#gap-6-outline_functionsrs----identifies-candidates-but-no-hoisting
+- [ ] assertWellFormedBreakTargets validation -- [pipeline-completeness.md](pipeline-completeness.md)#gap-12-assertwellformedbreaktargets----break-target-validation
+- [ ] PruneTemporaryLValues optimization -- [pipeline-completeness.md](pipeline-completeness.md)#gap-13-prunetemporarylvalues----temporary-cleanup
+
+---
+
+## P3: Code Quality (error handling, performance, maintainability)
+
+- [ ] disjoint_set.rs: replace expect() with Result in public API -- [code-quality.md](code-quality.md)#gap-1-disjoint_setrs36----expect-in-public-api
+- [ ] hir/build.rs: improve expect() messages on block lookups -- [code-quality.md](code-quality.md)#gap-3-hirbuildrs----multiple-expectunwrap-on-block-existence
+- [ ] ssa/enter_ssa.rs: add context to unwrap() on dominator map -- [code-quality.md](code-quality.md)#gap-4-ssaenter_ssars160163----unwrap-on-dominator-map
+- [ ] ordered_map.rs: audit Index impl callers for safety -- [code-quality.md](code-quality.md)#gap-2-ordered_maprs87----expect-in-index-impl
+- [ ] React.forwardRef / React.memo wrapper handling in program.rs -- [code-quality.md](code-quality.md)#gap-11-missing-reactforwardref--reactmemo-wrapper-handling-in-function-discovery
+- [ ] Add DIVERGENCE comments for intentional algorithm differences -- [code-quality.md](code-quality.md)#gap-10-missing--divergence-comments-for-intentional-algorithm-differences
+- [ ] Audit and remove #![allow(dead_code)] from ~40 files -- [code-quality.md](code-quality.md)#gap-9-allowdead_code-on-40-files
+- [ ] place.clone() proliferation -- consider Rc or arena allocation -- [code-quality.md](code-quality.md)#gap-5-placeclone-proliferation-in-reactive-scope-analysis
+- [ ] .to_string() on identifiers -- use Cow/Atom where possible -- [code-quality.md](code-quality.md)#gap-6-to_string-on-identifiers-in-hot-paths
+- [ ] infer_reactive_scope_variables.rs double allocation -- [code-quality.md](code-quality.md)#gap-7-infer_reactive_scope_variablesrs----double-allocation
+
+---
+
+## P4: Testing and CI
+
+- [ ] Upstream conformance fixture suite (~500 fixtures) -- [testing-hardening.md](testing-hardening.md)#gap-1-upstream-conformance-fixture-suite
+- [ ] Per-pass insta snapshot tests -- [testing-hardening.md](testing-hardening.md)#gap-2-per-pass-snapshot-tests-insta
+- [ ] Babel output differential testing -- [testing-hardening.md](testing-hardening.md)#gap-3-babel-output-comparison-differential-testing
+- [ ] CI pipeline hardening (clippy -D warnings, fmt check, snapshots) -- [testing-hardening.md](testing-hardening.md)#gap-4-ci-pipeline-hardening
+- [ ] Fuzz testing for HIR construction -- [testing-hardening.md](testing-hardening.md)#gap-5-property-based--fuzz-testing-for-hir-construction
+- [ ] Vite plugin HMR integration test -- [testing-hardening.md](testing-hardening.md)#gap-6-integration-test-for-vite-plugin-hot-reload
+
+---
+
+## P5: Polish (build config, allocator, NAPI patterns)
+
+- [ ] Aggressive clippy lints (pedantic, nursery, cargo) -- [code-quality.md](code-quality.md)#gap-12-aggressive-clippy-lint-configuration
+- [ ] Release profile optimization (LTO, codegen-units, strip) -- [code-quality.md](code-quality.md)#gap-13-release-profile-optimization
+- [ ] NAPI never-throw pattern -- [code-quality.md](code-quality.md)#gap-14-napi-never-throw-pattern
+- [ ] Enum size control assertions -- [code-quality.md](code-quality.md)#gap-15-enum-size-control-assertions
+- [ ] mimalloc allocator -- [code-quality.md](code-quality.md)#gap-16-mimalloc-allocator
+- [ ] codegen.rs format!() for temp names -- [code-quality.md](code-quality.md)#gap-8-codegenrs550----unnecessary-format-string
 
 ---
 
@@ -35,15 +108,5 @@ _(Nothing blocked)_
 - **Upstream Conformance** -- Fixture download, upstream oracle runner, differential comparison harness, output normalization
 - **Documentation** -- Vite plugin usage guide, lint rules docs, configuration reference, known limitations
 - **Clippy Cleanup** -- 258 mechanical fixes, crate-level allows for style lints, zero warnings across workspace
-- **P3 Gap 1: Config parsing tests** -- 10 unit tests in `options.rs` covering all enum variants, `from_map()`, `GatingConfig`, `SourceFilter`
-- **P3 Gap 4: E2E dual-mode tests** -- Vitest + esbuild JSX transform + vm eval + ReactDOMServer, 31 tests across 5 files with self-healing `it.fails` for known codegen issues
-- **P3 Gap 5: Sprout runtime eval** -- Function evaluator with shared runtime utilities, mutation tracking, sequential render consistency, 11 tests
-- **P4 Gap 2: Benchmark harness v2** -- `transformReactFileTimed()` NAPI function with Rust-side `std::time::Instant`, `bench.mjs` with warmup/batch/filter/json output
-- **P4 Gap 5: CI integration** -- `.github/workflows/benchmark.yml` with full pipeline and PR benchmark comments
-- **P3 Gap 2: Error diagnostic fixture tests** -- 17/17 DiagnosticKind variant coverage, 26 tests, `compile_program_with_config` API, `EnvironmentConfig::all_validations_enabled()`
-- **P3 Gap 3: Post-codegen output validation** -- oxc_semantic use-before-define checking, 6 semantic tests, found real codegen bugs (unresolved references)
-- **P4 Gap 1: Real-world fixture extraction** -- 16 fixtures (4 per tier), 12 from cal.com/excalidraw/shadcn, 3 known-divergent
-- **P4 Gap 3 (3a+3c): Deep correctness analysis** -- Babel AST diffing via `babel-compile.mjs`, structural pattern extraction, automated divergence classification (score 0.938)
-- **P4 Gap 4: Differential snapshot tests** -- `.babel.js` and `.diff.json` snapshots for all 16 fixtures
-- **P4 Gap 6: README correctness score docs** -- Divergence classifications, known acceptable divergences, scoring methodology
-- **P4 Gap 3b: Headless render comparison** -- `render-compare.mjs` with ReactDOMServer, per-fixture props sequences, OXC vs Babel vs Original HTML comparison, render equivalence scoring
+- **Test Coverage** -- Config parsing (10 tests), error diagnostics (17/17 variants, 26 tests), post-codegen validation (6 semantic tests), E2E dual-mode (31 tests), sprout runtime eval (11 tests)
+- **Benchmark Suite** -- Real-world fixtures (16, 4 per tier), benchmark harness v2 with NAPI timing, deep correctness analysis (AST diff + render comparison), differential snapshots, CI integration, correctness score documentation
