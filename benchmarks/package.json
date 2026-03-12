@@ -10,13 +10,19 @@
     "babel:update-snapshots": "node scripts/babel-compile.mjs --update-snapshots",
     "babel:diff": "node scripts/babel-compile.mjs --diff",
     "babel:diff-json": "node scripts/babel-compile.mjs --diff --format json",
-    "correctness": "node scripts/analyze-correctness.mjs --all"
+    "correctness": "node scripts/analyze-correctness.mjs --all",
+    "render:compare": "node scripts/render-compare.mjs",
+    "render:compare-json": "node scripts/render-compare.mjs --format json",
+    "render:compare-verbose": "node scripts/render-compare.mjs --verbose"
   },
   "dependencies": {
     "@babel/core": "^7.29.0",
     "@babel/preset-react": "^7.28.5",
     "@babel/preset-typescript": "^7.28.5",
     "babel-plugin-react-compiler": "^1.0.0",
-    "oxc-react-compiler": "file:../napi/react-compiler"
+    "esbuild": "^0.27.3",
+    "oxc-react-compiler": "file:../napi/react-compiler",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   }
 }

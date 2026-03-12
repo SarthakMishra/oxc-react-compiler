@@ -9,7 +9,7 @@ Last updated: 2026-03-12
 
 ## Priority 4 -- Tooling (parallel, not blocking)
 
-- [ ] Deep correctness analysis (3b) — headless render comparison for semantic equivalence -- [benchmark-suite.md](benchmark-suite.md)#gap-3-deep-correctness-analysis
+_(All items completed)_
 
 ---
 
@@ -46,3 +46,4 @@ _(Nothing blocked)_
 - **P4 Gap 3 (3a+3c): Deep correctness analysis** -- Babel AST diffing via `babel-compile.mjs`, structural pattern extraction, automated divergence classification (score 0.938)
 - **P4 Gap 4: Differential snapshot tests** -- `.babel.js` and `.diff.json` snapshots for all 16 fixtures
 - **P4 Gap 6: README correctness score docs** -- Divergence classifications, known acceptable divergences, scoring methodology
+- **P4 Gap 3b: Headless render comparison** -- `render-compare.mjs` with ReactDOMServer, per-fixture props sequences, OXC vs Babel vs Original HTML comparison, render equivalence scoring

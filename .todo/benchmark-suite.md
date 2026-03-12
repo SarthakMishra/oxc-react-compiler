@@ -24,9 +24,9 @@ Last updated: 2026-03-12
 
 ---
 
-## Gap 3: Deep correctness analysis [~]
+## Gap 3: Deep correctness analysis ✅
 
-**Upstream:** N/A
+~~**Upstream:** N/A~~
 
 **Completed (3a + 3c):**
 - `benchmarks/scripts/babel-compile.mjs` — Babel compilation via `babel-plugin-react-compiler`, structural AST pattern extraction (cache size, sentinel checks, dependency checks, scope blocks, cache reads/writes), automated divergence classification into `cosmetic`, `conservative_miss`, `over_memoization`, `semantic_difference`
@@ -34,10 +34,11 @@ Last updated: 2026-03-12
 - Results across 16 fixtures: 14 conservative_miss, 1 over_memoization, 1 semantic_difference, score 0.938
 - npm scripts: `babel:update-snapshots`, `babel:diff`, `babel:diff-json`, `correctness`
 
-**Remaining:**
-- **3b: Semantic equivalence via headless render** — Render OXC-compiled and Babel-compiled versions with identical props/state sequences, compare HTML output at each step. Deferred: requires React DOM test setup.
-
-**Depends on:** React DOM test infrastructure (not yet built)
+**Completed (3b):**
+- `benchmarks/scripts/render-compare.mjs` — Headless render comparison using ReactDOMServer. Compiles each fixture with both OXC and Babel, renders with identical props sequences, compares HTML output. Per-fixture props map with multiple states (e.g. status-badge tested with all 4 statuses, booking-list with empty and populated data).
+- Results: Babel renders match original 100% on renderable fixtures. OXC renders fail due to known codegen bugs (unresolved destructured props/derived values). Render equivalence score: 0.000 — expected given current codegen state.
+- npm scripts: `render:compare`, `render:compare-json`, `render:compare-verbose`
+- Dependencies: added react, react-dom, esbuild to benchmarks/package.json
 
 ---
 
@@ -72,7 +73,7 @@ Last updated: 2026-03-12
 |-----|------|--------|
 | 1 | Fixture extraction pipeline | ✅ Done — 16 fixtures (4 per tier), 3 known-divergent |
 | 2 | Benchmark harness v2 | ✅ Done |
-| 3 | Deep correctness analysis | [~] Partial — AST diff + classification done, headless render (3b) remaining |
+| 3 | Deep correctness analysis | ✅ Done — AST diff + classification + headless render comparison |
 | 4 | Differential snapshot tests | ✅ Done — `.babel.js` + `.diff.json` snapshots for all 16 fixtures |
 | 5 | CI integration | ✅ Done |
 | 6 | README documentation | ✅ Done — divergence classifications + scoring methodology |
