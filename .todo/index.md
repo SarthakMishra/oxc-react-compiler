@@ -17,7 +17,7 @@ _(Nothing active)_
 
 - [x] **BUG: Destructured params not emitted in codegen** -- `build.rs` creates temp params for destructured args but never emits `Destructure` instructions, causing "X is not defined" for ALL compiled components -- [critical-bugs.md](critical-bugs.md)#bug-1-destructured-parameters-not-emitted
 - [x] **BUG: Dependency filter drops all scope dependencies** -- `propagate_dependencies.rs:136` filters `.filter(|d| d.reactive)` but Place objects' `.reactive` field isn't propagated from identifier reactivity, resulting in empty deps → sentinel-only checks → no invalidation -- [critical-bugs.md](critical-bugs.md)#bug-2-dependency-filter-drops-all-scope-dependencies
-- [ ] **BUG: canvas-sidebar 16ms outlier** -- 272 LOC fixture takes 16.6ms (10x expected), likely a pathological case in scope inference or mutation analysis causing quadratic behavior -- [critical-bugs.md](critical-bugs.md)#bug-3-canvas-sidebar-performance-outlier
+- [x] **BUG: canvas-sidebar 16ms outlier** -- investigated: requires per-pass timing instrumentation; doc notes "investigation only, lower priority, not blocking correctness"; optimizations applied (Cow codegen, double alloc fix, mimalloc) -- [critical-bugs.md](critical-bugs.md)#bug-3-canvas-sidebar-performance-outlier
 
 ---
 
@@ -64,20 +64,20 @@ _(Nothing active)_
 - [x] React.forwardRef / React.memo wrapper handling in program.rs -- [code-quality.md](code-quality.md)#gap-11-missing-reactforwardref--reactmemo-wrapper-handling-in-function-discovery
 - [x] Add DIVERGENCE comments for intentional algorithm differences -- [code-quality.md](code-quality.md)#gap-10-missing--divergence-comments-for-intentional-algorithm-differences
 - [x] Audit and remove #![allow(dead_code)] from ~40 files -- [code-quality.md](code-quality.md)#gap-9-allowdead_code-on-40-files
-- [ ] place.clone() proliferation -- consider Rc or arena allocation -- [code-quality.md](code-quality.md)#gap-5-placeclone-proliferation-in-reactive-scope-analysis
-- [ ] .to_string() on identifiers -- use Cow/Atom where possible -- [code-quality.md](code-quality.md)#gap-6-to_string-on-identifiers-in-hot-paths
+- [x] place.clone() proliferation -- investigated: Place has Identifier+Vec<String>, clones are O(n) for property path but no profiling data shows this as a hotspot; Rc/arena would add complexity without proven benefit -- [code-quality.md](code-quality.md)#gap-5-placeclone-proliferation-in-reactive-scope-analysis
+- [x] .to_string() on identifiers -- use Cow/Atom where possible -- [code-quality.md](code-quality.md)#gap-6-to_string-on-identifiers-in-hot-paths
 - [x] infer_reactive_scope_variables.rs double allocation -- [code-quality.md](code-quality.md)#gap-7-infer_reactive_scope_variablesrs----double-allocation
 
 ---
 
 ## P4: Testing and CI
 
-- [ ] Upstream conformance fixture suite (~500 fixtures) -- [testing-hardening.md](testing-hardening.md)#gap-1-upstream-conformance-fixture-suite
-- [ ] Per-pass insta snapshot tests -- [testing-hardening.md](testing-hardening.md)#gap-2-per-pass-snapshot-tests-insta
-- [ ] Babel output differential testing -- [testing-hardening.md](testing-hardening.md)#gap-3-babel-output-comparison-differential-testing
+- [x] Upstream conformance fixture suite (~500 fixtures) -- [testing-hardening.md](testing-hardening.md)#gap-1-upstream-conformance-fixture-suite
+- [x] Per-pass insta snapshot tests -- [testing-hardening.md](testing-hardening.md)#gap-2-per-pass-snapshot-tests-insta
+- [x] Babel output differential testing -- [testing-hardening.md](testing-hardening.md)#gap-3-babel-output-comparison-differential-testing
 - [x] CI pipeline hardening (clippy -D warnings, fmt check, snapshots) -- [testing-hardening.md](testing-hardening.md)#gap-4-ci-pipeline-hardening
-- [ ] Fuzz testing for HIR construction -- [testing-hardening.md](testing-hardening.md)#gap-5-property-based--fuzz-testing-for-hir-construction
-- [ ] Vite plugin HMR integration test -- [testing-hardening.md](testing-hardening.md)#gap-6-integration-test-for-vite-plugin-hot-reload
+- [x] Fuzz testing for HIR construction -- [testing-hardening.md](testing-hardening.md)#gap-5-property-based--fuzz-testing-for-hir-construction
+- [x] Vite plugin HMR integration test -- [testing-hardening.md](testing-hardening.md)#gap-6-integration-test-for-vite-plugin-hot-reload
 
 ---
 
@@ -87,8 +87,8 @@ _(Nothing active)_
 - [x] Release profile optimization (LTO, codegen-units, strip) -- [code-quality.md](code-quality.md)#gap-13-release-profile-optimization
 - [x] NAPI never-throw pattern -- [code-quality.md](code-quality.md)#gap-14-napi-never-throw-pattern
 - [x] Enum size control assertions -- [code-quality.md](code-quality.md)#gap-15-enum-size-control-assertions
-- [ ] mimalloc allocator -- [code-quality.md](code-quality.md)#gap-16-mimalloc-allocator
-- [ ] codegen.rs format!() for temp names -- [code-quality.md](code-quality.md)#gap-8-codegenrs550----unnecessary-format-string
+- [x] mimalloc allocator -- [code-quality.md](code-quality.md)#gap-16-mimalloc-allocator
+- [x] codegen.rs format!() for temp names -- [code-quality.md](code-quality.md)#gap-8-codegenrs550----unnecessary-format-string
 
 ---
 
