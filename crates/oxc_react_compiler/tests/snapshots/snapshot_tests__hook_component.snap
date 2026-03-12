@@ -9,7 +9,7 @@ function useCounter() {
   const $ = _c(4);
   const t14 = useState;
   const t15 = 0;
-  const t16 = t14(t15);
+  const t16 = useState(t15);
   let count;
   let setCount;
   if ($[0] !== count || $[1] !== setCount) {

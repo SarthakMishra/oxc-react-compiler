@@ -5,7 +5,7 @@ use crate::hir::types::{
     ObjectPropertyKey, Place, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
     ReactiveTerminal, ScopeId, Terminal,
 };
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Prune reactive scopes that don't escape the function.
 pub fn prune_non_escaping_scopes(rf: &mut ReactiveFunction) {
@@ -408,6 +408,305 @@ fn propagate_early_returns_in_block(block: &mut ReactiveBlock) {
             }
             ReactiveInstruction::Instruction(_) => {}
         }
+    }
+}
+
+/// Inline `LoadLocal` identity copies to reduce temp variable explosion.
+///
+/// When the HIR lowers `bar(props.a)`, it produces:
+/// ```text
+/// t28 = LoadLocal(bar)
+/// t29 = LoadLocal(props)
+/// t30 = PropertyLoad(t29, "a")
+/// t31 = CallExpression(t28, [t30])
+/// ```
+///
+/// This pass replaces uses of identity-copy temps with their source, turning
+/// the above into:
+/// ```text
+/// t30 = PropertyLoad(props, "a")
+/// t31 = CallExpression(bar, [t30])
+/// ```
+///
+/// Dead `LoadLocal` instructions are then removed by `prune_unused_lvalues`.
+pub fn inline_load_locals(rf: &mut ReactiveFunction) {
+    inline_loads_in_block(&mut rf.body);
+}
+
+fn inline_loads_in_block(block: &mut ReactiveBlock) {
+    // Phase 1: Build substitution map — for each LoadLocal(source) where lvalue
+    // is an unnamed temp, map lvalue.id → source place
+    let mut substitutions: FxHashMap<IdentifierId, Place> = FxHashMap::default();
+
+    for instr in &block.instructions {
+        if let ReactiveInstruction::Instruction(instruction) = instr {
+            if let InstructionValue::LoadLocal { place: source } = &instruction.value {
+                let lvalue = &instruction.lvalue;
+                // Only inline unnamed temporaries (not user-declared variables)
+                if lvalue.identifier.name.is_none() {
+                    substitutions.insert(lvalue.identifier.id, source.clone());
+                }
+            }
+        }
+    }
+
+    if substitutions.is_empty() {
+        // Recurse into nested blocks even if no subs at this level
+        for instr in &mut block.instructions {
+            match instr {
+                ReactiveInstruction::Scope(scope_block) => {
+                    inline_loads_in_block(&mut scope_block.instructions);
+                }
+                ReactiveInstruction::Terminal(terminal) => {
+                    for_each_block_in_terminal_mut(terminal, inline_loads_in_block);
+                }
+                ReactiveInstruction::Instruction(_) => {}
+            }
+        }
+        return;
+    }
+
+    // Resolve transitive substitutions: if t0 → t1 and t1 → x, then t0 → x
+    let resolved = resolve_transitive_subs(&substitutions);
+
+    // Phase 2: Apply substitutions to all operands in instructions
+    for instr in &mut block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                substitute_places_in_value(&mut instruction.value, &resolved);
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                // Substitute in scope dependencies and declarations
+                for dep in &mut scope_block.scope.dependencies {
+                    substitute_place_identifier(&mut dep.identifier, &resolved);
+                }
+                for (_, decl) in &mut scope_block.scope.declarations {
+                    substitute_place_identifier(&mut decl.identifier, &resolved);
+                }
+                // Apply subs inside the scope block
+                for inner in &mut scope_block.instructions.instructions {
+                    if let ReactiveInstruction::Instruction(instruction) = inner {
+                        substitute_places_in_value(&mut instruction.value, &resolved);
+                    }
+                }
+                // Recurse into nested blocks
+                inline_loads_in_block(&mut scope_block.instructions);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                substitute_places_in_terminal(terminal, &resolved);
+                for_each_block_in_terminal_mut(terminal, inline_loads_in_block);
+            }
+        }
+    }
+}
+
+fn resolve_transitive_subs(
+    subs: &FxHashMap<IdentifierId, Place>,
+) -> FxHashMap<IdentifierId, Place> {
+    let mut resolved = FxHashMap::default();
+    for (&id, place) in subs {
+        let mut current = place.clone();
+        // Follow the chain: if the source is also in subs, keep going
+        let mut depth = 0;
+        while let Some(next) = subs.get(&current.identifier.id) {
+            current = next.clone();
+            depth += 1;
+            if depth > 20 {
+                break; // Safety: avoid infinite loops
+            }
+        }
+        resolved.insert(id, current);
+    }
+    resolved
+}
+
+fn substitute_place_identifier(
+    identifier: &mut crate::hir::types::Identifier,
+    subs: &FxHashMap<IdentifierId, Place>,
+) {
+    if let Some(replacement) = subs.get(&identifier.id) {
+        *identifier = replacement.identifier.clone();
+    }
+}
+
+fn substitute_place(place: &mut Place, subs: &FxHashMap<IdentifierId, Place>) {
+    if let Some(replacement) = subs.get(&place.identifier.id) {
+        *place = replacement.clone();
+    }
+}
+
+fn substitute_places_in_terminal(
+    terminal: &mut ReactiveTerminal,
+    subs: &FxHashMap<IdentifierId, Place>,
+) {
+    match terminal {
+        ReactiveTerminal::If { test, .. } => substitute_place(test, subs),
+        ReactiveTerminal::Return { value, .. } | ReactiveTerminal::Throw { value, .. } => {
+            substitute_place(value, subs);
+        }
+        ReactiveTerminal::Switch { test, .. } => substitute_place(test, subs),
+        ReactiveTerminal::For { .. }
+        | ReactiveTerminal::ForOf { .. }
+        | ReactiveTerminal::ForIn { .. }
+        | ReactiveTerminal::While { .. }
+        | ReactiveTerminal::DoWhile { .. }
+        | ReactiveTerminal::Try { .. }
+        | ReactiveTerminal::Label { .. } => {}
+    }
+}
+
+fn substitute_places_in_value(
+    value: &mut InstructionValue,
+    subs: &FxHashMap<IdentifierId, Place>,
+) {
+    match value {
+        InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+            substitute_place(place, subs);
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. } => {
+            substitute_place(lvalue, subs);
+            substitute_place(value, subs);
+        }
+        InstructionValue::StoreContext { lvalue, value } => {
+            substitute_place(lvalue, subs);
+            substitute_place(value, subs);
+        }
+        InstructionValue::DeclareLocal { lvalue, .. } => {
+            substitute_place(lvalue, subs);
+        }
+        InstructionValue::DeclareContext { lvalue } => {
+            substitute_place(lvalue, subs);
+        }
+        InstructionValue::Destructure { value, .. } => {
+            substitute_place(value, subs);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            substitute_place(left, subs);
+            substitute_place(right, subs);
+        }
+        InstructionValue::UnaryExpression { value, .. } => {
+            substitute_place(value, subs);
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            substitute_place(lvalue, subs);
+        }
+        InstructionValue::CallExpression { callee, args } => {
+            substitute_place(callee, subs);
+            for arg in args {
+                substitute_place(arg, subs);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            substitute_place(receiver, subs);
+            for arg in args {
+                substitute_place(arg, subs);
+            }
+        }
+        InstructionValue::NewExpression { callee, args } => {
+            substitute_place(callee, subs);
+            for arg in args {
+                substitute_place(arg, subs);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. } => {
+            substitute_place(object, subs);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            substitute_place(object, subs);
+            substitute_place(value, subs);
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            substitute_place(object, subs);
+            substitute_place(property, subs);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            substitute_place(object, subs);
+            substitute_place(property, subs);
+            substitute_place(value, subs);
+        }
+        InstructionValue::PropertyDelete { object, .. } => {
+            substitute_place(object, subs);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            substitute_place(object, subs);
+            substitute_place(property, subs);
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                substitute_place(&mut prop.value, subs);
+                if let ObjectPropertyKey::Computed(p) = &mut prop.key {
+                    substitute_place(p, subs);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    ArrayElement::Spread(p) | ArrayElement::Expression(p) => {
+                        substitute_place(p, subs);
+                    }
+                    ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            substitute_place(tag, subs);
+            for attr in props {
+                substitute_place(&mut attr.value, subs);
+            }
+            for child in children {
+                substitute_place(child, subs);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                substitute_place(child, subs);
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                substitute_place(sub, subs);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            substitute_place(tag, subs);
+            for sub in &mut value.subexpressions {
+                substitute_place(sub, subs);
+            }
+        }
+        InstructionValue::StoreGlobal { value, .. } => {
+            substitute_place(value, subs);
+        }
+        InstructionValue::Await { value } => {
+            substitute_place(value, subs);
+        }
+        InstructionValue::GetIterator { collection } => {
+            substitute_place(collection, subs);
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            substitute_place(iterator, subs);
+        }
+        InstructionValue::NextPropertyOf { value } => {
+            substitute_place(value, subs);
+        }
+        InstructionValue::TypeCastExpression { value, .. } => {
+            substitute_place(value, subs);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            substitute_place(decl, subs);
+            for dep in deps {
+                substitute_place(dep, subs);
+            }
+        }
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
     }
 }
 

@@ -9,7 +9,7 @@ function useToggle(initial) {
   const $ = _c(6);
   const t21 = useState;
   const t22 = initial;
-  const t23 = t21(t22);
+  const t23 = useState(initial);
   let value;
   let setValue;
   if ($[0] !== value || $[1] !== setValue) {
@@ -35,7 +35,7 @@ function useToggle(initial) {
   if ($[3] !== value || $[4] !== toggle) {
     const t30 = value;
     const t31 = toggle;
-    t32 = [t30, t31];
+    t32 = [value, toggle];
     $[5] = t32;
     $[3] = value;
     $[4] = toggle;

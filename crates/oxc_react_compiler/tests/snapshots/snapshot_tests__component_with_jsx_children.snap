@@ -17,7 +17,7 @@ function Layout(t0) {
     const t12 = "div";
     const t13 = "container";
     const t14 = children;
-    t15 = _jsx(t12, { className: t13, children: t14 });
+    t15 = _jsx(t12, { className: t13, children: children });
     $[2] = t15;
     $[1] = children;
   } else {

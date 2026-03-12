@@ -19,11 +19,11 @@ function Display(t0) {
   let t16;
   if ($[1] !== count || $[2] !== items || $[3] !== label || $[4] !== count || $[5] !== t39 || $[6] !== t16) {
     const t34 = items;
-    const t35 = t34.length;
+    const t35 = items.length;
     count = t35;
     const t38 = count;
     const t39 = 0;
-    const t40 = t38 > t39;
+    const t40 = count > t39;
     $[1] = count;
     $[2] = items;
     $[3] = label;
@@ -46,7 +46,7 @@ function Display(t0) {
     const t50 = label;
     const t51 = ": ";
     const t52 = count;
-    t53 = _jsxs(t49, { children: [t50, t51, t52] });
+    t53 = _jsxs(t49, { children: [label, t51, count] });
     $[9] = t53;
     $[7] = label;
     $[8] = count;

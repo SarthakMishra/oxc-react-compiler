@@ -17,11 +17,11 @@ function Doubler(t0) {
   if ($[1] !== doubled || $[2] !== value || $[3] !== doubled) {
     const t19 = value;
     const t20 = 2;
-    const t21 = t19 * t20;
+    const t21 = value * t20;
     doubled = t21;
     const t23 = "span";
     const t24 = doubled;
-    t25 = _jsx(t23, { children: t24 });
+    t25 = _jsx(t23, { children: doubled });
     $[4] = t25;
     $[1] = doubled;
     $[2] = value;

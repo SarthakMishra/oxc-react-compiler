@@ -16,7 +16,7 @@ function Header(t0) {
   if ($[1] !== title) {
     const t11 = "h1";
     const t12 = title;
-    t13 = _jsx(t11, { children: t12 });
+    t13 = _jsx(t11, { children: title });
     $[2] = t13;
     $[1] = title;
   } else {
@@ -37,7 +37,7 @@ function Footer(t0) {
   if ($[1] !== text) {
     const t11 = "footer";
     const t12 = text;
-    t13 = _jsx(t11, { children: t12 });
+    t13 = _jsx(t11, { children: text });
     $[2] = t13;
     $[1] = text;
   } else {

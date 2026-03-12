@@ -9,7 +9,7 @@ function Counter() {
   const $ = _c(6);
   const t22 = useState;
   const t23 = 0;
-  const t24 = t22(t23);
+  const t24 = useState(t23);
   let count;
   let setCount;
   if ($[0] !== count || $[1] !== setCount) {
@@ -23,7 +23,7 @@ function Counter() {
   if ($[2] !== next || $[3] !== count || $[4] !== count) {
     const t29 = count;
     const t30 = 1;
-    const t31 = t29 + t30;
+    const t31 = count + t30;
     next = t31;
     const t33 = "button";
     const t34 = () => {
@@ -33,7 +33,7 @@ function Counter() {
       return t4;
     };
     const t35 = count;
-    t36 = _jsx(t33, { onClick: t34, children: t35 });
+    t36 = _jsx(t33, { onClick: t34, children: count });
     $[5] = t36;
     $[2] = next;
     $[3] = count;

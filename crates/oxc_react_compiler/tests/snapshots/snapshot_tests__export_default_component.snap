@@ -16,7 +16,7 @@ export default function Page(t0) {
   if ($[1] !== content) {
     const t11 = "main";
     const t12 = content;
-    t13 = _jsx(t11, { children: t12 });
+    t13 = _jsx(t11, { children: content });
     $[2] = t13;
     $[1] = content;
   } else {
