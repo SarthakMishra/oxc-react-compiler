@@ -1,0 +1,42 @@
+{
+  "$schema": "./manifest.schema.json",
+  "description": "Benchmark fixture manifest. Each entry describes a React component extracted from an OSS repo.",
+  "fixtures": [
+    {
+      "name": "simple-counter",
+      "file": "synthetic/simple-counter.tsx",
+      "source": "synthetic",
+      "size_tier": "XS",
+      "loc": 8,
+      "hook_count": 1,
+      "description": "Simple useState counter component"
+    },
+    {
+      "name": "todo-list",
+      "file": "synthetic/todo-list.tsx",
+      "source": "synthetic",
+      "size_tier": "S",
+      "loc": 35,
+      "hook_count": 2,
+      "description": "Todo list with add/remove functionality"
+    },
+    {
+      "name": "form-validation",
+      "file": "synthetic/form-validation.tsx",
+      "source": "synthetic",
+      "size_tier": "S",
+      "loc": 50,
+      "hook_count": 3,
+      "description": "Form with validation state and derived error messages"
+    },
+    {
+      "name": "data-table",
+      "file": "synthetic/data-table.tsx",
+      "source": "synthetic",
+      "size_tier": "M",
+      "loc": 80,
+      "hook_count": 4,
+      "description": "Data table with sorting and filtering"
+    }
+  ]
+}

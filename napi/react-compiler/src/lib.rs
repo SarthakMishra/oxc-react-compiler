@@ -69,6 +69,65 @@ pub fn transform_react_file(
 }
 
 #[napi(object)]
+pub struct TransformTimedResult {
+    pub code: String,
+    pub transformed: bool,
+    pub source_map: Option<String>,
+    /// Rust-side compilation time in nanoseconds (excludes NAPI marshalling).
+    pub rust_compile_ns: i64,
+}
+
+#[napi]
+pub fn transform_react_file_timed(
+    source: String,
+    filename: String,
+    options: Option<TransformOptions>,
+) -> TransformTimedResult {
+    let generate_source_map = options.as_ref().and_then(|o| o.source_map).unwrap_or(false);
+
+    let plugin_options = match options {
+        Some(opts) => {
+            let mut po = oxc_react_compiler::PluginOptions::default();
+            if let Some(mode) = opts.compilation_mode.as_deref() {
+                po.compilation_mode = match mode {
+                    "all" => oxc_react_compiler::entrypoint::options::CompilationMode::All,
+                    "syntax" => oxc_react_compiler::entrypoint::options::CompilationMode::Syntax,
+                    "annotation" => {
+                        oxc_react_compiler::entrypoint::options::CompilationMode::Annotation
+                    }
+                    _ => oxc_react_compiler::entrypoint::options::CompilationMode::Infer,
+                };
+            }
+            if let (Some(import_source), Some(function_name)) =
+                (opts.gating_import_source, opts.gating_function_name)
+            {
+                po.gating = Some(oxc_react_compiler::entrypoint::options::GatingConfig {
+                    import_source,
+                    function_name,
+                });
+            }
+            po
+        }
+        None => oxc_react_compiler::PluginOptions::default(),
+    };
+
+    let start = std::time::Instant::now();
+    let result = if generate_source_map {
+        oxc_react_compiler::compile_program_with_source_map(&source, &filename, &plugin_options)
+    } else {
+        oxc_react_compiler::compile_program(&source, &filename, &plugin_options)
+    };
+    let elapsed = start.elapsed();
+
+    TransformTimedResult {
+        code: result.code,
+        transformed: result.transformed,
+        source_map: result.source_map,
+        rust_compile_ns: elapsed.as_nanos() as i64,
+    }
+}
+
+#[napi(object)]
 pub struct LintResult {
     pub diagnostics: Vec<LintDiagnostic>,
 }

@@ -27,5 +27,10 @@ Thumbs.db
 # Serena
 .serena/
 
+# Benchmark generated artifacts
+/benchmarks/results.json
+/benchmarks/correctness-report.json
+/benchmarks/baseline.json
+
 # Misc
 *.log

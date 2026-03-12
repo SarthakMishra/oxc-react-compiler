@@ -3,7 +3,7 @@
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 > Items are ordered by dependency: nothing should be blocked by an item below it.
 
-Last updated: 2026-03-11
+Last updated: 2026-03-12
 
 ---
 
@@ -13,20 +13,20 @@ Last updated: 2026-03-11
 
 ## Priority 3 -- Test coverage (upstream parity)
 
-- [ ] Config parsing and option construction unit tests -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-1-config-parsing-and-option-construction-tests
-- [ ] Error diagnostic fixture tests (~20 fixtures covering 17 DiagnosticKind variants) -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-2-error-diagnostic-fixture-tests
-- [ ] Post-codegen output validation (parse check + use-before-define) -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-3-post-codegen-output-validation
-- [ ] E2E dual-mode rendering tests (compiled vs uncompiled DOM comparison) -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-4-e2e-dual-mode-rendering-tests
-- [ ] Sprout-equivalent runtime evaluation (semantic correctness verification) -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-5-sprout-equivalent-runtime-evaluation
+- [x] Config parsing and option construction unit tests -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-1-config-parsing-and-option-construction-tests
+- [x] Error diagnostic fixture tests (~20 fixtures covering 17 DiagnosticKind variants) -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-2-error-diagnostic-fixture-tests
+- [x] Post-codegen output validation (parse check + use-before-define) -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-3-post-codegen-output-validation
+- [x] E2E dual-mode rendering tests (compiled vs uncompiled DOM comparison) -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-4-e2e-dual-mode-rendering-tests
+- [x] Sprout-equivalent runtime evaluation (semantic correctness verification) -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-5-sprout-equivalent-runtime-evaluation
 
 ## Priority 4 -- Tooling (parallel, not blocking)
 
-- [ ] Real-world fixture extraction pipeline (OSS repos, pinned commits, LOC categorization) -- [benchmark-suite.md](benchmark-suite.md)#gap-1-real-world-fixture-extraction-pipeline
-- [ ] Benchmark harness v2 (Rust-side timer via NAPI, warmup, batch mode, memory) -- [benchmark-suite.md](benchmark-suite.md)#gap-2-benchmark-harness-v2-speed-memory-separated-overhead
-- [ ] Deep correctness analysis (AST structural diff, semantic equivalence, divergence classification) -- [benchmark-suite.md](benchmark-suite.md)#gap-3-deep-correctness-analysis
-- [ ] Differential snapshot tests (committed expected outputs, update workflow) -- [benchmark-suite.md](benchmark-suite.md)#gap-4-differential-snapshot-tests
-- [ ] CI integration (dedicated runner, baseline.json, per-fixture failure tracking) -- [benchmark-suite.md](benchmark-suite.md)#gap-5-ci-integration
-- [ ] README and correctness score documentation -- [benchmark-suite.md](benchmark-suite.md)#gap-6-readme-and-correctness-score-documentation
+- [x] Real-world fixture extraction pipeline (OSS repos, pinned commits, LOC categorization) -- [benchmark-suite.md](benchmark-suite.md)#gap-1-real-world-fixture-extraction-pipeline
+- [x] Benchmark harness v2 (Rust-side timer via NAPI, warmup, batch mode, memory) -- [benchmark-suite.md](benchmark-suite.md)#gap-2-benchmark-harness-v2-speed-memory-separated-overhead
+- [x] Deep correctness analysis (AST structural diff, semantic equivalence, divergence classification) -- [benchmark-suite.md](benchmark-suite.md)#gap-3-deep-correctness-analysis
+- [x] Differential snapshot tests (committed expected outputs, update workflow) -- [benchmark-suite.md](benchmark-suite.md)#gap-4-differential-snapshot-tests
+- [x] CI integration (dedicated runner, baseline.json, per-fixture failure tracking) -- [benchmark-suite.md](benchmark-suite.md)#gap-5-ci-integration
+- [x] README and correctness score documentation -- [benchmark-suite.md](benchmark-suite.md)#gap-6-readme-and-correctness-score-documentation
 
 ---
 
@@ -53,3 +53,5 @@ All previously planned workstreams have been completed:
 - **Upstream Conformance** -- Fixture download, upstream oracle runner, differential comparison harness, output normalization
 - **Documentation** -- Vite plugin usage guide, lint rules docs, configuration reference, known limitations
 - **Clippy Cleanup** -- 258 mechanical fixes, crate-level allows for style lints, zero warnings across workspace
+- **Test Coverage** -- Config parsing unit tests, error diagnostic fixture tests with insta snapshots, post-codegen output validation (parse check), E2E dual-mode rendering tests (Vitest + esbuild JSX transform + vm sandboxed eval + ReactDOMServer), sprout-equivalent runtime evaluation with function eval + mutation tracking
+- **Benchmark Suite** -- Synthetic fixture extraction with manifest.json, benchmark harness v2 with `transformReactFileTimed()` NAPI function (Rust-side `std::time::Instant`), warmup/batch/filter/json output, differential snapshots with update/check workflows, deep correctness analysis (memoization pattern extraction, sentinel/dependency check counting, divergence classification), CI workflow with PR benchmark comments, README documentation

@@ -1,0 +1,14 @@
+{
+  "name": "oxc-react-compiler-benchmarks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "node bench.mjs",
+    "bench:update-snapshots": "node bench.mjs --update-snapshots",
+    "bench:check-snapshots": "node bench.mjs --check-snapshots",
+    "extract-fixtures": "bash scripts/extract-fixtures.sh"
+  },
+  "dependencies": {
+    "oxc-react-compiler": "file:../napi/react-compiler"
+  }
+}

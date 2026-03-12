@@ -20,6 +20,14 @@ export interface TransformOptions {
   gatingFunctionName?: string
 }
 export declare function transformReactFile(source: string, filename: string, options?: TransformOptions | undefined | null): TransformResult
+export interface TransformTimedResult {
+  code: string
+  transformed: boolean
+  sourceMap?: string
+  /** Rust-side compilation time in nanoseconds (excludes NAPI marshalling). */
+  rustCompileNs: number
+}
+export declare function transformReactFileTimed(source: string, filename: string, options?: TransformOptions | undefined | null): TransformTimedResult
 export interface LintResult {
   diagnostics: Array<LintDiagnostic>
 }
