@@ -35,21 +35,26 @@ fn normalize_output(code: &str) -> String {
     for line in code.lines() {
         let trimmed = line.trim();
 
-        // Skip import statements (our runtime import path may differ)
+        // Skip import statements (our runtime import paths and JSX imports may differ)
         if trimmed.starts_with("import ")
             && (trimmed.contains("react/compiler-runtime")
-                || trimmed.contains("react-compiler-runtime"))
+                || trimmed.contains("react-compiler-runtime")
+                || trimmed.contains("react/jsx-runtime")
+                || trimmed.contains("react/jsx-dev-runtime"))
         {
             continue;
         }
 
-        // Normalize cache variable names: `_c(N)` / `_c2(N)` / `$[N]` → `$[N]`
+        // Normalize cache variable names and whitespace
         let normalized = normalize_cache_names(trimmed);
 
         // Skip empty lines
         if normalized.is_empty() {
             continue;
         }
+
+        // Remove trailing commas before closing braces/brackets
+        let normalized = strip_trailing_commas(&normalized);
 
         lines.push(normalized);
     }
@@ -81,6 +86,21 @@ fn normalize_cache_names(line: &str) -> String {
         }
     }
 
+    result
+}
+
+/// Strip trailing commas before closing braces/brackets/parens.
+/// Handles patterns like `foo,}` → `foo}` and `bar,]` → `bar]`.
+fn strip_trailing_commas(line: &str) -> String {
+    let mut result = line.to_string();
+    // Remove trailing comma at end of line
+    if result.ends_with(',') {
+        result.pop();
+    }
+    // Remove comma before closing delimiters: `,}` `,]` `,)`
+    result = result.replace(",}", "}");
+    result = result.replace(",]", "]");
+    result = result.replace(",)", ")");
     result
 }
 
