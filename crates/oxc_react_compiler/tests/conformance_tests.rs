@@ -215,20 +215,26 @@ fn tokenize(code: &str) -> Vec<String> {
             continue;
         }
 
-        // String literals (preserve content)
+        // String literals — normalize quote style to double quotes
         if ch == '"' || ch == '\'' || ch == '`' {
             let quote = ch;
-            let start = i;
             i += 1;
+            let mut content = String::new();
             while i < len && chars[i] != quote {
                 if chars[i] == '\\' {
-                    i += 1; // skip escaped char
+                    content.push(chars[i]);
+                    i += 1;
+                    if i < len {
+                        content.push(chars[i]);
+                    }
+                } else {
+                    content.push(chars[i]);
                 }
                 i += 1;
             }
             i += 1; // closing quote
-            let s: String = chars[start..i.min(len)].iter().collect();
-            tokens.push(s);
+            // Normalize to double-quote form for comparison
+            tokens.push(format!("\"{}\"", content));
             continue;
         }
 
