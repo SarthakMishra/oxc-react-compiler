@@ -214,6 +214,9 @@ pub fn run_pipeline(
     // Pass 46: propagate_scope_dependencies_hir
     crate::reactive_scopes::propagate_dependencies::propagate_scope_dependencies_hir(hir);
 
+    // Pass 46.5: derive_minimal_dependencies_hir (dependency tree minimization)
+    crate::reactive_scopes::derive_minimal_dependencies::derive_minimal_dependencies_hir(hir);
+
     // Check if we should bail before building reactive function
     if errors.should_bail(PanicThreshold::CriticalErrors) {
         return Err(());

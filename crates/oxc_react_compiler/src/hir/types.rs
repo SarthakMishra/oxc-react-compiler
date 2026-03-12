@@ -69,7 +69,6 @@ pub enum Effect {
     Store = 7,
 }
 
-
 // ---------------------------------------------------------------------------
 // ValueKind / ValueReason / FreezeReason
 // ---------------------------------------------------------------------------
@@ -101,17 +100,19 @@ pub enum FreezeReason {
 // Type / PrimitiveType
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum Type {
     Primitive(PrimitiveType),
     Object,
     Function,
+    /// Return value of useRef() — accessing .current during render is invalid.
+    Ref,
+    /// A setState/dispatch function returned from useState/useReducer.
+    SetState,
     /// Unknown / generic type.
     #[default]
     Poly,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrimitiveType {

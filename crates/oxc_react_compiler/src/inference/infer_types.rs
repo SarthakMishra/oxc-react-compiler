@@ -1,6 +1,11 @@
 #![allow(dead_code)]
 
-use crate::hir::types::{BinaryOp, HIR, InstructionValue, Primitive, PrimitiveType, Type, UnaryOp};
+use rustc_hash::FxHashSet;
+
+use crate::hir::types::{
+    BinaryOp, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId,
+    InstructionValue, Primitive, PrimitiveType, Type, UnaryOp,
+};
 
 /// Infer types for all identifiers in the HIR.
 ///
@@ -10,11 +15,73 @@ use crate::hir::types::{BinaryOp, HIR, InstructionValue, Primitive, PrimitiveTyp
 /// - Property loads -> Object type
 /// - Function expressions -> Function type
 /// - Call expressions -> Poly (unknown return type, refined by shape system)
+/// - useRef() calls -> Ref type
+/// - useState()/useReducer() calls -> marks destructured setter as SetState
 pub fn infer_types(hir: &mut HIR) {
+    // Track identifiers that hold hook return values for destructuring propagation
+    let mut ref_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut state_tuple_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+
+    // Pass 1: Infer instruction types and identify hook call returns
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             let inferred = infer_instruction_type(&instr.value);
             instr.lvalue.identifier.type_ = inferred;
+
+            // Track hook return value identifiers
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                if let Some(name) = callee.identifier.name.as_deref() {
+                    if name == "useRef" {
+                        instr.lvalue.identifier.type_ = Type::Ref;
+                        ref_ids.insert(instr.lvalue.identifier.id);
+                    } else if name == "useState" || name == "useReducer" {
+                        // The return value is [state, setState]. Track the tuple ID
+                        // so we can propagate SetState to the second destructured element.
+                        state_tuple_ids.insert(instr.lvalue.identifier.id);
+                    }
+                }
+            }
+        }
+    }
+
+    // Pass 2: Propagate hook types through destructuring
+    // When useState/useReducer returns are destructured as [state, setter],
+    // mark the second element as SetState. When useRef return is destructured
+    // (uncommon but possible), propagate Ref type.
+    for (_, block) in &mut hir.blocks {
+        for instr in &mut block.instructions {
+            if let InstructionValue::Destructure { value, lvalue_pattern } = &instr.value {
+                if state_tuple_ids.contains(&value.identifier.id) {
+                    // Mark second element of array destructure as SetState
+                    if let DestructurePattern::Array { items, .. } = lvalue_pattern {
+                        if let Some(DestructureArrayItem::Value(DestructureTarget::Place(p))) =
+                            items.get(1)
+                        {
+                            // We can't mutate through the immutable reference, so collect
+                            // the ID to mark in a third pass
+                            state_tuple_ids.remove(&value.identifier.id);
+                            ref_ids.remove(&p.identifier.id); // avoid collision
+                            // Store the setter ID in state_tuple_ids for pass 3
+                            state_tuple_ids.insert(p.identifier.id);
+                        }
+                    }
+                } else if ref_ids.contains(&value.identifier.id) {
+                    // useRef destructuring is uncommon but handle it
+                    ref_ids.remove(&value.identifier.id);
+                }
+            }
+        }
+    }
+
+    // Pass 3: Apply SetState type to destructured setter identifiers
+    for (_, block) in &mut hir.blocks {
+        for instr in &mut block.instructions {
+            if state_tuple_ids.contains(&instr.lvalue.identifier.id) {
+                instr.lvalue.identifier.type_ = Type::SetState;
+            }
+            if ref_ids.contains(&instr.lvalue.identifier.id) {
+                instr.lvalue.identifier.type_ = Type::Ref;
+            }
         }
     }
 }
