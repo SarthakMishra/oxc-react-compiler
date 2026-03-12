@@ -84,16 +84,19 @@ export function TodoList() {
         const t3 = t2.id;
         const t5 = id;
         const t6 = t3 === t5;
+        let t7;
         if (t6) {
-          const t8 = t;
           const t10 = t;
-          const t11 = t10.done;
-          const t12 = !t11;
-          const t13 = { ...t8, done: t12 };
+          const t12 = t;
+          const t13 = t12.done;
+          const t14 = !t13;
+          const t15 = { ...t10, done: t14 };
+          t7 = t15;
         } else {
-          const t15 = t;
+          const t18 = t;
+          t7 = t18;
         }
-        return t16;
+        return t7;
       };
       const t4 = t2.map(t3);
       return t4;
@@ -174,35 +177,38 @@ export function TodoList() {
       const t4 = t3.id;
       const t6 = todo;
       const t7 = t6.done;
+      let t8;
       if (t7) {
-        const t8 = "line-through";
+        const t10 = "line-through";
+        t8 = t10;
       } else {
-        const t9 = "none";
+        const t12 = "none";
+        t8 = t12;
       }
-      const t11 = { textDecoration: t10 };
-      const t12 = "span";
-      const t13 = () => {
+      const t14 = { textDecoration: t8 };
+      const t15 = "span";
+      const t16 = () => {
         const t1 = toggleTodo;
         const t3 = todo;
         const t4 = t3.id;
         const t5 = t1(t4);
         return t5;
       };
-      const t15 = todo;
-      const t16 = t15.text;
-      const t17 = _jsx(t12, { onClick: t13, children: t16 });
-      const t18 = "button";
-      const t19 = () => {
+      const t18 = todo;
+      const t19 = t18.text;
+      const t20 = _jsx(t15, { onClick: t16, children: t19 });
+      const t21 = "button";
+      const t22 = () => {
         const t1 = removeTodo;
         const t3 = todo;
         const t4 = t3.id;
         const t5 = t1(t4);
         return t5;
       };
-      const t20 = "x";
-      const t21 = _jsx(t18, { onClick: t19, children: t20 });
-      const t22 = _jsxs(t1, { key: t4, style: t11, children: [t17, t21] });
-      return t22;
+      const t23 = "x";
+      const t24 = _jsx(t21, { onClick: t22, children: t23 });
+      const t25 = _jsxs(t1, { key: t4, style: t14, children: [t20, t24] });
+      return t25;
     };
     const t137 = t135.map(t136);
     const t138 = _jsx(t134, { children: t137 });

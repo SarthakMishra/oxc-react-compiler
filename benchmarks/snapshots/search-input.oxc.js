@@ -10,7 +10,7 @@ interface SearchInputProps {
 }
 
 export function SearchInput(t0) {
-  const $ = _c(21);
+  const $ = _c(22);
   const { onSearch, placeholder, debounceMs } = t0;
   if ($[0] !== onSearch || $[1] !== placeholder || $[2] !== debounceMs) {
     $[0] = onSearch;
@@ -18,9 +18,9 @@ export function SearchInput(t0) {
     $[2] = debounceMs;
   } else {
   }
-  const t82 = useState;
-  const t83 = "";
-  const t84 = t82(t83);
+  const t85 = useState;
+  const t86 = "";
+  const t87 = t85(t86);
   let value;
   let setValue;
   if ($[3] !== value || $[4] !== setValue) {
@@ -28,18 +28,18 @@ export function SearchInput(t0) {
     $[4] = setValue;
   } else {
   }
-  ([value, setValue] = t84);
+  ([value, setValue] = t87);
   let timerRef;
   if ($[5] !== timerRef) {
     $[5] = timerRef;
   } else {
   }
-  const t89 = useRef;
-  const t90 = null;
-  const t91 = t89(t90);
-  timerRef = t91;
-  const t93 = useEffect;
-  const t94 = () => {
+  const t92 = useRef;
+  const t93 = null;
+  const t94 = t92(t93);
+  timerRef = t94;
+  const t96 = useEffect;
+  const t97 = () => {
     const t0 = () => {
       const t1 = timerRef;
       const t2 = t1.current;
@@ -55,8 +55,8 @@ export function SearchInput(t0) {
     };
     return t0;
   };
-  const t95 = [];
-  const t96 = t93(t94, t95);
+  const t98 = [];
+  const t99 = t96(t97, t98);
   let handleChange;
   if ($[6] !== handleChange) {
     $[6] = handleChange;
@@ -64,8 +64,8 @@ export function SearchInput(t0) {
   }
   let handleClear;
   if ($[7] !== useCallback || $[8] !== onSearch || $[9] !== debounceMs || $[10] !== handleChange || $[11] !== handleClear) {
-    const t98 = useCallback;
-    const t99 = (e) => {
+    const t101 = useCallback;
+    const t102 = (e) => {
       let newVal;
       const t4 = e;
       const t5 = t4.target;
@@ -98,11 +98,11 @@ export function SearchInput(t0) {
       const t29 = undefined;
       return t29;
     };
-    const t100 = onSearch;
-    const t101 = debounceMs;
-    const t102 = [t100, t101];
-    const t103 = t98(t99, t102);
-    handleChange = t103;
+    const t103 = onSearch;
+    const t104 = debounceMs;
+    const t105 = [t103, t104];
+    const t106 = t101(t102, t105);
+    handleChange = t106;
     $[7] = useCallback;
     $[8] = onSearch;
     $[9] = debounceMs;
@@ -110,8 +110,8 @@ export function SearchInput(t0) {
     $[11] = handleClear;
   } else {
   }
-  const t106 = useCallback;
-  const t107 = () => {
+  const t109 = useCallback;
+  const t110 = () => {
     const t1 = setValue;
     const t2 = "";
     const t3 = t1(t2);
@@ -130,41 +130,44 @@ export function SearchInput(t0) {
     const t16 = undefined;
     return t16;
   };
-  const t108 = onSearch;
-  const t109 = [t108];
-  const t110 = t106(t107, t109);
-  handleClear = t110;
-  const t112 = "div";
-  const t113 = "relative";
-  const t114 = "input";
-  const t115 = "text";
-  const t116 = value;
-  const t117 = handleChange;
-  const t118 = placeholder;
-  const t119 = "w-full px-3 py-2 border rounded";
-  const t120 = _jsx(t114, { type: t115, value: t116, onChange: t117, placeholder: t118, className: t119 });
-  const t122 = "button";
-  if ($[12] !== handleClear) {
-    const t123 = handleClear;
+  const t111 = onSearch;
+  const t112 = [t111];
+  const t113 = t109(t110, t112);
+  handleClear = t113;
+  const t115 = "div";
+  const t116 = "relative";
+  const t117 = "input";
+  const t118 = "text";
+  const t119 = value;
+  const t120 = handleChange;
+  const t121 = placeholder;
+  const t122 = "w-full px-3 py-2 border rounded";
+  const t123 = _jsx(t117, { type: t118, value: t119, onChange: t120, placeholder: t121, className: t122 });
+  let t67;
+  let t139;
+  if ($[12] !== handleClear || $[13] !== t67 || $[14] !== useCallback || $[15] !== onSearch || $[16] !== handleClear || $[17] !== value || $[18] !== handleChange || $[19] !== placeholder || $[20] !== value) {
+    const t125 = value;
+    t67 = t125;
+    $[21] = t139;
     $[12] = handleClear;
+    $[13] = t67;
+    $[14] = useCallback;
+    $[15] = onSearch;
+    $[16] = handleClear;
+    $[17] = value;
+    $[18] = handleChange;
+    $[19] = placeholder;
+    $[20] = value;
   } else {
+    t139 = $[21];
   }
-  const t124 = "absolute right-2 top-2 text-gray-400";
-  const t125 = "\n          ×\n        ";
-  let t132;
-  if ($[13] !== useCallback || $[14] !== onSearch || $[15] !== handleClear || $[16] !== value || $[17] !== handleChange || $[18] !== placeholder || $[19] !== t75) {
-    t132 = _jsxs(t112, { className: t113, children: [t120, t75] });
-    $[20] = t132;
-    $[13] = useCallback;
-    $[14] = onSearch;
-    $[15] = handleClear;
-    $[16] = value;
-    $[17] = handleChange;
-    $[18] = placeholder;
-    $[19] = t75;
-  } else {
-    t132 = $[20];
-  }
-  return t132;
+  const t127 = "button";
+  const t128 = handleClear;
+  const t129 = "absolute right-2 top-2 text-gray-400";
+  const t130 = "\n          ×\n        ";
+  const t131 = _jsx(t127, { onClick: t128, className: t129, children: t130 });
+  t67 = t131;
+  t139 = _jsxs(t115, { className: t116, children: [t123, t67] });
+  return t139;
 }
 

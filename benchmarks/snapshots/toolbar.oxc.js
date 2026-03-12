@@ -22,7 +22,7 @@ const TOOLS: { id: Tool; label: string; shortcut: string }[] = [
 ];
 
 export function Toolbar(t0) {
-  const $ = _c(23);
+  const $ = _c(24);
   const { activeTool, onToolChange, locked, onLockToggle } = t0;
   if ($[0] !== activeTool || $[1] !== onToolChange || $[2] !== locked || $[3] !== onLockToggle) {
     $[0] = activeTool;
@@ -31,9 +31,9 @@ export function Toolbar(t0) {
     $[3] = onLockToggle;
   } else {
   }
-  const t85 = useState;
-  const t86 = null;
-  const t87 = t85(t86);
+  const t91 = useState;
+  const t92 = null;
+  const t93 = t91(t92);
   let showTooltip;
   let setShowTooltip;
   if ($[4] !== showTooltip || $[5] !== setShowTooltip) {
@@ -41,7 +41,7 @@ export function Toolbar(t0) {
     $[5] = setShowTooltip;
   } else {
   }
-  ([showTooltip, setShowTooltip] = t87);
+  ([showTooltip, setShowTooltip] = t93);
   let activeIndex;
   if ($[6] !== activeIndex) {
     $[6] = activeIndex;
@@ -49,8 +49,8 @@ export function Toolbar(t0) {
   }
   let handleToolClick;
   if ($[7] !== useMemo || $[8] !== activeTool || $[9] !== activeIndex || $[10] !== handleToolClick) {
-    const t92 = useMemo;
-    const t93 = () => {
+    const t98 = useMemo;
+    const t99 = () => {
       const t1 = TOOLS;
       const t2 = (t) => {
         const t2 = t;
@@ -62,33 +62,34 @@ export function Toolbar(t0) {
       const t3 = t1.findIndex(t2);
       return t3;
     };
-    const t94 = activeTool;
-    const t95 = [t94];
-    const t96 = t92(t93, t95);
-    activeIndex = t96;
+    const t100 = activeTool;
+    const t101 = [t100];
+    const t102 = t98(t99, t101);
+    activeIndex = t102;
     $[7] = useMemo;
     $[8] = activeTool;
     $[9] = activeIndex;
     $[10] = handleToolClick;
   } else {
   }
-  if ($[11] !== useCallback || $[12] !== onToolChange || $[13] !== handleToolClick || $[14] !== locked) {
-    const t99 = useCallback;
-    const t100 = (tool) => {
+  let t57;
+  if ($[11] !== useCallback || $[12] !== onToolChange || $[13] !== handleToolClick || $[14] !== locked || $[15] !== t57) {
+    const t105 = useCallback;
+    const t106 = (tool) => {
       const t2 = onToolChange;
       const t4 = tool;
       const t5 = t2(t4);
       const t6 = undefined;
       return t6;
     };
-    const t101 = onToolChange;
-    const t102 = [t101];
-    const t103 = t99(t100, t102);
-    handleToolClick = t103;
-    const t105 = "div";
-    const t106 = "flex items-center gap-1 p-1 bg-white rounded-lg shadow";
-    const t107 = TOOLS;
-    const t108 = (tool) => {
+    const t107 = onToolChange;
+    const t108 = [t107];
+    const t109 = t105(t106, t108);
+    handleToolClick = t109;
+    const t111 = "div";
+    const t112 = "flex items-center gap-1 p-1 bg-white rounded-lg shadow";
+    const t113 = TOOLS;
+    const t114 = (tool) => {
       const t1 = "button";
       const t3 = tool;
       const t4 = t3.id;
@@ -116,77 +117,93 @@ export function Toolbar(t0) {
       const t11 = tool;
       const t12 = t11.id;
       const t13 = t9 === t12;
+      let t14;
       if (t13) {
-        const t14 = "bg-blue-100";
+        const t16 = "bg-blue-100";
+        t14 = t16;
       } else {
-        const t15 = "hover:bg-gray-100";
+        const t18 = "hover:bg-gray-100";
+        t14 = t18;
       }
-      const t18 = tool;
-      const t19 = t18.label;
-      const t21 = showTooltip;
-      const t23 = tool;
-      const t24 = t23.id;
-      const t25 = t21 === t24;
-      const t26 = "span";
-      const t27 = "tooltip";
-      const t29 = tool;
-      const t30 = t29.label;
-      const t31 = " (";
-      const t33 = tool;
-      const t34 = t33.shortcut;
-      const t35 = ")";
-      const t36 = _jsxs(t26, { className: t27, children: [t30, t31, t34, t35] });
-      const t38 = _jsxs(t1, { key: t4, onClick: t5, onMouseEnter: t6, onMouseLeave: t7, className: t16, children: [t19, t37] });
-      return t38;
+      const t21 = tool;
+      const t22 = t21.label;
+      let t23;
+      const t26 = showTooltip;
+      const t28 = tool;
+      const t29 = t28.id;
+      const t30 = t26 === t29;
+      t23 = t30;
+      const t32 = "span";
+      const t33 = "tooltip";
+      const t35 = tool;
+      const t36 = t35.label;
+      const t37 = " (";
+      const t39 = tool;
+      const t40 = t39.shortcut;
+      const t41 = ")";
+      const t42 = _jsxs(t32, { className: t33, children: [t36, t37, t40, t41] });
+      t23 = t42;
+      const t44 = _jsxs(t1, { key: t4, onClick: t5, onMouseEnter: t6, onMouseLeave: t7, className: t14, children: [t22, t23] });
+      return t44;
     };
-    const t109 = t107.map(t108);
-    const t110 = "div";
-    const t111 = "border-l mx-1";
-    const t112 = _jsx(t110, { className: t111 });
-    const t113 = "button";
-    const t114 = onLockToggle;
-    const t115 = locked;
+    const t115 = t113.map(t114);
+    const t116 = "div";
+    const t117 = "border-l mx-1";
+    const t118 = _jsx(t116, { className: t117 });
+    const t119 = "button";
+    const t120 = onLockToggle;
+    const t121 = locked;
     $[11] = useCallback;
     $[12] = onToolChange;
     $[13] = handleToolClick;
     $[14] = locked;
+    $[15] = t57;
   } else {
   }
-  if (t115) {
+  if (t121) {
+    const t149 = "bg-blue-100";
+    t57 = t149;
+  } else {
+    const t151 = "";
+    t57 = t151;
+  }
+  if ($[16] !== locked) {
+    const t127 = locked;
+    $[16] = locked;
   } else {
   }
-  if ($[15] !== locked) {
-    const t118 = locked;
-    $[15] = locked;
+  let t65;
+  if (t127) {
+    const t147 = "🔒";
+    t65 = t147;
   } else {
+    const t129 = "🔓";
+    t65 = t129;
   }
-  if (t118) {
-  } else {
-  }
-  let t133;
-  if ($[16] !== t59 || $[17] !== t64 || $[18] !== activeIndex || $[19] !== TOOLS || $[20] !== TOOLS || $[21] !== onLockToggle) {
-    const t122 = _jsx(t113, { onClick: t114, className: t59, children: t64 });
-    const t123 = "span";
-    const t124 = "text-xs text-gray-500";
-    const t125 = "Tool ";
-    const t126 = activeIndex;
-    const t127 = 1;
-    const t128 = t126 + t127;
-    const t129 = "/";
-    const t130 = TOOLS;
-    const t131 = t130.length;
-    const t132 = _jsxs(t123, { className: t124, children: [t125, t128, t129, t131] });
-    t133 = _jsxs(t105, { className: t106, children: [t109, t112, t122, t132] });
-    $[22] = t133;
-    $[16] = t59;
-    $[17] = t64;
-    $[18] = activeIndex;
-    $[19] = TOOLS;
+  let t146;
+  if ($[17] !== t57 || $[18] !== t65 || $[19] !== activeIndex || $[20] !== TOOLS || $[21] !== TOOLS || $[22] !== onLockToggle) {
+    const t135 = _jsx(t119, { onClick: t120, className: t57, children: t65 });
+    const t136 = "span";
+    const t137 = "text-xs text-gray-500";
+    const t138 = "Tool ";
+    const t139 = activeIndex;
+    const t140 = 1;
+    const t141 = t139 + t140;
+    const t142 = "/";
+    const t143 = TOOLS;
+    const t144 = t143.length;
+    const t145 = _jsxs(t136, { className: t137, children: [t138, t141, t142, t144] });
+    t146 = _jsxs(t111, { className: t112, children: [t115, t118, t135, t145] });
+    $[23] = t146;
+    $[17] = t57;
+    $[18] = t65;
+    $[19] = activeIndex;
     $[20] = TOOLS;
-    $[21] = onLockToggle;
+    $[21] = TOOLS;
+    $[22] = onLockToggle;
   } else {
-    t133 = $[22];
+    t146 = $[23];
   }
-  return t133;
+  return t146;
 }
 

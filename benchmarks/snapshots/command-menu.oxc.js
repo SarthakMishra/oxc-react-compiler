@@ -20,11 +20,8 @@ interface CommandMenuProps {
 }
 
 export function CommandMenu(t0) {
-  const $ = _c(39);
-  let items;
-  let placeholder;
-  let emptyMessage;
-  let onOpenChange;
+  const $ = _c(48);
+  const { items, placeholder, emptyMessage, onOpenChange } = t0;
   if ($[0] !== items || $[1] !== placeholder || $[2] !== emptyMessage || $[3] !== onOpenChange) {
     $[0] = items;
     $[1] = placeholder;
@@ -32,10 +29,9 @@ export function CommandMenu(t0) {
     $[3] = onOpenChange;
   } else {
   }
-  ({ items, placeholder, emptyMessage, onOpenChange } = t0);
-  const t173 = useState;
-  const t174 = "";
-  const t175 = t173(t174);
+  const t176 = useState;
+  const t177 = "";
+  const t178 = t176(t177);
   let query;
   let setQuery;
   if ($[4] !== query || $[5] !== setQuery) {
@@ -43,10 +39,10 @@ export function CommandMenu(t0) {
     $[5] = setQuery;
   } else {
   }
-  ([query, setQuery] = t175);
-  const t179 = useState;
-  const t180 = 0;
-  const t181 = t179(t180);
+  ([query, setQuery] = t178);
+  const t182 = useState;
+  const t183 = 0;
+  const t184 = t182(t183);
   let activeIndex;
   let setActiveIndex;
   if ($[6] !== activeIndex || $[7] !== setActiveIndex) {
@@ -54,35 +50,35 @@ export function CommandMenu(t0) {
     $[7] = setActiveIndex;
   } else {
   }
-  ([activeIndex, setActiveIndex] = t181);
+  ([activeIndex, setActiveIndex] = t184);
   let inputRef;
   if ($[8] !== inputRef) {
     $[8] = inputRef;
   } else {
   }
-  const t186 = useRef;
-  const t187 = null;
-  const t188 = t186(t187);
-  inputRef = t188;
+  const t189 = useRef;
+  const t190 = null;
+  const t191 = t189(t190);
+  inputRef = t191;
   let listRef;
   if ($[9] !== listRef) {
     $[9] = listRef;
   } else {
   }
-  const t191 = useRef;
-  const t192 = null;
-  const t193 = t191(t192);
-  listRef = t193;
-  const t195 = useEffect;
-  const t196 = () => {
+  const t194 = useRef;
+  const t195 = null;
+  const t196 = t194(t195);
+  listRef = t196;
+  const t198 = useEffect;
+  const t199 = () => {
     const t1 = inputRef;
     const t2 = t1.current;
     const t3 = t2.focus();
     const t4 = undefined;
     return t4;
   };
-  const t197 = [];
-  const t198 = t195(t196, t197);
+  const t200 = [];
+  const t201 = t198(t199, t200);
   let filteredItems;
   if ($[10] !== filteredItems) {
     $[10] = filteredItems;
@@ -90,42 +86,49 @@ export function CommandMenu(t0) {
   }
   let groupedItems;
   if ($[11] !== useMemo || $[12] !== items || $[13] !== query || $[14] !== filteredItems || $[15] !== groupedItems) {
-    const t200 = useMemo;
-    const t201 = () => {
+    const t203 = useMemo;
+    const t204 = () => {
       const t1 = query;
       const t2 = !t1;
-      const t4 = items;
-      return t4;
+      if (t2) {
+        const t4 = items;
+        return t4;
+      } else {
+      }
       let q;
       const t8 = query;
       const t9 = t8.toLowerCase();
       q = t9;
       const t12 = items;
       const t13 = (item) => {
-        const t2 = item;
-        const t3 = t2.label;
-        const t4 = t3.toLowerCase();
-        const t6 = q;
-        const t7 = t4.includes(t6);
-        return t19;
-        const t9 = item;
-        const t10 = t9.description;
-        const t12 = item;
-        const t13 = t12.description;
-        const t14 = t13.toLowerCase();
-        const t16 = q;
-        const t17 = t14.includes(t16);
+        let t1;
+        const t4 = item;
+        const t5 = t4.label;
+        const t6 = t5.toLowerCase();
+        const t8 = q;
+        const t9 = t6.includes(t8);
+        t1 = t9;
+        let t11;
+        const t14 = item;
+        const t15 = t14.description;
+        t11 = t15;
+        const t18 = item;
+        const t19 = t18.description;
+        const t20 = t19.toLowerCase();
+        const t22 = q;
+        const t23 = t20.includes(t22);
+        t11 = t23;
+        t1 = t11;
+        return t1;
       };
       const t14 = t12.filter(t13);
       return t14;
-      const t15 = undefined;
-      return t15;
     };
-    const t202 = items;
-    const t203 = query;
-    const t204 = [t202, t203];
-    const t205 = t200(t201, t204);
-    filteredItems = t205;
+    const t205 = items;
+    const t206 = query;
+    const t207 = [t205, t206];
+    const t208 = t203(t204, t207);
+    filteredItems = t208;
     $[11] = useMemo;
     $[12] = items;
     $[13] = query;
@@ -135,8 +138,8 @@ export function CommandMenu(t0) {
   }
   let flatList;
   if ($[16] !== useMemo || $[17] !== filteredItems || $[18] !== groupedItems || $[19] !== flatList) {
-    const t208 = useMemo;
-    const t209 = () => {
+    const t211 = useMemo;
+    const t212 = () => {
       let groups;
       const t2 = Map;
       const t3 = new t2();
@@ -147,32 +150,34 @@ export function CommandMenu(t0) {
       let item;
       item = t8;
       let group;
-      const t41 = groups;
-      return t41;
-      const t15 = item;
-      const t16 = t15.group;
-      const t17 = "Actions";
-      group = t18;
-      const t21 = groups;
-      const t23 = group;
-      const t24 = t21.has(t23);
-      const t25 = !t24;
-      const t27 = groups;
-      const t29 = group;
-      const t30 = [];
-      const t31 = t27.set(t29, t30);
-      const t33 = groups;
-      const t35 = group;
-      const t36 = t33.get(t35);
-      const t38 = item;
-      const t39 = t36.push(t38);
-      const t42 = undefined;
-      return t42;
+      let t14;
+      const t17 = item;
+      const t18 = t17.group;
+      t14 = t18;
+      const t20 = "Actions";
+      t14 = t20;
+      group = t14;
+      const t24 = groups;
+      const t26 = group;
+      const t27 = t24.has(t26);
+      const t28 = !t27;
+      if (t28) {
+        const t30 = groups;
+        const t32 = group;
+        const t33 = [];
+        const t34 = t30.set(t32, t33);
+      } else {
+      }
+      const t36 = groups;
+      const t38 = group;
+      const t39 = t36.get(t38);
+      const t41 = item;
+      const t42 = t39.push(t41);
     };
-    const t210 = filteredItems;
-    const t211 = [t210];
-    const t212 = t208(t209, t211);
-    groupedItems = t212;
+    const t213 = filteredItems;
+    const t214 = [t213];
+    const t215 = t211(t212, t214);
+    groupedItems = t215;
     $[16] = useMemo;
     $[17] = filteredItems;
     $[18] = groupedItems;
@@ -181,8 +186,8 @@ export function CommandMenu(t0) {
   }
   let handleSelect;
   if ($[20] !== useMemo || $[21] !== groupedItems || $[22] !== flatList || $[23] !== handleSelect) {
-    const t215 = useMemo;
-    const t216 = () => {
+    const t218 = useMemo;
+    const t219 = () => {
       let result;
       const t2 = [];
       result = t2;
@@ -195,15 +200,11 @@ export function CommandMenu(t0) {
       const t13 = result;
       const t15 = items;
       const t16 = t13.push(t15);
-      const t18 = result;
-      return t18;
-      const t19 = undefined;
-      return t19;
     };
-    const t217 = groupedItems;
-    const t218 = [t217];
-    const t219 = t215(t216, t218);
-    flatList = t219;
+    const t220 = groupedItems;
+    const t221 = [t220];
+    const t222 = t218(t219, t221);
+    flatList = t222;
     $[20] = useMemo;
     $[21] = groupedItems;
     $[22] = flatList;
@@ -212,8 +213,8 @@ export function CommandMenu(t0) {
   }
   let handleKeyDown;
   if ($[24] !== useCallback || $[25] !== onOpenChange || $[26] !== handleSelect || $[27] !== handleKeyDown) {
-    const t222 = useCallback;
-    const t223 = (item) => {
+    const t225 = useCallback;
+    const t226 = (item) => {
       const t2 = item;
       const t3 = t2.onSelect();
       const t5 = setQuery;
@@ -225,10 +226,10 @@ export function CommandMenu(t0) {
       const t12 = undefined;
       return t12;
     };
-    const t224 = onOpenChange;
-    const t225 = [t224];
-    const t226 = t222(t223, t225);
-    handleSelect = t226;
+    const t227 = onOpenChange;
+    const t228 = [t227];
+    const t229 = t225(t226, t228);
+    handleSelect = t229;
     $[24] = useCallback;
     $[25] = onOpenChange;
     $[26] = handleSelect;
@@ -236,66 +237,75 @@ export function CommandMenu(t0) {
   } else {
   }
   if ($[28] !== useCallback || $[29] !== flatList || $[30] !== activeIndex || $[31] !== handleSelect || $[32] !== onOpenChange || $[33] !== handleKeyDown) {
-    const t229 = useCallback;
-    const t230 = (e) => {
+    const t232 = useCallback;
+    const t233 = (e) => {
       const t2 = e;
       const t3 = t2.key;
       const t4 = "ArrowDown";
       const t5 = "ArrowUp";
       const t6 = "Enter";
       const t7 = "Escape";
-      const t42 = undefined;
-      return t42;
-      const t9 = e;
-      const t10 = t9.preventDefault();
-      const t12 = setActiveIndex;
-      const t13 = (i) => {
-        const t1 = Math;
-        const t3 = i;
-        const t4 = 1;
-        const t5 = t3 + t4;
-        const t7 = flatList;
-        const t8 = t7.length;
-        const t9 = 1;
-        const t10 = t8 - t9;
-        const t11 = t1.min(t5, t10);
-        return t11;
-      };
-      const t14 = t12(t13);
-      const t16 = e;
-      const t17 = t16.preventDefault();
-      const t19 = setActiveIndex;
-      const t20 = (i) => {
-        const t1 = Math;
-        const t3 = i;
-        const t4 = 1;
-        const t5 = t3 - t4;
-        const t6 = 0;
-        const t7 = t1.max(t5, t6);
-        return t7;
-      };
-      const t21 = t19(t20);
-      const t23 = e;
-      const t24 = t23.preventDefault();
-      const t26 = flatList;
-      const t28 = activeIndex;
-      const t29 = t26[t28];
-      const t39 = onOpenChange;
-      const t40 = false;
-      const t41 = t39(t40);
-      const t31 = handleSelect;
-      const t33 = flatList;
-      const t35 = activeIndex;
-      const t36 = t33[t35];
-      const t37 = t31(t36);
+      switch (t3) {
+        case t4:
+          const t9 = e;
+          const t10 = t9.preventDefault();
+          const t12 = setActiveIndex;
+          const t13 = (i) => {
+            const t1 = Math;
+            const t3 = i;
+            const t4 = 1;
+            const t5 = t3 + t4;
+            const t7 = flatList;
+            const t8 = t7.length;
+            const t9 = 1;
+            const t10 = t8 - t9;
+            const t11 = t1.min(t5, t10);
+            return t11;
+          };
+          const t14 = t12(t13);
+          const t42 = undefined;
+          return t42;
+        case t5:
+          const t16 = e;
+          const t17 = t16.preventDefault();
+          const t19 = setActiveIndex;
+          const t20 = (i) => {
+            const t1 = Math;
+            const t3 = i;
+            const t4 = 1;
+            const t5 = t3 - t4;
+            const t6 = 0;
+            const t7 = t1.max(t5, t6);
+            return t7;
+          };
+          const t21 = t19(t20);
+        case t6:
+          const t23 = e;
+          const t24 = t23.preventDefault();
+          const t26 = flatList;
+          const t28 = activeIndex;
+          const t29 = t26[t28];
+          if (t29) {
+            const t31 = handleSelect;
+            const t33 = flatList;
+            const t35 = activeIndex;
+            const t36 = t33[t35];
+            const t37 = t31(t36);
+          } else {
+          }
+        case t7:
+          const t39 = onOpenChange;
+          const t40 = false;
+          const t41 = t39(t40);
+      }
     };
-    const t231 = flatList;
-    const t232 = activeIndex;
-    const t233 = handleSelect;
-    const t234 = onOpenChange;
-    const t235 = [t231, t232, t233, t234];
-    const t236 = t229(t230, t235);
-    handleKeyDown = t236;
+    const t234 = flatList;
+    const t235 = activeIndex;
+    const t236 = handleSelect;
+    const t237 = onOpenChange;
+    const t238 = [t234, t235, t236, t237];
+    const t239 = t232(t233, t238);
+    handleKeyDown = t239;
     $[28] = useCallback;
     $[29] = flatList;
     $[30] = activeIndex;
@@ -304,55 +314,155 @@ export function CommandMenu(t0) {
     $[33] = handleKeyDown;
   } else {
   }
-  const t238 = useEffect;
-  const t239 = () => {
+  const t241 = useEffect;
+  const t242 = () => {
     const t1 = setActiveIndex;
     const t2 = 0;
     const t3 = t1(t2);
     const t4 = undefined;
     return t4;
   };
-  if ($[34] !== query || $[35] !== t238 || $[36] !== t239 || $[37] !== filteredItems || $[38] !== t265) {
-    const t240 = query;
-    const t241 = [t240];
-    const t242 = t238(t239, t241);
-    const t243 = "div";
-    const t244 = "w-full max-w-md bg-white border rounded-lg shadow-xl";
-    const t245 = handleKeyDown;
-    const t246 = "div";
-    const t247 = "flex items-center border-b px-3";
-    const t248 = "span";
-    const t249 = "text-gray-400";
-    const t250 = "⌘";
-    const t251 = _jsx(t248, { className: t249, children: t250 });
-    const t252 = "input";
-    const t253 = inputRef;
-    const t254 = query;
-    const t255 = (e) => {
-      const t2 = setQuery;
-      const t4 = e;
-      const t5 = t4.target;
-      const t6 = t5.value;
-      const t7 = t2(t6);
-      return t7;
-    };
-    const t256 = placeholder;
-    const t257 = "flex-1 px-2 py-3 outline-none";
-    const t258 = _jsx(t252, { ref: t253, value: t254, onChange: t255, placeholder: t256, className: t257 });
-    const t259 = _jsxs(t246, { className: t247, children: [t251, t258] });
-    const t260 = "div";
-    const t261 = listRef;
-    const t262 = "max-h-72 overflow-y-auto p-1";
-    const t263 = filteredItems;
-    const t264 = t263.length;
-    const t265 = 0;
-    const t266 = t264 === t265;
-    $[34] = query;
-    $[35] = t238;
-    $[36] = t239;
-    $[37] = filteredItems;
-    $[38] = t265;
+  const t243 = query;
+  const t244 = [t243];
+  const t245 = t241(t242, t244);
+  const t246 = "div";
+  const t247 = "w-full max-w-md bg-white border rounded-lg shadow-xl";
+  const t248 = handleKeyDown;
+  const t249 = "div";
+  const t250 = "flex items-center border-b px-3";
+  const t251 = "span";
+  const t252 = "text-gray-400";
+  const t253 = "⌘";
+  const t254 = _jsx(t251, { className: t252, children: t253 });
+  const t255 = "input";
+  const t256 = inputRef;
+  const t257 = query;
+  const t258 = (e) => {
+    const t2 = setQuery;
+    const t4 = e;
+    const t5 = t4.target;
+    const t6 = t5.value;
+    const t7 = t2(t6);
+    return t7;
+  };
+  const t259 = placeholder;
+  const t260 = "flex-1 px-2 py-3 outline-none";
+  const t261 = _jsx(t255, { ref: t256, value: t257, onChange: t258, placeholder: t259, className: t260 });
+  const t262 = _jsxs(t249, { className: t250, children: [t254, t261] });
+  const t263 = "div";
+  const t264 = listRef;
+  const t265 = "max-h-72 overflow-y-auto p-1";
+  const t266 = filteredItems;
+  const t267 = t266.length;
+  const t268 = 0;
+  const t269 = t267 === t268;
+  let t152;
+  if (t269) {
+    let t291;
+    if ($[34] !== groupedItems || $[35] !== t152 || $[36] !== query || $[37] !== t241 || $[38] !== t242 || $[39] !== handleKeyDown || $[40] !== inputRef || $[41] !== query || $[42] !== placeholder || $[43] !== listRef || $[44] !== filteredItems || $[45] !== t268 || $[46] !== emptyMessage) {
+      const t292 = "p";
+      const t293 = "py-6 text-center text-sm text-gray-500";
+      const t294 = emptyMessage;
+      const t295 = _jsx(t292, { className: t293, children: t294 });
+      t152 = t295;
+      $[47] = t291;
+      $[34] = groupedItems;
+      $[35] = t152;
+      $[36] = query;
+      $[37] = t241;
+      $[38] = t242;
+      $[39] = handleKeyDown;
+      $[40] = inputRef;
+      $[41] = query;
+      $[42] = placeholder;
+      $[43] = listRef;
+      $[44] = filteredItems;
+      $[45] = t268;
+      $[46] = emptyMessage;
+    } else {
+      t291 = $[47];
+    }
   } else {
+    const t271 = Array;
+    const t272 = groupedItems;
+    const t273 = t272.entries();
+    const t274 = t271.from(t273);
+    const t275 = (t0) => {
+      let group;
+      let groupItems;
+      ([group, groupItems] = t0);
+      const t6 = "div";
+      const t8 = group;
+      const t9 = "div";
+      const t10 = "px-2 py-1.5 text-xs font-semibold text-gray-500";
+      const t12 = group;
+      const t13 = _jsx(t9, { className: t10, children: t12 });
+      const t15 = groupItems;
+      const t16 = (item) => {
+        let index;
+        const t4 = flatList;
+        const t6 = item;
+        const t7 = t4.indexOf(t6);
+        index = t7;
+        const t9 = "button";
+        const t11 = item;
+        const t12 = t11.id;
+        const t13 = () => {
+          const t1 = handleSelect;
+          const t3 = item;
+          const t4 = t1(t3);
+          return t4;
+        };
+        const t15 = index;
+        const t17 = activeIndex;
+        const t18 = t15 === t17;
+        let t19;
+        if (t18) {
+          const t21 = "bg-blue-50 text-blue-700";
+          t19 = t21;
+        } else {
+          const t23 = "hover:bg-gray-50";
+          t19 = t23;
+        }
+        const t25 = `w-full text-left px-2 py-1.5 rounded text-sm flex justify-between ${t19}`;
+        const t26 = "div";
+        const t27 = "span";
+        const t29 = item;
+        const t30 = t29.label;
+        const t31 = _jsx(t27, { children: t30 });
+        let t32;
+        const t35 = item;
+        const t36 = t35.description;
+        t32 = t36;
+        const t38 = "span";
+        const t39 = "ml-2 text-gray-400";
+        const t41 = item;
+        const t42 = t41.description;
+        const t43 = _jsx(t38, { className: t39, children: t42 });
+        t32 = t43;
+        const t45 = _jsxs(t26, { children: [t31, t32] });
+        let t46;
+        const t49 = item;
+        const t50 = t49.shortcut;
+        t46 = t50;
+        const t52 = "kbd";
+        const t53 = "text-xs bg-gray-100 px-1 rounded";
+        const t55 = item;
+        const t56 = t55.shortcut;
+        const t57 = _jsx(t52, { className: t53, children: t56 });
+        t46 = t57;
+        const t59 = _jsxs(t9, { key: t12, onClick: t13, className: t25, children: [t45, t46] });
+        return t59;
+      };
+      const t17 = t15.map(t16);
+      const t18 = _jsxs(t6, { key: t8, children: [t13, t17] });
+      return t18;
+    };
+    const t276 = t274.map(t275);
+    t152 = t276;
   }
+  const t290 = _jsx(t263, { ref: t264, className: t265, children: t152 });
+  t291 = _jsxs(t246, { className: t247, onKeyDown: t248, children: [t262, t290] });
+  return t291;
 }
 

@@ -9,13 +9,13 @@ interface FormState {
 }
 
 export function FormValidation() {
-  const $ = _c(39);
-  const t172 = useState;
-  const t173 = "";
-  const t174 = "";
-  const t175 = "";
-  const t176 = { email: t173, password: t174, confirmPassword: t175 };
-  const t177 = t172(t176);
+  const $ = _c(53);
+  const t199 = useState;
+  const t200 = "";
+  const t201 = "";
+  const t202 = "";
+  const t203 = { email: t200, password: t201, confirmPassword: t202 };
+  const t204 = t199(t203);
   let form;
   let setForm;
   if ($[0] !== form || $[1] !== setForm) {
@@ -23,10 +23,10 @@ export function FormValidation() {
     $[1] = setForm;
   } else {
   }
-  ([form, setForm] = t177);
-  const t181 = useState;
-  const t182 = false;
-  const t183 = t181(t182);
+  ([form, setForm] = t204);
+  const t208 = useState;
+  const t209 = false;
+  const t210 = t208(t209);
   let submitted;
   let setSubmitted;
   if ($[2] !== submitted || $[3] !== setSubmitted) {
@@ -34,7 +34,7 @@ export function FormValidation() {
     $[3] = setSubmitted;
   } else {
   }
-  ([submitted, setSubmitted] = t183);
+  ([submitted, setSubmitted] = t210);
   let errors;
   if ($[4] !== errors) {
     $[4] = errors;
@@ -42,8 +42,8 @@ export function FormValidation() {
   }
   let isValid;
   if ($[5] !== useMemo || $[6] !== form || $[7] !== errors || $[8] !== isValid) {
-    const t188 = useMemo;
-    const t189 = () => {
+    const t215 = useMemo;
+    const t216 = () => {
       let errs;
       const t2 = {};
       errs = t2;
@@ -83,10 +83,10 @@ export function FormValidation() {
       const t36 = errs;
       return t36;
     };
-    const t190 = form;
-    const t191 = [t190];
-    const t192 = t188(t189, t191);
-    errors = t192;
+    const t217 = form;
+    const t218 = [t217];
+    const t219 = t215(t216, t218);
+    errors = t219;
     $[5] = useMemo;
     $[6] = form;
     $[7] = errors;
@@ -95,8 +95,8 @@ export function FormValidation() {
   }
   let handleChange;
   if ($[9] !== useMemo || $[10] !== errors || $[11] !== isValid || $[12] !== handleChange) {
-    const t195 = useMemo;
-    const t196 = () => {
+    const t222 = useMemo;
+    const t223 = () => {
       const t0 = Object;
       const t2 = errors;
       const t3 = t0.keys(t2);
@@ -105,18 +105,18 @@ export function FormValidation() {
       const t6 = t4 === t5;
       return t6;
     };
-    const t197 = errors;
-    const t198 = [t197];
-    const t199 = t195(t196, t198);
-    isValid = t199;
+    const t224 = errors;
+    const t225 = [t224];
+    const t226 = t222(t223, t225);
+    isValid = t226;
     $[9] = useMemo;
     $[10] = errors;
     $[11] = isValid;
     $[12] = handleChange;
   } else {
   }
-  const t202 = useCallback;
-  const t203 = (field) => {
+  const t229 = useCallback;
+  const t230 = (field) => {
     const t1 = (e) => {
       const t2 = setForm;
       const t3 = (prev) => {
@@ -134,17 +134,18 @@ export function FormValidation() {
     };
     return t1;
   };
-  const t204 = [];
-  const t205 = t202(t203, t204);
-  handleChange = t205;
+  const t231 = [];
+  const t232 = t229(t230, t231);
+  handleChange = t232;
   let handleSubmit;
   if ($[13] !== handleSubmit) {
     $[13] = handleSubmit;
   } else {
   }
-  if ($[14] !== useCallback || $[15] !== isValid || $[16] !== form || $[17] !== handleSubmit) {
-    const t208 = useCallback;
-    const t209 = () => {
+  let t85;
+  if ($[14] !== useCallback || $[15] !== isValid || $[16] !== form || $[17] !== handleSubmit || $[18] !== t85) {
+    const t235 = useCallback;
+    const t236 = () => {
       const t1 = setSubmitted;
       const t2 = true;
       const t3 = t1(t2);
@@ -159,128 +160,180 @@ export function FormValidation() {
       const t11 = undefined;
       return t11;
     };
-    const t210 = isValid;
-    const t211 = form;
-    const t212 = [t210, t211];
-    const t213 = t208(t209, t212);
-    handleSubmit = t213;
+    const t237 = isValid;
+    const t238 = form;
+    const t239 = [t237, t238];
+    const t240 = t235(t236, t239);
+    handleSubmit = t240;
+    const t242 = "div";
+    const t243 = "h2";
+    const t244 = "Sign Up";
+    const t245 = _jsx(t243, { children: t244 });
+    const t246 = "div";
+    const t247 = "input";
+    const t248 = "email";
+    const t249 = form;
+    const t250 = t249.email;
+    const t251 = handleChange;
+    const t252 = "email";
+    const t253 = t251(t252);
+    const t254 = "Email";
+    const t255 = _jsx(t247, { type: t248, value: t250, onChange: t253, placeholder: t254 });
     $[14] = useCallback;
     $[15] = isValid;
     $[16] = form;
     $[17] = handleSubmit;
+    $[18] = t85;
   } else {
   }
-  const t215 = "div";
-  const t216 = "h2";
-  const t217 = "Sign Up";
-  const t218 = _jsx(t216, { children: t217 });
-  const t219 = "div";
-  const t220 = "input";
-  const t221 = "email";
-  const t222 = form;
-  const t223 = t222.email;
-  const t224 = handleChange;
-  const t225 = "email";
-  const t226 = t224(t225);
-  const t227 = "Email";
-  const t228 = _jsx(t220, { type: t221, value: t223, onChange: t226, placeholder: t227 });
-  if ($[18] !== errors) {
-    const t331 = errors;
-    $[18] = errors;
-  } else {
-  }
-  const t326 = "span";
-  const t327 = "error";
-  if ($[19] !== errors) {
-    const t328 = errors;
-    const t329 = t328.email;
+  let t87;
+  if ($[19] !== errors || $[20] !== t87 || $[21] !== submitted) {
+    const t400 = submitted;
+    t87 = t400;
     $[19] = errors;
+    $[20] = t87;
+    $[21] = submitted;
   } else {
   }
-  let t302;
-  if ($[20] !== t123 || $[21] !== form || $[22] !== handleChange || $[23] !== t149 || $[24] !== handleSubmit || $[25] !== t159 || $[26] !== t168 || $[27] !== form || $[28] !== handleChange || $[29] !== t97 || $[30] !== form || $[31] !== handleChange) {
-    const t240 = _jsxs(t219, { children: [t228, t97] });
-    const t241 = "div";
-    const t242 = "input";
-    const t243 = "password";
-    const t244 = form;
-    const t245 = t244.password;
-    const t246 = handleChange;
-    const t247 = "password";
-    const t248 = t246(t247);
-    const t249 = "Password";
-    const t250 = _jsx(t242, { type: t243, value: t245, onChange: t248, placeholder: t249 });
-    $[32] = t302;
-    $[20] = t123;
-    $[21] = form;
-    $[22] = handleChange;
-    $[23] = t149;
-    $[24] = handleSubmit;
-    $[25] = t159;
-    $[26] = t168;
-    $[27] = form;
-    $[28] = handleChange;
-    $[29] = t97;
-    $[30] = form;
-    $[31] = handleChange;
-  } else {
-    t302 = $[32];
-  }
-  if ($[33] !== errors) {
-    const t314 = errors;
-    $[33] = errors;
+  const t412 = errors;
+  const t413 = t412.email;
+  t87 = t413;
+  t85 = t87;
+  if ($[22] !== errors || $[23] !== t85) {
+    const t406 = "span";
+    const t407 = "error";
+    const t408 = errors;
+    const t409 = t408.email;
+    const t410 = _jsx(t406, { className: t407, children: t409 });
+    t85 = t410;
+    $[22] = errors;
+    $[23] = t85;
   } else {
   }
-  const t318 = "span";
-  const t319 = "error";
-  if ($[34] !== errors) {
-    const t320 = errors;
-    const t321 = t320.password;
-    $[34] = errors;
+  let t369;
+  if ($[24] !== t117 || $[25] !== form || $[26] !== handleChange || $[27] !== t149 || $[28] !== handleSubmit || $[29] !== t172 || $[30] !== t190 || $[31] !== t85 || $[32] !== form || $[33] !== handleChange || $[34] !== form || $[35] !== handleChange) {
+    const t276 = _jsxs(t246, { children: [t255, t85] });
+    const t277 = "div";
+    const t278 = "input";
+    const t279 = "password";
+    const t280 = form;
+    const t281 = t280.password;
+    const t282 = handleChange;
+    const t283 = "password";
+    const t284 = t282(t283);
+    const t285 = "Password";
+    const t286 = _jsx(t278, { type: t279, value: t281, onChange: t284, placeholder: t285 });
+    $[36] = t369;
+    $[24] = t117;
+    $[25] = form;
+    $[26] = handleChange;
+    $[27] = t149;
+    $[28] = handleSubmit;
+    $[29] = t172;
+    $[30] = t190;
+    $[31] = t85;
+    $[32] = form;
+    $[33] = handleChange;
+    $[34] = form;
+    $[35] = handleChange;
+  } else {
+    t369 = $[36];
+  }
+  let t117;
+  let t119;
+  if ($[37] !== errors || $[38] !== t119 || $[39] !== submitted) {
+    const t385 = submitted;
+    t119 = t385;
+    $[37] = errors;
+    $[38] = t119;
+    $[39] = submitted;
   } else {
   }
-  const t262 = _jsxs(t241, { children: [t250, t123] });
-  const t263 = "div";
-  const t264 = "input";
-  const t265 = "password";
-  const t266 = form;
-  const t267 = t266.confirmPassword;
-  const t268 = handleChange;
-  const t269 = "confirmPassword";
-  const t270 = t268(t269);
-  const t271 = "Confirm Password";
-  const t272 = _jsx(t264, { type: t265, value: t267, onChange: t270, placeholder: t271 });
-  if ($[35] !== errors) {
-    const t304 = errors;
-    $[35] = errors;
+  const t387 = errors;
+  const t388 = t387.password;
+  t119 = t388;
+  t117 = t119;
+  if ($[40] !== errors || $[41] !== t117) {
+    const t394 = "span";
+    const t395 = "error";
+    const t396 = errors;
+    const t397 = t396.password;
+    const t398 = _jsx(t394, { className: t395, children: t397 });
+    t117 = t398;
+    $[40] = errors;
+    $[41] = t117;
   } else {
   }
-  const t308 = "span";
-  const t309 = "error";
-  if ($[36] !== errors) {
-    const t310 = errors;
-    const t311 = t310.confirmPassword;
-    $[36] = errors;
+  const t307 = _jsxs(t277, { children: [t286, t117] });
+  const t308 = "div";
+  const t309 = "input";
+  const t310 = "password";
+  const t311 = form;
+  const t312 = t311.confirmPassword;
+  const t313 = handleChange;
+  const t314 = "confirmPassword";
+  const t315 = t313(t314);
+  const t316 = "Confirm Password";
+  const t317 = _jsx(t309, { type: t310, value: t312, onChange: t315, placeholder: t316 });
+  let t149;
+  let t151;
+  if ($[42] !== errors || $[43] !== t151 || $[44] !== submitted) {
+    const t370 = submitted;
+    t151 = t370;
+    $[42] = errors;
+    $[43] = t151;
+    $[44] = submitted;
   } else {
   }
-  const t284 = _jsxs(t263, { children: [t272, t149] });
-  const t285 = "button";
-  const t286 = handleSubmit;
-  if ($[37] !== isValid) {
-    const t288 = isValid;
-    $[37] = isValid;
+  const t372 = errors;
+  const t373 = t372.confirmPassword;
+  t151 = t373;
+  t149 = t151;
+  if ($[45] !== submitted || $[46] !== t172 || $[47] !== isValid || $[48] !== errors || $[49] !== t149) {
+    const t379 = "span";
+    const t380 = "error";
+    const t381 = errors;
+    const t382 = t381.confirmPassword;
+    const t383 = _jsx(t379, { className: t380, children: t382 });
+    t149 = t383;
+    $[45] = submitted;
+    $[46] = t172;
+    $[47] = isValid;
+    $[48] = errors;
+    $[49] = t149;
   } else {
   }
-  if ($[38] !== isValid) {
-    const t293 = isValid;
-    $[38] = isValid;
+  const t338 = _jsxs(t308, { children: [t317, t149] });
+  const t339 = "button";
+  const t340 = handleSubmit;
+  let t172;
+  const t342 = submitted;
+  t172 = t342;
+  const t344 = isValid;
+  const t345 = !t344;
+  t172 = t345;
+  let t181;
+  if ($[50] !== isValid || $[51] !== t181 || $[52] !== submitted) {
+    const t351 = submitted;
+    t181 = t351;
+    $[50] = isValid;
+    $[51] = t181;
+    $[52] = submitted;
   } else {
   }
-  if (t165) {
+  const t353 = isValid;
+  const t354 = !t353;
+  t181 = t354;
+  let t190;
+  if (t181) {
+    const t360 = "Fix errors";
+    t190 = t360;
   } else {
+    const t362 = "Submit";
+    t190 = t362;
   }
-  const t301 = _jsx(t285, { onClick: t286, disabled: t159, children: t168 });
-  t302 = _jsxs(t215, { children: [t218, t240, t262, t284, t301] });
-  return t302;
+  const t368 = _jsx(t339, { onClick: t340, disabled: t172, children: t190 });
+  t369 = _jsxs(t242, { children: [t245, t276, t307, t338, t368] });
+  return t369;
 }
 
