@@ -4,7 +4,7 @@
 
 Last updated: 2026-03-12
 
-Current conformance: 230/1717 pass (13.4%), 0 panics, 1448 divergences across 3 categories.
+Current conformance: 374/1717 pass (21.8%), 0 panics, 1304 divergences across 2 categories.
 
 ---
 
@@ -14,42 +14,38 @@ _(Nothing active)_
 
 ---
 
-## Priority 1 -- Conformance: TS Type Stripping (~138 fixtures)
+## Priority 1 -- Conformance: TS Type Stripping ~~(~138 fixtures)~~ DONE
 
-- [ ] Add oxc_codegen as dev-dependency (workspace + crate) -- [ts-type-stripping.md](ts-type-stripping.md)#gap-1-add-oxc_codegen-as-a-dev-dependency
-- [ ] Implement parse-print roundtrip for type stripping in conformance tests -- [ts-type-stripping.md](ts-type-stripping.md)#gap-2-implement-parse-print-roundtrip-for-type-stripping
-- [ ] Verify impact and update known-failures.txt -- [ts-type-stripping.md](ts-type-stripping.md)#gap-3-verify-and-measure-impact
+- [x] Add oxc_codegen + oxc_transformer as dev-dependencies
+- [x] Implement parse-print roundtrip for type stripping in conformance tests
+- [x] JSX normalization via OXC transformer (lower JSX to _jsx in both sides)
+- [x] Bail on all validation errors (AllErrors threshold) — +24 fixtures
+- [x] Skip functions with zero cache slots (no reactive scopes) — +90 fixtures
+- [x] Verify impact and update known-failures.txt
 
-## Priority 2 -- Conformance: Memoization Structure (~605 fixtures)
+## Priority 2 -- Conformance: Memoization Structure (~606 fixtures)
+
+Deep compiler work needed — temp variable explosion, scope analysis, cache slots:
 
 - [ ] Temp variable inlining pass (collapse SSA chains in codegen) -- [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
 - [ ] JSX syntax preservation in codegen (emit `<div>` not `_jsx()`) -- [memoization-structure.md](memoization-structure.md)#gap-2-jsx-syntax-preservation-in-codegen
 - [ ] Cache slot count alignment -- [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 - [ ] Scope merging/splitting heuristic audit vs upstream -- [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
 
-## Priority 3 -- Conformance: Over-Memoization Bail-Out (~710 fixtures)
+## Priority 3 -- Conformance: Over-Memoization Bail-Out (~698 fixtures)
+
+Missing validation logic — our compiler compiles functions Babel skips:
 
 - [ ] Categorize bail-out fixtures (triage script) -- [over-memoization-bailout.md](over-memoization-bailout.md)#gap-1-categorize-bail-out-fixtures
-- [ ] Validation-error bail-out threshold (match Babel error severities) -- [over-memoization-bailout.md](over-memoization-bailout.md)#gap-2-validation-error-bail-out-threshold
+- [x] Validation-error bail-out threshold (match Babel error severities) — DONE (AllErrors threshold)
+- [x] Zero-scope bail-out (return original source when no reactive scopes) — DONE
 - [ ] Audit validation passes for error accuracy vs upstream -- [over-memoization-bailout.md](over-memoization-bailout.md)#gap-3-ensure-validation-passes-emit-correct-errors
-- [ ] Zero-scope bail-out (return original source when no reactive scopes) -- [over-memoization-bailout.md](over-memoization-bailout.md)#gap-4-zero-scope-bail-out
 - [ ] Mutation aliasing bail-out (escaped values analysis) -- [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
 - [ ] "Too simple" function detection -- [over-memoization-bailout.md](over-memoization-bailout.md)#gap-6-too-simple-function-detection
 
 ## Priority 4 -- Performance / Polish
 
 _(All previous items complete)_
-
-## Priority 5 -- Performance Benchmarks
-
-- [ ] Per-file speed comparison: OXC vs Babel (add `--compare` to bench.mjs) -- [performance-benchmarks.md](performance-benchmarks.md)#gap-1-per-file-speed-comparison-oxc-vs-babel
-- [ ] Batch throughput comparison (bundler simulation) -- [performance-benchmarks.md](performance-benchmarks.md)#gap-2-batch-throughput-comparison
-- [ ] Bundle size impact measurement (raw/minified/gzipped) -- [performance-benchmarks.md](performance-benchmarks.md)#gap-3-bundle-size-impact
-- [ ] Runtime re-render count validation (original vs OXC vs Babel) -- [performance-benchmarks.md](performance-benchmarks.md)#gap-4-runtime-re-render-count-validation
-- [ ] Consolidated report and CI regression detection -- [performance-benchmarks.md](performance-benchmarks.md)#gap-5-consolidated-report-and-ci-integration
-- [ ] Cold start and memory profiling -- [performance-benchmarks.md](performance-benchmarks.md)#gap-6-cold-start-and-memory-profiling
-- [ ] Vite dev server and HMR benchmarks -- [performance-benchmarks.md](performance-benchmarks.md)#gap-7-vite-dev-server-and-hmr-benchmarks
-- [ ] Per-pass timing instrumentation and Criterion benchmarks -- [performance-benchmarks.md](performance-benchmarks.md)#gap-8-per-pass-timing-and-criterion-benchmarks
 
 ---
 
@@ -62,6 +58,14 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Conformance Quick Wins (2026-03-12)
+
+- [x] TS type stripping via OXC parse→transform→print roundtrip (+30 fixtures)
+- [x] JSX normalization via OXC transformer (normalize JSX representation)
+- [x] Bail on all validation errors (AllErrors threshold, +24 fixtures)
+- [x] Skip functions with zero cache slots (+90 fixtures)
+- Total: 230/1717 → 374/1717 (+144 fixtures, 13.4% → 21.8%)
 
 ### Render Equivalence (formerly render-equivalence.md)
 
