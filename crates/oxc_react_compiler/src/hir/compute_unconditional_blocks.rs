@@ -231,6 +231,9 @@ fn terminal_successors(terminal: &Terminal) -> Vec<BlockId> {
     }
 }
 
+// DIVERGENCE: Post-dominator computation also uses Cooper-Harvey-Kennedy (see
+// enter_ssa.rs DIVERGENCE comment). This is consistent with our dominance
+// computation choice and sufficient for the CFG sizes seen in React components.
 /// Compute immediate dominators using the iterative algorithm (Cooper, Harvey, Kennedy).
 /// Generic version that works with any block ID set and predecessor map.
 fn compute_dominators_generic(

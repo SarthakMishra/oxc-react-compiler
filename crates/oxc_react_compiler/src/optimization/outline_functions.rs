@@ -2,6 +2,10 @@
 
 use crate::hir::types::{HIR, InstructionValue};
 
+// DIVERGENCE: Upstream's OutlineFunctions pass fully hoists function definitions
+// to module scope. This implementation only marks candidates via a naming
+// convention (__hoistable_ prefix) and defers actual hoisting to codegen. This
+// simplified approach avoids rewriting the module-level AST during HIR passes.
 /// Outline nested function expressions to module level when possible.
 ///
 /// Identifies `FunctionExpression` instructions that don't capture any

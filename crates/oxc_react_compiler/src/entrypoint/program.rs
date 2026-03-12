@@ -304,6 +304,96 @@ fn try_compile_arrow(
     }
 }
 
+/// Extract and compile the inner function from a React.forwardRef/React.memo wrapper call.
+///
+/// Handles patterns like:
+/// - `React.forwardRef(function Comp() { ... })`
+/// - `React.memo(() => { ... })`
+/// - `React.memo(React.forwardRef(() => { ... }))` (nested)
+/// - `forwardRef(() => { ... })` (bare imports)
+#[expect(clippy::too_many_arguments)]
+fn try_compile_wrapper_call<'a>(
+    call: &'a CallExpression<'a>,
+    name: &str,
+    fn_type: ReactFunctionType,
+    config: &EnvironmentConfig,
+    source_text: &str,
+    generate_source_map: bool,
+    compiled: &mut Vec<(Span, String)>,
+    source_maps: &mut Vec<(Span, SourceMap)>,
+    diagnostics: &mut Vec<OxcDiagnostic>,
+) {
+    // The first argument is the inner function (or another wrapper call)
+    let Some(first_arg) = call.arguments.first() else {
+        return;
+    };
+    // Skip spread arguments — React.forwardRef(...args) is not a valid pattern
+    if matches!(first_arg, Argument::SpreadElement(_)) {
+        return;
+    }
+    // SAFETY: non-SpreadElement Argument variants have the same layout as Expression
+    // (oxc uses inherit_variants! macro). This is the same pattern used in build.rs.
+    let inner_expr: &Expression<'_> =
+        unsafe { &*std::ptr::from_ref::<Argument<'_>>(first_arg).cast::<Expression<'_>>() };
+    let inner = inner_expr.without_parentheses();
+
+    match inner {
+        Expression::ArrowFunctionExpression(arrow) => {
+            if has_opt_out_directive(Some(arrow.body.directives.as_slice())) {
+                return;
+            }
+            let builder = HIRBuilder::new(config.clone());
+            if let Some((code, sm)) = try_compile_arrow(
+                builder,
+                arrow,
+                Some(name.to_string()),
+                fn_type,
+                config,
+                source_text,
+                generate_source_map,
+                diagnostics,
+            ) {
+                if let Some(sm) = sm {
+                    source_maps.push((arrow.span, sm));
+                }
+                compiled.push((arrow.span, code));
+            }
+        }
+        Expression::FunctionExpression(func) => {
+            let builder = HIRBuilder::new(config.clone());
+            if let Some((code, sm)) = try_compile_function(
+                builder,
+                func,
+                fn_type,
+                config,
+                source_text,
+                generate_source_map,
+                diagnostics,
+            ) {
+                if let Some(sm) = sm {
+                    source_maps.push((func.span, sm));
+                }
+                compiled.push((func.span, code));
+            }
+        }
+        // Handle nested wrappers: React.memo(React.forwardRef(() => ...))
+        Expression::CallExpression(inner_call) if is_react_wrapper_call(inner_call) => {
+            try_compile_wrapper_call(
+                inner_call,
+                name,
+                fn_type,
+                config,
+                source_text,
+                generate_source_map,
+                compiled,
+                source_maps,
+                diagnostics,
+            );
+        }
+        _ => {}
+    }
+}
+
 /// Walk a statement, discover compilable functions, and compile them immediately.
 #[expect(clippy::too_many_arguments)]
 fn compile_statement<'a>(
@@ -518,7 +608,21 @@ fn compile_variable_declaration<'a>(
                             compiled.push((func.span, code));
                         }
                     }
-                    // TODO: Handle React.forwardRef, React.memo wrappers
+                    // Handle React.forwardRef(() => ...) and React.memo(() => ...),
+                    // including nested: React.memo(React.forwardRef(() => ...))
+                    Expression::CallExpression(call) if is_react_wrapper_call(call) => {
+                        try_compile_wrapper_call(
+                            call,
+                            &name,
+                            fn_type,
+                            config,
+                            source_text,
+                            generate_source_map,
+                            compiled,
+                            source_maps,
+                            diagnostics,
+                        );
+                    }
                     _ => {}
                 }
             }

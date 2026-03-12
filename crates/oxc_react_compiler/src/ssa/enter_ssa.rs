@@ -94,6 +94,10 @@ fn terminal_successors(terminal: &crate::hir::types::Terminal) -> Vec<BlockId> {
     }
 }
 
+// DIVERGENCE: Dominance computation uses the Cooper-Harvey-Kennedy iterative
+// algorithm instead of Lengauer-Tarjan. CHK is simpler to implement and debug,
+// and performs well on the small CFGs typical of React components (usually
+// <100 blocks). Upstream babel-plugin-react-compiler uses a different approach.
 /// Compute immediate dominators using the iterative algorithm (Cooper, Harvey, Kennedy).
 /// Returns a map from block -> immediate dominator.
 fn compute_dominators(

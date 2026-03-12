@@ -2,13 +2,13 @@
 
 use crate::hir::types::{HIR, Instruction, InstructionValue};
 
+// DIVERGENCE: This pass is intentionally a no-op. Our HIR lowering (build.rs)
+// already flattens all JSX subexpressions into temporaries during AST→HIR
+// conversion, achieving the same effect as upstream's OutlineJsx.ts. Upstream
+// needs this pass because their BuildHIR may leave nested JSX inline; ours
+// always creates separate instructions with their own Places.
+
 /// Outline JSX expressions into separate variables.
-///
-/// // DIVERGENCE: This pass is intentionally a no-op. Our HIR lowering (build.rs)
-/// // already flattens all JSX subexpressions into temporaries during AST→HIR
-/// // conversion, achieving the same effect as upstream's OutlineJsx.ts. Upstream
-/// // needs this pass because their BuildHIR may leave nested JSX inline; ours
-/// // always creates separate instructions with their own Places.
 ///
 /// Finds JSX elements used as arguments or children of other JSX, and extracts
 /// them into separate instructions with their own temporaries. This improves

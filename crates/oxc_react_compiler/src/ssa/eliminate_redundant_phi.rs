@@ -3,6 +3,10 @@
 use crate::hir::types::{HIR, IdentifierId, Phi, Place};
 use rustc_hash::FxHashMap;
 
+// DIVERGENCE: Upstream does not have a separate redundant-phi elimination pass;
+// its SSA construction avoids trivial phis at insertion time. Our EnterSSA
+// uses the standard Cytron-et-al algorithm which may insert more phis than
+// necessary, so we run this cleanup pass immediately after to remove them.
 /// Remove phi nodes that are trivially redundant.
 ///
 /// A phi is redundant if:

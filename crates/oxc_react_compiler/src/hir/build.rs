@@ -3,6 +3,14 @@
 //! Converts OXC AST nodes into HIR instructions and basic blocks.
 //! Every expression is flattened into temporaries, and control flow
 //! is lowered into basic blocks with terminals.
+//!
+// DIVERGENCE: Unlike upstream BuildHIR.ts, this lowering eagerly flattens ALL
+// subexpressions (including JSX children and nested JSX elements) into
+// temporaries with their own instruction/Place. Upstream may leave some
+// expressions inline, requiring a later OutlineJsx pass to extract them.
+// Our approach makes the OutlineJsx pass a no-op (see outline_jsx.rs) and
+// simplifies downstream scope analysis since every value already has its own
+// Place and mutable range.
 
 #![allow(dead_code)]
 

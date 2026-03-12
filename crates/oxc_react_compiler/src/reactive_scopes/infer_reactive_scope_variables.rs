@@ -7,6 +7,11 @@ use crate::hir::types::{
 use crate::utils::disjoint_set::DisjointSet;
 use rustc_hash::FxHashMap;
 
+// DIVERGENCE: Upstream InferReactiveScopeVariables uses a forward walk over
+// instructions to group identifiers into scopes by mutable-range overlap.
+// This implementation uses a union-find (DisjointSet) data structure, which
+// is algorithmically equivalent but avoids repeated linear scans when merging
+// scope groups.
 /// Infer reactive scope variables using DisjointSet (union-find).
 ///
 /// Algorithm:
@@ -66,11 +71,13 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
         }
     }
 
-    // Phase 3: Build ReactiveScopes from disjoint sets and map identifiers to scopes
+    // Phase 3: Build ReactiveScopes from disjoint sets and map identifiers to scope
+    // indices. We store indices into the `scopes` vec rather than cloning
+    // ReactiveScope for every member, avoiding O(members) heap allocations.
     let sets = dsu.sets();
     let mut scope_id_counter = 0u32;
     let mut scopes = Vec::new();
-    let mut id_to_scope: FxHashMap<IdentifierId, ReactiveScope> = FxHashMap::default();
+    let mut id_to_scope_idx: FxHashMap<IdentifierId, usize> = FxHashMap::default();
 
     for (_, members) in sets {
         // Compute merged range for the scope
@@ -89,6 +96,7 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
         }
 
         if any_reactive && merged_range.end.0 > merged_range.start.0 {
+            let scope_idx = scopes.len();
             let scope = ReactiveScope {
                 id: ScopeId(scope_id_counter),
                 range: merged_range,
@@ -99,11 +107,11 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
                 merged: Vec::new(),
                 loc: SourceLocation::default(),
             };
-            // Map all member identifiers to this scope
-            for &member in &members {
-                id_to_scope.insert(member, scope.clone());
-            }
             scopes.push(scope);
+            // Map all member identifiers to this scope index (cheap u64 copy, no clone)
+            for &member in &members {
+                id_to_scope_idx.insert(member, scope_idx);
+            }
             scope_id_counter += 1;
         }
     }
@@ -119,12 +127,12 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
                 let lvalue_id = instr.lvalue.identifier.id;
 
                 // If this instruction is scoped, propagate to Destructure pattern targets
-                if let Some(scope) = id_to_scope.get(&lvalue_id).cloned() {
+                if let Some(&scope_idx) = id_to_scope_idx.get(&lvalue_id) {
                     if let InstructionValue::Destructure { lvalue_pattern, .. } = &instr.value {
                         let target_ids = collect_destructure_target_ids(lvalue_pattern);
                         for tid in target_ids {
-                            if !id_to_scope.contains_key(&tid) {
-                                id_to_scope.insert(tid, scope.clone());
+                            if !id_to_scope_idx.contains_key(&tid) {
+                                id_to_scope_idx.insert(tid, scope_idx);
                                 changed = true;
                             }
                         }
@@ -135,8 +143,8 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
                 // Check if any operand is in a scope
                 let operand_ids = collect_operand_ids(&instr.value);
                 for op_id in &operand_ids {
-                    if let Some(scope) = id_to_scope.get(op_id) {
-                        id_to_scope.insert(lvalue_id, scope.clone());
+                    if let Some(&scope_idx) = id_to_scope_idx.get(op_id) {
+                        id_to_scope_idx.insert(lvalue_id, scope_idx);
                         changed = true;
                         break;
                     }
@@ -145,16 +153,17 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
         }
     }
 
-    // Phase 5: Assign scopes back to identifiers in the HIR
+    // Phase 5: Assign scopes back to identifiers in the HIR.
+    // Only here do we clone + box, once per identifier that needs a scope.
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if let Some(scope) = id_to_scope.get(&instr.lvalue.identifier.id) {
-                instr.lvalue.identifier.scope = Some(Box::new(scope.clone()));
+            if let Some(&idx) = id_to_scope_idx.get(&instr.lvalue.identifier.id) {
+                instr.lvalue.identifier.scope = Some(Box::new(scopes[idx].clone()));
             }
         }
         for phi in &mut block.phis {
-            if let Some(scope) = id_to_scope.get(&phi.place.identifier.id) {
-                phi.place.identifier.scope = Some(Box::new(scope.clone()));
+            if let Some(&idx) = id_to_scope_idx.get(&phi.place.identifier.id) {
+                phi.place.identifier.scope = Some(Box::new(scopes[idx].clone()));
             }
         }
     }
