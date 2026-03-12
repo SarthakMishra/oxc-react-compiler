@@ -179,16 +179,13 @@ cargo test --test conformance_tests
 
 ## Architecture
 
-See [REQUIREMENTS.md](./REQUIREMENTS.md) for the full architecture document, including the 62-pass compilation pipeline, HIR data structures, and implementation phases.
+The compiler implements a 62-pass compilation pipeline. Architecture details (HIR data structures, pass ordering, etc.) are documented inline in the source code.
 
 ## Known Limitations
 
 - **Proof of concept** — This is an AI-generated port and has not been validated against production workloads. Behavioral equivalence with the upstream compiler is not guaranteed.
-- **Incomplete conformance** — The upstream React Compiler has ~2000+ test fixtures. Run the conformance suite (`tests/conformance/`) to see current pass/fail status.
 - **Source maps** — Source map generation covers compiled function regions with per-line identity mappings for unmodified code. Complex source map chaining with other Vite plugins has not been verified.
-- **No oxlint integration** — Tier 1 lint rules are available via the NAPI binding but are not yet integrated into the oxlint plugin system.
-- **Limited pattern support** — `React.forwardRef`, `React.memo`, and `React.lazy` wrappers are recognized for function discovery but may not compile correctly in all cases.
-- **No incremental compilation** — Each file is compiled independently. There is no cross-file analysis or caching.
+- **No oxlint integration** — Lint rules exist in `crates/oxc_react_compiler_lint` and are callable via the NAPI binding, but they are not integrated into the oxlint binary. This would require upstream work in the [oxc repo](https://github.com/oxc-project/oxc) to support external plugin crates — it is not achievable in this standalone POC repo.
 
 ## License
 
