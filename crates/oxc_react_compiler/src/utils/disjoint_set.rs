@@ -32,22 +32,26 @@ impl<T: Copy + Eq + Hash> DisjointSet<T> {
 
     /// Returns the representative of the set containing `item`,
     /// applying path compression along the way.
-    pub fn find(&mut self, item: T) -> T {
-        let p = *self.parent.get(&item).expect("item not in disjoint set");
+    ///
+    /// Returns `None` if `item` has not been registered via `make_set`.
+    pub fn find(&mut self, item: T) -> Option<T> {
+        let p = *self.parent.get(&item)?;
         if p == item {
-            return item;
+            return Some(item);
         }
-        let root = self.find(p);
+        let root = self.find(p)?;
         self.parent.insert(item, root);
-        root
+        Some(root)
     }
 
     /// Merges the sets containing `a` and `b` using union by rank.
-    pub fn union(&mut self, a: T, b: T) {
-        let root_a = self.find(a);
-        let root_b = self.find(b);
+    ///
+    /// Returns `None` if either `a` or `b` has not been registered via `make_set`.
+    pub fn union(&mut self, a: T, b: T) -> Option<()> {
+        let root_a = self.find(a)?;
+        let root_b = self.find(b)?;
         if root_a == root_b {
-            return;
+            return Some(());
         }
 
         let rank_a = self.rank[&root_a];
@@ -61,11 +65,14 @@ impl<T: Copy + Eq + Hash> DisjointSet<T> {
             self.parent.insert(root_b, root_a);
             *self.rank.get_mut(&root_a).unwrap() += 1;
         }
+        Some(())
     }
 
     /// Returns `true` if `a` and `b` belong to the same set.
-    pub fn same_set(&mut self, a: T, b: T) -> bool {
-        self.find(a) == self.find(b)
+    ///
+    /// Returns `None` if either `a` or `b` has not been registered via `make_set`.
+    pub fn same_set(&mut self, a: T, b: T) -> Option<bool> {
+        Some(self.find(a)? == self.find(b)?)
     }
 
     /// Returns all sets grouped by their representative element.
@@ -73,8 +80,9 @@ impl<T: Copy + Eq + Hash> DisjointSet<T> {
         let items: Vec<T> = self.parent.keys().copied().collect();
         let mut result: FxHashMap<T, Vec<T>> = FxHashMap::default();
         for item in items {
-            let root = self.find(item);
-            result.entry(root).or_default().push(item);
+            if let Some(root) = self.find(item) {
+                result.entry(root).or_default().push(item);
+            }
         }
         result
     }
@@ -89,9 +97,30 @@ mod tests {
         let mut ds = DisjointSet::new();
         ds.make_set(1);
         ds.make_set(2);
-        assert_eq!(ds.find(1), 1);
-        assert_eq!(ds.find(2), 2);
-        assert!(!ds.same_set(1, 2));
+        assert_eq!(ds.find(1), Some(1));
+        assert_eq!(ds.find(2), Some(2));
+        assert_eq!(ds.same_set(1, 2), Some(false));
+    }
+
+    #[test]
+    fn test_find_unregistered_returns_none() {
+        let mut ds: DisjointSet<i32> = DisjointSet::new();
+        assert_eq!(ds.find(42), None);
+    }
+
+    #[test]
+    fn test_union_unregistered_returns_none() {
+        let mut ds = DisjointSet::new();
+        ds.make_set(1);
+        assert_eq!(ds.union(1, 99), None);
+        assert_eq!(ds.union(99, 1), None);
+    }
+
+    #[test]
+    fn test_same_set_unregistered_returns_none() {
+        let mut ds = DisjointSet::new();
+        ds.make_set(1);
+        assert_eq!(ds.same_set(1, 99), None);
     }
 
     #[test]
@@ -102,11 +131,11 @@ mod tests {
         ds.make_set(3);
 
         ds.union(1, 2);
-        assert!(ds.same_set(1, 2));
-        assert!(!ds.same_set(1, 3));
+        assert_eq!(ds.same_set(1, 2), Some(true));
+        assert_eq!(ds.same_set(1, 3), Some(false));
 
         ds.union(2, 3);
-        assert!(ds.same_set(1, 3));
+        assert_eq!(ds.same_set(1, 3), Some(true));
     }
 
     #[test]
@@ -128,9 +157,9 @@ mod tests {
         let mut ds = DisjointSet::new();
         ds.make_set(1);
         ds.make_set(2);
-        ds.union(1, 2);
-        ds.union(1, 2);
-        assert!(ds.same_set(1, 2));
+        let _ = ds.union(1, 2);
+        let _ = ds.union(1, 2);
+        assert_eq!(ds.same_set(1, 2), Some(true));
         assert_eq!(ds.sets().len(), 1);
     }
 }

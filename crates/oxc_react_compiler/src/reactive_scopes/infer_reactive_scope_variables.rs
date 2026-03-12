@@ -48,7 +48,8 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
                 for op_id in operand_ids {
                     if let Some(&op_range) = ranges.get(&op_id)
                         && op_range.end.0 > op_range.start.0 + 1 {
-                            dsu.union(lvalue_id, op_id);
+                            // Both lvalue_id and op_id are registered via make_set in Phase 1
+                            let _ = dsu.union(lvalue_id, op_id);
                         }
                 }
             }
@@ -59,7 +60,8 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
             let phi_id = phi.place.identifier.id;
             for (_, operand) in &phi.operands {
                 dsu.make_set(operand.identifier.id);
-                dsu.union(phi_id, operand.identifier.id);
+                // Both phi_id and operand id are registered via make_set
+                let _ = dsu.union(phi_id, operand.identifier.id);
             }
         }
     }

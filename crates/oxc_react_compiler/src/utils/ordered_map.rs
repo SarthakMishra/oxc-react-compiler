@@ -80,6 +80,10 @@ impl<K: Eq, V> Default for OrderedMap<K, V> {
     }
 }
 
+/// # Panics
+///
+/// Panics if the key is not present. Prefer `OrderedMap::get()` when key
+/// existence cannot be guaranteed at the call-site.
 impl<K: Eq, V> Index<&K> for OrderedMap<K, V> {
     type Output = V;
 

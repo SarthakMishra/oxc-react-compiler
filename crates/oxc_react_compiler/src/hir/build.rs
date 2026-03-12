@@ -215,7 +215,7 @@ impl HIRBuilder {
             .iter_mut()
             .find(|(bid, _)| *bid == id)
             .map(|(_, b)| b)
-            .expect("current block must exist")
+            .unwrap_or_else(|| panic!("current block (BlockId {id}) must exist in HIR blocks"))
     }
 
     // ------------------------------------------------------------------

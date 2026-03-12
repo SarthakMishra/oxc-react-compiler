@@ -157,10 +157,14 @@ fn compute_dominators(
 fn intersect(doms: &[Option<usize>], mut a: usize, mut b: usize) -> usize {
     while a != b {
         while a > b {
-            a = doms[a].unwrap();
+            a = doms[a].unwrap_or_else(|| {
+                panic!("dominator for block index {a} must be computed during intersect")
+            });
         }
         while b > a {
-            b = doms[b].unwrap();
+            b = doms[b].unwrap_or_else(|| {
+                panic!("dominator for block index {b} must be computed during intersect")
+            });
         }
     }
     a
