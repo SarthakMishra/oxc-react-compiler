@@ -1,4 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 // S tier - Inspired by shadcn/ui command palette search
 import { useState, useCallback, useRef, useEffect } from 'react';
 
@@ -9,57 +10,134 @@ interface SearchInputProps {
 }
 
 export function SearchInput(t0) {
-  const $ = _c(4);
-  const t71 = useState;
-  const t72 = "";
-  const t73 = t71(t72);
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t74 = Discriminant(4) */
-    /* t75 = Discriminant(4) */
+  const $ = _c(12);
+  let onSearch;
+  let placeholder;
+  let debounceMs;
+  if ($[0] !== onSearch || $[1] !== placeholder || $[2] !== debounceMs) {
+    $[0] = onSearch;
+    $[1] = placeholder;
+    $[2] = debounceMs;
   } else {
   }
-  /* t76 = Discriminant(6) */
-  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t77 = Discriminant(4) */
+  ({ onSearch, placeholder, debounceMs } = t0);
+  const t82 = useState;
+  const t83 = "";
+  const t84 = t82(t83);
+  let value;
+  let setValue;
+  if ($[3] !== value || $[4] !== setValue) {
+    $[3] = value;
+    $[4] = setValue;
   } else {
   }
-  const t78 = useRef;
-  const t79 = null;
-  const t80 = t78(t79);
-  const timerRef = t80;
-  const t82 = useEffect;
-  /* t83 = Discriminant(28) */
-  const t84 = [];
-  const t85 = t82(t83, t84);
-  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t86 = Discriminant(4) */
+  ([value, setValue] = t84);
+  let timerRef;
+  if ($[5] !== timerRef) {
+    $[5] = timerRef;
   } else {
   }
-  const t87 = useCallback;
-  /* t88 = Discriminant(28) */
-  const t89 = onSearch;
-  const t90 = debounceMs;
-  const t91 = [t89, t90];
-  const t92 = t87(t88, t91);
-  const handleChange = t92;
-  if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t94 = Discriminant(4) */
+  const t89 = useRef;
+  const t90 = null;
+  const t91 = t89(t90);
+  timerRef = t91;
+  const t93 = useEffect;
+  const t94 = () => {
+    const t0 = () => {
+      const t1 = timerRef;
+      const t2 = t1.current;
+      const t3 = clearTimeout;
+      const t5 = timerRef;
+      const t6 = t5.current;
+      const t7 = t3(t6);
+      const t8 = undefined;
+      return t8;
+    };
+    return t0;
+    const t1 = undefined;
+    return t1;
+  };
+  const t95 = [];
+  const t96 = t93(t94, t95);
+  let handleChange;
+  if ($[6] !== handleChange) {
+    $[6] = handleChange;
   } else {
   }
-  const t95 = useCallback;
-  /* t96 = Discriminant(28) */
-  const t97 = onSearch;
-  const t98 = [t97];
-  const t99 = t95(t96, t98);
-  const handleClear = t99;
-  const t101 = "div";
-  const t102 = "relative";
-  const t103 = "input";
-  const t104 = "text";
-  const t105 = value;
-  const t106 = handleChange;
-  const t107 = placeholder;
-  const t108 = "w-full px-3 py-2 border rounded";
-  const t109 = <t103 type={t104} value={t105} onChange={t106} placeholder={t107} className={t108} />;
+  let handleClear;
+  if ($[7] !== useCallback || $[8] !== onSearch || $[9] !== debounceMs || $[10] !== handleChange || $[11] !== handleClear) {
+    const t98 = useCallback;
+    const t99 = (e) => {
+      let newVal;
+      const t4 = e;
+      const t5 = t4.target;
+      const t6 = t5.value;
+      newVal = t6;
+      const t9 = setValue;
+      const t11 = newVal;
+      const t12 = t9(t11);
+      const t14 = timerRef;
+      const t15 = t14.current;
+      const t16 = clearTimeout;
+      const t18 = timerRef;
+      const t19 = t18.current;
+      const t20 = t16(t19);
+      const t21 = setTimeout;
+      const t22 = () => {
+        const t1 = onSearch;
+        const t3 = newVal;
+        const t4 = t1(t3);
+        const t5 = undefined;
+        return t5;
+      };
+      const t24 = debounceMs;
+      const t25 = t21(t22, t24);
+      const t27 = timerRef;
+      t27.current = t25;
+      const t29 = undefined;
+      return t29;
+    };
+    const t100 = onSearch;
+    const t101 = debounceMs;
+    const t102 = [t100, t101];
+    const t103 = t98(t99, t102);
+    handleChange = t103;
+    $[7] = useCallback;
+    $[8] = onSearch;
+    $[9] = debounceMs;
+    $[10] = handleChange;
+    $[11] = handleClear;
+  } else {
+  }
+  const t106 = useCallback;
+  const t107 = () => {
+    const t1 = setValue;
+    const t2 = "";
+    const t3 = t1(t2);
+    const t5 = onSearch;
+    const t6 = "";
+    const t7 = t5(t6);
+    const t9 = timerRef;
+    const t10 = t9.current;
+    const t11 = clearTimeout;
+    const t13 = timerRef;
+    const t14 = t13.current;
+    const t15 = t11(t14);
+    const t16 = undefined;
+    return t16;
+  };
+  const t108 = onSearch;
+  const t109 = [t108];
+  const t110 = t106(t107, t109);
+  handleClear = t110;
+  const t112 = "div";
+  const t113 = "relative";
+  const t114 = "input";
+  const t115 = "text";
+  const t116 = value;
+  const t117 = handleChange;
+  const t118 = placeholder;
+  const t119 = "w-full px-3 py-2 border rounded";
+  const t120 = _jsx(t114, { type: t115, value: t116, onChange: t117, placeholder: t118, className: t119 });
 }
 

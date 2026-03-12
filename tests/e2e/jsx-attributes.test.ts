@@ -47,7 +47,7 @@ function Link({ href, title }) {
   });
 
   describe('dual-mode comparison', () => {
-    it.fails('className renders identically (known codegen issue)', () => {
+    it('className renders identically', () => {
       const source = `
 function StyledBox({ className }) {
   return <div className={className}>content</div>;

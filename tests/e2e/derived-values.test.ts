@@ -61,7 +61,7 @@ function Badge({ count }) {
   });
 
   describe('dual-mode comparison', () => {
-    it.fails('derived string renders identically (known codegen issue)', () => {
+    it('derived string renders identically', () => {
       const source = `
 function Greeting({ firstName, lastName }) {
   const fullName = firstName + " " + lastName;

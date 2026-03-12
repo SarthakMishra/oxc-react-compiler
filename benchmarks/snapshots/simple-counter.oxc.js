@@ -1,30 +1,42 @@
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useState } from 'react';
 
 export function SimpleCounter() {
-  const $ = _c(3);
+  const $ = _c(4);
   const t20 = useState;
   const t21 = 0;
   const t22 = t20(t21);
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t23 = Discriminant(4) */
-    /* t24 = Discriminant(4) */
+  let count;
+  let setCount;
+  if ($[0] !== count || $[1] !== setCount) {
+    $[0] = count;
+    $[1] = setCount;
   } else {
   }
-  /* t25 = Discriminant(6) */
-  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+  ([count, setCount] = t22);
+  let t34;
+  if ($[2] !== count) {
     const t26 = "div";
     const t27 = "span";
     const t28 = count;
-    const t29 = <t27>{t28}</t27>;
+    const t29 = _jsx(t27, { children: t28 });
     const t30 = "button";
-    /* t31 = Discriminant(28) */
-    /* t32 = Discriminant(8) */
-    const t33 = <t30 onClick={t31}>{t32}</t30>;
-    const t34 = <t26>{t29}{t33}</t26>;
-    $[2] = t34;
+    const t31 = () => {
+      const t1 = setCount;
+      const t3 = count;
+      const t4 = 1;
+      const t5 = t3 + t4;
+      const t6 = t1(t5);
+      return t6;
+    };
+    const t32 = "+";
+    const t33 = _jsx(t30, { onClick: t31, children: t32 });
+    t34 = _jsxs(t26, { children: [t29, t33] });
+    $[3] = t34;
+    $[2] = count;
   } else {
-    t34 = $[2];
+    t34 = $[3];
   }
   return t34;
 }

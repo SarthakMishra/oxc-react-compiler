@@ -1409,7 +1409,7 @@ impl HIRBuilder {
             Expression::RegExpLiteral(lit) => self.emit(
                 InstructionValue::RegExpLiteral {
                     pattern: lit.regex.pattern.text.to_string(),
-                    flags: format!("{:?}", lit.regex.flags),
+                    flags: regex_flags_to_string(lit.regex.flags),
                 },
                 loc,
             ),
@@ -2451,3 +2451,17 @@ fn property_key_as_expression<'a>(key: &'a PropertyKey<'a>) -> Option<&'a Expres
 }
 
 use oxc_span::GetSpan;
+
+/// Convert oxc RegExpFlags bitflags to a string of flag characters (e.g. "gi").
+fn regex_flags_to_string(flags: oxc_ast::ast::RegExpFlags) -> String {
+    use oxc_ast::ast::RegExpFlags;
+    let mut s = String::new();
+    if flags.contains(RegExpFlags::D) { s.push('d'); }
+    if flags.contains(RegExpFlags::G) { s.push('g'); }
+    if flags.contains(RegExpFlags::I) { s.push('i'); }
+    if flags.contains(RegExpFlags::M) { s.push('m'); }
+    if flags.contains(RegExpFlags::S) { s.push('s'); }
+    if flags.contains(RegExpFlags::U) { s.push('u'); }
+    if flags.contains(RegExpFlags::Y) { s.push('y'); }
+    s
+}

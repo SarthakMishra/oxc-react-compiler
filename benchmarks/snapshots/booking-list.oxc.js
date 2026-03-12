@@ -1,4 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 // M tier - Inspired by cal.com BookingListItem with scheduling logic
 import { useState, useMemo, useCallback, useEffect } from 'react';
 
@@ -22,151 +23,362 @@ interface BookingListProps {
 }
 
 export function BookingList(t0) {
-  const $ = _c(9);
-  const t181 = useState;
-  const t182 = null;
-  const t183 = t181(t182);
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t184 = Discriminant(4) */
-    /* t185 = Discriminant(4) */
+  const $ = _c(30);
+  let bookings;
+  let onCancel;
+  let onReschedule;
+  let onConfirm;
+  let filter;
+  if ($[0] !== bookings || $[1] !== onCancel || $[2] !== onReschedule || $[3] !== onConfirm || $[4] !== filter) {
+    $[0] = bookings;
+    $[1] = onCancel;
+    $[2] = onReschedule;
+    $[3] = onConfirm;
+    $[4] = filter;
   } else {
   }
-  /* t186 = Discriminant(6) */
-  const t187 = useState;
-  const t188 = "";
-  const t189 = t187(t188);
-  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t190 = Discriminant(4) */
-    /* t191 = Discriminant(4) */
+  ({ bookings, onCancel, onReschedule, onConfirm, filter } = t0);
+  const t198 = useState;
+  const t199 = null;
+  const t200 = t198(t199);
+  let expandedId;
+  let setExpandedId;
+  if ($[5] !== expandedId || $[6] !== setExpandedId) {
+    $[5] = expandedId;
+    $[6] = setExpandedId;
   } else {
   }
-  /* t192 = Discriminant(6) */
-  const t193 = useState;
-  const t194 = "date";
-  const t195 = t193(t194);
-  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t196 = Discriminant(4) */
-    /* t197 = Discriminant(4) */
+  ([expandedId, setExpandedId] = t200);
+  const t204 = useState;
+  const t205 = "";
+  const t206 = t204(t205);
+  let searchQuery;
+  let setSearchQuery;
+  if ($[7] !== searchQuery || $[8] !== setSearchQuery) {
+    $[7] = searchQuery;
+    $[8] = setSearchQuery;
   } else {
   }
-  /* t198 = Discriminant(6) */
-  if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t199 = Discriminant(4) */
+  ([searchQuery, setSearchQuery] = t206);
+  const t210 = useState;
+  const t211 = "date";
+  const t212 = t210(t211);
+  let sortBy;
+  let setSortBy;
+  if ($[9] !== sortBy || $[10] !== setSortBy) {
+    $[9] = sortBy;
+    $[10] = setSortBy;
   } else {
   }
-  const t200 = useMemo;
-  /* t201 = Discriminant(28) */
-  const t202 = [];
-  const t203 = t200(t201, t202);
-  const now = t203;
-  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t205 = Discriminant(4) */
+  ([sortBy, setSortBy] = t212);
+  let now;
+  if ($[11] !== now) {
+    $[11] = now;
   } else {
   }
-  if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    const t206 = useMemo;
-    /* t207 = Discriminant(28) */
-    const t208 = bookings;
-    const t209 = filter;
-    const t210 = now;
-    const t211 = searchQuery;
-    const t212 = [t208, t209, t210, t211];
-    const t213 = t206(t207, t212);
-    const filteredBookings = t213;
-    /* t215 = Discriminant(4) */
+  const t217 = useMemo;
+  const t218 = () => {
+    const t0 = Date;
+    const t1 = new t0();
+    const t2 = t1.toISOString();
+    return t2;
+  };
+  const t219 = [];
+  const t220 = t217(t218, t219);
+  now = t220;
+  let filteredBookings;
+  if ($[12] !== filteredBookings) {
+    $[12] = filteredBookings;
   } else {
   }
-  if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
-    const t216 = useMemo;
-    /* t217 = Discriminant(28) */
-    const t218 = filteredBookings;
-    const t219 = sortBy;
-    const t220 = [t218, t219];
-    const t221 = t216(t217, t220);
-    const sortedBookings = t221;
-    /* t223 = Discriminant(4) */
+  let sortedBookings;
+  if ($[13] !== useMemo || $[14] !== bookings || $[15] !== filter || $[16] !== now || $[17] !== searchQuery || $[18] !== filteredBookings || $[19] !== sortedBookings) {
+    const t223 = useMemo;
+    const t224 = () => {
+      let result;
+      const t3 = bookings;
+      result = t3;
+      const t6 = filter;
+      const t7 = "upcoming";
+      const t8 = t6 === t7;
+      const t10 = result;
+      const t11 = (b) => {
+        const t2 = b;
+        const t3 = t2.startTime;
+        const t5 = now;
+        const t6 = t3 > t5;
+        const t8 = b;
+        const t9 = t8.status;
+        const t10 = "cancelled";
+        const t11 = t9 !== t10;
+        return t12;
+      };
+      const t12 = t10.filter(t11);
+      result = t12;
+      const t16 = filter;
+      const t17 = "past";
+      const t18 = t16 === t17;
+      const t26 = searchQuery;
+      const t20 = result;
+      const t21 = (b) => {
+        const t2 = b;
+        const t3 = t2.endTime;
+        const t5 = now;
+        const t6 = t3 < t5;
+        return t6;
+      };
+      const t22 = t20.filter(t21);
+      result = t22;
+      let q;
+      const t30 = searchQuery;
+      const t31 = t30.toLowerCase();
+      q = t31;
+      const t34 = result;
+      const t35 = (b) => {
+        const t2 = b;
+        const t3 = t2.title;
+        const t4 = t3.toLowerCase();
+        const t6 = q;
+        const t7 = t4.includes(t6);
+        const t9 = b;
+        const t10 = t9.attendees;
+        const t11 = (a) => {
+          const t2 = a;
+          const t3 = t2.name;
+          const t4 = t3.toLowerCase();
+          const t6 = q;
+          const t7 = t4.includes(t6);
+          const t9 = a;
+          const t10 = t9.email;
+          const t11 = t10.toLowerCase();
+          const t13 = q;
+          const t14 = t11.includes(t13);
+          return t15;
+        };
+        const t12 = t10.some(t11);
+        return t13;
+      };
+      const t36 = t34.filter(t35);
+      result = t36;
+      const t40 = result;
+      return t40;
+      const t41 = undefined;
+      return t41;
+    };
+    const t225 = bookings;
+    const t226 = filter;
+    const t227 = now;
+    const t228 = searchQuery;
+    const t229 = [t225, t226, t227, t228];
+    const t230 = t223(t224, t229);
+    filteredBookings = t230;
+    $[13] = useMemo;
+    $[14] = bookings;
+    $[15] = filter;
+    $[16] = now;
+    $[17] = searchQuery;
+    $[18] = filteredBookings;
+    $[19] = sortedBookings;
   } else {
   }
-  if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    const t224 = useMemo;
-    /* t225 = Discriminant(28) */
-    const t226 = sortedBookings;
-    const t227 = [t226];
-    const t228 = t224(t225, t227);
-    const stats = t228;
-    /* t230 = Discriminant(4) */
+  let stats;
+  if ($[20] !== useMemo || $[21] !== filteredBookings || $[22] !== sortBy || $[23] !== sortedBookings || $[24] !== stats) {
+    const t233 = useMemo;
+    const t234 = () => {
+      const t1 = filteredBookings;
+      const t2 = [...t1];
+      const t3 = (a, b) => {
+        const t3 = sortBy;
+        const t4 = "date";
+        const t5 = t3 === t4;
+        const t7 = a;
+        const t8 = t7.startTime;
+        const t10 = b;
+        const t11 = t10.startTime;
+        const t12 = t8.localeCompare(t11);
+        return t12;
+        const t14 = a;
+        const t15 = t14.title;
+        const t17 = b;
+        const t18 = t17.title;
+        const t19 = t15.localeCompare(t18);
+        return t19;
+        const t20 = undefined;
+        return t20;
+      };
+      const t4 = t2.sort(t3);
+      return t4;
+      const t5 = undefined;
+      return t5;
+    };
+    const t235 = filteredBookings;
+    const t236 = sortBy;
+    const t237 = [t235, t236];
+    const t238 = t233(t234, t237);
+    sortedBookings = t238;
+    $[20] = useMemo;
+    $[21] = filteredBookings;
+    $[22] = sortBy;
+    $[23] = sortedBookings;
+    $[24] = stats;
   } else {
   }
-  const t231 = useCallback;
-  /* t232 = Discriminant(28) */
-  const t233 = [];
-  const t234 = t231(t232, t233);
-  const toggleExpanded = t234;
-  if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t236 = Discriminant(4) */
+  let toggleExpanded;
+  if ($[25] !== useMemo || $[26] !== sortedBookings || $[27] !== stats || $[28] !== toggleExpanded) {
+    const t241 = useMemo;
+    const t242 = () => {
+      const t1 = sortedBookings;
+      const t2 = t1.length;
+      const t4 = sortedBookings;
+      const t5 = (b) => {
+        const t2 = b;
+        const t3 = t2.status;
+        const t4 = "confirmed";
+        const t5 = t3 === t4;
+        return t5;
+      };
+      const t6 = t4.filter(t5);
+      const t7 = t6.length;
+      const t9 = sortedBookings;
+      const t10 = (b) => {
+        const t2 = b;
+        const t3 = t2.status;
+        const t4 = "pending";
+        const t5 = t3 === t4;
+        return t5;
+      };
+      const t11 = t9.filter(t10);
+      const t12 = t11.length;
+      const t14 = sortedBookings;
+      const t15 = (b) => {
+        const t2 = b;
+        const t3 = t2.status;
+        const t4 = "cancelled";
+        const t5 = t3 === t4;
+        return t5;
+      };
+      const t16 = t14.filter(t15);
+      const t17 = t16.length;
+      const t18 = { total: t2, confirmed: t7, pending: t12, cancelled: t17 };
+      return t18;
+    };
+    const t243 = sortedBookings;
+    const t244 = [t243];
+    const t245 = t241(t242, t244);
+    stats = t245;
+    $[25] = useMemo;
+    $[26] = sortedBookings;
+    $[27] = stats;
+    $[28] = toggleExpanded;
   } else {
   }
-  const t237 = useCallback;
-  /* t238 = Discriminant(28) */
-  const t239 = onCancel;
-  const t240 = [t239];
-  const t241 = t237(t238, t240);
-  const handleCancel = t241;
-  const t243 = "div";
-  const t244 = "space-y-4";
-  const t245 = "div";
-  const t246 = "flex justify-between items-center";
-  const t247 = "div";
-  const t248 = "flex gap-2 text-sm";
-  const t249 = "span";
-  const t250 = stats;
-  const t251 = t250.total;
-  /* t252 = Discriminant(8) */
-  const t253 = <t249>{t251}{t252}</t249>;
-  const t254 = "span";
-  const t255 = "text-green-600";
-  const t256 = stats;
-  const t257 = t256.confirmed;
-  /* t258 = Discriminant(8) */
-  const t259 = <t254 className={t255}>{t257}{t258}</t254>;
-  const t260 = "span";
-  const t261 = "text-yellow-600";
-  const t262 = stats;
-  const t263 = t262.pending;
-  /* t264 = Discriminant(8) */
-  const t265 = <t260 className={t261}>{t263}{t264}</t260>;
+  const t248 = useCallback;
+  const t249 = (id) => {
+    const t2 = setExpandedId;
+    const t3 = (prev) => {
+      const t2 = prev;
+      const t4 = id;
+      const t5 = t2 === t4;
+      const t6 = null;
+      const t8 = id;
+      return t9;
+    };
+    const t4 = t2(t3);
+    const t5 = undefined;
+    return t5;
+  };
+  const t250 = [];
+  const t251 = t248(t249, t250);
+  toggleExpanded = t251;
+  let handleCancel;
+  if ($[29] !== handleCancel) {
+    $[29] = handleCancel;
+  } else {
+  }
+  const t254 = useCallback;
+  const t255 = (id) => {
+    const t2 = onCancel;
+    const t4 = id;
+    const t5 = t2(t4);
+    const t7 = setExpandedId;
+    const t8 = null;
+    const t9 = t7(t8);
+    const t10 = undefined;
+    return t10;
+  };
+  const t256 = onCancel;
+  const t257 = [t256];
+  const t258 = t254(t255, t257);
+  handleCancel = t258;
+  const t260 = "div";
+  const t261 = "space-y-4";
+  const t262 = "div";
+  const t263 = "flex justify-between items-center";
+  const t264 = "div";
+  const t265 = "flex gap-2 text-sm";
   const t266 = "span";
-  const t267 = "text-red-600";
-  const t268 = stats;
-  const t269 = t268.cancelled;
-  /* t270 = Discriminant(8) */
-  const t271 = <t266 className={t267}>{t269}{t270}</t266>;
-  const t272 = <t247 className={t248}>{t253}{t259}{t265}{t271}</t247>;
-  const t273 = "div";
-  const t274 = "flex gap-2";
-  const t275 = "input";
-  const t276 = searchQuery;
-  /* t277 = Discriminant(28) */
-  const t278 = "Search bookings...";
-  const t279 = "border rounded px-2 py-1";
-  const t280 = <t275 value={t276} onChange={t277} placeholder={t278} className={t279} />;
-  const t281 = "select";
-  const t282 = sortBy;
-  /* t283 = Discriminant(28) */
-  const t284 = "option";
-  const t285 = "date";
-  /* t286 = Discriminant(8) */
-  const t287 = <t284 value={t285}>{t286}</t284>;
-  const t288 = "option";
-  const t289 = "title";
-  /* t290 = Discriminant(8) */
-  const t291 = <t288 value={t289}>{t290}</t288>;
-  const t292 = <t281 value={t282} onChange={t283}>{t287}{t291}</t281>;
-  const t293 = <t273 className={t274}>{t280}{t292}</t273>;
-  const t294 = <t245 className={t246}>{t272}{t293}</t245>;
-  const t295 = sortedBookings;
-  const t296 = t295.length;
-  const t297 = 0;
-  const t298 = t296 === t297;
+  const t267 = stats;
+  const t268 = t267.total;
+  const t269 = " total";
+  const t270 = _jsxs(t266, { children: [t268, t269] });
+  const t271 = "span";
+  const t272 = "text-green-600";
+  const t273 = stats;
+  const t274 = t273.confirmed;
+  const t275 = " confirmed";
+  const t276 = _jsxs(t271, { className: t272, children: [t274, t275] });
+  const t277 = "span";
+  const t278 = "text-yellow-600";
+  const t279 = stats;
+  const t280 = t279.pending;
+  const t281 = " pending";
+  const t282 = _jsxs(t277, { className: t278, children: [t280, t281] });
+  const t283 = "span";
+  const t284 = "text-red-600";
+  const t285 = stats;
+  const t286 = t285.cancelled;
+  const t287 = " cancelled";
+  const t288 = _jsxs(t283, { className: t284, children: [t286, t287] });
+  const t289 = _jsxs(t264, { className: t265, children: [t270, t276, t282, t288] });
+  const t290 = "div";
+  const t291 = "flex gap-2";
+  const t292 = "input";
+  const t293 = searchQuery;
+  const t294 = (e) => {
+    const t2 = setSearchQuery;
+    const t4 = e;
+    const t5 = t4.target;
+    const t6 = t5.value;
+    const t7 = t2(t6);
+    return t7;
+  };
+  const t295 = "Search bookings...";
+  const t296 = "border rounded px-2 py-1";
+  const t297 = _jsx(t292, { value: t293, onChange: t294, placeholder: t295, className: t296 });
+  const t298 = "select";
+  const t299 = sortBy;
+  const t300 = (e) => {
+    const t2 = setSortBy;
+    const t4 = e;
+    const t5 = t4.target;
+    const t6 = t5.value;
+    const t7 = t2(t6);
+    return t7;
+  };
+  const t301 = "option";
+  const t302 = "date";
+  const t303 = "Sort by date";
+  const t304 = _jsx(t301, { value: t302, children: t303 });
+  const t305 = "option";
+  const t306 = "title";
+  const t307 = "Sort by title";
+  const t308 = _jsx(t305, { value: t306, children: t307 });
+  const t309 = _jsxs(t298, { value: t299, onChange: t300, children: [t304, t308] });
+  const t310 = _jsxs(t290, { className: t291, children: [t297, t309] });
+  const t311 = _jsxs(t262, { className: t263, children: [t289, t310] });
+  const t312 = sortedBookings;
+  const t313 = t312.length;
+  const t314 = 0;
+  const t315 = t313 === t314;
 }
 

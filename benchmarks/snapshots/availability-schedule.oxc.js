@@ -1,4 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 // L tier - Inspired by cal.com availability schedule editor
 import { useState, useMemo, useCallback, useReducer } from 'react';
 
@@ -97,7 +98,18 @@ interface AvailabilityScheduleProps {
 }
 
 export function AvailabilitySchedule(t0) {
-  const t172 = useReducer;
-  const t173 = scheduleReducer;
+  const $ = _c(3);
+  let initialSchedule;
+  let onSave;
+  let timezone;
+  if ($[0] !== initialSchedule || $[1] !== onSave || $[2] !== timezone) {
+    $[0] = initialSchedule;
+    $[1] = onSave;
+    $[2] = timezone;
+  } else {
+  }
+  ({ initialSchedule, onSave, timezone } = t0);
+  const t183 = useReducer;
+  const t184 = scheduleReducer;
 }
 

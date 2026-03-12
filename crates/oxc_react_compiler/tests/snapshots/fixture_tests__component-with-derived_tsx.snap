@@ -6,20 +6,21 @@ transformed: true
 diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 function Display(t0) {
   const $ = _c(6);
+  let items;
   if ($[0] !== items) {
-    /* t28 = Discriminant(4) */
     $[0] = items;
   } else {
   }
-  const { items } = t0;
+  ({ items } = t0);
+  let count;
+  let label;
   if ($[1] !== count || $[2] !== items || $[3] !== label || $[4] !== count || $[5] !== t36) {
-    /* t30 = Discriminant(4) */
     const t31 = items;
     const t32 = t31.length;
-    const count = t32;
-    /* t34 = Discriminant(4) */
+    count = t32;
     const t35 = count;
     const t36 = 0;
     const t37 = t35 > t36;

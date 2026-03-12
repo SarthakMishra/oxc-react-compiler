@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 
 use crate::hir::types::{
     InstructionValue, Place, Primitive, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
@@ -45,32 +46,82 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
         output.push_str(&format!("  const $ = _c({total_slots});\n"));
     }
 
+    // Track variables declared via DeclareLocal so that subsequent
+    // StoreLocal / Destructure can emit bare assignments instead of
+    // re-declaring with const/let.
+    let mut declared = HashSet::new();
+
     // Generate body
-    codegen_block(&rf.body, &mut output, &mut cache_slot, 1);
+    codegen_block(&rf.body, &mut output, &mut cache_slot, 1, &mut declared);
 
     output.push_str("}\n");
     output
 }
 
-fn codegen_block(block: &ReactiveBlock, output: &mut String, cache_slot: &mut u32, indent: usize) {
+fn codegen_block(
+    block: &ReactiveBlock,
+    output: &mut String,
+    cache_slot: &mut u32,
+    indent: usize,
+    declared: &mut HashSet<String>,
+) {
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
                 let indent_str = "  ".repeat(indent);
-                codegen_instruction(instruction, output, &indent_str);
+                codegen_instruction(instruction, output, &indent_str, declared);
             }
             ReactiveInstruction::Terminal(terminal) => {
-                codegen_terminal(terminal, output, cache_slot, indent);
+                codegen_terminal(terminal, output, cache_slot, indent, declared);
             }
             ReactiveInstruction::Scope(scope_block) => {
-                codegen_scope(scope_block, output, cache_slot, indent);
+                codegen_scope(scope_block, output, cache_slot, indent, declared);
             }
         }
     }
 }
 
-fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut String, indent: &str) {
+/// Like `codegen_block` but skips DeclareLocal/DeclareContext instructions
+/// (they have already been hoisted before the scope guard).
+fn codegen_block_skip_declares(
+    block: &ReactiveBlock,
+    output: &mut String,
+    cache_slot: &mut u32,
+    indent: usize,
+    declared: &mut HashSet<String>,
+) {
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                if matches!(
+                    &instruction.value,
+                    InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. }
+                ) {
+                    continue;
+                }
+                let indent_str = "  ".repeat(indent);
+                codegen_instruction(instruction, output, &indent_str, declared);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                codegen_terminal(terminal, output, cache_slot, indent, declared);
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                codegen_scope(scope_block, output, cache_slot, indent, declared);
+            }
+        }
+    }
+}
+
+fn codegen_instruction(
+    instr: &crate::hir::types::Instruction,
+    output: &mut String,
+    indent: &str,
+    declared: &mut HashSet<String>,
+) {
     let lvalue_name = place_name(&instr.lvalue);
+    // If the lvalue was already declared (by DeclareLocal or scope pre-declaration),
+    // use bare assignment; otherwise use `const`.
+    let decl_keyword = if declared.contains(lvalue_name.as_ref()) { "" } else { "const " };
 
     match &instr.value {
         InstructionValue::Primitive { value } => {
@@ -82,22 +133,29 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
                 Primitive::String(s) => format!("\"{}\"", s.replace('\"', "\\\"")),
                 Primitive::BigInt(n) => format!("{n}n"),
             };
-            output.push_str(&format!("{indent}const {lvalue_name} = {val_str};\n"));
+            output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {val_str};\n"));
         }
         InstructionValue::LoadLocal { place } => {
             let name = place_name(place);
             if name != lvalue_name {
-                output.push_str(&format!("{indent}const {lvalue_name} = {name};\n"));
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {name};\n"));
             }
         }
         InstructionValue::StoreLocal { lvalue: target, value, type_ } => {
             let target_name = place_name(target);
             let value_name = place_name(value);
-            let keyword = match type_ {
-                Some(crate::hir::types::InstructionKind::Const) => "const ",
-                Some(crate::hir::types::InstructionKind::Let) => "let ",
-                Some(crate::hir::types::InstructionKind::Var) => "var ",
-                _ => "",
+            let already_declared = declared.contains(target_name.as_ref());
+            let keyword = if already_declared {
+                ""
+            } else {
+                match type_ {
+                    Some(crate::hir::types::InstructionKind::Const)
+                    | Some(crate::hir::types::InstructionKind::HoistedConst) => "const ",
+                    Some(crate::hir::types::InstructionKind::Let) => "let ",
+                    Some(crate::hir::types::InstructionKind::Var) => "var ",
+                    Some(crate::hir::types::InstructionKind::HoistedFunction) => "const ",
+                    Some(crate::hir::types::InstructionKind::Reassign) | None => "",
+                }
             };
             output.push_str(&format!("{indent}{keyword}{target_name} = {value_name};\n"));
         }
@@ -105,8 +163,9 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
             let callee_name = place_name(callee);
             let args_str: Vec<Cow<'_, str>> = args.iter().map(place_name).collect();
             output.push_str(&format!(
-                "{}const {} = {}({});\n",
+                "{}{}{} = {}({});\n",
                 indent,
+                decl_keyword,
                 lvalue_name,
                 callee_name,
                 args_str.join(", ")
@@ -116,8 +175,9 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
             let receiver_name = place_name(receiver);
             let args_str: Vec<Cow<'_, str>> = args.iter().map(place_name).collect();
             output.push_str(&format!(
-                "{}const {} = {}.{}({});\n",
+                "{}{}{} = {}.{}({});\n",
                 indent,
+                decl_keyword,
                 lvalue_name,
                 receiver_name,
                 property,
@@ -126,8 +186,9 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::PropertyLoad { object, property } => {
             output.push_str(&format!(
-                "{}const {} = {}.{};\n",
+                "{}{}{} = {}.{};\n",
                 indent,
+                decl_keyword,
                 lvalue_name,
                 place_name(object),
                 property
@@ -145,8 +206,9 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         InstructionValue::BinaryExpression { op, left, right } => {
             let op_str = binary_op_str(*op);
             output.push_str(&format!(
-                "{}const {} = {} {} {};\n",
+                "{}{}{} = {} {} {};\n",
                 indent,
+                decl_keyword,
                 lvalue_name,
                 place_name(left),
                 op_str,
@@ -156,8 +218,9 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         InstructionValue::UnaryExpression { op, value } => {
             let op_str = unary_op_str(*op);
             output.push_str(&format!(
-                "{}const {} = {}{};\n",
+                "{}{}{} = {}{};\n",
                 indent,
+                decl_keyword,
                 lvalue_name,
                 op_str,
                 place_name(value)
@@ -165,44 +228,70 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::JsxExpression { tag, props, children } => {
             let tag_name = place_name(tag);
-            output.push_str(&format!("{indent}const {lvalue_name} = <{tag_name}"));
+            // Build props object
+            let mut props_parts = Vec::new();
+            let mut has_spread = false;
             for attr in props {
                 match &attr.name {
                     crate::hir::types::JsxAttributeName::Named(name) => {
-                        output.push_str(&format!(" {}={{{}}}", name, place_name(&attr.value)));
+                        props_parts.push(format!("{}: {}", name, place_name(&attr.value)));
                     }
                     crate::hir::types::JsxAttributeName::Spread => {
-                        output.push_str(&format!(" {{...{}}}", place_name(&attr.value)));
+                        has_spread = true;
+                        props_parts.push(format!("...{}", place_name(&attr.value)));
                     }
                 }
             }
-            if children.is_empty() {
-                output.push_str(" />;\n");
-            } else {
-                output.push('>');
-                for child in children {
-                    output.push_str(&format!("{{{}}}", place_name(child)));
-                }
-                output.push_str(&format!("</{tag_name}>;\n"));
+            // Add children to props
+            if children.len() == 1 {
+                props_parts.push(format!("children: {}", place_name(&children[0])));
+            } else if children.len() > 1 {
+                let child_strs: Vec<Cow<'_, str>> = children.iter().map(place_name).collect();
+                props_parts.push(format!("children: [{}]", child_strs.join(", ")));
             }
+            let props_str = if props_parts.is_empty() && !has_spread {
+                "{}".to_string()
+            } else {
+                format!("{{ {} }}", props_parts.join(", "))
+            };
+            // Use _jsxs for multiple children, _jsx for 0-1
+            let jsx_fn = if children.len() > 1 { "_jsxs" } else { "_jsx" };
+            output.push_str(&format!(
+                "{indent}{decl_keyword}{lvalue_name} = {jsx_fn}({tag_name}, {props_str});\n"
+            ));
         }
         InstructionValue::JsxFragment { children } => {
-            output.push_str(&format!("{indent}const {lvalue_name} = <>"));
-            for child in children {
-                output.push_str(&format!("{{{}}}", place_name(child)));
+            if children.is_empty() {
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = _jsx(_Fragment, {{}});\n"
+                ));
+            } else if children.len() == 1 {
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = _jsx(_Fragment, {{ children: {} }});\n",
+                    place_name(&children[0])
+                ));
+            } else {
+                let child_strs: Vec<Cow<'_, str>> = children.iter().map(place_name).collect();
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = _jsxs(_Fragment, {{ children: [{}] }});\n",
+                    child_strs.join(", ")
+                ));
             }
-            output.push_str("</>;\n");
         }
         InstructionValue::ObjectExpression { properties } => {
             if properties.is_empty() {
-                output.push_str(&format!("{indent}const {lvalue_name} = {{}};\n"));
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {{}};\n"));
             } else {
-                output.push_str(&format!("{indent}const {lvalue_name} = {{ "));
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {{ "));
                 for (i, prop) in properties.iter().enumerate() {
                     if i > 0 {
                         output.push_str(", ");
                     }
                     match &prop.key {
+                        crate::hir::types::ObjectPropertyKey::Identifier(name) if name == "..." => {
+                            // Spread property
+                            output.push_str(&format!("...{}", place_name(&prop.value)));
+                        }
                         crate::hir::types::ObjectPropertyKey::Identifier(name) => {
                             if prop.shorthand {
                                 output.push_str(name);
@@ -223,7 +312,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
             }
         }
         InstructionValue::ArrayExpression { elements } => {
-            output.push_str(&format!("{indent}const {lvalue_name} = ["));
+            output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = ["));
             for (i, elem) in elements.iter().enumerate() {
                 if i > 0 {
                     output.push_str(", ");
@@ -243,7 +332,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
             output.push_str("];\n");
         }
         InstructionValue::TemplateLiteral { quasis, subexpressions } => {
-            output.push_str(&format!("{indent}const {lvalue_name} = `"));
+            output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = `"));
             for (i, quasi) in quasis.iter().enumerate() {
                 output.push_str(quasi);
                 if i < subexpressions.len() {
@@ -256,8 +345,9 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
             let callee_name = place_name(callee);
             let args_str: Vec<Cow<'_, str>> = args.iter().map(place_name).collect();
             output.push_str(&format!(
-                "{}const {} = new {}({});\n",
+                "{}{}{} = new {}({});\n",
                 indent,
+                decl_keyword,
                 lvalue_name,
                 callee_name,
                 args_str.join(", ")
@@ -265,26 +355,230 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::Await { value } => {
             output.push_str(&format!(
-                "{}const {} = await {};\n",
+                "{}{}{} = await {};\n",
                 indent,
+                decl_keyword,
                 lvalue_name,
                 place_name(value)
             ));
         }
         InstructionValue::Destructure { lvalue_pattern, value } => {
             let value_name = place_name(value);
-            output.push_str(&format!("{indent}const "));
-            codegen_destructure_pattern(lvalue_pattern, output);
-            output.push_str(&format!(" = {value_name};\n"));
+            // Check if any of the pattern's top-level names are already declared
+            let any_declared = pattern_has_declared_names(lvalue_pattern, declared);
+            if any_declared {
+                // Bare assignment — variables were declared by DeclareLocal
+                output.push_str(&format!("{indent}("));
+                codegen_destructure_pattern(lvalue_pattern, output);
+                output.push_str(&format!(" = {value_name});\n"));
+            } else {
+                output.push_str(&format!("{indent}const "));
+                codegen_destructure_pattern(lvalue_pattern, output);
+                output.push_str(&format!(" = {value_name};\n"));
+            }
         }
-        _ => {
-            // Generic instruction codegen — emit as comment for unsupported patterns
+        InstructionValue::DeclareLocal { lvalue, type_ } => {
+            let name = place_name(lvalue);
+            let keyword = match type_ {
+                crate::hir::types::InstructionKind::Const
+                | crate::hir::types::InstructionKind::HoistedConst
+                | crate::hir::types::InstructionKind::Let
+                | crate::hir::types::InstructionKind::HoistedFunction => "let",
+                crate::hir::types::InstructionKind::Var => "var",
+                crate::hir::types::InstructionKind::Reassign => {
+                    return;
+                }
+            };
+            declared.insert(name.to_string());
+            output.push_str(&format!("{indent}{keyword} {name};\n"));
+        }
+        InstructionValue::DeclareContext { lvalue } => {
+            let name = place_name(lvalue);
+            declared.insert(name.to_string());
+            output.push_str(&format!("{indent}let {name};\n"));
+        }
+        InstructionValue::LoadContext { place } => {
+            let name = place_name(place);
+            if name != lvalue_name {
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {name};\n"));
+            }
+        }
+        InstructionValue::StoreContext { lvalue: target, value } => {
+            let target_name = place_name(target);
+            let value_name = place_name(value);
+            output.push_str(&format!("{indent}{target_name} = {value_name};\n"));
+        }
+        InstructionValue::LoadGlobal { binding } => {
+            if binding.name != *lvalue_name {
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = {};\n",
+                    binding.name
+                ));
+            }
+        }
+        InstructionValue::StoreGlobal { name, value } => {
+            output.push_str(&format!("{indent}{name} = {};\n", place_name(value)));
+        }
+        InstructionValue::ComputedLoad { object, property } => {
             output.push_str(&format!(
-                "{}/* {} = {:?} */\n",
-                indent,
-                lvalue_name,
-                std::mem::discriminant(&instr.value)
+                "{indent}{decl_keyword}{lvalue_name} = {}[{}];\n",
+                place_name(object),
+                place_name(property)
             ));
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            output.push_str(&format!(
+                "{indent}{}[{}] = {};\n",
+                place_name(object),
+                place_name(property),
+                place_name(value)
+            ));
+        }
+        InstructionValue::PropertyDelete { object, property } => {
+            output.push_str(&format!(
+                "{indent}{decl_keyword}{lvalue_name} = delete {}.{};\n",
+                place_name(object),
+                property
+            ));
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            output.push_str(&format!(
+                "{indent}{decl_keyword}{lvalue_name} = delete {}[{}];\n",
+                place_name(object),
+                place_name(property)
+            ));
+        }
+        InstructionValue::TypeCastExpression { value, .. } => {
+            // Type casts are erased at runtime — just pass through the value
+            let name = place_name(value);
+            if name != lvalue_name {
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {name};\n"));
+            }
+        }
+        InstructionValue::JSXText { value } => {
+            output.push_str(&format!(
+                "{indent}{decl_keyword}{lvalue_name} = \"{}\";\n",
+                value
+                    .replace('\\', "\\\\")
+                    .replace('\"', "\\\"")
+                    .replace('\n', "\\n")
+                    .replace('\r', "\\r")
+            ));
+        }
+        InstructionValue::RegExpLiteral { pattern, flags } => {
+            output
+                .push_str(&format!("{indent}{decl_keyword}{lvalue_name} = /{pattern}/{flags};\n"));
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            let tag_name = place_name(tag);
+            output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {tag_name}`"));
+            for (i, quasi) in value.quasis.iter().enumerate() {
+                output.push_str(quasi);
+                if i < value.subexpressions.len() {
+                    output.push_str(&format!("${{{}}}", place_name(&value.subexpressions[i])));
+                }
+            }
+            output.push_str("`;\n");
+        }
+        InstructionValue::FunctionExpression { name, lowered_func, expr_type } => {
+            let func = lowered_func;
+            let is_arrow = matches!(expr_type, crate::hir::types::FunctionExprType::ArrowFunction);
+            let async_prefix = if func.is_async { "async " } else { "" };
+
+            // Build params
+            let params: Vec<Cow<'_, str>> = func
+                .params
+                .iter()
+                .map(|p| match p {
+                    crate::hir::types::Param::Identifier(place) => place_name(place),
+                    crate::hir::types::Param::Spread(place) => {
+                        Cow::Owned(format!("...{}", place_name(place)))
+                    }
+                })
+                .collect();
+            let params_str = params.join(", ");
+
+            if is_arrow {
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = {async_prefix}({params_str}) => {{\n"
+                ));
+            } else {
+                let fn_name = name.as_deref().unwrap_or("");
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = {async_prefix}function {fn_name}({params_str}) {{\n"
+                ));
+            }
+
+            let indent_level = indent.len() / 2;
+            codegen_hir_body(&func.body, output, indent_level + 1);
+            output.push_str(&format!("{indent}}};\n"));
+        }
+        InstructionValue::ObjectMethod { lowered_func } => {
+            let func = lowered_func;
+            let params: Vec<Cow<'_, str>> = func
+                .params
+                .iter()
+                .map(|p| match p {
+                    crate::hir::types::Param::Identifier(place) => place_name(place),
+                    crate::hir::types::Param::Spread(place) => {
+                        Cow::Owned(format!("...{}", place_name(place)))
+                    }
+                })
+                .collect();
+            let async_prefix = if func.is_async { "async " } else { "" };
+            output.push_str(&format!(
+                "{indent}{decl_keyword}{lvalue_name} = {async_prefix}function({}) {{\n",
+                params.join(", ")
+            ));
+            let indent_level = indent.len() / 2;
+            codegen_hir_body(&func.body, output, indent_level + 1);
+            output.push_str(&format!("{indent}}};\n"));
+        }
+        InstructionValue::PrefixUpdate { op, lvalue } => {
+            let op_str = match op {
+                crate::hir::types::UpdateOp::Increment => "++",
+                crate::hir::types::UpdateOp::Decrement => "--",
+            };
+            let name = place_name(lvalue);
+            output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {op_str}{name};\n"));
+        }
+        InstructionValue::PostfixUpdate { op, lvalue } => {
+            let op_str = match op {
+                crate::hir::types::UpdateOp::Increment => "++",
+                crate::hir::types::UpdateOp::Decrement => "--",
+            };
+            let name = place_name(lvalue);
+            output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {name}{op_str};\n"));
+        }
+        InstructionValue::GetIterator { collection } => {
+            output.push_str(&format!(
+                "{indent}{decl_keyword}{lvalue_name} = {}[Symbol.iterator]();\n",
+                place_name(collection)
+            ));
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            output.push_str(&format!(
+                "{indent}{decl_keyword}{lvalue_name} = {}.next();\n",
+                place_name(iterator)
+            ));
+        }
+        InstructionValue::NextPropertyOf { value } => {
+            output.push_str(&format!(
+                "{indent}{decl_keyword}{lvalue_name} = {};\n",
+                place_name(value)
+            ));
+        }
+        InstructionValue::StartMemoize { .. } => {
+            // Manual memoization marker — no runtime code needed
+        }
+        InstructionValue::FinishMemoize { decl, .. } => {
+            let name = place_name(decl);
+            if name != lvalue_name {
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {name};\n"));
+            }
+        }
+        InstructionValue::UnsupportedNode { node } => {
+            output.push_str(&format!("{indent}/* unsupported: {node} */\n"));
         }
     }
 }
@@ -294,6 +588,7 @@ fn codegen_terminal(
     output: &mut String,
     cache_slot: &mut u32,
     indent: usize,
+    declared: &mut HashSet<String>,
 ) {
     let indent_str = "  ".repeat(indent);
 
@@ -306,9 +601,9 @@ fn codegen_terminal(
         }
         ReactiveTerminal::If { test, consequent, alternate, .. } => {
             output.push_str(&format!("{}if ({}) {{\n", indent_str, place_name(test)));
-            codegen_block(consequent, output, cache_slot, indent + 1);
+            codegen_block(consequent, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}} else {{\n"));
-            codegen_block(alternate, output, cache_slot, indent + 1);
+            codegen_block(alternate, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Switch { test, cases, .. } => {
@@ -319,57 +614,57 @@ fn codegen_terminal(
                 } else {
                     output.push_str(&format!("{indent_str}  default:\n"));
                 }
-                codegen_block(block, output, cache_slot, indent + 2);
+                codegen_block(block, output, cache_slot, indent + 2, declared);
             }
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::While { test, body, .. } => {
             output.push_str(&format!("{indent_str}while (true) {{\n"));
-            codegen_block(test, output, cache_slot, indent + 1);
-            codegen_block(body, output, cache_slot, indent + 1);
+            codegen_block(test, output, cache_slot, indent + 1, declared);
+            codegen_block(body, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::DoWhile { body, test, .. } => {
             output.push_str(&format!("{indent_str}do {{\n"));
-            codegen_block(body, output, cache_slot, indent + 1);
+            codegen_block(body, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}} while (true);\n"));
             // Test block is evaluated inside the loop for condition
             let _ = test;
         }
         ReactiveTerminal::For { init, test, update, body, .. } => {
             output.push_str(&format!("{indent_str}for (;;) {{\n"));
-            codegen_block(init, output, cache_slot, indent + 1);
-            codegen_block(test, output, cache_slot, indent + 1);
-            codegen_block(body, output, cache_slot, indent + 1);
+            codegen_block(init, output, cache_slot, indent + 1, declared);
+            codegen_block(test, output, cache_slot, indent + 1, declared);
+            codegen_block(body, output, cache_slot, indent + 1, declared);
             if let Some(upd) = update {
-                codegen_block(upd, output, cache_slot, indent + 1);
+                codegen_block(upd, output, cache_slot, indent + 1, declared);
             }
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForOf { init, test, body, .. } => {
             output.push_str(&format!("{indent_str}for (const _ of _) {{\n"));
-            codegen_block(init, output, cache_slot, indent + 1);
-            codegen_block(test, output, cache_slot, indent + 1);
-            codegen_block(body, output, cache_slot, indent + 1);
+            codegen_block(init, output, cache_slot, indent + 1, declared);
+            codegen_block(test, output, cache_slot, indent + 1, declared);
+            codegen_block(body, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForIn { init, test, body, .. } => {
             output.push_str(&format!("{indent_str}for (const _ in _) {{\n"));
-            codegen_block(init, output, cache_slot, indent + 1);
-            codegen_block(test, output, cache_slot, indent + 1);
-            codegen_block(body, output, cache_slot, indent + 1);
+            codegen_block(init, output, cache_slot, indent + 1, declared);
+            codegen_block(test, output, cache_slot, indent + 1, declared);
+            codegen_block(body, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Try { block, handler, .. } => {
             output.push_str(&format!("{indent_str}try {{\n"));
-            codegen_block(block, output, cache_slot, indent + 1);
+            codegen_block(block, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}} catch (e) {{\n"));
-            codegen_block(handler, output, cache_slot, indent + 1);
+            codegen_block(handler, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Label { block, label, .. } => {
             output.push_str(&format!("{indent_str}bb{label}: {{\n"));
-            codegen_block(block, output, cache_slot, indent + 1);
+            codegen_block(block, output, cache_slot, indent + 1, declared);
             output.push_str(&format!("{indent_str}}}\n"));
         }
     }
@@ -380,10 +675,35 @@ fn codegen_scope(
     output: &mut String,
     cache_slot: &mut u32,
     indent: usize,
+    declared: &mut HashSet<String>,
 ) {
     let indent_str = "  ".repeat(indent);
     let deps = &scope.scope.dependencies;
     let slot_start = *cache_slot;
+
+    // Hoist DeclareLocal instructions out of the scope body.
+    // These must be emitted before the scope's dependency check since the
+    // check may reference these variables (e.g., `$[0] !== count`).
+    for instr in &scope.instructions.instructions {
+        if let ReactiveInstruction::Instruction(instruction) = instr {
+            if let InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. } =
+                &instruction.value
+            {
+                codegen_instruction(instruction, output, &indent_str, declared);
+            }
+        }
+    }
+
+    // Pre-declare scope output variables with `let` so the else-branch
+    // (cache reload) can assign to them. Variables already declared by
+    // DeclareLocal above are skipped.
+    for (_, decl) in scope.scope.declarations.iter() {
+        let decl_name = identifier_display_name(&decl.identifier);
+        if !declared.contains(decl_name.as_ref()) {
+            declared.insert(decl_name.to_string());
+            output.push_str(&format!("{indent_str}let {decl_name};\n"));
+        }
+    }
 
     // Generate dependency check
     if deps.is_empty() {
@@ -406,8 +726,8 @@ fn codegen_scope(
         *cache_slot += deps.len() as u32;
     }
 
-    // Generate scope body
-    codegen_block(&scope.instructions, output, cache_slot, indent + 1);
+    // Generate scope body (DeclareLocal/DeclareContext already hoisted above)
+    codegen_block_skip_declares(&scope.instructions, output, cache_slot, indent + 1, declared);
 
     // Store declarations into cache slots
     let decl_slot_start = *cache_slot;
@@ -452,6 +772,44 @@ fn codegen_scope(
     }
 
     output.push_str(&format!("{indent_str}}}\n"));
+}
+
+/// Generate JavaScript from a lowered HIR function body (used for nested
+/// function expressions and object methods whose body hasn't been through
+/// the reactive transform).
+fn codegen_hir_body(hir: &crate::hir::types::HIR, output: &mut String, indent: usize) {
+    let mut declared = HashSet::new();
+    for (_block_id, block) in &hir.blocks {
+        let indent_str = "  ".repeat(indent);
+        for instruction in &block.instructions {
+            codegen_instruction(instruction, output, &indent_str, &mut declared);
+        }
+        codegen_hir_terminal(&block.terminal, output, indent);
+    }
+}
+
+/// Emit JavaScript for an HIR terminal (Return, Throw, etc.).
+/// Other control-flow terminals (Goto, If, Branch, Switch, loops) are structural
+/// in the CFG and their semantics are already captured in block ordering, so we
+/// only emit the ones that produce visible JavaScript statements.
+fn codegen_hir_terminal(
+    terminal: &crate::hir::types::Terminal,
+    output: &mut String,
+    indent: usize,
+) {
+    use crate::hir::types::Terminal;
+    let indent_str = "  ".repeat(indent);
+
+    match terminal {
+        Terminal::Return { value } => {
+            output.push_str(&format!("{}return {};\n", indent_str, place_name(value)));
+        }
+        Terminal::Throw { value } => {
+            output.push_str(&format!("{}throw {};\n", indent_str, place_name(value)));
+        }
+        // Structural CFG terminals — no JS output needed
+        _ => {}
+    }
 }
 
 fn count_cache_slots(block: &ReactiveBlock) -> u32 {
@@ -506,7 +864,7 @@ fn count_terminal_slots(terminal: &ReactiveTerminal) -> u32 {
 
 /// Generate the import statement for the compiler runtime.
 pub fn generate_import_statement() -> String {
-    "import { c as _c } from \"react/compiler-runtime\";\n".to_string()
+    "import { c as _c } from \"react/compiler-runtime\";\nimport { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from \"react/jsx-runtime\";\n".to_string()
 }
 
 /// Apply compiled function to original source code.
@@ -596,6 +954,62 @@ fn binary_op_str(op: crate::hir::types::BinaryOp) -> &'static str {
 // ---------------------------------------------------------------------------
 // Destructure pattern codegen
 // ---------------------------------------------------------------------------
+
+fn pattern_has_declared_names(
+    pattern: &crate::hir::types::DestructurePattern,
+    declared: &HashSet<String>,
+) -> bool {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        if declared.contains(place_name(place).as_ref()) {
+                            return true;
+                        }
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        if pattern_has_declared_names(nested, declared) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            if let Some(rest_place) = rest {
+                if declared.contains(place_name(rest_place).as_ref()) {
+                    return true;
+                }
+            }
+            false
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(target) => match target {
+                        DestructureTarget::Place(place) => {
+                            if declared.contains(place_name(place).as_ref()) {
+                                return true;
+                            }
+                        }
+                        DestructureTarget::Pattern(nested) => {
+                            if pattern_has_declared_names(nested, declared) {
+                                return true;
+                            }
+                        }
+                    },
+                    DestructureArrayItem::Hole | DestructureArrayItem::Spread(_) => {}
+                }
+            }
+            if let Some(rest_place) = rest {
+                if declared.contains(place_name(rest_place).as_ref()) {
+                    return true;
+                }
+            }
+            false
+        }
+    }
+}
 
 fn codegen_destructure_pattern(
     pattern: &crate::hir::types::DestructurePattern,
@@ -911,22 +1325,23 @@ fn codegen_block_with_map(
     indent: usize,
     source: &str,
 ) {
+    let mut declared = HashSet::new();
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
                 let indent_str = "  ".repeat(indent);
                 // Record mapping for this instruction.
                 ctx.map_from_span(instruction.loc, source);
-                codegen_instruction(instruction, &mut ctx.output, &indent_str);
+                codegen_instruction(instruction, &mut ctx.output, &indent_str, &mut declared);
                 // Update line/col tracking after codegen_instruction wrote to output.
                 recompute_position(ctx);
             }
             ReactiveInstruction::Terminal(terminal) => {
-                codegen_terminal(terminal, &mut ctx.output, cache_slot, indent);
+                codegen_terminal(terminal, &mut ctx.output, cache_slot, indent, &mut declared);
                 recompute_position(ctx);
             }
             ReactiveInstruction::Scope(scope_block) => {
-                codegen_scope(scope_block, &mut ctx.output, cache_slot, indent);
+                codegen_scope(scope_block, &mut ctx.output, cache_slot, indent, &mut declared);
                 recompute_position(ctx);
             }
         }

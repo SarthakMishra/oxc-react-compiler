@@ -51,7 +51,7 @@ function ItemList({ items }) {
   });
 
   describe('dual-mode comparison', () => {
-    it.fails('list rendering matches original (known codegen issue)', () => {
+    it('list rendering matches original', () => {
       const source = `
 function ItemList({ items }) {
   return (

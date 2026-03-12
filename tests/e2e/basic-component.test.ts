@@ -77,7 +77,7 @@ function Card({ title, body }) {
   });
 
   describe('dual-mode comparison', () => {
-    it.fails('simple props passthrough renders identically (known codegen issue: destructure extraction)', () => {
+    it('simple props passthrough renders identically', () => {
       const source = `
 function Greeting({ name }) {
   return <div>Hello, {name}!</div>;
@@ -88,7 +88,7 @@ function Greeting({ name }) {
       expect(result.match).toBe(true);
     });
 
-    it.fails('static component renders identically (known codegen issue: variable name mismatch)', () => {
+    it('static component renders identically', () => {
       const source = `
 function StaticMessage() {
   return <div>Hello!</div>;

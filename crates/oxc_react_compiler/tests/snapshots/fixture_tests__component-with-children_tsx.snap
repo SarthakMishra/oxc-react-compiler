@@ -6,19 +6,21 @@ transformed: true
 diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 function Layout(t0) {
   const $ = _c(3);
+  let children;
   if ($[0] !== children) {
-    /* t10 = Discriminant(4) */
     $[0] = children;
   } else {
   }
-  const { children } = t0;
+  ({ children } = t0);
+  let t15;
   if ($[1] !== children) {
     const t12 = "div";
     const t13 = "container";
     const t14 = children;
-    const t15 = <t12 className={t13}>{t14}</t12>;
+    t15 = _jsx(t12, { className: t13, children: t14 });
     $[2] = t15;
     $[1] = children;
   } else {

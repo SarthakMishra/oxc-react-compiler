@@ -1,4 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 // XS tier - Inspired by shadcn/ui avatar component
 import { useMemo } from 'react';
 
@@ -9,35 +10,64 @@ interface AvatarGroupProps {
 
 export function AvatarGroup(t0) {
   const $ = _c(3);
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t43 = Discriminant(4) */
+  let users;
+  let max;
+  if ($[0] !== users || $[1] !== max) {
+    $[0] = users;
+    $[1] = max;
   } else {
   }
-  const t44 = useMemo;
-  /* t45 = Discriminant(28) */
-  const t46 = users;
-  const t47 = max;
-  const t48 = [t46, t47];
-  const t49 = t44(t45, t48);
-  const visible = t49;
-  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t51 = Discriminant(4) */
+  ({ users, max } = t0);
+  let visible;
+  if ($[2] !== visible) {
+    $[2] = visible;
   } else {
   }
-  const t52 = users;
-  const t53 = t52.length;
-  const t54 = max;
-  const t55 = t53 - t54;
-  const remaining = t55;
-  const t57 = "div";
-  const t58 = "flex -space-x-2";
-  const t59 = visible;
-  /* t60 = Discriminant(28) */
-  const t61 = t59.map(t60);
-  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    const t62 = remaining;
-  } else {
-  }
-  const t63 = 0;
+  const t52 = useMemo;
+  const t53 = () => {
+    const t1 = users;
+    const t2 = 0;
+    const t4 = max;
+    const t5 = t1.slice(t2, t4);
+    return t5;
+  };
+  const t54 = users;
+  const t55 = max;
+  const t56 = [t54, t55];
+  const t57 = t52(t53, t56);
+  visible = t57;
+  let remaining;
+  const t60 = users;
+  const t61 = t60.length;
+  const t62 = max;
+  const t63 = t61 - t62;
+  remaining = t63;
+  const t65 = "div";
+  const t66 = "flex -space-x-2";
+  const t67 = visible;
+  const t68 = (user, i) => {
+    const t2 = "div";
+    const t4 = i;
+    const t5 = "rounded-full w-8 h-8 bg-gray-300";
+    const t7 = user;
+    const t8 = t7.name;
+    const t10 = user;
+    const t11 = t10.image;
+    const t12 = "img";
+    const t14 = user;
+    const t15 = t14.image;
+    const t17 = user;
+    const t18 = t17.name;
+    const t19 = _jsx(t12, { src: t15, alt: t18 });
+    const t21 = user;
+    const t22 = t21.name;
+    const t23 = 0;
+    const t24 = t22[t23];
+    const t26 = _jsx(t2, { key: t4, className: t5, title: t8, children: t25 });
+    return t26;
+  };
+  const t69 = t67.map(t68);
+  const t70 = remaining;
+  const t71 = 0;
 }
 

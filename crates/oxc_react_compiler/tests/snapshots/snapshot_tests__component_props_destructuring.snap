@@ -3,24 +3,26 @@ source: crates/oxc_react_compiler/tests/snapshot_tests.rs
 expression: result.code
 ---
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Greeting(t0) {
   const $ = _c(5);
+  let name;
+  let age;
   if ($[0] !== name || $[1] !== age) {
-    /* t15 = Discriminant(4) */
-    /* t16 = Discriminant(4) */
     $[0] = name;
     $[1] = age;
   } else {
   }
-  const { name, age } = t0;
+  ({ name, age } = t0);
+  let t23;
   if ($[2] !== name || $[3] !== age) {
     const t18 = "div";
-    /* t19 = Discriminant(8) */
+    const t19 = "Hello ";
     const t20 = name;
-    /* t21 = Discriminant(8) */
+    const t21 = ", you are ";
     const t22 = age;
-    const t23 = <t18>{t19}{t20}{t21}{t22}</t18>;
+    t23 = _jsxs(t18, { children: [t19, t20, t21, t22] });
     $[4] = t23;
     $[2] = name;
     $[3] = age;

@@ -83,7 +83,7 @@ function Toggle({ isOn }) {
       expect(result.match).toBe(true);
     });
 
-    it.fails('if/else renders identically (known codegen issue)', () => {
+    it('if/else renders identically', () => {
       const source = `
 function Status({ loading }) {
   if (loading) {

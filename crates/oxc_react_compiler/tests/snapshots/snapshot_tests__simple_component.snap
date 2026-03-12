@@ -3,19 +3,21 @@ source: crates/oxc_react_compiler/tests/snapshot_tests.rs
 expression: result.code
 ---
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Counter(t0) {
   const $ = _c(3);
+  let count;
   if ($[0] !== count) {
-    /* t9 = Discriminant(4) */
     $[0] = count;
   } else {
   }
-  const { count } = t0;
+  ({ count } = t0);
+  let t13;
   if ($[1] !== count) {
     const t11 = "div";
     const t12 = count;
-    const t13 = <t11>{t12}</t11>;
+    t13 = _jsx(t11, { children: t12 });
     $[2] = t13;
     $[1] = count;
   } else {

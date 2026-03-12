@@ -1,20 +1,21 @@
 ---
 source: crates/oxc_react_compiler/tests/per_pass_snapshots.rs
-assertion_line: 61
 expression: code
 ---
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Status(t0) {
   const $ = _c(3);
+  let isActive;
   if ($[0] !== isActive) {
-    /* t15 = Discriminant(4) */
     $[0] = isActive;
   } else {
   }
-  const { isActive } = t0;
+  ({ isActive } = t0);
+  let t17;
   if ($[1] !== isActive) {
-    const t17 = isActive;
+    t17 = isActive;
     $[2] = t17;
     $[1] = isActive;
   } else {
@@ -23,19 +24,19 @@ function Status(t0) {
   if (t17) {
     const t22 = "div";
     const t23 = "active";
-    /* t24 = Discriminant(8) */
-    const t25 = <t22 className={t23}>{t24}</t22>;
+    const t24 = "Active";
+    const t25 = _jsx(t22, { className: t23, children: t24 });
     return t25;
   } else {
     const t18 = "div";
     const t19 = "inactive";
-    /* t20 = Discriminant(8) */
-    const t21 = <t18 className={t19}>{t20}</t18>;
+    const t20 = "Inactive";
+    const t21 = _jsx(t18, { className: t19, children: t20 });
     return t21;
   }
   const t18 = "div";
   const t19 = "inactive";
-  /* t20 = Discriminant(8) */
-  const t21 = <t18 className={t19}>{t20}</t18>;
+  const t20 = "Inactive";
+  const t21 = _jsx(t18, { className: t19, children: t20 });
   return t21;
 }

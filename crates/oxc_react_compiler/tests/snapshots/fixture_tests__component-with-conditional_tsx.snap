@@ -6,16 +6,18 @@ transformed: true
 diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 function Toggle(t0) {
   const $ = _c(3);
+  let isOn;
   if ($[0] !== isOn) {
-    /* t13 = Discriminant(4) */
     $[0] = isOn;
   } else {
   }
-  const { isOn } = t0;
+  ({ isOn } = t0);
+  let t15;
   if ($[1] !== isOn) {
-    const t15 = isOn;
+    t15 = isOn;
     $[2] = t15;
     $[1] = isOn;
   } else {
@@ -23,17 +25,17 @@ function Toggle(t0) {
   }
   if (t15) {
     const t19 = "div";
-    /* t20 = Discriminant(8) */
-    const t21 = <t19>{t20}</t19>;
+    const t20 = "ON";
+    const t21 = _jsx(t19, { children: t20 });
     return t21;
   } else {
     const t16 = "div";
-    /* t17 = Discriminant(8) */
-    const t18 = <t16>{t17}</t16>;
+    const t17 = "OFF";
+    const t18 = _jsx(t16, { children: t17 });
     return t18;
   }
   const t16 = "div";
-  /* t17 = Discriminant(8) */
-  const t18 = <t16>{t17}</t16>;
+  const t17 = "OFF";
+  const t18 = _jsx(t16, { children: t17 });
   return t18;
 }

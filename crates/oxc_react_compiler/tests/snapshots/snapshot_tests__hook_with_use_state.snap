@@ -3,31 +3,39 @@ source: crates/oxc_react_compiler/tests/snapshot_tests.rs
 expression: result.code
 ---
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function useToggle(initial) {
   const $ = _c(6);
   const t21 = useState;
   const t22 = initial;
   const t23 = t21(t22);
+  let value;
+  let setValue;
   if ($[0] !== value || $[1] !== setValue) {
-    /* t24 = Discriminant(4) */
-    /* t25 = Discriminant(4) */
     $[0] = value;
     $[1] = setValue;
   } else {
   }
-  const [value, setValue] = t23;
+  ([value, setValue] = t23);
+  let toggle;
   if ($[2] !== toggle) {
-    /* t27 = Discriminant(4) */
     $[2] = toggle;
   } else {
   }
-  /* t28 = Discriminant(28) */
-  const toggle = t28;
+  const t28 = () => {
+    const t1 = setValue;
+    const t3 = value;
+    const t4 = !t3;
+    const t5 = t1(t4);
+    return t5;
+  };
+  toggle = t28;
+  let t32;
   if ($[3] !== value || $[4] !== toggle) {
     const t30 = value;
     const t31 = toggle;
-    const t32 = [t30, t31];
+    t32 = [t30, t31];
     $[5] = t32;
     $[3] = value;
     $[4] = toggle;

@@ -97,7 +97,7 @@ function Compute({ x, y }) {
   });
 
   describe('dual-mode: return value comparison', () => {
-    it.fails('component returning JSX produces same output (known codegen issue)', () => {
+    it('component returning JSX produces same output', () => {
       const source = `
 function Label({ text }) {
   return <span>{text}</span>;
@@ -148,7 +148,7 @@ function Double({ n }) {
   });
 
   describe('compiled sequential renders', () => {
-    it.fails('compiled component is consistent across calls (known codegen issue)', () => {
+    it('compiled component is consistent across calls', () => {
       const source = `
 function Double({ n }) {
   return <span>{n * 2}</span>;

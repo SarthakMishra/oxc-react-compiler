@@ -6,21 +6,23 @@ transformed: true
 diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 const Button = function Button(t0) {
   const $ = _c(5);
+  let onClick;
+  let label;
   if ($[0] !== onClick || $[1] !== label) {
-    /* t13 = Discriminant(4) */
-    /* t14 = Discriminant(4) */
     $[0] = onClick;
     $[1] = label;
   } else {
   }
-  const { onClick, label } = t0;
+  ({ onClick, label } = t0);
+  let t19;
   if ($[2] !== onClick || $[3] !== label) {
     const t16 = "button";
     const t17 = onClick;
     const t18 = label;
-    const t19 = <t16 onClick={t17}>{t18}</t16>;
+    t19 = _jsx(t16, { onClick: t17, children: t18 });
     $[4] = t19;
     $[2] = onClick;
     $[3] = label;

@@ -6,23 +6,32 @@ transformed: true
 diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 function useCounter() {
   const $ = _c(4);
   const t14 = useState;
   const t15 = 0;
   const t16 = t14(t15);
+  let count;
+  let setCount;
   if ($[0] !== count || $[1] !== setCount) {
-    /* t17 = Discriminant(4) */
-    /* t18 = Discriminant(4) */
     $[0] = count;
     $[1] = setCount;
   } else {
   }
-  const [count, setCount] = t16;
+  ([count, setCount] = t16);
+  let t22;
   if ($[2] !== count) {
     const t20 = count;
-    /* t21 = Discriminant(28) */
-    const t22 = { count, increment: t21 };
+    const t21 = () => {
+      const t1 = setCount;
+      const t3 = count;
+      const t4 = 1;
+      const t5 = t3 + t4;
+      const t6 = t1(t5);
+      return t6;
+    };
+    t22 = { count, increment: t21 };
     $[3] = t22;
     $[2] = count;
   } else {

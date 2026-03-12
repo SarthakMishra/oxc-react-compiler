@@ -1,27 +1,44 @@
 import { c as _c } from "react/compiler-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 // XS tier - Inspired by excalidraw theme toggle
 import { useState, useCallback } from 'react';
 
 export function ThemeToggle() {
-  const $ = _c(2);
+  const $ = _c(3);
   const t38 = useState;
   const t39 = "light";
   const t40 = t38(t39);
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t41 = Discriminant(4) */
-    /* t42 = Discriminant(4) */
+  let theme;
+  let setTheme;
+  if ($[0] !== theme || $[1] !== setTheme) {
+    $[0] = theme;
+    $[1] = setTheme;
   } else {
   }
-  /* t43 = Discriminant(6) */
-  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    /* t44 = Discriminant(4) */
+  ([theme, setTheme] = t40);
+  let toggle;
+  if ($[2] !== toggle) {
+    $[2] = toggle;
   } else {
   }
   const t45 = useCallback;
-  /* t46 = Discriminant(28) */
+  const t46 = () => {
+    const t1 = setTheme;
+    const t2 = (t) => {
+      const t2 = t;
+      const t3 = "light";
+      const t4 = t2 === t3;
+      const t5 = "dark";
+      const t6 = "light";
+      return t7;
+    };
+    const t3 = t1(t2);
+    const t4 = undefined;
+    return t4;
+  };
   const t47 = [];
   const t48 = t45(t46, t47);
-  const toggle = t48;
+  toggle = t48;
   const t50 = "button";
   const t51 = toggle;
   const t52 = theme;
