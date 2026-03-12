@@ -22,7 +22,10 @@ function stripJsx(source: string): string {
  * then render it to static HTML for comparison.
  *
  * JSX is transformed via esbuild before evaluation.
- * Uses vm.runInNewContext to sandbox evaluation.
+ * Uses vm.runInNewContext for isolation. NOTE: Node's vm module is NOT
+ * a security sandbox — host objects (React, Symbol) allow escaping to
+ * the host realm. This is acceptable for test-only evaluation of known
+ * compiler output but must never be used with untrusted code.
  */
 export function evalAndRender(
   source: string,

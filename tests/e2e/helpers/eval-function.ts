@@ -64,6 +64,10 @@ interface EvalResult {
  * with the given args, and capture the return value, console output, and errors.
  *
  * The source should define a function (named or default export) that we'll call.
+ *
+ * NOTE: Node's vm module is NOT a security sandbox — host objects allow
+ * escaping to the host realm. This is acceptable for test-only evaluation
+ * of known compiler output but must never be used with untrusted code.
  */
 export function evalFunction(
   source: string,
