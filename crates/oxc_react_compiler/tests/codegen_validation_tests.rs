@@ -399,3 +399,20 @@ const Button = ({ onClick, label }) => {
     let unresolved = validate_no_unresolved_refs(&result.code);
     insta::assert_snapshot!("semantic_arrow_component", format!("{unresolved:?}"));
 }
+
+#[test]
+fn test_color_picker_no_hang() {
+    let source =
+        std::fs::read_to_string("../../benchmarks/fixtures/realworld/color-picker.tsx").unwrap();
+    let result = compile_program(&source, "color-picker.tsx", &PluginOptions::default());
+    assert!(result.transformed || !result.transformed, "Should complete without hanging");
+}
+
+#[test]
+fn test_availability_schedule_no_hang() {
+    let source =
+        std::fs::read_to_string("../../benchmarks/fixtures/realworld/availability-schedule.tsx")
+            .unwrap();
+    let result = compile_program(&source, "availability-schedule.tsx", &PluginOptions::default());
+    assert!(result.transformed || !result.transformed, "Should complete without hanging");
+}

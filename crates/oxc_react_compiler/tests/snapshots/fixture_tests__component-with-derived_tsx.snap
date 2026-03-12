@@ -8,7 +8,7 @@ diagnostics: 0
 import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 function Display(t0) {
-  const $ = _c(9);
+  const $ = _c(10);
   const { items } = t0;
   if ($[0] !== items) {
     $[0] = items;
@@ -16,36 +16,42 @@ function Display(t0) {
   }
   let count;
   let label;
-  if ($[1] !== count || $[2] !== items || $[3] !== label || $[4] !== count || $[5] !== t36) {
-    const t31 = items;
-    const t32 = t31.length;
-    count = t32;
-    const t35 = count;
-    const t36 = 0;
-    const t37 = t35 > t36;
+  let t16;
+  if ($[1] !== count || $[2] !== items || $[3] !== label || $[4] !== count || $[5] !== t39 || $[6] !== t16) {
+    const t34 = items;
+    const t35 = t34.length;
+    count = t35;
+    const t38 = count;
+    const t39 = 0;
+    const t40 = t38 > t39;
     $[1] = count;
     $[2] = items;
     $[3] = label;
     $[4] = count;
-    $[5] = t36;
+    $[5] = t39;
+    $[6] = t16;
   } else {
   }
-  if (t37) {
+  if (t40) {
+    const t54 = "Has items";
+    t16 = t54;
   } else {
+    const t42 = "Empty";
+    t16 = t42;
   }
-  label = t18;
-  let t46;
-  if ($[6] !== label || $[7] !== count) {
-    const t42 = "div";
-    const t43 = label;
-    const t44 = ": ";
-    const t45 = count;
-    t46 = _jsxs(t42, { children: [t43, t44, t45] });
-    $[8] = t46;
-    $[6] = label;
-    $[7] = count;
+  label = t16;
+  let t53;
+  if ($[7] !== label || $[8] !== count) {
+    const t49 = "div";
+    const t50 = label;
+    const t51 = ": ";
+    const t52 = count;
+    t53 = _jsxs(t49, { children: [t50, t51, t52] });
+    $[9] = t53;
+    $[7] = label;
+    $[8] = count;
   } else {
-    t46 = $[8];
+    t53 = $[9];
   }
-  return t46;
+  return t53;
 }
