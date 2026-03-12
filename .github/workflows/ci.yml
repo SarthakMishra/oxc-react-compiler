@@ -77,3 +77,71 @@ jobs:
 
       - name: Build release
         run: cargo build --release
+
+  conformance:
+    name: Upstream Conformance (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-conformance-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache upstream fixtures
+        uses: actions/cache@v4
+        with:
+          path: tests/conformance/upstream-fixtures
+          key: upstream-fixtures-v1
+
+      - name: Download upstream fixtures
+        run: |
+          if [ ! -f tests/conformance/upstream-fixtures/.downloaded ]; then
+            bash tests/conformance/download-upstream.sh
+            touch tests/conformance/upstream-fixtures/.downloaded
+          fi
+
+      - name: Run conformance tests
+        run: cargo test --release upstream_conformance -- --nocapture
+
+  render-equivalence:
+    name: Render Equivalence (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-render-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Install root npm dependencies
+        run: npm install
+
+      - name: Build NAPI binding
+        run: cd napi/react-compiler && npm install && npx napi build --release
+
+      - name: Run render equivalence comparison
+        run: node benchmarks/scripts/render-compare.mjs
