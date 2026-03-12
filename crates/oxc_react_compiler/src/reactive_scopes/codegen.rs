@@ -40,11 +40,45 @@ fn is_temp_place(place: &Place) -> bool {
 fn count_temp_uses(instructions: &[ReactiveInstruction]) -> HashMap<String, u32> {
     let mut counts: HashMap<String, u32> = HashMap::new();
     for ri in instructions {
-        if let ReactiveInstruction::Instruction(instr) = ri {
-            visit_instr_uses(&instr.value, &mut counts);
+        match ri {
+            ReactiveInstruction::Instruction(instr) => {
+                visit_instr_uses(&instr.value, &mut counts);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                visit_terminal_uses(terminal, &mut counts);
+            }
+            ReactiveInstruction::Scope(_) => {}
         }
     }
     counts
+}
+
+/// Count temp uses in terminal place references (test conditions, return values, etc.)
+fn visit_terminal_uses(terminal: &ReactiveTerminal, counts: &mut HashMap<String, u32>) {
+    match terminal {
+        ReactiveTerminal::Return { value, .. } | ReactiveTerminal::Throw { value, .. } => {
+            bump_temp(value, counts);
+        }
+        ReactiveTerminal::If { test, .. } => {
+            bump_temp(test, counts);
+        }
+        ReactiveTerminal::Switch { test, cases, .. } => {
+            bump_temp(test, counts);
+            for (test_val, _) in cases {
+                if let Some(tv) = test_val {
+                    bump_temp(tv, counts);
+                }
+            }
+        }
+        // These terminals have ReactiveBlock test fields, not Place fields
+        ReactiveTerminal::While { .. }
+        | ReactiveTerminal::DoWhile { .. }
+        | ReactiveTerminal::For { .. }
+        | ReactiveTerminal::ForOf { .. }
+        | ReactiveTerminal::ForIn { .. }
+        | ReactiveTerminal::Try { .. }
+        | ReactiveTerminal::Label { .. } => {}
+    }
 }
 
 /// Walk all *operand* places in an `InstructionValue` and increment the
@@ -621,7 +655,7 @@ fn codegen_block(
                 codegen_instruction(instruction, output, &indent_str, declared, &inline_map);
             }
             ReactiveInstruction::Terminal(terminal) => {
-                codegen_terminal(terminal, output, cache_slot, indent, declared);
+                codegen_terminal(terminal, output, cache_slot, indent, declared, &inline_map);
             }
             ReactiveInstruction::Scope(scope_block) => {
                 codegen_scope(scope_block, output, cache_slot, indent, declared);
@@ -650,7 +684,7 @@ fn codegen_block_skip_hoisted(
                 codegen_instruction(instruction, output, &indent_str, declared, &inline_map);
             }
             ReactiveInstruction::Terminal(terminal) => {
-                codegen_terminal(terminal, output, cache_slot, indent, declared);
+                codegen_terminal(terminal, output, cache_slot, indent, declared, &inline_map);
             }
             ReactiveInstruction::Scope(scope_block) => {
                 codegen_scope(scope_block, output, cache_slot, indent, declared);
@@ -683,7 +717,7 @@ fn codegen_block_skip_declares(
                 codegen_instruction(instruction, output, &indent_str, declared, &inline_map);
             }
             ReactiveInstruction::Terminal(terminal) => {
-                codegen_terminal(terminal, output, cache_slot, indent, declared);
+                codegen_terminal(terminal, output, cache_slot, indent, declared, &inline_map);
             }
             ReactiveInstruction::Scope(scope_block) => {
                 codegen_scope(scope_block, output, cache_slot, indent, declared);
@@ -1214,18 +1248,31 @@ fn codegen_terminal(
     cache_slot: &mut u32,
     indent: usize,
     declared: &mut HashSet<String>,
+    inline_map: &InlineMap,
 ) {
     let indent_str = "  ".repeat(indent);
 
     match terminal {
         ReactiveTerminal::Return { value, .. } => {
-            output.push_str(&format!("{}return {};\n", indent_str, place_name(value)));
+            output.push_str(&format!(
+                "{}return {};\n",
+                indent_str,
+                resolve_place(value, inline_map)
+            ));
         }
         ReactiveTerminal::Throw { value, .. } => {
-            output.push_str(&format!("{}throw {};\n", indent_str, place_name(value)));
+            output.push_str(&format!(
+                "{}throw {};\n",
+                indent_str,
+                resolve_place(value, inline_map)
+            ));
         }
         ReactiveTerminal::If { test, consequent, alternate, .. } => {
-            output.push_str(&format!("{}if ({}) {{\n", indent_str, place_name(test)));
+            output.push_str(&format!(
+                "{}if ({}) {{\n",
+                indent_str,
+                resolve_place(test, inline_map)
+            ));
             codegen_block(consequent, output, cache_slot, indent + 1, declared);
             if !alternate.instructions.is_empty() {
                 output.push_str(&format!("{indent_str}}} else {{\n"));
@@ -1234,10 +1281,18 @@ fn codegen_terminal(
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Switch { test, cases, .. } => {
-            output.push_str(&format!("{}switch ({}) {{\n", indent_str, place_name(test)));
+            output.push_str(&format!(
+                "{}switch ({}) {{\n",
+                indent_str,
+                resolve_place(test, inline_map)
+            ));
             for (test_val, block) in cases {
                 if let Some(tv) = test_val {
-                    output.push_str(&format!("{}  case {}:\n", indent_str, place_name(tv)));
+                    output.push_str(&format!(
+                        "{}  case {}:\n",
+                        indent_str,
+                        resolve_place(tv, inline_map)
+                    ));
                 } else {
                     output.push_str(&format!("{indent_str}  default:\n"));
                 }
@@ -2033,7 +2088,14 @@ fn codegen_block_with_map(
                 recompute_position(ctx);
             }
             ReactiveInstruction::Terminal(terminal) => {
-                codegen_terminal(terminal, &mut ctx.output, cache_slot, indent, &mut declared);
+                codegen_terminal(
+                    terminal,
+                    &mut ctx.output,
+                    cache_slot,
+                    indent,
+                    &mut declared,
+                    &inline_map,
+                );
                 recompute_position(ctx);
             }
             ReactiveInstruction::Scope(scope_block) => {

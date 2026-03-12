@@ -12,8 +12,7 @@ function Counter() {
   if ($[0] !== count || $[1] !== count) {
     next = count + 1;
     const t34 = () => {
-      const t4 = setCount(next);
-      return t4;
+      return setCount(next);
     };
     t36 = _jsx("button", { onClick: t34, children: count });
     $[2] = t36;

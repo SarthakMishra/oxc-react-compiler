@@ -9,8 +9,7 @@ function useCounter() {
   let t22;
   if ($[0] !== count) {
     const t21 = () => {
-      const t6 = setCount(count + 1);
-      return t6;
+      return setCount(count + 1);
     };
     t22 = { count, increment: t21 };
     $[1] = t22;
