@@ -16,7 +16,9 @@
 //! To generate expected outputs:
 //!   node tests/conformance/run-upstream.mjs
 
-use oxc_react_compiler::{PluginOptions, compile_program};
+use oxc_react_compiler::{
+    CompilationMode, EnvironmentConfig, PanicThreshold, PluginOptions, compile_program_with_config,
+};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -330,6 +332,127 @@ struct FixtureResult {
     diagnostic_count: usize,
 }
 
+/// Parse per-fixture compiler options from `@directive` comments in the source.
+///
+/// Parses both `PluginOptions` (compilation mode, panic threshold) and
+/// `EnvironmentConfig` (validation toggles, feature flags) from comment directives.
+fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
+    let mut opts = PluginOptions {
+        // Default to Infer mode. While Babel's test harness uses "all" by default,
+        // our compiled output for non-component functions still diverges significantly
+        // (temp variable explosion, different dependency tracking). Using Infer avoids
+        // false regressions from compiling functions where our output isn't yet correct.
+        compilation_mode: CompilationMode::Infer,
+        ..PluginOptions::default()
+    };
+    let mut env = EnvironmentConfig::default();
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("//") {
+            // Stop scanning after non-comment lines (directives are at the top)
+            if !trimmed.is_empty() {
+                break;
+            }
+            continue;
+        }
+        let comment = trimmed.trim_start_matches("//").trim();
+
+        // Helper: extract the value after a directive like @name:"value" or @name(value)
+        fn find_directive_value<'a>(comment: &'a str, name: &str) -> Option<&'a str> {
+            let needle = format!("@{name}");
+            let pos = comment.find(&needle)?;
+            let after = &comment[pos + needle.len()..];
+            if let Some(rest) = after.strip_prefix(":\"") {
+                let end = rest.find('"').unwrap_or(rest.len());
+                Some(&rest[..end])
+            } else if let Some(rest) = after.strip_prefix(':') {
+                let end = rest.find(|c: char| c == ' ' || c == '@').unwrap_or(rest.len());
+                Some(&rest[..end])
+            } else if let Some(rest) = after.strip_prefix('(') {
+                let end = rest.find(')').unwrap_or(rest.len());
+                Some(&rest[..end])
+            } else {
+                None
+            }
+        }
+
+        // @compilationMode:"infer" | @compilationMode:"all" etc.
+        if let Some(mode) = find_directive_value(comment, "compilationMode") {
+            opts.compilation_mode = match mode {
+                "infer" => CompilationMode::Infer,
+                "annotation" => CompilationMode::Annotation,
+                "syntax" => CompilationMode::Syntax,
+                _ => CompilationMode::All,
+            };
+        }
+
+        // @panicThreshold:"ALL_ERRORS" | @panicThreshold(none) etc.
+        if let Some(val) = find_directive_value(comment, "panicThreshold") {
+            opts.panic_threshold = match val {
+                "ALL_ERRORS" | "all" => PanicThreshold::AllErrors,
+                "NONE" | "none" => PanicThreshold::None,
+                _ => PanicThreshold::CriticalErrors,
+            };
+        }
+
+        // Parse all @-prefixed directives from the comment line.
+        // Multiple directives can appear on a single line: @foo @bar:true @baz:"val"
+        fn find_directive_bool(comment: &str, name: &str) -> Option<bool> {
+            let needle = format!("@{name}");
+            if let Some(pos) = comment.find(&needle) {
+                let after = &comment[pos + needle.len()..];
+                if after.starts_with(":false") {
+                    return Some(false);
+                }
+                // bare @name or @name:true or @name followed by space/end
+                return Some(true);
+            }
+            None
+        }
+
+        if let Some(v) = find_directive_bool(comment, "enablePreserveExistingMemoizationGuarantees")
+        {
+            env.enable_preserve_existing_memoization_guarantees = v;
+        }
+        if let Some(v) =
+            find_directive_bool(comment, "validatePreserveExistingMemoizationGuarantees")
+        {
+            env.validate_preserve_existing_memoization_guarantees = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "validateRefAccessDuringRender") {
+            env.validate_ref_access_during_render = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "validateExhaustiveMemoizationDependencies") {
+            env.validate_exhaustive_memo_dependencies = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "validateNoSetStateInEffects") {
+            env.validate_no_set_state_in_effects = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "validateNoSetStateInRender") {
+            env.validate_no_set_state_in_render = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "enableTransitivelyFreezeFunctionExpressions")
+        {
+            env.enable_transitively_freeze_function_expressions = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "enableAssumeHooksFollowRulesOfReact") {
+            env.enable_assume_hooks_follow_rules_of_react = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "enableOptionalDependencies") {
+            env.enable_optional_dependencies = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "enableTreatRefLikeIdentifiersAsRefs") {
+            env.enable_treat_ref_like_identifiers_as_refs = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "enableJsxOutlining") {
+            env.enable_jsx_outlining = v;
+        }
+    }
+
+    (opts, env)
+}
+
 /// Run a single fixture through the compiler.
 fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
     let relative_path = fixture_path
@@ -352,10 +475,11 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
     };
 
     let filename = fixture_path.file_name().unwrap().to_string_lossy().into_owned();
+    let (options, env_config) = parse_fixture_options(&source);
 
     // Use catch_unwind to detect panics.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        compile_program(&source, &filename, &PluginOptions::default())
+        compile_program_with_config(&source, &filename, &options, &env_config)
     }));
 
     match result {

@@ -3,7 +3,7 @@
 #
 # Format: <relative-path-from-upstream-fixtures/>
 #
-# Baseline: 69/1419 pass (4.9%), 0 panics, 1350 divergences
+# Baseline: 74/1419 pass (5.2%), 0 panics, 1345 divergences
 # (Uses corrected .expected files extracted from upstream .expect.md)
 # 298 upstream error fixtures excluded from comparison
 alias-capture-in-method-receiver-and-mutate.js
@@ -265,7 +265,6 @@ do-while-early-unconditional-break.js
 do-while-simple.js
 dominator.js
 dont-memoize-primitive-function-call-non-escaping-useMemo.js
-dont-memoize-primitive-function-call-non-escaping.js
 dont-merge-if-dep-is-inner-declaration-of-previous-scope.js
 dont-merge-overlapping-scopes-store-const-used-later.js
 dont-merge-overlapping-scopes-with-intermediate-reassignment.js
@@ -521,7 +520,6 @@ for-empty-update-with-continue.js
 for-empty-update.js
 for-in-statement-break.js
 for-in-statement-continue.js
-for-in-statement-type-inference.js
 for-in-statement.js
 for-logical.js
 for-loop-let-undefined-decl.js
@@ -749,7 +747,6 @@ lambda-mutated-non-reactive-to-reactive.js
 lambda-mutated-ref-non-reactive.js
 lambda-reassign-primitive.js
 lambda-reassign-shadowed-primitive.js
-lambda-return-expression.ts
 log-pruned-memoization.js
 logical-expression-object.js
 logical-expression.js
@@ -904,8 +901,6 @@ object-shorthand-method-2.js
 object-shorthand-method-nested.js
 object-values-mutation.js
 object-values.js
-optional-call-chain-in-logical-expr.ts
-optional-call-chain-in-ternary.ts
 optional-call-chained.js
 optional-call-logical.js
 optional-call-simple.js

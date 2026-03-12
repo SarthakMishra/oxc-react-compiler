@@ -9,6 +9,45 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// These become the "deps" that are checked at runtime to decide whether
 /// to recompute the scope's output.
 pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
+    // Phase 0: Collect identifiers that should NOT be scope dependencies:
+    // - Global values (from LoadGlobal) — never change between renders
+    // - Primitive constants (from Primitive/JSXText) — immutable by definition
+    let mut non_reactive_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    // Map from identifier name to whether it's known to be non-reactive.
+    // Used to propagate non-reactivity through StoreLocal/LoadLocal chains.
+    let mut non_reactive_names: FxHashSet<String> = FxHashSet::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadGlobal { .. }
+                | InstructionValue::Primitive { .. }
+                | InstructionValue::JSXText { .. } => {
+                    non_reactive_ids.insert(instr.lvalue.identifier.id);
+                }
+                // When a non-reactive value is stored to a local variable, the variable
+                // name itself becomes non-reactive.
+                InstructionValue::StoreLocal { lvalue, value, .. } => {
+                    if non_reactive_ids.contains(&value.identifier.id) {
+                        non_reactive_ids.insert(lvalue.identifier.id);
+                        if let Some(name) = &lvalue.identifier.name {
+                            non_reactive_names.insert(name.clone());
+                        }
+                    }
+                }
+                // LoadLocal of a non-reactive name produces a non-reactive value.
+                InstructionValue::LoadLocal { place } => {
+                    if let Some(name) = &place.identifier.name {
+                        if non_reactive_names.contains(name) {
+                            non_reactive_ids.insert(instr.lvalue.identifier.id);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Phase 1: Build maps of scope_id -> identifier IDs and declaration IDs that belong to the scope.
     // We track both IdentifierId (SSA-unique) and DeclarationId (shared across SSA versions of the
     // same source variable). This ensures that when a scope writes `x = a + 1`, subsequent reads
@@ -69,8 +108,8 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
             let operands = collect_read_operand_places(&instr.value);
             for place in operands {
                 let op_id = place.identifier.id;
-                // If this operand is not declared/written within the same scope, it's a dependency
-                if !is_scope_internal(place) {
+                // If this operand is not declared/written within the same scope, and not a global, it's a dependency
+                if !is_scope_internal(place) && !non_reactive_ids.contains(&place.identifier.id) {
                     // Check if already added
                     let deps = scope_deps.entry(scope_id).or_default();
                     let already_added = deps.iter().any(|d| d.identifier.id == op_id);
@@ -87,7 +126,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
             // Handle property loads: build dependency paths
             if let InstructionValue::PropertyLoad { object, property } = &instr.value {
                 let obj_id = object.identifier.id;
-                if !is_scope_internal(object) {
+                if !is_scope_internal(object) && !non_reactive_ids.contains(&obj_id) {
                     let deps = scope_deps.entry(scope_id).or_default();
                     // Check if we already have a dep for this object and can extend its path
                     let existing = deps.iter_mut().find(|d| d.identifier.id == obj_id);

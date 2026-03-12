@@ -6,15 +6,14 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Display(t0) {
-  const $ = _c(5);
+  const $ = _c(4);
   const { items } = t0;
   let count;
   let label;
   let t16;
-  if ($[0] !== items || $[1] !== t39) {
+  if ($[0] !== items) {
     count = items.length;
     $[0] = items;
-    $[1] = t39;
   }
   if (t40) {
     t16 = "Has items";
@@ -23,13 +22,13 @@ function Display(t0) {
   }
   label = t16;
   let t53;
-  if ($[2] !== label || $[3] !== count) {
+  if ($[1] !== label || $[2] !== count) {
     t53 = _jsxs("div", { children: [label, ": ", count] });
-    $[4] = t53;
-    $[2] = label;
-    $[3] = count;
+    $[3] = t53;
+    $[1] = label;
+    $[2] = count;
   } else {
-    t53 = $[4];
+    t53 = $[3];
   }
   return t53;
 }

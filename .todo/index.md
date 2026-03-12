@@ -4,7 +4,7 @@
 
 Last updated: 2026-03-12
 
-Current conformance: 374/1717 pass (21.8%), 0 panics, 1304 divergences across 2 categories.
+Current conformance: 69/1717 pass (4.9%), 0 panics, 1350 divergences.
 
 ---
 
@@ -29,14 +29,15 @@ Deep compiler work needed — temp variable explosion, scope analysis, cache slo
 
 - [ ] Temp variable inlining pass (collapse SSA chains in codegen) -- [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
 - [ ] JSX syntax preservation in codegen (emit `<div>` not `_jsx()`) -- [memoization-structure.md](memoization-structure.md)#gap-2-jsx-syntax-preservation-in-codegen
-- [ ] Cache slot count alignment -- [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
+- [x] Cache slot count alignment (partial) — scope dependency tracking fix, empty scope pruning (+6 fixtures)
 - [ ] Scope merging/splitting heuristic audit vs upstream -- [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
+- [ ] Scope dependency tracking: exclude globals, improve property path deps, fix scope-internal detection
 
 ## Priority 3 -- Conformance: Over-Memoization Bail-Out (~698 fixtures)
 
 Missing validation logic — our compiler compiles functions Babel skips:
 
-- [ ] Categorize bail-out fixtures (triage script) -- [over-memoization-bailout.md](over-memoization-bailout.md)#gap-1-categorize-bail-out-fixtures
+- [x] Categorize bail-out fixtures — 1121 both-compile-diff, 219 babel-transforms-no-memo, 10 our-bail-should-match
 - [x] Validation-error bail-out threshold (match Babel error severities) — DONE (AllErrors threshold)
 - [x] Zero-scope bail-out (return original source when no reactive scopes) — DONE
 - [ ] Audit validation passes for error accuracy vs upstream -- [over-memoization-bailout.md](over-memoization-bailout.md)#gap-3-ensure-validation-passes-emit-correct-errors
