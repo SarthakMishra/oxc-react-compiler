@@ -21,16 +21,8 @@ function Status(t0) {
     t17 = $[2];
   }
   if (t17) {
-    const t22 = "div";
-    const t23 = "active";
-    const t24 = "Active";
-    const t25 = _jsx(t22, { className: t23, children: t24 });
     return t25;
   } else {
   }
-  const t18 = "div";
-  const t19 = "inactive";
-  const t20 = "Inactive";
-  const t21 = _jsx(t18, { className: t19, children: t20 });
   return t21;
 }

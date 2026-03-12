@@ -16,19 +16,7 @@ function UserCard(t0) {
   }
   let t41;
   if ($[3] !== name || $[4] !== age || $[5] !== role) {
-    const t29 = "div";
-    const t30 = "h2";
-    const t31 = name;
-    const t32 = _jsx(t30, { children: name });
-    const t33 = "p";
-    const t34 = "Age: ";
-    const t35 = age;
-    const t36 = _jsxs(t33, { children: [t34, age] });
-    const t37 = "p";
-    const t38 = "Role: ";
-    const t39 = role;
-    const t40 = _jsxs(t37, { children: [t38, role] });
-    t41 = _jsxs(t29, { children: [t32, t36, t40] });
+    t41 = _jsxs("div", { children: [_jsx("h2", { children: name }), _jsxs("p", { children: ["Age: ", age] }), _jsxs("p", { children: ["Role: ", role] })] });
     $[6] = t41;
     $[3] = name;
     $[4] = age;

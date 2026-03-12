@@ -23,14 +23,8 @@ function Toggle(t0) {
     t15 = $[2];
   }
   if (t15) {
-    const t19 = "div";
-    const t20 = "ON";
-    const t21 = _jsx(t19, { children: t20 });
     return t21;
   } else {
   }
-  const t16 = "div";
-  const t17 = "OFF";
-  const t18 = _jsx(t16, { children: t17 });
   return t18;
 }

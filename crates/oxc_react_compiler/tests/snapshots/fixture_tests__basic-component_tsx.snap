@@ -16,9 +16,7 @@ function Counter(t0) {
   }
   let t13;
   if ($[1] !== count) {
-    const t11 = "div";
-    const t12 = count;
-    t13 = _jsx(t11, { children: count });
+    t13 = _jsx("div", { children: count });
     $[2] = t13;
     $[1] = count;
   } else {

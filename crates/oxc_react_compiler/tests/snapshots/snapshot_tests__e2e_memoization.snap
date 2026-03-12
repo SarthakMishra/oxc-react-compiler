@@ -7,9 +7,6 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 
 function Counter() {
   const $ = _c(4);
-  const t14 = useState;
-  const t15 = 0;
-  const t16 = useState(t15);
   let count;
   let setCount;
   if ($[0] !== count || $[1] !== setCount) {
@@ -17,12 +14,9 @@ function Counter() {
     $[1] = setCount;
   } else {
   }
-  ([count, setCount] = t16);
   let t22;
   if ($[2] !== count) {
-    const t20 = "div";
-    const t21 = count;
-    t22 = _jsx(t20, { children: count });
+    t22 = _jsx("div", { children: count });
     $[3] = t22;
     $[2] = count;
   } else {

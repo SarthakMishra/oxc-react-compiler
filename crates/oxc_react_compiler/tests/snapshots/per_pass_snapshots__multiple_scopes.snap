@@ -18,14 +18,8 @@ function Summary(t0) {
   let label;
   let t24;
   if ($[2] !== count || $[3] !== items || $[4] !== hasMany || $[5] !== count || $[6] !== threshold || $[7] !== label || $[8] !== hasMany || $[9] !== t24) {
-    const t48 = items;
-    const t49 = items.length;
-    count = t49;
-    const t52 = count;
-    const t53 = threshold;
-    const t54 = count > threshold;
-    hasMany = t54;
-    const t57 = hasMany;
+    count = items.length;
+    hasMany = count > threshold;
     $[2] = count;
     $[3] = items;
     $[4] = hasMany;
@@ -37,25 +31,14 @@ function Summary(t0) {
   } else {
   }
   if (t57) {
-    const t76 = "Many items";
-    t24 = t76;
+    t24 = "Many items";
   } else {
-    const t59 = "Few items";
-    t24 = t59;
+    t24 = "Few items";
   }
   label = t24;
   let t75;
   if ($[10] !== label || $[11] !== count) {
-    const t66 = "div";
-    const t67 = "span";
-    const t68 = label;
-    const t69 = _jsx(t67, { children: label });
-    const t70 = "span";
-    const t71 = "(";
-    const t72 = count;
-    const t73 = ")";
-    const t74 = _jsxs(t70, { children: [t71, count, t73] });
-    t75 = _jsxs(t66, { children: [t69, t74] });
+    t75 = _jsxs("div", { children: [_jsx("span", { children: label }), _jsxs("span", { children: ["(", count, ")"] })] });
     $[12] = t75;
     $[10] = label;
     $[11] = count;

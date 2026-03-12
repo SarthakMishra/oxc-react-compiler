@@ -15,16 +15,7 @@ function Card(t0) {
   }
   let t31;
   if ($[2] !== title || $[3] !== children) {
-    const t22 = "div";
-    const t23 = "card";
-    const t24 = "h3";
-    const t25 = title;
-    const t26 = _jsx(t24, { children: title });
-    const t27 = "div";
-    const t28 = "body";
-    const t29 = children;
-    const t30 = _jsx(t27, { className: t28, children: children });
-    t31 = _jsxs(t22, { className: t23, children: [t26, t30] });
+    t31 = _jsxs("div", { className: "card", children: [_jsx("h3", { children: title }), _jsx("div", { className: "body", children: children })] });
     $[4] = t31;
     $[2] = title;
     $[3] = children;

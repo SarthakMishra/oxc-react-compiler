@@ -15,12 +15,7 @@ function Greeting(t0) {
   }
   let t23;
   if ($[2] !== name || $[3] !== age) {
-    const t18 = "div";
-    const t19 = "Hello ";
-    const t20 = name;
-    const t21 = ", you are ";
-    const t22 = age;
-    t23 = _jsxs(t18, { children: [t19, name, t21, age] });
+    t23 = _jsxs("div", { children: ["Hello ", name, ", you are ", age] });
     $[4] = t23;
     $[2] = name;
     $[3] = age;

@@ -7,9 +7,6 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 
 function useToggle(initial) {
   const $ = _c(6);
-  const t21 = useState;
-  const t22 = initial;
-  const t23 = useState(initial);
   let value;
   let setValue;
   if ($[0] !== value || $[1] !== setValue) {
@@ -17,24 +14,18 @@ function useToggle(initial) {
     $[1] = setValue;
   } else {
   }
-  ([value, setValue] = t23);
   let toggle;
   if ($[2] !== toggle) {
     $[2] = toggle;
   } else {
   }
   const t28 = () => {
-    const t1 = setValue;
-    const t3 = value;
-    const t4 = !t3;
-    const t5 = t1(t4);
+    const t5 = setValue(!value);
     return t5;
   };
   toggle = t28;
   let t32;
   if ($[3] !== value || $[4] !== toggle) {
-    const t30 = value;
-    const t31 = toggle;
     t32 = [value, toggle];
     $[5] = t32;
     $[3] = value;

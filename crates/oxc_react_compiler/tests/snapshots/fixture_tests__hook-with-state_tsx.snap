@@ -9,9 +9,6 @@ import { c as _c } from "react/compiler-runtime";
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 function useCounter() {
   const $ = _c(4);
-  const t14 = useState;
-  const t15 = 0;
-  const t16 = useState(t15);
   let count;
   let setCount;
   if ($[0] !== count || $[1] !== setCount) {
@@ -19,16 +16,10 @@ function useCounter() {
     $[1] = setCount;
   } else {
   }
-  ([count, setCount] = t16);
   let t22;
   if ($[2] !== count) {
-    const t20 = count;
     const t21 = () => {
-      const t1 = setCount;
-      const t3 = count;
-      const t4 = 1;
-      const t5 = t3 + t4;
-      const t6 = t1(t5);
+      const t6 = setCount(count + 1);
       return t6;
     };
     t22 = { count, increment: t21 };

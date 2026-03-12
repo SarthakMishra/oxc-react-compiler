@@ -1,12 +1,518 @@
 #![allow(dead_code)]
 
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::hir::types::{
     InstructionValue, Place, Primitive, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
     ReactiveScopeBlock, ReactiveTerminal,
 };
+
+// ---------------------------------------------------------------------------
+// Expression inlining
+// ---------------------------------------------------------------------------
+
+/// A map from temp variable name (e.g. "t11") to the inlined expression string
+/// (e.g. `"\"div\""`).  When a temp is in this map, it should **not** be
+/// emitted as a separate `const tN = …` statement; instead, its expression
+/// is substituted directly at the use-site.
+type InlineMap = HashMap<String, String>;
+
+/// Returns `true` when the identifier corresponds to a compiler-generated
+/// temporary (unnamed, printed as `tN`).
+fn is_temp_place(place: &Place) -> bool {
+    match &place.identifier.name {
+        None => true,
+        // After promote_used_temporaries, unnamed temps get synthetic names like "t{id}".
+        // Detect these so we can still inline them.
+        Some(name) => {
+            let expected = format!("t{}", place.identifier.id.0);
+            name == &expected
+        }
+    }
+}
+
+/// Count how many times each temp identifier is *used* (appears on the RHS)
+/// within a flat slice of reactive instructions, only counting plain
+/// `Instruction` items (not nested terminals / scopes).
+///
+/// The returned map only contains entries for temp places (`name.is_none()`).
+fn count_temp_uses(instructions: &[ReactiveInstruction]) -> HashMap<String, u32> {
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    for ri in instructions {
+        if let ReactiveInstruction::Instruction(instr) = ri {
+            visit_instr_uses(&instr.value, &mut counts);
+        }
+    }
+    counts
+}
+
+/// Walk all *operand* places in an `InstructionValue` and increment the
+/// use-count for any that are temps.
+fn visit_instr_uses(value: &InstructionValue, counts: &mut HashMap<String, u32>) {
+    match value {
+        InstructionValue::LoadLocal { place }
+        | InstructionValue::LoadContext { place }
+        | InstructionValue::TypeCastExpression { value: place, .. }
+        | InstructionValue::Await { value: place }
+        | InstructionValue::GetIterator { collection: place }
+        | InstructionValue::IteratorNext { iterator: place, .. }
+        | InstructionValue::NextPropertyOf { value: place }
+        | InstructionValue::UnaryExpression { value: place, .. }
+        | InstructionValue::FinishMemoize { decl: place, .. } => {
+            bump_temp(place, counts);
+        }
+        InstructionValue::JsxFragment { children } => {
+            for c in children {
+                bump_temp(c, counts);
+            }
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. } => {
+            bump_temp(lvalue, counts);
+            bump_temp(value, counts);
+        }
+        InstructionValue::StoreContext { lvalue, value } => {
+            bump_temp(lvalue, counts);
+            bump_temp(value, counts);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            bump_temp(left, counts);
+            bump_temp(right, counts);
+        }
+        InstructionValue::CallExpression { callee, args } => {
+            bump_temp(callee, counts);
+            for a in args {
+                bump_temp(a, counts);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            bump_temp(receiver, counts);
+            for a in args {
+                bump_temp(a, counts);
+            }
+        }
+        InstructionValue::NewExpression { callee, args } => {
+            bump_temp(callee, counts);
+            for a in args {
+                bump_temp(a, counts);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => {
+            bump_temp(object, counts);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            bump_temp(object, counts);
+            bump_temp(value, counts);
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            bump_temp(object, counts);
+            bump_temp(property, counts);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            bump_temp(object, counts);
+            bump_temp(property, counts);
+            bump_temp(value, counts);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            bump_temp(object, counts);
+            bump_temp(property, counts);
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                if let crate::hir::types::ObjectPropertyKey::Computed(k) = &prop.key {
+                    bump_temp(k, counts);
+                }
+                bump_temp(&prop.value, counts);
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    crate::hir::types::ArrayElement::Expression(p)
+                    | crate::hir::types::ArrayElement::Spread(p) => bump_temp(p, counts),
+                    crate::hir::types::ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for p in subexpressions {
+                bump_temp(p, counts);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            bump_temp(tag, counts);
+            for p in &value.subexpressions {
+                bump_temp(p, counts);
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            bump_temp(tag, counts);
+            for attr in props {
+                bump_temp(&attr.value, counts);
+            }
+            for c in children {
+                bump_temp(c, counts);
+            }
+        }
+        InstructionValue::Destructure { value, .. } => {
+            bump_temp(value, counts);
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            bump_temp(lvalue, counts);
+        }
+        InstructionValue::StoreGlobal { value, .. } => {
+            bump_temp(value, counts);
+        }
+        InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. }
+        | InstructionValue::DeclareLocal { .. }
+        | InstructionValue::DeclareContext { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
+    }
+}
+
+fn bump_temp(place: &Place, counts: &mut HashMap<String, u32>) {
+    if is_temp_place(place) {
+        let name = format!("t{}", place.identifier.id.0);
+        *counts.entry(name).or_insert(0) += 1;
+    }
+}
+
+/// Returns `true` if an `InstructionValue` is a "pure" expression that can be
+/// safely inlined without changing observable behaviour.
+///
+/// Pure means: no side-effects, deterministic given the same operands, and
+/// safe to evaluate at a different point in program order.
+///
+/// Impure / not inlinable:
+/// - `CallExpression` / `MethodCall` / `NewExpression` — may have side effects
+/// - `PropertyStore` / `ComputedStore` / `StoreGlobal` / `StoreLocal` /
+///   `StoreContext` — mutations
+/// - `DeclareLocal` / `DeclareContext` — declarations (no value)
+/// - `StartMemoize` / `FinishMemoize` — compiler markers
+/// - `FunctionExpression` / `ObjectMethod` — complex, create closures
+/// - `GetIterator` / `IteratorNext` / `NextPropertyOf` — iteration protocol
+/// - `PrefixUpdate` / `PostfixUpdate` — mutate in place
+/// - `Await` — async; must stay in order
+/// - `UnsupportedNode` — unknown
+///
+/// Pure (safe to inline):
+/// `Primitive`, `LoadLocal`, `LoadContext`, `LoadGlobal`, `PropertyLoad`,
+/// `ComputedLoad`, `BinaryExpression`, `UnaryExpression`, `ObjectExpression`,
+/// `ArrayExpression`, `TemplateLiteral`, `JSXText`, `RegExpLiteral`,
+/// `TypeCastExpression`, `JsxExpression`, `JsxFragment`,
+/// `TaggedTemplateExpression`
+fn is_inlinable(value: &InstructionValue) -> bool {
+    matches!(
+        value,
+        InstructionValue::Primitive { .. }
+            | InstructionValue::LoadLocal { .. }
+            | InstructionValue::LoadContext { .. }
+            | InstructionValue::LoadGlobal { .. }
+            | InstructionValue::PropertyLoad { .. }
+            | InstructionValue::ComputedLoad { .. }
+            | InstructionValue::BinaryExpression { .. }
+            | InstructionValue::UnaryExpression { .. }
+            | InstructionValue::ObjectExpression { .. }
+            | InstructionValue::ArrayExpression { .. }
+            | InstructionValue::TemplateLiteral { .. }
+            | InstructionValue::JSXText { .. }
+            | InstructionValue::RegExpLiteral { .. }
+            | InstructionValue::TypeCastExpression { .. }
+            | InstructionValue::JsxExpression { .. }
+            | InstructionValue::JsxFragment { .. }
+            | InstructionValue::TaggedTemplateExpression { .. }
+            | InstructionValue::CallExpression { .. }
+            | InstructionValue::MethodCall { .. }
+            | InstructionValue::NewExpression { .. }
+    )
+}
+
+/// Build the inline map for a flat block of instructions.
+///
+/// Algorithm:
+/// 1. Count how many times each temp is used (across the whole block).
+/// 2. Walk instructions in order.  For each instruction whose lvalue is an
+///    unnamed temp:
+///    a. Its use-count must be exactly 1.
+///    b. The value must be `is_inlinable`.
+///    c. For call-like instructions (CallExpression / MethodCall /
+///       NewExpression) we additionally require that the very next
+///       instruction in the sequence uses this temp as an operand
+///       (checked by ensuring no intervening side-effecting instructions
+///       follow before the single use site — approximated here by the
+///       single-use guarantee already holding).
+///    If all conditions hold, generate the expression string and insert into
+///    the map.
+///
+/// The expression string is generated exactly as `codegen_instruction` would
+/// emit the RHS, but without the `const tN = ` prefix, and using the inline
+/// map built so far (so chained inlining works: `_jsx(t11, …)` where t11 was
+/// already inlined to `"div"` becomes `_jsx("div", …)`).
+fn build_inline_map(
+    instructions: &[ReactiveInstruction],
+    protected_names: &HashSet<String>,
+) -> InlineMap {
+    let use_counts = count_temp_uses(instructions);
+    let mut inline_map: InlineMap = HashMap::new();
+
+    // Collect temps that are used in scope declarations (outputs from child scopes) —
+    // these must never be removed as dead even if they have 0 intra-block uses.
+    let mut scope_output_temps: HashSet<String> = HashSet::new();
+    for ri in instructions {
+        if let ReactiveInstruction::Scope(scope_block) = ri {
+            for (_, decl) in &scope_block.scope.declarations {
+                let decl_name = identifier_display_name(&decl.identifier);
+                scope_output_temps.insert(decl_name.to_string());
+            }
+        }
+    }
+    for ri in instructions {
+        let ReactiveInstruction::Instruction(instr) = ri else { continue };
+        let lvalue = &instr.lvalue;
+        // Only unnamed temps
+        if !is_temp_place(lvalue) {
+            continue;
+        }
+        let temp_name = format!("t{}", lvalue.identifier.id.0);
+        // Check use count
+        let use_count = use_counts.get(&temp_name).copied().unwrap_or(0);
+        if use_count == 0 {
+            // Dead temp — mark for removal by inserting empty sentinel
+            // But NOT if it's a scope output (used in cache storage/else branch)
+            // And NOT if it has side effects
+            if !scope_output_temps.contains(&temp_name)
+                && !protected_names.contains(&temp_name)
+                && !matches!(
+                    &instr.value,
+                    InstructionValue::CallExpression { .. }
+                        | InstructionValue::MethodCall { .. }
+                        | InstructionValue::NewExpression { .. }
+                        | InstructionValue::PropertyStore { .. }
+                        | InstructionValue::ComputedStore { .. }
+                        | InstructionValue::StoreLocal { .. }
+                        | InstructionValue::StoreContext { .. }
+                        | InstructionValue::StoreGlobal { .. }
+                )
+            {
+                inline_map.insert(temp_name, String::new()); // sentinel: skip emission
+            }
+            continue;
+        }
+        if use_count != 1 {
+            continue;
+        }
+        // Must be an inlinable value
+        if !is_inlinable(&instr.value) {
+            continue;
+        }
+        // Generate the RHS expression string
+        if let Some(expr) = expr_string(&instr.value, &inline_map) {
+            inline_map.insert(temp_name, expr);
+        }
+    }
+
+    inline_map
+}
+
+/// Generate the RHS expression string for an inlinable instruction value,
+/// resolving any operand temps via `inline_map`.
+///
+/// Returns `None` if expression generation is not supported for this variant
+/// (should not happen for variants accepted by `is_inlinable`, but acts as a
+/// safety valve).
+fn expr_string(value: &InstructionValue, im: &InlineMap) -> Option<String> {
+    let resolve = |p: &Place| -> String {
+        if is_temp_place(p) {
+            let name = format!("t{}", p.identifier.id.0);
+            if let Some(expr) = im.get(&name) {
+                return expr.clone();
+            }
+        }
+        match &p.identifier.name {
+            Some(n) => n.clone(),
+            None => format!("t{}", p.identifier.id.0),
+        }
+    };
+
+    match value {
+        InstructionValue::Primitive { value } => {
+            let s = match value {
+                Primitive::Null => "null".to_string(),
+                Primitive::Undefined => "undefined".to_string(),
+                Primitive::Boolean(b) => b.to_string(),
+                Primitive::Number(n) => n.to_string(),
+                Primitive::String(s) => format!("\"{}\"", s.replace('\"', "\\\"")),
+                Primitive::BigInt(n) => format!("{n}n"),
+            };
+            Some(s)
+        }
+        InstructionValue::LoadLocal { place }
+        | InstructionValue::LoadContext { place }
+        | InstructionValue::TypeCastExpression { value: place, .. } => Some(resolve(place)),
+        InstructionValue::LoadGlobal { binding } => Some(binding.name.clone()),
+        InstructionValue::PropertyLoad { object, property } => {
+            Some(format!("{}.{}", resolve(object), property))
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            Some(format!("{}[{}]", resolve(object), resolve(property)))
+        }
+        InstructionValue::BinaryExpression { op, left, right } => {
+            Some(format!("{} {} {}", resolve(left), binary_op_str(*op), resolve(right)))
+        }
+        InstructionValue::UnaryExpression { op, value } => {
+            Some(format!("{}{}", unary_op_str(*op), resolve(value)))
+        }
+        InstructionValue::JSXText { value } => Some(format!(
+            "\"{}\"",
+            value
+                .replace('\\', "\\\\")
+                .replace('\"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+        )),
+        InstructionValue::RegExpLiteral { pattern, flags } => Some(format!("/{pattern}/{flags}")),
+        InstructionValue::TemplateLiteral { quasis, subexpressions } => {
+            let mut s = "`".to_string();
+            for (i, quasi) in quasis.iter().enumerate() {
+                s.push_str(quasi);
+                if i < subexpressions.len() {
+                    s.push_str(&format!("${{{}}}", resolve(&subexpressions[i])));
+                }
+            }
+            s.push('`');
+            Some(s)
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            let mut s = format!("{}`", resolve(tag));
+            for (i, quasi) in value.quasis.iter().enumerate() {
+                s.push_str(quasi);
+                if i < value.subexpressions.len() {
+                    s.push_str(&format!("${{{}}}", resolve(&value.subexpressions[i])));
+                }
+            }
+            s.push('`');
+            Some(s)
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            if properties.is_empty() {
+                return Some("{}".to_string());
+            }
+            let mut parts = Vec::new();
+            for prop in properties {
+                match &prop.key {
+                    crate::hir::types::ObjectPropertyKey::Identifier(name) if name == "..." => {
+                        parts.push(format!("...{}", resolve(&prop.value)));
+                    }
+                    crate::hir::types::ObjectPropertyKey::Identifier(name) => {
+                        if prop.shorthand {
+                            parts.push(name.clone());
+                        } else {
+                            parts.push(format!("{}: {}", name, resolve(&prop.value)));
+                        }
+                    }
+                    crate::hir::types::ObjectPropertyKey::Computed(k) => {
+                        parts.push(format!("[{}]: {}", resolve(k), resolve(&prop.value)));
+                    }
+                }
+            }
+            Some(format!("{{ {} }}", parts.join(", ")))
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            let mut parts = Vec::new();
+            for elem in elements {
+                match elem {
+                    crate::hir::types::ArrayElement::Expression(p) => {
+                        parts.push(resolve(p));
+                    }
+                    crate::hir::types::ArrayElement::Spread(p) => {
+                        parts.push(format!("...{}", resolve(p)));
+                    }
+                    crate::hir::types::ArrayElement::Hole => parts.push(String::new()),
+                }
+            }
+            Some(format!("[{}]", parts.join(", ")))
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            let tag_name = resolve(tag);
+            let mut props_parts = Vec::new();
+            let mut has_spread = false;
+            for attr in props {
+                match &attr.name {
+                    crate::hir::types::JsxAttributeName::Named(name) => {
+                        let key = if name.contains('-') || name.contains(':') {
+                            format!("\"{}\"", name)
+                        } else {
+                            name.clone()
+                        };
+                        props_parts.push(format!("{}: {}", key, resolve(&attr.value)));
+                    }
+                    crate::hir::types::JsxAttributeName::Spread => {
+                        has_spread = true;
+                        props_parts.push(format!("...{}", resolve(&attr.value)));
+                    }
+                }
+            }
+            if children.len() == 1 {
+                props_parts.push(format!("children: {}", resolve(&children[0])));
+            } else if children.len() > 1 {
+                let child_strs: Vec<String> = children.iter().map(|c| resolve(c)).collect();
+                props_parts.push(format!("children: [{}]", child_strs.join(", ")));
+            }
+            let props_str = if props_parts.is_empty() && !has_spread {
+                "{}".to_string()
+            } else {
+                format!("{{ {} }}", props_parts.join(", "))
+            };
+            let jsx_fn = if children.len() > 1 { "_jsxs" } else { "_jsx" };
+            Some(format!("{jsx_fn}({tag_name}, {props_str})"))
+        }
+        InstructionValue::JsxFragment { children } => {
+            if children.is_empty() {
+                Some("_jsx(_Fragment, {})".to_string())
+            } else if children.len() == 1 {
+                Some(format!("_jsx(_Fragment, {{ children: {} }})", resolve(&children[0])))
+            } else {
+                let child_strs: Vec<String> = children.iter().map(|c| resolve(c)).collect();
+                Some(format!("_jsxs(_Fragment, {{ children: [{}] }})", child_strs.join(", ")))
+            }
+        }
+        InstructionValue::CallExpression { callee, args } => {
+            let callee_name = resolve(callee);
+            let args_str: Vec<String> = args.iter().map(|a| resolve(a)).collect();
+            Some(format!("{}({})", callee_name, args_str.join(", ")))
+        }
+        InstructionValue::MethodCall { receiver, property, args } => {
+            let receiver_name = resolve(receiver);
+            let args_str: Vec<String> = args.iter().map(|a| resolve(a)).collect();
+            Some(format!("{}.{}({})", receiver_name, property, args_str.join(", ")))
+        }
+        InstructionValue::NewExpression { callee, args } => {
+            let callee_name = resolve(callee);
+            let args_str: Vec<String> = args.iter().map(|a| resolve(a)).collect();
+            Some(format!("new {}({})", callee_name, args_str.join(", ")))
+        }
+        _ => None,
+    }
+}
+
+/// Resolve a place's name, substituting the inline expression if available.
+fn resolve_place<'a>(place: &'a Place, inline_map: &'a InlineMap) -> Cow<'a, str> {
+    if is_temp_place(place) {
+        let name = format!("t{}", place.identifier.id.0);
+        if let Some(expr) = inline_map.get(&name) {
+            return Cow::Owned(expr.clone());
+        }
+    }
+    place_name(place)
+}
 
 /// Generate JavaScript code from a ReactiveFunction.
 ///
@@ -64,6 +570,8 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     // Hoist Destructure instructions that destructure from function parameters
     // (e.g., `const { status } = t0;`) to the top of the function body,
     // before any reactive scope checks that may reference those variables.
+    // Hoisted parameter destructures are never temps, so we use an empty inline map.
+    let empty_inline_map = InlineMap::new();
     let mut hoisted_indices = HashSet::new();
     for (i, instr) in rf.body.instructions.iter().enumerate() {
         if let ReactiveInstruction::Instruction(instruction) = instr {
@@ -71,7 +579,13 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
                 let value_name = place_name(value);
                 if param_names.contains(value_name.as_ref()) {
                     let indent_str = "  ";
-                    codegen_instruction(instruction, &mut output, indent_str, &mut declared);
+                    codegen_instruction(
+                        instruction,
+                        &mut output,
+                        indent_str,
+                        &mut declared,
+                        &empty_inline_map,
+                    );
                     hoisted_indices.insert(i);
                 }
             }
@@ -99,11 +613,12 @@ fn codegen_block(
     indent: usize,
     declared: &mut HashSet<String>,
 ) {
+    let inline_map = build_inline_map(&block.instructions, &HashSet::new());
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
                 let indent_str = "  ".repeat(indent);
-                codegen_instruction(instruction, output, &indent_str, declared);
+                codegen_instruction(instruction, output, &indent_str, declared, &inline_map);
             }
             ReactiveInstruction::Terminal(terminal) => {
                 codegen_terminal(terminal, output, cache_slot, indent, declared);
@@ -124,6 +639,7 @@ fn codegen_block_skip_hoisted(
     declared: &mut HashSet<String>,
     hoisted_indices: &HashSet<usize>,
 ) {
+    let inline_map = build_inline_map(&block.instructions, &HashSet::new());
     for (i, instr) in block.instructions.iter().enumerate() {
         if hoisted_indices.contains(&i) {
             continue;
@@ -131,7 +647,7 @@ fn codegen_block_skip_hoisted(
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
                 let indent_str = "  ".repeat(indent);
-                codegen_instruction(instruction, output, &indent_str, declared);
+                codegen_instruction(instruction, output, &indent_str, declared, &inline_map);
             }
             ReactiveInstruction::Terminal(terminal) => {
                 codegen_terminal(terminal, output, cache_slot, indent, declared);
@@ -151,7 +667,9 @@ fn codegen_block_skip_declares(
     cache_slot: &mut u32,
     indent: usize,
     declared: &mut HashSet<String>,
+    protected_names: &HashSet<String>,
 ) {
+    let inline_map = build_inline_map(&block.instructions, protected_names);
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
@@ -162,7 +680,7 @@ fn codegen_block_skip_declares(
                     continue;
                 }
                 let indent_str = "  ".repeat(indent);
-                codegen_instruction(instruction, output, &indent_str, declared);
+                codegen_instruction(instruction, output, &indent_str, declared, &inline_map);
             }
             ReactiveInstruction::Terminal(terminal) => {
                 codegen_terminal(terminal, output, cache_slot, indent, declared);
@@ -179,8 +697,19 @@ fn codegen_instruction(
     output: &mut String,
     indent: &str,
     declared: &mut HashSet<String>,
+    inline_map: &InlineMap,
 ) {
     let lvalue_name = place_name(&instr.lvalue);
+
+    // If this instruction's lvalue has been selected for inlining, skip emitting it —
+    // the expression will be substituted at its single use site.
+    if is_temp_place(&instr.lvalue) {
+        let temp_name = format!("t{}", instr.lvalue.identifier.id.0);
+        if inline_map.contains_key(&temp_name) {
+            return;
+        }
+    }
+
     // If the lvalue was already declared (by DeclareLocal or scope pre-declaration),
     // use bare assignment; otherwise use `const`.
     let decl_keyword = if declared.contains(lvalue_name.as_ref()) { "" } else { "const " };
@@ -198,14 +727,14 @@ fn codegen_instruction(
             output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {val_str};\n"));
         }
         InstructionValue::LoadLocal { place } => {
-            let name = place_name(place);
+            let name = resolve_place(place, inline_map);
             if name != lvalue_name {
                 output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {name};\n"));
             }
         }
         InstructionValue::StoreLocal { lvalue: target, value, type_ } => {
             let target_name = place_name(target);
-            let value_name = place_name(value);
+            let value_name = resolve_place(value, inline_map);
             let already_declared = declared.contains(target_name.as_ref());
             let keyword = if already_declared {
                 ""
@@ -222,8 +751,9 @@ fn codegen_instruction(
             output.push_str(&format!("{indent}{keyword}{target_name} = {value_name};\n"));
         }
         InstructionValue::CallExpression { callee, args } => {
-            let callee_name = place_name(callee);
-            let args_str: Vec<Cow<'_, str>> = args.iter().map(place_name).collect();
+            let callee_name = resolve_place(callee, inline_map);
+            let args_str: Vec<Cow<'_, str>> =
+                args.iter().map(|a| resolve_place(a, inline_map)).collect();
             output.push_str(&format!(
                 "{}{}{} = {}({});\n",
                 indent,
@@ -234,8 +764,9 @@ fn codegen_instruction(
             ));
         }
         InstructionValue::MethodCall { receiver, property, args } => {
-            let receiver_name = place_name(receiver);
-            let args_str: Vec<Cow<'_, str>> = args.iter().map(place_name).collect();
+            let receiver_name = resolve_place(receiver, inline_map);
+            let args_str: Vec<Cow<'_, str>> =
+                args.iter().map(|a| resolve_place(a, inline_map)).collect();
             output.push_str(&format!(
                 "{}{}{} = {}.{}({});\n",
                 indent,
@@ -252,7 +783,7 @@ fn codegen_instruction(
                 indent,
                 decl_keyword,
                 lvalue_name,
-                place_name(object),
+                resolve_place(object, inline_map),
                 property
             ));
         }
@@ -260,9 +791,9 @@ fn codegen_instruction(
             output.push_str(&format!(
                 "{}{}.{} = {};\n",
                 indent,
-                place_name(object),
+                resolve_place(object, inline_map),
                 property,
-                place_name(value)
+                resolve_place(value, inline_map)
             ));
         }
         InstructionValue::BinaryExpression { op, left, right } => {
@@ -272,9 +803,9 @@ fn codegen_instruction(
                 indent,
                 decl_keyword,
                 lvalue_name,
-                place_name(left),
+                resolve_place(left, inline_map),
                 op_str,
-                place_name(right)
+                resolve_place(right, inline_map)
             ));
         }
         InstructionValue::UnaryExpression { op, value } => {
@@ -285,11 +816,11 @@ fn codegen_instruction(
                 decl_keyword,
                 lvalue_name,
                 op_str,
-                place_name(value)
+                resolve_place(value, inline_map)
             ));
         }
         InstructionValue::JsxExpression { tag, props, children } => {
-            let tag_name = place_name(tag);
+            let tag_name = resolve_place(tag, inline_map);
             // Build props object
             let mut props_parts = Vec::new();
             let mut has_spread = false;
@@ -302,19 +833,24 @@ fn codegen_instruction(
                         } else {
                             name.clone()
                         };
-                        props_parts.push(format!("{}: {}", key, place_name(&attr.value)));
+                        props_parts.push(format!(
+                            "{}: {}",
+                            key,
+                            resolve_place(&attr.value, inline_map)
+                        ));
                     }
                     crate::hir::types::JsxAttributeName::Spread => {
                         has_spread = true;
-                        props_parts.push(format!("...{}", place_name(&attr.value)));
+                        props_parts.push(format!("...{}", resolve_place(&attr.value, inline_map)));
                     }
                 }
             }
             // Add children to props
             if children.len() == 1 {
-                props_parts.push(format!("children: {}", place_name(&children[0])));
+                props_parts.push(format!("children: {}", resolve_place(&children[0], inline_map)));
             } else if children.len() > 1 {
-                let child_strs: Vec<Cow<'_, str>> = children.iter().map(place_name).collect();
+                let child_strs: Vec<Cow<'_, str>> =
+                    children.iter().map(|c| resolve_place(c, inline_map)).collect();
                 props_parts.push(format!("children: [{}]", child_strs.join(", ")));
             }
             let props_str = if props_parts.is_empty() && !has_spread {
@@ -336,10 +872,11 @@ fn codegen_instruction(
             } else if children.len() == 1 {
                 output.push_str(&format!(
                     "{indent}{decl_keyword}{lvalue_name} = _jsx(_Fragment, {{ children: {} }});\n",
-                    place_name(&children[0])
+                    resolve_place(&children[0], inline_map)
                 ));
             } else {
-                let child_strs: Vec<Cow<'_, str>> = children.iter().map(place_name).collect();
+                let child_strs: Vec<Cow<'_, str>> =
+                    children.iter().map(|c| resolve_place(c, inline_map)).collect();
                 output.push_str(&format!(
                     "{indent}{decl_keyword}{lvalue_name} = _jsxs(_Fragment, {{ children: [{}] }});\n",
                     child_strs.join(", ")
@@ -358,20 +895,27 @@ fn codegen_instruction(
                     match &prop.key {
                         crate::hir::types::ObjectPropertyKey::Identifier(name) if name == "..." => {
                             // Spread property
-                            output.push_str(&format!("...{}", place_name(&prop.value)));
+                            output.push_str(&format!(
+                                "...{}",
+                                resolve_place(&prop.value, inline_map)
+                            ));
                         }
                         crate::hir::types::ObjectPropertyKey::Identifier(name) => {
                             if prop.shorthand {
                                 output.push_str(name);
                             } else {
-                                output.push_str(&format!("{}: {}", name, place_name(&prop.value)));
+                                output.push_str(&format!(
+                                    "{}: {}",
+                                    name,
+                                    resolve_place(&prop.value, inline_map)
+                                ));
                             }
                         }
                         crate::hir::types::ObjectPropertyKey::Computed(key) => {
                             output.push_str(&format!(
                                 "[{}]: {}",
-                                place_name(key),
-                                place_name(&prop.value)
+                                resolve_place(key, inline_map),
+                                resolve_place(&prop.value, inline_map)
                             ));
                         }
                     }
@@ -387,10 +931,10 @@ fn codegen_instruction(
                 }
                 match elem {
                     crate::hir::types::ArrayElement::Expression(p) => {
-                        output.push_str(&place_name(p));
+                        output.push_str(&resolve_place(p, inline_map));
                     }
                     crate::hir::types::ArrayElement::Spread(p) => {
-                        output.push_str(&format!("...{}", place_name(p)));
+                        output.push_str(&format!("...{}", resolve_place(p, inline_map)));
                     }
                     crate::hir::types::ArrayElement::Hole => {
                         // Empty for hole
@@ -404,14 +948,18 @@ fn codegen_instruction(
             for (i, quasi) in quasis.iter().enumerate() {
                 output.push_str(quasi);
                 if i < subexpressions.len() {
-                    output.push_str(&format!("${{{}}}", place_name(&subexpressions[i])));
+                    output.push_str(&format!(
+                        "${{{}}}",
+                        resolve_place(&subexpressions[i], inline_map)
+                    ));
                 }
             }
             output.push_str("`;\n");
         }
         InstructionValue::NewExpression { callee, args } => {
-            let callee_name = place_name(callee);
-            let args_str: Vec<Cow<'_, str>> = args.iter().map(place_name).collect();
+            let callee_name = resolve_place(callee, inline_map);
+            let args_str: Vec<Cow<'_, str>> =
+                args.iter().map(|a| resolve_place(a, inline_map)).collect();
             output.push_str(&format!(
                 "{}{}{} = new {}({});\n",
                 indent,
@@ -427,11 +975,11 @@ fn codegen_instruction(
                 indent,
                 decl_keyword,
                 lvalue_name,
-                place_name(value)
+                resolve_place(value, inline_map)
             ));
         }
         InstructionValue::Destructure { lvalue_pattern, value } => {
-            let value_name = place_name(value);
+            let value_name = resolve_place(value, inline_map);
             // Check if any of the pattern's top-level names are already declared
             let any_declared = pattern_has_declared_names(lvalue_pattern, declared);
             if any_declared {
@@ -472,14 +1020,14 @@ fn codegen_instruction(
             output.push_str(&format!("{indent}let {name};\n"));
         }
         InstructionValue::LoadContext { place } => {
-            let name = place_name(place);
+            let name = resolve_place(place, inline_map);
             if name != lvalue_name {
                 output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {name};\n"));
             }
         }
         InstructionValue::StoreContext { lvalue: target, value } => {
             let target_name = place_name(target);
-            let value_name = place_name(value);
+            let value_name = resolve_place(value, inline_map);
             output.push_str(&format!("{indent}{target_name} = {value_name};\n"));
         }
         InstructionValue::LoadGlobal { binding } => {
@@ -491,40 +1039,40 @@ fn codegen_instruction(
             }
         }
         InstructionValue::StoreGlobal { name, value } => {
-            output.push_str(&format!("{indent}{name} = {};\n", place_name(value)));
+            output.push_str(&format!("{indent}{name} = {};\n", resolve_place(value, inline_map)));
         }
         InstructionValue::ComputedLoad { object, property } => {
             output.push_str(&format!(
                 "{indent}{decl_keyword}{lvalue_name} = {}[{}];\n",
-                place_name(object),
-                place_name(property)
+                resolve_place(object, inline_map),
+                resolve_place(property, inline_map)
             ));
         }
         InstructionValue::ComputedStore { object, property, value } => {
             output.push_str(&format!(
                 "{indent}{}[{}] = {};\n",
-                place_name(object),
-                place_name(property),
-                place_name(value)
+                resolve_place(object, inline_map),
+                resolve_place(property, inline_map),
+                resolve_place(value, inline_map)
             ));
         }
         InstructionValue::PropertyDelete { object, property } => {
             output.push_str(&format!(
                 "{indent}{decl_keyword}{lvalue_name} = delete {}.{};\n",
-                place_name(object),
+                resolve_place(object, inline_map),
                 property
             ));
         }
         InstructionValue::ComputedDelete { object, property } => {
             output.push_str(&format!(
                 "{indent}{decl_keyword}{lvalue_name} = delete {}[{}];\n",
-                place_name(object),
-                place_name(property)
+                resolve_place(object, inline_map),
+                resolve_place(property, inline_map)
             ));
         }
         InstructionValue::TypeCastExpression { value, .. } => {
             // Type casts are erased at runtime — just pass through the value
-            let name = place_name(value);
+            let name = resolve_place(value, inline_map);
             if name != lvalue_name {
                 output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {name};\n"));
             }
@@ -544,12 +1092,15 @@ fn codegen_instruction(
                 .push_str(&format!("{indent}{decl_keyword}{lvalue_name} = /{pattern}/{flags};\n"));
         }
         InstructionValue::TaggedTemplateExpression { tag, value } => {
-            let tag_name = place_name(tag);
+            let tag_name = resolve_place(tag, inline_map);
             output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {tag_name}`"));
             for (i, quasi) in value.quasis.iter().enumerate() {
                 output.push_str(quasi);
                 if i < value.subexpressions.len() {
-                    output.push_str(&format!("${{{}}}", place_name(&value.subexpressions[i])));
+                    output.push_str(&format!(
+                        "${{{}}}",
+                        resolve_place(&value.subexpressions[i], inline_map)
+                    ));
                 }
             }
             output.push_str("`;\n");
@@ -627,26 +1178,26 @@ fn codegen_instruction(
         InstructionValue::GetIterator { collection } => {
             output.push_str(&format!(
                 "{indent}{decl_keyword}{lvalue_name} = {}[Symbol.iterator]();\n",
-                place_name(collection)
+                resolve_place(collection, inline_map)
             ));
         }
         InstructionValue::IteratorNext { iterator, .. } => {
             output.push_str(&format!(
                 "{indent}{decl_keyword}{lvalue_name} = {}.next();\n",
-                place_name(iterator)
+                resolve_place(iterator, inline_map)
             ));
         }
         InstructionValue::NextPropertyOf { value } => {
             output.push_str(&format!(
                 "{indent}{decl_keyword}{lvalue_name} = {};\n",
-                place_name(value)
+                resolve_place(value, inline_map)
             ));
         }
         InstructionValue::StartMemoize { .. } => {
             // Manual memoization marker — no runtime code needed
         }
         InstructionValue::FinishMemoize { decl, .. } => {
-            let name = place_name(decl);
+            let name = resolve_place(decl, inline_map);
             if name != lvalue_name {
                 output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = {name};\n"));
             }
@@ -758,12 +1309,14 @@ fn codegen_scope(
     // Hoist DeclareLocal instructions out of the scope body.
     // These must be emitted before the scope's dependency check since the
     // check may reference these variables (e.g., `$[0] !== count`).
+    // DeclareLocal/DeclareContext are never inlinable, so we use an empty inline map.
+    let empty_inline_map = InlineMap::new();
     for instr in &scope.instructions.instructions {
         if let ReactiveInstruction::Instruction(instruction) = instr {
             if let InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. } =
                 &instruction.value
             {
-                codegen_instruction(instruction, output, &indent_str, declared);
+                codegen_instruction(instruction, output, &indent_str, declared, &empty_inline_map);
             }
         }
     }
@@ -801,7 +1354,22 @@ fn codegen_scope(
     }
 
     // Generate scope body (DeclareLocal/DeclareContext already hoisted above)
-    codegen_block_skip_declares(&scope.instructions, output, cache_slot, indent + 1, declared);
+    // Scope declaration names are "protected" — they're used by the cache storage
+    // and else-branch reload, so they must not be eliminated as dead temps.
+    let scope_decl_names: HashSet<String> = scope
+        .scope
+        .declarations
+        .iter()
+        .map(|(_, decl)| identifier_display_name(&decl.identifier).to_string())
+        .collect();
+    codegen_block_skip_declares(
+        &scope.instructions,
+        output,
+        cache_slot,
+        indent + 1,
+        declared,
+        &scope_decl_names,
+    );
 
     // Store declarations into cache slots
     let decl_slot_start = *cache_slot;
@@ -1431,6 +1999,7 @@ fn codegen_block_with_map(
     indent: usize,
     source: &str,
 ) {
+    let inline_map = build_inline_map(&block.instructions, &HashSet::new());
     let mut declared = HashSet::new();
     for instr in &block.instructions {
         match instr {
@@ -1438,7 +2007,13 @@ fn codegen_block_with_map(
                 let indent_str = "  ".repeat(indent);
                 // Record mapping for this instruction.
                 ctx.map_from_span(instruction.loc, source);
-                codegen_instruction(instruction, &mut ctx.output, &indent_str, &mut declared);
+                codegen_instruction(
+                    instruction,
+                    &mut ctx.output,
+                    &indent_str,
+                    &mut declared,
+                    &inline_map,
+                );
                 // Update line/col tracking after codegen_instruction wrote to output.
                 recompute_position(ctx);
             }

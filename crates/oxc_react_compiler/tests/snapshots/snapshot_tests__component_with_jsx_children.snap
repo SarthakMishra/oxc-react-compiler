@@ -14,10 +14,7 @@ function Layout(t0) {
   }
   let t15;
   if ($[1] !== children) {
-    const t12 = "div";
-    const t13 = "container";
-    const t14 = children;
-    t15 = _jsx(t12, { className: t13, children: children });
+    t15 = _jsx("div", { className: "container", children: children });
     $[2] = t15;
     $[1] = children;
   } else {
