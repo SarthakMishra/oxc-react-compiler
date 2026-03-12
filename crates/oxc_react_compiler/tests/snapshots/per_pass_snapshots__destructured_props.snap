@@ -1,0 +1,42 @@
+---
+source: crates/oxc_react_compiler/tests/per_pass_snapshots.rs
+assertion_line: 106
+expression: code
+---
+import { c as _c } from "react/compiler-runtime";
+
+function UserCard(t0) {
+  const $ = _c(7);
+  if ($[0] !== name || $[1] !== age || $[2] !== role) {
+    /* t25 = Discriminant(4) */
+    /* t26 = Discriminant(4) */
+    /* t27 = Discriminant(4) */
+    $[0] = name;
+    $[1] = age;
+    $[2] = role;
+  } else {
+  }
+  const { name, age, role } = t0;
+  if ($[3] !== name || $[4] !== age || $[5] !== role) {
+    const t29 = "div";
+    const t30 = "h2";
+    const t31 = name;
+    const t32 = <t30>{t31}</t30>;
+    const t33 = "p";
+    /* t34 = Discriminant(8) */
+    const t35 = age;
+    const t36 = <t33>{t34}{t35}</t33>;
+    const t37 = "p";
+    /* t38 = Discriminant(8) */
+    const t39 = role;
+    const t40 = <t37>{t38}{t39}</t37>;
+    const t41 = <t29>{t32}{t36}{t40}</t29>;
+    $[6] = t41;
+    $[3] = name;
+    $[4] = age;
+    $[5] = role;
+  } else {
+    t41 = $[6];
+  }
+  return t41;
+}

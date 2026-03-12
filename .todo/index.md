@@ -60,10 +60,10 @@ _(Nothing active)_
 - [x] disjoint_set.rs: replace expect() with Result in public API -- [code-quality.md](code-quality.md)#gap-1-disjoint_setrs36----expect-in-public-api
 - [x] hir/build.rs: improve expect() messages on block lookups -- [code-quality.md](code-quality.md)#gap-3-hirbuildrs----multiple-expectunwrap-on-block-existence
 - [x] ssa/enter_ssa.rs: add context to unwrap() on dominator map -- [code-quality.md](code-quality.md)#gap-4-ssaenter_ssars160163----unwrap-on-dominator-map
-- [ ] ordered_map.rs: audit Index impl callers for safety -- [code-quality.md](code-quality.md)#gap-2-ordered_maprs87----expect-in-index-impl
+- [x] ordered_map.rs: audit Index impl callers for safety -- [code-quality.md](code-quality.md)#gap-2-ordered_maprs87----expect-in-index-impl
 - [x] React.forwardRef / React.memo wrapper handling in program.rs -- [code-quality.md](code-quality.md)#gap-11-missing-reactforwardref--reactmemo-wrapper-handling-in-function-discovery
 - [x] Add DIVERGENCE comments for intentional algorithm differences -- [code-quality.md](code-quality.md)#gap-10-missing--divergence-comments-for-intentional-algorithm-differences
-- [ ] Audit and remove #![allow(dead_code)] from ~40 files -- [code-quality.md](code-quality.md)#gap-9-allowdead_code-on-40-files
+- [x] Audit and remove #![allow(dead_code)] from ~40 files -- [code-quality.md](code-quality.md)#gap-9-allowdead_code-on-40-files
 - [ ] place.clone() proliferation -- consider Rc or arena allocation -- [code-quality.md](code-quality.md)#gap-5-placeclone-proliferation-in-reactive-scope-analysis
 - [ ] .to_string() on identifiers -- use Cow/Atom where possible -- [code-quality.md](code-quality.md)#gap-6-to_string-on-identifiers-in-hot-paths
 - [x] infer_reactive_scope_variables.rs double allocation -- [code-quality.md](code-quality.md)#gap-7-infer_reactive_scope_variablesrs----double-allocation
@@ -75,7 +75,7 @@ _(Nothing active)_
 - [ ] Upstream conformance fixture suite (~500 fixtures) -- [testing-hardening.md](testing-hardening.md)#gap-1-upstream-conformance-fixture-suite
 - [ ] Per-pass insta snapshot tests -- [testing-hardening.md](testing-hardening.md)#gap-2-per-pass-snapshot-tests-insta
 - [ ] Babel output differential testing -- [testing-hardening.md](testing-hardening.md)#gap-3-babel-output-comparison-differential-testing
-- [ ] CI pipeline hardening (clippy -D warnings, fmt check, snapshots) -- [testing-hardening.md](testing-hardening.md)#gap-4-ci-pipeline-hardening
+- [x] CI pipeline hardening (clippy -D warnings, fmt check, snapshots) -- [testing-hardening.md](testing-hardening.md)#gap-4-ci-pipeline-hardening
 - [ ] Fuzz testing for HIR construction -- [testing-hardening.md](testing-hardening.md)#gap-5-property-based--fuzz-testing-for-hir-construction
 - [ ] Vite plugin HMR integration test -- [testing-hardening.md](testing-hardening.md)#gap-6-integration-test-for-vite-plugin-hot-reload
 
@@ -83,10 +83,10 @@ _(Nothing active)_
 
 ## P5: Polish (build config, allocator, NAPI patterns)
 
-- [ ] Aggressive clippy lints (pedantic, nursery, cargo) -- [code-quality.md](code-quality.md)#gap-12-aggressive-clippy-lint-configuration
-- [ ] Release profile optimization (LTO, codegen-units, strip) -- [code-quality.md](code-quality.md)#gap-13-release-profile-optimization
-- [ ] NAPI never-throw pattern -- [code-quality.md](code-quality.md)#gap-14-napi-never-throw-pattern
-- [ ] Enum size control assertions -- [code-quality.md](code-quality.md)#gap-15-enum-size-control-assertions
+- [x] Aggressive clippy lints (pedantic, nursery, cargo) -- [code-quality.md](code-quality.md)#gap-12-aggressive-clippy-lint-configuration
+- [x] Release profile optimization (LTO, codegen-units, strip) -- [code-quality.md](code-quality.md)#gap-13-release-profile-optimization
+- [x] NAPI never-throw pattern -- [code-quality.md](code-quality.md)#gap-14-napi-never-throw-pattern
+- [x] Enum size control assertions -- [code-quality.md](code-quality.md)#gap-15-enum-size-control-assertions
 - [ ] mimalloc allocator -- [code-quality.md](code-quality.md)#gap-16-mimalloc-allocator
 - [ ] codegen.rs format!() for temp names -- [code-quality.md](code-quality.md)#gap-8-codegenrs550----unnecessary-format-string
 

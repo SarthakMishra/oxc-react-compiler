@@ -1,0 +1,39 @@
+---
+source: crates/oxc_react_compiler/tests/per_pass_snapshots.rs
+assertion_line: 156
+expression: code
+---
+import { c as _c } from "react/compiler-runtime";
+
+function Summary(t0) {
+  const $ = _c(9);
+  if ($[0] !== items || $[1] !== threshold) {
+    /* t41 = Discriminant(4) */
+    /* t42 = Discriminant(4) */
+    $[0] = items;
+    $[1] = threshold;
+  } else {
+  }
+  const { items, threshold } = t0;
+  if ($[2] !== count || $[3] !== items || $[4] !== hasMany || $[5] !== count || $[6] !== threshold || $[7] !== label || $[8] !== hasMany) {
+    /* t44 = Discriminant(4) */
+    const t45 = items;
+    const t46 = t45.length;
+    const count = t46;
+    /* t48 = Discriminant(4) */
+    const t49 = count;
+    const t50 = threshold;
+    const t51 = t49 > t50;
+    const hasMany = t51;
+    /* t53 = Discriminant(4) */
+    const t54 = hasMany;
+    $[2] = count;
+    $[3] = items;
+    $[4] = hasMany;
+    $[5] = count;
+    $[6] = threshold;
+    $[7] = label;
+    $[8] = hasMany;
+  } else {
+  }
+}

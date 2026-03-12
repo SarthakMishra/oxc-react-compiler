@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::borrow::Cow;
+
 use crate::hir::types::{
     InstructionValue, Place, Primitive, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
     ReactiveScopeBlock, ReactiveTerminal,
@@ -101,7 +103,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::CallExpression { callee, args } => {
             let callee_name = place_name(callee);
-            let args_str: Vec<String> = args.iter().map(place_name).collect();
+            let args_str: Vec<Cow<'_, str>> = args.iter().map(place_name).collect();
             output.push_str(&format!(
                 "{}const {} = {}({});\n",
                 indent,
@@ -112,7 +114,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::MethodCall { receiver, property, args } => {
             let receiver_name = place_name(receiver);
-            let args_str: Vec<String> = args.iter().map(place_name).collect();
+            let args_str: Vec<Cow<'_, str>> = args.iter().map(place_name).collect();
             output.push_str(&format!(
                 "{}const {} = {}.{}({});\n",
                 indent,
@@ -252,7 +254,7 @@ fn codegen_instruction(instr: &crate::hir::types::Instruction, output: &mut Stri
         }
         InstructionValue::NewExpression { callee, args } => {
             let callee_name = place_name(callee);
-            let args_str: Vec<String> = args.iter().map(place_name).collect();
+            let args_str: Vec<Cow<'_, str>> = args.iter().map(place_name).collect();
             output.push_str(&format!(
                 "{}const {} = new {}({});\n",
                 indent,
@@ -396,10 +398,7 @@ fn codegen_scope(
             .iter()
             .enumerate()
             .map(|(i, dep)| {
-                let dep_name = dep.identifier.name.as_deref().map_or_else(
-                    || format!("t{}", dep.identifier.id.0),
-                    std::string::ToString::to_string,
-                );
+                let dep_name = identifier_display_name(&dep.identifier);
                 format!("$[{}] !== {}", slot_start + i as u32, dep_name)
             })
             .collect();
@@ -413,11 +412,7 @@ fn codegen_scope(
     // Store declarations into cache slots
     let decl_slot_start = *cache_slot;
     for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
-        let decl_name = decl
-            .identifier
-            .name
-            .as_deref()
-            .map_or_else(|| format!("t{}", decl.identifier.id.0), std::string::ToString::to_string);
+        let decl_name = identifier_display_name(&decl.identifier);
         let inner_indent = "  ".repeat(indent + 1);
         output.push_str(&format!(
             "{}$[{}] = {};\n",
@@ -432,10 +427,7 @@ fn codegen_scope(
     if !deps.is_empty() {
         let inner_indent = "  ".repeat(indent + 1);
         for (i, dep) in deps.iter().enumerate() {
-            let dep_name = dep.identifier.name.as_deref().map_or_else(
-                || format!("t{}", dep.identifier.id.0),
-                std::string::ToString::to_string,
-            );
+            let dep_name = identifier_display_name(&dep.identifier);
             output.push_str(&format!(
                 "{}$[{}] = {};\n",
                 inner_indent,
@@ -449,11 +441,7 @@ fn codegen_scope(
 
     // Load cached declarations
     for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
-        let decl_name = decl
-            .identifier
-            .name
-            .as_deref()
-            .map_or_else(|| format!("t{}", decl.identifier.id.0), std::string::ToString::to_string);
+        let decl_name = identifier_display_name(&decl.identifier);
         let inner_indent = "  ".repeat(indent + 1);
         output.push_str(&format!(
             "{}{} = $[{}];\n",
@@ -558,8 +546,22 @@ pub fn apply_compilation(
 // unnamed). However, many call sites collect into Vec<String> and feed into
 // join()/format!(), so the signature change cascades widely. Deferred until
 // profiling shows this is a measurable hotspot.
-fn place_name(place: &Place) -> String {
-    place.identifier.name.clone().unwrap_or_else(|| format!("t{}", place.identifier.id.0))
+/// Resolve a Place's display name without allocating when a name exists.
+/// Returns a borrowed `Cow` for named identifiers, avoiding the String clone
+/// that the previous implementation performed on every call.
+fn place_name(place: &Place) -> Cow<'_, str> {
+    match &place.identifier.name {
+        Some(name) => Cow::Borrowed(name.as_str()),
+        None => Cow::Owned(format!("t{}", place.identifier.id.0)),
+    }
+}
+
+/// Resolve an identifier's display name without allocating when a name exists.
+fn identifier_display_name(identifier: &crate::hir::types::Identifier) -> Cow<'_, str> {
+    match &identifier.name {
+        Some(name) => Cow::Borrowed(name.as_str()),
+        None => Cow::Owned(format!("t{}", identifier.id.0)),
+    }
 }
 
 fn binary_op_str(op: crate::hir::types::BinaryOp) -> &'static str {
@@ -611,7 +613,7 @@ fn codegen_destructure_pattern(
                 match &prop.value {
                     DestructureTarget::Place(place) => {
                         let name = place_name(place);
-                        if prop.shorthand && prop.key == name {
+                        if prop.shorthand && prop.key == *name {
                             output.push_str(&name);
                         } else {
                             output.push_str(&format!("{}: {}", prop.key, name));

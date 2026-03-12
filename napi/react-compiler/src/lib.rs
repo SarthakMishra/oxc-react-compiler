@@ -1,4 +1,8 @@
 #![allow(dead_code, clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use napi_derive::napi;
 
 #[napi(object)]

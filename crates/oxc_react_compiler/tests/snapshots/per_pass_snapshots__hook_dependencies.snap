@@ -1,0 +1,39 @@
+---
+source: crates/oxc_react_compiler/tests/per_pass_snapshots.rs
+assertion_line: 82
+expression: code
+---
+import { c as _c } from "react/compiler-runtime";
+
+function Counter() {
+  const $ = _c(6);
+  const t22 = useState;
+  const t23 = 0;
+  const t24 = t22(t23);
+  if ($[0] !== count || $[1] !== setCount) {
+    /* t25 = Discriminant(4) */
+    /* t26 = Discriminant(4) */
+    $[0] = count;
+    $[1] = setCount;
+  } else {
+  }
+  const [count, setCount] = t24;
+  if ($[2] !== next || $[3] !== count || $[4] !== count) {
+    /* t28 = Discriminant(4) */
+    const t29 = count;
+    const t30 = 1;
+    const t31 = t29 + t30;
+    const next = t31;
+    const t33 = "button";
+    /* t34 = Discriminant(28) */
+    const t35 = count;
+    const t36 = <t33 onClick={t34}>{t35}</t33>;
+    $[5] = t36;
+    $[2] = next;
+    $[3] = count;
+    $[4] = count;
+  } else {
+    t36 = $[5];
+  }
+  return t36;
+}
