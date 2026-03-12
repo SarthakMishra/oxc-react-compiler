@@ -12,7 +12,7 @@ use crate::hir::environment::EnvironmentConfig;
 use crate::hir::globals::{is_component_name, is_hook_name};
 use crate::hir::types::ReactFunctionType;
 use crate::reactive_scopes::codegen::{
-    SourceMap, apply_compilation, codegen_function, codegen_function_with_source_map,
+    SourceMap, apply_compilation, codegen_function, codegen_function_with_source_map, has_cache_slots,
 };
 
 /// Result of compiling a program.
@@ -258,6 +258,13 @@ fn try_compile_function(
     let mut errors = ErrorCollector::default();
 
     if let Ok(rf) = run_full_pipeline(hir_func, config, &mut errors) {
+        // If no reactive scopes survived the pipeline (0 cache slots),
+        // skip the function — memoization would add no value. This matches
+        // Babel's behavior of returning source unchanged for such functions.
+        if !has_cache_slots(&rf) {
+            diagnostics.extend(errors.into_diagnostics());
+            return None;
+        }
         let (code, sm) = if generate_source_map {
             let (code, sm) = codegen_function_with_source_map(&rf, source_text);
             (code, Some(sm))
@@ -287,6 +294,11 @@ fn try_compile_arrow(
     let mut errors = ErrorCollector::default();
 
     if let Ok(rf) = run_full_pipeline(hir_func, config, &mut errors) {
+        // If no reactive scopes survived, skip the function (no value in memoizing)
+        if !has_cache_slots(&rf) {
+            diagnostics.extend(errors.into_diagnostics());
+            return None;
+        }
         let (code, sm) = if generate_source_map {
             let (code, sm) = codegen_function_with_source_map(&rf, source_text);
             (code, Some(sm))

@@ -3,7 +3,7 @@
 #
 # Format: <relative-path-from-upstream-fixtures/>
 #
-# Baseline: 284/1717 pass (16.5%), 0 panics, 1394 divergences
+# Baseline: 374/1717 pass (21.8%), 0 panics, 1304 divergences
 # Generated: 2026-03-12
 alias-capture-in-method-receiver-and-mutate.js
 alias-capture-in-method-receiver.js
@@ -15,7 +15,6 @@ align-scopes-nested-block-structure.ts
 align-scopes-reactive-scope-overlaps-if.ts
 align-scopes-reactive-scope-overlaps-label.ts
 align-scopes-reactive-scope-overlaps-try.ts
-align-scopes-trycatch-nested-overlapping-range.ts
 align-scopes-within-nested-valueblock-in-array.tsx
 allocating-logical-expression-instruction-scope.ts
 allocating-primitive-as-dep-nested-scope.js
@@ -78,7 +77,6 @@ babel-existing-react-kitchensink-import.js
 babel-existing-react-namespace-import.js
 babel-existing-react-runtime-import.js
 babel-repro-compact-negative-number.js
-block-scoping-switch-dead-code.js
 block-scoping-switch-variable-scoping.js
 bug-capturing-func-maybealias-captured-mutate.ts
 bug-ref-prefix-postfix-operator.js
@@ -143,12 +141,7 @@ dce-unused-const.js
 dce-unused-postfix-update.js
 dce-unused-prefix-update.js
 debugger-memoized.js
-debugger.js
 deeply-nested-function-expressions-with-params.js
-default-param-array-with-unary.js
-default-param-calls-global-function.js
-default-param-with-empty-callback.js
-default-param-with-reorderable-callback.js
 delete-computed-property.js
 delete-property.js
 destructure-array-declaration-to-context-var.js
@@ -169,7 +162,6 @@ destructuring-object-pattern-within-rest.js
 destructuring-property-inference.js
 destructuring-same-property-identifier-names.js
 destructuring-with-conditional-as-default-value.js
-do-while-break.js
 do-while-compound-test.js
 do-while-conditional-break.js
 do-while-continue.js
@@ -209,20 +201,16 @@ effect-derived-computations/invalid-derived-state-from-computed-props.js
 effect-derived-computations/invalid-derived-state-from-destructured-props.js
 effect-derived-computations/ref-conditional-in-effect-no-error.js
 effect-derived-computations/usestate-derived-from-prop-no-show-in-data-flow-tree.js
-empty-catch-statement.ts
 empty-eslint-suppressions-config.js
 error._todo.computed-lval-in-destructure.js
 error.assign-global-in-component-tag-function.js
 error.assign-global-in-jsx-children.js
 error.assign-ref-in-effect-hint.js
-error.bailout-on-flow-suppression.js
 error.bailout-on-suppression-of-custom-rule.js
 error.bug-infer-mutation-aliasing-effects.js
 error.bug-invariant-codegen-methodcall.js
-error.bug-invariant-couldnt-find-binding-for-decl.js
 error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-local-or-context-references.js
-error.bug-invariant-unnamed-temporary.js
 error.call-args-destructuring-asignment-complex.js
 error.capitalized-function-call-aliased.js
 error.capitalized-function-call.js
@@ -231,10 +219,8 @@ error.capture-ref-for-mutation.tsx
 error.conditional-hook-unknown-hook-react-namespace.js
 error.conditional-hooks-as-method-call.js
 error.declare-reassign-variable-in-function-declaration.js
-error.default-param-accesses-local.js
 error.dont-hoist-inline-reference.js
 error.fault-tolerance-reports-multiple-errors.js
-error.handle-unexpected-exception-pipeline.ts
 error.hoist-optional-member-expression-with-conditional-optional.js
 error.hoist-optional-member-expression-with-conditional.js
 error.hook-call-freezes-captured-identifier.tsx
@@ -257,11 +243,9 @@ error.invalid-conditional-setState-in-useMemo.js
 error.invalid-delete-computed-property-of-frozen-value.js
 error.invalid-delete-property-of-frozen-value.js
 error.invalid-derived-computation-in-effect.js
-error.invalid-destructure-assignment-to-global.js
 error.invalid-destructure-to-local-global-variables.js
 error.invalid-disallow-mutating-ref-in-render.js
 error.invalid-disallow-mutating-refs-in-render-transitive.js
-error.invalid-eval-unsupported.js
 error.invalid-function-expression-mutates-immutable-value.js
 error.invalid-global-reassignment-indirect.js
 error.invalid-hoisting-setstate.js
@@ -285,8 +269,6 @@ error.invalid-mutation-of-possible-props-phi-indirect.js
 error.invalid-nested-function-reassign-local-variable-in-effect.js
 error.invalid-non-imported-reanimated-shared-value-writes.jsx
 error.invalid-optional-member-expression-as-memo-dep-non-optional-in-body.js
-error.invalid-pass-hook-as-call-arg.js
-error.invalid-pass-hook-as-prop.js
 error.invalid-pass-mutable-function-as-prop.js
 error.invalid-pass-ref-to-function.js
 error.invalid-prop-mutation-indirect.js
@@ -310,8 +292,6 @@ error.invalid-setState-in-useMemo-indirect-useCallback.js
 error.invalid-setState-in-useMemo.js
 error.invalid-setstate-unconditional-with-keyed-state.js
 error.invalid-ternary-with-hook-values.js
-error.invalid-type-provider-hook-name-not-typed-as-hook-namespace.js
-error.invalid-type-provider-hook-name-not-typed-as-hook.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
 error.invalid-type-provider-nonhook-name-typed-as-hook.js
 error.invalid-unclosed-eslint-suppression.js
@@ -325,21 +305,14 @@ error.modify-state-2.js
 error.modify-state.js
 error.modify-useReducer-state.js
 error.mutate-function-property.js
-error.mutate-global-increment-op-invalid-react.js
-error.mutate-hook-argument.js
-error.mutate-property-from-global.js
-error.mutate-props.js
-error.not-useEffect-external-mutate.js
 error.propertyload-hook.js
 error.reassign-global-fn-arg.js
 error.reassignment-to-global-indirect.js
-error.reassignment-to-global.js
 error.ref-like-name-not-Ref.js
 error.ref-like-name-not-a-ref.js
 error.ref-optional.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js
-error.store-property-in-global.js
 error.todo-allow-assigning-to-inferred-ref-prop-in-callback.js
 error.todo-for-await-loops.js
 error.todo-for-in-loop-with-context-variable-iterator.js
@@ -347,8 +320,6 @@ error.todo-for-loop-with-context-variable-iterator.js
 error.todo-for-of-loop-with-context-variable-iterator.js
 error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
-error.todo-hoist-function-decls.js
-error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hook-call-spreads-mutable-iterator.js
 error.todo-invalid-jsx-in-catch-in-outer-try-with-finally.js
 error.todo-invalid-jsx-in-try-with-finally.js
@@ -366,12 +337,10 @@ error.unconditional-set-state-in-render-after-loop.js
 error.unconditional-set-state-in-render-with-loop-throw.js
 error.unconditional-set-state-lambda.js
 error.unconditional-set-state-nested-function-expressions.js
-error.update-global-should-bailout.tsx
 error.useCallback-accesses-ref-mutated-later-via-function-preserve-memoization.js
 error.useCallback-set-ref-nested-property-dont-preserve-memoization.js
 error.useMemo-non-literal-depslist.ts
 error.validate-blocklisted-imports.ts
-error.validate-mutate-ref-arg-in-render.js
 error.validate-object-entries-mutation.js
 error.validate-object-values-mutation.js
 escape-analysis-destructured-rest-element.js
@@ -405,7 +374,6 @@ existing-variables-with-c-name.js
 fast-refresh-dont-refresh-const-changes-prod.js
 fast-refresh-refresh-on-const-changes-dev.js
 fast-refresh-reloading.js
-fault-tolerance/error.try-finally-and-mutation-of-props.js
 fault-tolerance/error.try-finally-and-ref-access.js
 fault-tolerance/error.try-finally-ref-access-and-mutation.js
 fault-tolerance/error.var-declaration-and-mutation-of-props.js
@@ -451,7 +419,6 @@ flatten-scopes-with-methodcall-hook.js
 flow-enum-inline.js
 for-empty-update-with-continue.js
 for-empty-update.js
-for-in-statement-body-always-returns.js
 for-in-statement-break.js
 for-in-statement-continue.js
 for-in-statement-empty-body.js
@@ -481,7 +448,6 @@ function-expression-maybe-mutates-hook-return-value.js
 function-expression-prototype-call-mutating.js
 function-expression-prototype-call.js
 function-expression-with-store-to-parameter.js
-function-param-assignment-pattern.js
 gating/arrow-function-expr-gating-test.js
 gating/codegen-instrument-forget-gating-test.js
 gating/conflicting-gating-fn.js
@@ -503,7 +469,6 @@ gating/gating-test.js
 gating/gating-use-before-decl-ref.js
 gating/gating-use-before-decl.js
 gating/infer-function-expression-React-memo-gating.js
-gating/multi-arrow-expr-export-default-gating-test.js
 gating/multi-arrow-expr-export-gating-test.js
 gating/multi-arrow-expr-gating-test.js
 gating/reassigned-fnexpr-variable.js
@@ -547,7 +512,6 @@ hooks-with-React-namespace.js
 idx-method-no-outlining-wildcard.js
 idx-method-no-outlining.js
 idx-no-outlining.js
-ignore-inner-interface-types.ts
 ignore-use-no-forget.js
 iife-inline-ternary.js
 iife-return-modified-later-phi.js
@@ -561,7 +525,6 @@ independent-across-if.js
 independent.js
 infer-compile-hooks-with-multiple-params.js
 infer-computed-delete.js
-infer-dont-compile-components-with-multiple-params.js
 infer-function-React-memo.js
 infer-function-assignment.js
 infer-function-expression-component.js
@@ -578,7 +541,6 @@ infer-no-component-nested-jsx.js
 infer-no-component-obj-return.js
 infer-property-delete.js
 infer-sequential-optional-chain-nonnull.ts
-infer-skip-components-without-hooks-or-jsx.js
 inner-function/nullable-objects/array-map-named-callback-cross-context.js
 inner-function/nullable-objects/array-map-named-callback.js
 inner-function/nullable-objects/array-map-named-chained-callbacks.js
@@ -657,9 +619,7 @@ lambda-capture-returned-alias.js
 lambda-mutate-shadowed-object.js
 lambda-return-expression.ts
 log-pruned-memoization.js
-loop-unused-let.js
 maybe-mutate-object-in-callback.js
-mege-consecutive-scopes-dont-merge-with-different-deps.js
 memoize-primitive-function-calls.js
 memoize-value-block-value-conditional.js
 memoize-value-block-value-logical-no-sequence.js
@@ -667,7 +627,6 @@ memoize-value-block-value-logical.js
 memoize-value-block-value-sequence.js
 merge-consecutive-nested-scopes.js
 merge-consecutive-scopes-deps-subset-of-decls.js
-merge-consecutive-scopes-no-deps.js
 merge-consecutive-scopes-objects.js
 merge-consecutive-scopes.js
 merge-nested-scopes-with-same-inputs.js
@@ -708,10 +667,7 @@ new-mutability/error.invalid-reassign-local-variable-in-jsx-callback.js
 new-mutability/error.invalid-referencing-frozen-hoisted-storecontext-const.js
 new-mutability/error.invalid-useCallback-captures-reassigned-context.js
 new-mutability/error.mutate-frozen-value.js
-new-mutability/error.mutate-hook-argument.js
-new-mutability/error.not-useEffect-external-mutate.js
 new-mutability/error.reassignment-to-global-indirect.js
-new-mutability/error.reassignment-to-global.js
 new-mutability/error.todo-repro-named-function-with-shadowed-local-same-name.js
 new-mutability/iife-return-modified-later-phi.js
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections-2.js
@@ -745,9 +701,7 @@ new-mutability/useCallback-reordering-deplist-controlflow.tsx
 new-mutability/useCallback-reordering-depslist-assignment.tsx
 new-mutability/useMemo-reordering-depslist-assignment.ts
 new-spread.js
-no-flow-bailout-unrelated.js
 noAlias-filter-on-array-prop.js
-non-null-assertion.ts
 nonmutated-spread-hook-return.js
 nonmutated-spread-props-jsx.js
 nonmutated-spread-props-local-indirection.js
@@ -791,9 +745,7 @@ object-values-mutation.js
 object-values.js
 optional-call-chain-in-logical-expr.ts
 optional-call-chain-in-ternary.ts
-optional-call-chained.js
 optional-call-logical.js
-optional-call-simple.js
 optional-call-with-independently-memoizable-arg.js
 optional-call-with-optional-property-load.js
 optional-call.js
@@ -912,7 +864,6 @@ propagate-scope-deps-hir-fork/partial-early-return-within-reactive-scope.js
 propagate-scope-deps-hir-fork/phi-type-inference-array-push-consecutive-phis.js
 propagate-scope-deps-hir-fork/phi-type-inference-array-push.js
 propagate-scope-deps-hir-fork/phi-type-inference-property-store.js
-propagate-scope-deps-hir-fork/reactive-dependencies-non-optional-properties-inside-optional-chain.js
 propagate-scope-deps-hir-fork/reduce-reactive-deps/conditional-member-expr.js
 propagate-scope-deps-hir-fork/reduce-reactive-deps/infer-function-cond-access-local-var.tsx
 propagate-scope-deps-hir-fork/reduce-reactive-deps/infer-function-cond-access-not-hoisted.tsx
@@ -949,7 +900,6 @@ propagate-scope-deps-hir-fork/todo-optional-call-chain-in-optional.ts
 propagate-scope-deps-hir-fork/try-catch-maybe-null-dependency.ts
 propagate-scope-deps-hir-fork/try-catch-mutate-outer-value.js
 propagate-scope-deps-hir-fork/try-catch-try-value-modified-in-catch-escaping.js
-propagate-scope-deps-hir-fork/try-catch-try-value-modified-in-catch.js
 propagate-scope-deps-hir-fork/useMemo-multiple-if-else.js
 property-assignment.js
 property-call-evaluation-order.js
@@ -988,7 +938,6 @@ reactive-control-dependency-switch-condition.js
 reactive-control-dependency-via-mutation-if.js
 reactive-control-dependency-via-mutation-switch.js
 reactive-control-dependency-while-test.js
-reactive-dependencies-non-optional-properties-inside-optional-chain.js
 reactive-dependency-fixpoint.js
 reactive-dependency-nonreactive-captured-with-reactive.js
 reactive-dependency-object-captured-with-reactive-mutated.js
@@ -1008,7 +957,6 @@ reanimated-shared-value-writes.jsx
 reassign-global-hook-arg.js
 reassign-global-return.js
 reassign-in-while-loop-condition.js
-reassigned-phi-in-returned-function-expression.js
 reassignment-conditional.js
 reassignment.js
 recursive-function-expression.js
@@ -1085,11 +1033,9 @@ repro-aliased-capture-aliased-mutate.js
 repro-aliased-capture-mutate.js
 repro-allocating-ternary-test-instruction-scope.ts
 repro-backedge-reference-effect.js
-repro-bailout-nopanic-shouldnt-outline.js
 repro-capturing-func-maybealias-captured-mutate.ts
 repro-context-var-reassign-no-scope.js
 repro-dce-circular-reference.js
-repro-declaration-for-all-identifiers.js
 repro-dispatch-spread-event-marks-event-frozen.js
 repro-dont-memoize-array-with-capturing-map-after-hook.js
 repro-dont-memoize-array-with-mutable-map-after-hook.js
@@ -1123,7 +1069,6 @@ repro-nested-try-catch-in-usememo.js
 repro-no-declarations-in-reactive-scope-with-early-return.js
 repro-no-value-for-temporary-reactive-scope-with-early-return.js
 repro-no-value-for-temporary.js
-repro-non-identifier-object-keys.ts
 repro-object-expression-computed-key-modified-during-after-construction-hoisted-sequence-expr.js
 repro-object-fromEntries-entries.js
 repro-preds-undefined-try-catch-return-primitive.js
@@ -1134,7 +1079,6 @@ repro-reassign-props.js
 repro-reassign-to-variable-without-mutable-range.js
 repro-ref-mutable-range.tsx
 repro-renaming-conflicting-decls.js
-repro-retain-source-when-bailout.js
 repro-returned-inner-fn-mutates-context.js
 repro-returned-inner-fn-reassigns-context.js
 repro-scope-missing-mutable-range.js
@@ -1149,22 +1093,17 @@ repro-useMemo-if-else-both-early-return.js
 repro.js
 resolve-react-hooks-based-on-import-name.js
 rest-param-with-array-pattern.js
-rest-param-with-identifier.js
 rest-param-with-object-spread-pattern.js
-return-undefined.js
 reverse-postorder.js
 rewrite-phis-in-lambda-capture-context.js
 rules-of-hooks/allow-locals-named-like-hooks.js
 rules-of-hooks/allow-props-named-like-hooks.js
-rules-of-hooks/error.bail.rules-of-hooks-3d692676194b.js
-rules-of-hooks/error.bail.rules-of-hooks-8503ca76d6f8.js
 rules-of-hooks/error.invalid-call-phi-possibly-hook.js
 rules-of-hooks/error.invalid-conditionally-call-local-named-like-hook.js
 rules-of-hooks/error.invalid-conditionally-call-prop-named-like-hook.js
 rules-of-hooks/error.invalid-conditionally-methodcall-hooklike-property-of-local.js
 rules-of-hooks/error.invalid-condtionally-call-hooklike-property-of-local.js
 rules-of-hooks/error.invalid-dynamic-hook-via-hooklike-local.js
-rules-of-hooks/error.invalid-hook-after-early-return.js
 rules-of-hooks/error.invalid-hook-as-conditional-test.js
 rules-of-hooks/error.invalid-hook-as-prop.js
 rules-of-hooks/error.invalid-hook-for.js
@@ -1178,53 +1117,28 @@ rules-of-hooks/error.invalid-hook-optional-methodcall.js
 rules-of-hooks/error.invalid-hook-optional-property.js
 rules-of-hooks/error.invalid-hook-optionalcall.js
 rules-of-hooks/error.invalid-hook-reassigned-in-conditional.js
-rules-of-hooks/error.invalid-rules-of-hooks-1b9527f967f3.js
-rules-of-hooks/error.invalid-rules-of-hooks-2aabd222fc6a.js
-rules-of-hooks/error.invalid-rules-of-hooks-49d341e5d68f.js
-rules-of-hooks/error.invalid-rules-of-hooks-79128a755612.js
-rules-of-hooks/error.invalid-rules-of-hooks-9718e30b856c.js
 rules-of-hooks/error.invalid-rules-of-hooks-9bf17c174134.js
 rules-of-hooks/error.invalid-rules-of-hooks-b4dcda3d60ed.js
-rules-of-hooks/error.invalid-rules-of-hooks-c906cace44e9.js
-rules-of-hooks/error.invalid-rules-of-hooks-d85c144bdf40.js
-rules-of-hooks/error.invalid-rules-of-hooks-ea7c2fb545a9.js
-rules-of-hooks/error.invalid-rules-of-hooks-f3d6c5e9c83d.js
 rules-of-hooks/error.invalid-rules-of-hooks-f69800950ff0.js
 rules-of-hooks/error.invalid.invalid-rules-of-hooks-76a74b4666e9.js
-rules-of-hooks/error.invalid.invalid-rules-of-hooks-d952b82c2597.js
-rules-of-hooks/rules-of-hooks-0e2214abc294.js
-rules-of-hooks/rules-of-hooks-1ff6c3fbbc94.js
-rules-of-hooks/rules-of-hooks-23dc7fffde57.js
 rules-of-hooks/rules-of-hooks-2e405c78cb80.js
 rules-of-hooks/rules-of-hooks-4f6c78a14bf7.js
 rules-of-hooks/rules-of-hooks-69521d94fa03.js
-rules-of-hooks/rules-of-hooks-7e52f5eec669.js
-rules-of-hooks/rules-of-hooks-844a496db20b.js
 rules-of-hooks/rules-of-hooks-93dc5d5e538a.js
 rules-of-hooks/rules-of-hooks-9a47e97b5d13.js
-rules-of-hooks/rules-of-hooks-9d7879272ff6.js
 rules-of-hooks/rules-of-hooks-c1e8c7f4c191.js
 rules-of-hooks/rules-of-hooks-c5d1f3143c4c.js
-rules-of-hooks/rules-of-hooks-cfdfe5572fc7.js
 rules-of-hooks/rules-of-hooks-e66a744cffbe.js
 rules-of-hooks/rules-of-hooks-eacfcaa6ef89.js
 rules-of-hooks/todo.bail.rules-of-hooks-28a78701970c.js
 rules-of-hooks/todo.bail.rules-of-hooks-6949b255e7eb.js
 rules-of-hooks/todo.bail.rules-of-hooks-e0a5db3ae21e.js
 rules-of-hooks/todo.bail.rules-of-hooks-e9f9bac89f8f.js
-rules-of-hooks/todo.error.invalid-rules-of-hooks-368024110a58.js
-rules-of-hooks/todo.error.invalid-rules-of-hooks-8566f9a360e2.js
-rules-of-hooks/todo.error.invalid-rules-of-hooks-a0058f0b446d.js
-rules-of-hooks/todo.error.rules-of-hooks-27c18dc8dad2.js
-rules-of-hooks/todo.error.rules-of-hooks-e29c874aa913.js
-rules-of-hooks/todo.invalid.invalid-rules-of-hooks-e675f0a672d8.js
 script-source-type.js
 sequential-destructuring-assignment-to-scope-declarations.js
 sequential-destructuring-both-mixed-local-and-scope-declaration.js
 sequentially-constant-progagatable-if-test-conditions.js
 shapes-object-key.ts
-should-bailout-without-compilation-annotation-mode.js
-should-bailout-without-compilation-infer-mode.js
 skip-useMemoCache.js
 ssa-arrayexpression.js
 ssa-call-jsx-2.js
@@ -1255,7 +1169,6 @@ static-components/invalid-dynamically-constructed-component-function.js
 static-components/invalid-dynamically-constructed-component-method-call.js
 static-components/invalid-dynamically-constructed-component-new.js
 store-via-new.js
-switch-global-propertyload-case-test.js
 switch-non-final-default.js
 switch-with-only-default.js
 switch.js
@@ -1291,7 +1204,6 @@ try-catch-ternary-expression.js
 try-catch-try-immediately-returns.js
 try-catch-try-immediately-throws-after-constant-propagation.js
 try-catch-try-value-modified-in-catch-escaping.js
-try-catch-try-value-modified-in-catch.js
 try-catch-with-catch-param.js
 try-catch-with-return.js
 try-catch-within-function-expression-returns-caught-value.js
@@ -1314,7 +1226,6 @@ type-provider-log.tsx
 type-provider-store-capture-namespace-import.tsx
 type-provider-store-capture.tsx
 type-provider-tagged-template-expression.js
-unclosed-eslint-suppression-skips-all-components.js
 uninitialized-declaration-in-reactive-scope.js
 unknown-hooks-do-not-assert.js
 unlabeled-break-within-label-loop.ts
@@ -1339,7 +1250,6 @@ use-memo-noemit.js
 use-memo-simple.js
 use-no-forget-multiple-with-eslint-suppression.js
 use-no-forget-with-eslint-suppression.js
-use-no-forget-with-no-errors.js
 use-no-memo-module-scope-usememo-function-scope.js
 use-operator-call-expression.js
 use-operator-conditional.js

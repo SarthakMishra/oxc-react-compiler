@@ -865,6 +865,16 @@ fn codegen_hir_body(hir: &crate::hir::types::HIR, output: &mut String, indent: u
     codegen_block(&reactive_block, output, &mut cache_slot, indent, &mut declared);
 }
 
+/// Returns `true` if the reactive function has any cache slots to memoize.
+///
+/// When a function has 0 cache slots, it means no reactive scopes survived
+/// the pruning pipeline and memoization would add no value. In this case,
+/// the compiler should skip the function and return source unchanged,
+/// matching Babel's behavior.
+pub fn has_cache_slots(rf: &ReactiveFunction) -> bool {
+    count_cache_slots(&rf.body) > 0
+}
+
 fn count_cache_slots(block: &ReactiveBlock) -> u32 {
     let mut count = 0u32;
     for instr in &block.instructions {
