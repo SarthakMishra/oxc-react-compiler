@@ -20,6 +20,48 @@ use oxc_react_compiler::{PluginOptions, compile_program};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use oxc_allocator::Allocator;
+use oxc_codegen::Codegen;
+use oxc_parser::Parser;
+use oxc_semantic::SemanticBuilder;
+use oxc_span::SourceType;
+use oxc_transformer::{JsxOptions, TransformOptions, Transformer};
+
+// ---------------------------------------------------------------------------
+// TypeScript type stripping via OXC parse→transform→print roundtrip
+// ---------------------------------------------------------------------------
+
+/// Strip TypeScript type annotations from source code using OXC's transformer.
+///
+/// Parses as TSX, runs the TypeScript transform (which removes type annotations,
+/// interfaces, type aliases, etc.), then prints the resulting JS-only AST.
+/// JSX transform is disabled so `<div>` stays as JSX, not `_jsx("div")`.
+///
+/// Falls back to returning the original code if parsing fails.
+fn strip_typescript_types(code: &str) -> String {
+    let allocator = Allocator::default();
+    let source_type = SourceType::tsx();
+    let ret = Parser::new(&allocator, code, source_type).parse();
+
+    if ret.panicked {
+        return code.to_string();
+    }
+
+    let mut program = ret.program;
+
+    // Run semantic analysis to get scoping info needed by the transformer
+    let semantic_ret = SemanticBuilder::new().build(&program);
+    let scoping = semantic_ret.semantic.into_scoping();
+
+    // Configure: strip TypeScript types, but do NOT transform JSX
+    let options = TransformOptions { jsx: JsxOptions::disable(), ..TransformOptions::default() };
+    let transformer = Transformer::new(&allocator, Path::new("test.tsx"), &options);
+    let _ = transformer.build_with_scoping(scoping, &mut program);
+
+    // Print the transformed (TS-stripped) AST
+    Codegen::new().build(&program).code
+}
+
 // ---------------------------------------------------------------------------
 // Output normalization for behavioral equivalence comparison
 // ---------------------------------------------------------------------------
@@ -319,9 +361,12 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                 if expected.starts_with("// UPSTREAM ERROR:") {
                     None
                 } else {
+                    // Strip TypeScript types from both sides before comparing
+                    let our_stripped = strip_typescript_types(&compile_result.code);
+                    let expected_stripped = strip_typescript_types(&expected);
                     // Use token-based comparison to ignore formatting differences
-                    let our_normalized = normalize_output(&compile_result.code);
-                    let expected_normalized = normalize_output(&expected);
+                    let our_normalized = normalize_output(&our_stripped);
+                    let expected_normalized = normalize_output(&expected_stripped);
                     let our_tokens = tokenize(&our_normalized);
                     let expected_tokens = tokenize(&expected_normalized);
                     Some(our_tokens == expected_tokens)

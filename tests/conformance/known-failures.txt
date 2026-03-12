@@ -3,9 +3,8 @@
 #
 # Format: <relative-path-from-upstream-fixtures/>
 #
-# Baseline: 230/1717 pass (13.4%), 0 panics, 1448 divergences
+# Baseline: 260/1717 pass (15.1%), 0 panics, 1418 divergences
 # Generated: 2026-03-12
-
 alias-capture-in-method-receiver-and-mutate.js
 alias-capture-in-method-receiver.js
 aliased-nested-scope-fn-expr.tsx
@@ -92,7 +91,6 @@ call-spread-argument-mutable-iterator.js
 call-spread.js
 call-with-independently-memoizable-arg.js
 call.js
-capture-param-mutate.js
 capture-ref-for-later-mutation.tsx
 capturing-fun-alias-captured-mutate-2.js
 capturing-fun-alias-captured-mutate-arr-2.js
@@ -139,11 +137,7 @@ constant-prop-colliding-identifier.js
 constant-prop-to-object-method.js
 constant-propagate-global-phis-constant.js
 constant-propagate-global-phis.js
-constant-propagation-bit-ops.js
 constant-propagation-into-function-expressions.js
-constant-propagation-template-literal.js
-constant-propagation-unary-number.js
-constant-propagation-unary.js
 constructor.js
 context-variable-as-jsx-element-tag.js
 context-variable-reactive-explicit-control-flow.js
@@ -169,17 +163,13 @@ delete-computed-property.js
 delete-property.js
 destructure-array-assignment-to-context-var.js
 destructure-array-declaration-to-context-var.js
-destructure-capture-global.js
 destructure-default-array-with-unary.js
-destructure-direct-reassignment.js
 destructure-in-branch-ssa.ts
-destructure-mixed-property-key-types.js
 destructure-object-assignment-to-context-var.js
 destructure-object-declaration-to-context-var.js
 destructuring-array-default.js
 destructuring-array-param-default.js
 destructuring-assignment-array-default.js
-destructuring-assignment.js
 destructuring-default-at-array-hole.js
 destructuring-default-at-explicit-null.js
 destructuring-default-at-explicit-undefined.js
@@ -192,7 +182,6 @@ destructuring-object-pattern-within-rest.js
 destructuring-property-inference.js
 destructuring-same-property-identifier-names.js
 destructuring-with-conditional-as-default-value.js
-destructuring.js
 do-while-break.js
 do-while-compound-test.js
 do-while-conditional-break.js
@@ -254,7 +243,6 @@ error.capitalized-method-call.js
 error.capture-ref-for-mutation.tsx
 error.conditional-hook-unknown-hook-react-namespace.js
 error.conditional-hooks-as-method-call.js
-error.context-variable-only-chained-assign.js
 error.declare-reassign-variable-in-function-declaration.js
 error.default-param-accesses-local.js
 error.dont-hoist-inline-reference.js
@@ -381,7 +369,6 @@ error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hook-call-spreads-mutable-iterator.js
 error.todo-invalid-jsx-in-catch-in-outer-try-with-finally.js
 error.todo-invalid-jsx-in-try-with-finally.js
-error.todo-kitchensink.js
 error.todo-missing-source-locations.js
 error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-object-expression-get-syntax.js
@@ -558,7 +545,6 @@ globals-String.js
 globals-dont-resolve-local-useState.js
 hoisted-context-variable-in-outlined-fn.js
 hoisted-declaration-with-scope.tsx
-hoisting-computed-member-expression.js
 hoisting-functionexpr-conditional-dep.tsx
 hoisting-invalid-tdz-let.js
 hoisting-let-declaration-without-initialization.js
@@ -692,8 +678,6 @@ lambda-reassign-primitive.js
 lambda-reassign-shadowed-primitive.js
 lambda-return-expression.ts
 log-pruned-memoization.js
-logical-expression-object.js
-logical-expression.js
 loop-unused-let.js
 maybe-mutate-object-in-callback.js
 mege-consecutive-scopes-dont-merge-with-different-deps.js
@@ -716,7 +700,6 @@ module-scoped-bindings.js
 multi-directive.js
 multiple-calls-to-hoisted-callback-from-other-callback.js
 multiple-components-first-is-invalid.js
-mutable-lifetime-loops.js
 mutable-lifetime-with-aliasing.js
 mutable-liverange-loop.js
 mutate-outer-scope-within-value-block.ts
@@ -822,7 +805,6 @@ object-method-shorthand-hook-dep.js
 object-method-shorthand-mutated-after.js
 object-method-shorthand.js
 object-mutated-in-consequent-alternate-both-return.js
-object-pattern-params.js
 object-shorthand-method-1.js
 object-shorthand-method-2.js
 object-shorthand-method-nested.js
@@ -930,7 +912,6 @@ preserve-use-memo-unused-state.js
 primitive-as-dep-nested-scope.js
 primitive-as-dep.js
 primitive-reassigned-loop-force-scopes-enabled.js
-prop-capturing-function-1.js
 propagate-scope-deps-hir-fork/conditional-break-labeled.js
 propagate-scope-deps-hir-fork/conditional-early-return.js
 propagate-scope-deps-hir-fork/conditional-on-mutable.js
@@ -1053,7 +1034,6 @@ reassign-object-in-context.js
 reassign-primitive-in-context.js
 reassigned-phi-in-returned-function-expression.js
 reassignment-conditional.js
-reassignment-separate-scopes.js
 reassignment.js
 recursive-function-expression.js
 reduce-reactive-cond-deps-break-in-scope.ts
@@ -1261,12 +1241,8 @@ rules-of-hooks/todo.error.invalid-rules-of-hooks-8566f9a360e2.js
 rules-of-hooks/todo.error.invalid-rules-of-hooks-a0058f0b446d.js
 rules-of-hooks/todo.error.rules-of-hooks-27c18dc8dad2.js
 rules-of-hooks/todo.error.rules-of-hooks-e29c874aa913.js
-rules-of-hooks/todo.invalid.invalid-rules-of-hooks-28a7111f56a7.js
 rules-of-hooks/todo.invalid.invalid-rules-of-hooks-e675f0a672d8.js
-same-variable-as-dep-and-redeclare-maybe-frozen.js
-same-variable-as-dep-and-redeclare.js
 script-source-type.js
-sequence-expression.js
 sequential-destructuring-assignment-to-scope-declarations.js
 sequential-destructuring-both-mixed-local-and-scope-declaration.js
 sequentially-constant-progagatable-if-test-conditions.js
@@ -1280,7 +1256,6 @@ ssa-call-jsx.js
 ssa-cascading-eliminated-phis.js
 ssa-leave-case.js
 ssa-newexpression.js
-ssa-objectexpression-phi.js
 ssa-objectexpression.js
 ssa-reassign-in-rval.js
 ssa-renaming-ternary-destruction-with-mutation.js
@@ -1313,8 +1288,6 @@ target-flag-meta-internal.js
 target-flag.js
 temporary-accessed-outside-scope.js
 temporary-property-load-accessed-outside-scope.js
-ternary-assignment-expression.js
-ternary-expression.js
 timers.js
 todo-function-expression-captures-value-later-frozen.js
 todo-global-load-cached.tsx
@@ -1359,15 +1332,12 @@ ts-non-null-expression-default-value.tsx
 type-alias-declaration.ts
 type-alias-used-as-annotation.ts
 type-alias-used-as-variable-annotation.ts
-type-alias.flow.js
 type-inference-array-from.js
 type-provider-log-default-import.tsx
 type-provider-log.tsx
 type-provider-store-capture-namespace-import.tsx
 type-provider-store-capture.tsx
 type-provider-tagged-template-expression.js
-type-test-field-load-binary-op.js
-unary-expr.js
 unclosed-eslint-suppression-skips-all-components.js
 uninitialized-declaration-in-reactive-scope.js
 unknown-hooks-do-not-assert.js
@@ -1387,7 +1357,6 @@ update-expression-on-function-parameter-1.js
 update-expression-on-function-parameter-2.js
 update-expression-on-function-parameter-3.js
 update-expression-on-function-parameter-4.js
-update-expression.ts
 update-global-in-callback.tsx
 use-effect-cleanup-reassigns.js
 use-memo-noemit.js

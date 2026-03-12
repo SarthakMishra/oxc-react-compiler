@@ -26,6 +26,8 @@ criterion.workspace = true
 proptest.workspace = true
 ureq = { version = "3", features = ["json"] }
 serde_json = "1"
+oxc_codegen.workspace = true
+oxc_transformer.workspace = true
 
 [[bench]]
 name = "compiler"

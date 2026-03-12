@@ -94,6 +94,8 @@ oxc_parser = "0.117"
 oxc_semantic = "0.117"
 oxc_span = "0.117"
 oxc_syntax = "0.117"
+oxc_codegen = "0.117"
+oxc_transformer = "0.117"
 
 # Workspace crates
 oxc_react_compiler = { path = "crates/oxc_react_compiler" }
