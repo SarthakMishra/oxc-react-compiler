@@ -1,0 +1,5 @@
+---
+source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
+expression: "format!(\"{errors:?}\")"
+---
+["Local variable \"x\" is assigned during render but reassigned inside a nested function (effect or event handler). This prevents the compiler from memoizing correctly."]

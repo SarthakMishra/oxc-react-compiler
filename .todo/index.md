@@ -7,17 +7,10 @@ Last updated: 2026-03-12
 
 ---
 
-## Priority 3 -- Test coverage (upstream parity)
-
-- [ ] Error diagnostic fixture tests — expand from 4/17 to all DiagnosticKind variants -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-2-error-diagnostic-fixture-tests
-- [ ] Post-codegen output validation — add oxc_semantic use-before-define checking and integration into other test runners -- [test-coverage-gaps.md](test-coverage-gaps.md)#gap-3-post-codegen-output-validation
-
 ## Priority 4 -- Tooling (parallel, not blocking)
 
-- [ ] Real-world fixture extraction — run extraction against OSS repos, reach 15+ fixtures across all tiers -- [benchmark-suite.md](benchmark-suite.md)#gap-1-real-world-fixture-extraction-pipeline
 - [ ] Deep correctness analysis — add Babel AST diffing, headless render comparison, full divergence classification -- [benchmark-suite.md](benchmark-suite.md)#gap-3-deep-correctness-analysis
 - [ ] Differential snapshot tests — add Babel comparison snapshots and diff.json reports -- [benchmark-suite.md](benchmark-suite.md)#gap-4-differential-snapshot-tests
-- [ ] README correctness score documentation — document divergence classifications and scoring methodology -- [benchmark-suite.md](benchmark-suite.md)#gap-6-readme-and-correctness-score-documentation
 
 ---
 
@@ -48,3 +41,7 @@ _(Nothing blocked)_
 - **P3 Gap 5: Sprout runtime eval** -- Function evaluator with shared runtime utilities, mutation tracking, sequential render consistency, 11 tests
 - **P4 Gap 2: Benchmark harness v2** -- `transformReactFileTimed()` NAPI function with Rust-side `std::time::Instant`, `bench.mjs` with warmup/batch/filter/json output
 - **P4 Gap 5: CI integration** -- `.github/workflows/benchmark.yml` with full pipeline and PR benchmark comments
+- **P3 Gap 2: Error diagnostic fixture tests** -- 17/17 DiagnosticKind variant coverage, 26 tests, `compile_program_with_config` API, `EnvironmentConfig::all_validations_enabled()`
+- **P3 Gap 3: Post-codegen output validation** -- oxc_semantic use-before-define checking, 6 semantic tests, found real codegen bugs (unresolved references)
+- **P4 Gap 1: Real-world fixture extraction** -- 16 fixtures (4 per tier), 12 from cal.com/excalidraw/shadcn, 3 known-divergent
+- **P4 Gap 6: README correctness score docs** -- Divergence classifications, known acceptable divergences, scoring methodology

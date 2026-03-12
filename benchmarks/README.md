@@ -88,6 +88,61 @@ git diff snapshots/               # Review changes
 
 This creates an audit trail: every PR that changes compiler output will show snapshot diffs.
 
+## Divergence Classifications
+
+When the OXC compiler output differs from Babel's `babel-plugin-react-compiler`, divergences are classified into one of four categories:
+
+| Classification | Acceptable? | Description |
+|----------------|-------------|-------------|
+| **Cosmetic** | Yes | Whitespace, variable naming, import ordering, comment differences. No semantic impact. |
+| **Conservative miss** | Yes | OXC memoizes less aggressively than Babel (fewer cache slots, wider scope boundaries). Correct but suboptimal — extra re-renders may occur. |
+| **Over-memoization** | Investigate | OXC memoizes more than Babel (extra cache slots or narrower scopes). Usually harmless but could mask bugs if dependencies are wrong. |
+| **Semantic difference** | No (bug) | Different runtime behavior — wrong values, missing updates, stale closures, or incorrect dependency tracking. These are correctness bugs that must be fixed. |
+
+### How divergences are detected
+
+1. **Structural comparison**: Parse both OXC and Babel outputs into ASTs. Compare memoization block counts, cache slot allocations, dependency arrays, and scope boundaries.
+2. **Runtime comparison** (E2E tests): Render both outputs with identical props/state sequences. Compare HTML output at each step.
+3. **Heuristic analysis**: `scripts/analyze-correctness.mjs` extracts memoization patterns (sentinel checks, dependency checks, cache reads/writes) and flags missing patterns.
+
+### Known acceptable divergences
+
+The following divergences are expected and acceptable:
+
+- **Variable naming**: OXC uses `t0`, `t1`, etc. while Babel may use different temp naming.
+- **Import style**: OXC uses `import { c as _c } from "react/compiler-runtime"` which may differ in exact import form.
+- **Scope granularity**: OXC may produce wider reactive scopes, resulting in fewer but larger memoization blocks. This is a conservative miss, not a bug.
+- **Dead code paths**: OXC may retain or eliminate dead code differently than Babel.
+
+### Correctness score methodology
+
+The correctness score is computed per-fixture as:
+
+```
+score = 1.0 - (semantic_divergences / total_memoization_sites)
+```
+
+Where:
+- `total_memoization_sites` = number of `useMemoCache` slots in the Babel reference output
+- `semantic_divergences` = number of sites where OXC produces different runtime behavior
+
+**Score interpretation:**
+- **1.0**: Perfect parity — OXC produces semantically identical output for all memoization sites.
+- **0.9–0.99**: Minor divergences (typically conservative misses). Functionally correct.
+- **< 0.9**: Significant divergences requiring investigation.
+
+Fixtures marked `"known_divergent": true` in `manifest.json` are expected to score below 1.0 due to patterns the OXC compiler doesn't yet handle identically (e.g., complex `useReducer` patterns, drag-and-drop state).
+
+### Aggregate score
+
+The aggregate correctness score across all fixtures uses a weighted average:
+
+```
+aggregate = Σ(score_i × weight_i) / Σ(weight_i)
+```
+
+Weights are based on size tier: XS=1, S=2, M=3, L=4. This ensures larger, more complex components have proportionally more impact on the overall score.
+
 ## CI Integration
 
 The `.github/workflows/benchmark.yml` workflow:

@@ -45,10 +45,39 @@ pub fn compile_program_with_source_map(
     compile_program_inner(source, filename, options, true)
 }
 
+/// Compile a single source file with a custom environment configuration.
+///
+/// This allows callers to enable/disable specific validation passes
+/// (e.g., enabling all validations for testing).
+pub fn compile_program_with_config(
+    source: &str,
+    filename: &str,
+    options: &PluginOptions,
+    config: &EnvironmentConfig,
+) -> CompileResult {
+    compile_program_inner_with_config(source, filename, options, config, false)
+}
+
 fn compile_program_inner(
     source: &str,
     filename: &str,
     options: &PluginOptions,
+    generate_source_map: bool,
+) -> CompileResult {
+    compile_program_inner_with_config(
+        source,
+        filename,
+        options,
+        &EnvironmentConfig::default(),
+        generate_source_map,
+    )
+}
+
+fn compile_program_inner_with_config(
+    source: &str,
+    filename: &str,
+    options: &PluginOptions,
+    config: &EnvironmentConfig,
     generate_source_map: bool,
 ) -> CompileResult {
     let allocator = Allocator::default();
@@ -64,7 +93,7 @@ fn compile_program_inner(
         };
     }
 
-    let config = EnvironmentConfig::default();
+    let config = config.clone();
     let mut compiled_functions: Vec<(Span, String)> = Vec::new();
     let mut function_source_maps: Vec<(Span, SourceMap)> = Vec::new();
     let mut diagnostics = Vec::new();

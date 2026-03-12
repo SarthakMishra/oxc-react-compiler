@@ -1,0 +1,5 @@
+---
+source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
+expression: "format!(\"{errors:?}\")"
+---
+["JSX inside a try block. Use an error boundary component instead of try/catch for handling errors in JSX rendering."]

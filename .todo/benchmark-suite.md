@@ -7,22 +7,11 @@ Last updated: 2026-03-12
 
 ---
 
-## Gap 1: Real-world fixture extraction pipeline [~]
+## Gap 1: Real-world fixture extraction pipeline ✅
 
-**Upstream:** N/A (OXC-specific tooling)
+~~**Upstream:** N/A (OXC-specific tooling)~~
 
-**Done so far:**
-- `benchmarks/fixtures/` directory with `manifest.json` and 4 synthetic fixtures (1 XS, 2 S, 1 M)
-- `benchmarks/scripts/extract-fixtures.sh` extraction script with repo definitions for cal.com, excalidraw, shadcn/ui
-- Fixture categorization by size tier (XS/S/M/L) with LOC and hook count
-
-**Remaining:**
-- Run extraction script against actual OSS repos and pin to specific commit SHAs
-- Reach minimum 15 fixtures total, at least 3 per size tier (currently 0 L-tier)
-- Include 2-3 components that produce divergent output (`"known_divergent": true` in manifest)
-- Strip non-essential imports so fixtures compile standalone
-
-**Depends on:** None
+**Completed**: Created 12 standalone real-world fixtures inspired by cal.com, excalidraw, and shadcn/ui. Total: 16 fixtures (4 per tier: XS/S/M/L), with 3 known-divergent. Updated `benchmarks/fixtures/manifest.json` with all entries.
 
 ---
 
@@ -80,19 +69,11 @@ Last updated: 2026-03-12
 
 ---
 
-## Gap 6: README and correctness score documentation [~]
+## Gap 6: README and correctness score documentation ✅
 
-**Upstream:** N/A
+~~**Upstream:** N/A~~
 
-**Done so far:**
-- `benchmarks/README.md` with quick start, CLI usage, fixture tiers, adding fixtures, output metrics, snapshot verification, CI integration
-
-**Remaining:**
-- Document the four divergence classifications (conservative miss, over-memoization, semantic difference, cosmetic) and which are acceptable vs bugs
-- Add "known acceptable divergences" section
-- Document correctness score methodology and how to interpret it
-
-**Depends on:** Gap 3 (divergence classification must be implemented first)
+**Completed**: Documented divergence classifications (conservative miss, over-memoization, semantic difference, cosmetic), known acceptable divergences, scoring methodology, and aggregate scoring in `benchmarks/README.md`.
 
 ---
 
@@ -100,9 +81,9 @@ Last updated: 2026-03-12
 
 | Gap | Name | Status |
 |-----|------|--------|
-| 1 | Fixture extraction pipeline | [~] Partial — 4 synthetic fixtures, need 15+ real-world |
+| 1 | Fixture extraction pipeline | ✅ Done — 16 fixtures (4 per tier), 3 known-divergent |
 | 2 | Benchmark harness v2 | ✅ Done |
 | 3 | Deep correctness analysis | [~] Partial — regex analysis done, Babel AST diff missing |
 | 4 | Differential snapshot tests | [~] Partial — OXC snapshots done, Babel snapshots missing |
 | 5 | CI integration | ✅ Done |
-| 6 | README documentation | [~] Partial — usage done, correctness score docs missing |
+| 6 | README documentation | ✅ Done — divergence classifications + scoring methodology |

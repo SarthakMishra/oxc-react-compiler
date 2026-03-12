@@ -73,6 +73,27 @@ impl Default for EnvironmentConfig {
     }
 }
 
+impl EnvironmentConfig {
+    /// Returns a config with all validation passes enabled.
+    /// Useful for testing to ensure every validation pass runs.
+    pub fn all_validations_enabled() -> Self {
+        Self {
+            validate_hooks_usage: true,
+            validate_ref_access_during_render: true,
+            validate_no_set_state_in_render: true,
+            validate_no_set_state_in_effects: true,
+            validate_no_derived_computations_in_effects: true,
+            validate_no_jsx_in_try_statements: true,
+            validate_no_capitalized_calls: true,
+            validate_exhaustive_memo_dependencies: true,
+            validate_exhaustive_effect_dependencies: true,
+            enable_preserve_existing_memoization_guarantees: true,
+            validate_preserve_existing_memoization_guarantees: true,
+            ..Self::default()
+        }
+    }
+}
+
 /// Configuration for a custom hook's behavior.
 #[derive(Debug, Clone)]
 pub struct CustomHookConfig {

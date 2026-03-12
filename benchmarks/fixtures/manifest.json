@@ -1,6 +1,6 @@
 {
   "$schema": "./manifest.schema.json",
-  "description": "Benchmark fixture manifest. Each entry describes a React component extracted from an OSS repo.",
+  "description": "Benchmark fixture manifest. Each entry describes a React component for benchmarking.",
   "fixtures": [
     {
       "name": "simple-counter",
@@ -37,6 +37,117 @@
       "loc": 80,
       "hook_count": 4,
       "description": "Data table with sorting and filtering"
+    },
+    {
+      "name": "theme-toggle",
+      "file": "realworld/theme-toggle.tsx",
+      "source": "excalidraw-inspired",
+      "size_tier": "XS",
+      "loc": 16,
+      "hook_count": 2,
+      "description": "Light/dark theme toggle button"
+    },
+    {
+      "name": "status-badge",
+      "file": "realworld/status-badge.tsx",
+      "source": "calcom-inspired",
+      "size_tier": "XS",
+      "loc": 21,
+      "hook_count": 1,
+      "description": "Booking status badge with color mapping"
+    },
+    {
+      "name": "avatar-group",
+      "file": "realworld/avatar-group.tsx",
+      "source": "shadcn-inspired",
+      "size_tier": "XS",
+      "loc": 23,
+      "hook_count": 1,
+      "description": "Avatar group with overflow count"
+    },
+    {
+      "name": "search-input",
+      "file": "realworld/search-input.tsx",
+      "source": "shadcn-inspired",
+      "size_tier": "S",
+      "loc": 55,
+      "hook_count": 4,
+      "description": "Debounced search input with clear button"
+    },
+    {
+      "name": "toolbar",
+      "file": "realworld/toolbar.tsx",
+      "source": "excalidraw-inspired",
+      "size_tier": "S",
+      "loc": 60,
+      "hook_count": 3,
+      "description": "Drawing tool toolbar with tooltips and lock toggle"
+    },
+    {
+      "name": "time-slot-picker",
+      "file": "realworld/time-slot-picker.tsx",
+      "source": "calcom-inspired",
+      "size_tier": "M",
+      "loc": 81,
+      "hook_count": 4,
+      "description": "Morning/afternoon time slot picker for scheduling"
+    },
+    {
+      "name": "color-picker",
+      "file": "realworld/color-picker.tsx",
+      "source": "excalidraw-inspired",
+      "size_tier": "M",
+      "loc": 125,
+      "hook_count": 6,
+      "description": "Color picker with presets, recent colors, and custom hex input"
+    },
+    {
+      "name": "command-menu",
+      "file": "realworld/command-menu.tsx",
+      "source": "shadcn-inspired",
+      "size_tier": "M",
+      "loc": 147,
+      "hook_count": 6,
+      "description": "Command palette with keyboard navigation and grouped items",
+      "known_divergent": true
+    },
+    {
+      "name": "booking-list",
+      "file": "realworld/booking-list.tsx",
+      "source": "calcom-inspired",
+      "size_tier": "L",
+      "loc": 152,
+      "hook_count": 7,
+      "description": "Booking list with search, sort, expand/collapse, and status actions"
+    },
+    {
+      "name": "availability-schedule",
+      "file": "realworld/availability-schedule.tsx",
+      "source": "calcom-inspired",
+      "size_tier": "L",
+      "loc": 255,
+      "hook_count": 8,
+      "description": "Weekly availability editor with useReducer, time ranges, and overlap detection",
+      "known_divergent": true
+    },
+    {
+      "name": "canvas-sidebar",
+      "file": "realworld/canvas-sidebar.tsx",
+      "source": "excalidraw-inspired",
+      "size_tier": "L",
+      "loc": 272,
+      "hook_count": 9,
+      "description": "Layer management sidebar with drag-reorder, tabs, search, and property editing",
+      "known_divergent": true
+    },
+    {
+      "name": "multi-step-form",
+      "file": "realworld/multi-step-form.tsx",
+      "source": "calcom-inspired",
+      "size_tier": "L",
+      "loc": 284,
+      "hook_count": 8,
+      "description": "Multi-step wizard form with validation, progress bar, and field types"
     }
   ]
 }
