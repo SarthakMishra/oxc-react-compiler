@@ -1,0 +1,28 @@
+{
+  "fixture": "booking-list",
+  "size_tier": "L",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 9,
+    "sentinelChecks": 9,
+    "dependencyChecks": 0,
+    "scopeBlocks": 9,
+    "cacheReads": 0,
+    "cacheWrites": 0
+  },
+  "babel_patterns": {
+    "cacheSize": 62,
+    "sentinelChecks": 6,
+    "dependencyChecks": 35,
+    "scopeBlocks": 25,
+    "cacheReads": 27,
+    "cacheWrites": 62
+  },
+  "divergence": {
+    "type": "conservative_miss",
+    "severity": "acceptable",
+    "details": "OXC uses 53 fewer cache slots"
+  }
+}

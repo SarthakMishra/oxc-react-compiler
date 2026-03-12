@@ -1,0 +1,28 @@
+{
+  "fixture": "command-menu",
+  "size_tier": "M",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 11,
+    "sentinelChecks": 11,
+    "dependencyChecks": 0,
+    "scopeBlocks": 11,
+    "cacheReads": 0,
+    "cacheWrites": 0
+  },
+  "babel_patterns": {
+    "cacheSize": 37,
+    "sentinelChecks": 4,
+    "dependencyChecks": 22,
+    "scopeBlocks": 14,
+    "cacheReads": 15,
+    "cacheWrites": 37
+  },
+  "divergence": {
+    "type": "conservative_miss",
+    "severity": "acceptable",
+    "details": "OXC uses 26 fewer cache slots"
+  }
+}

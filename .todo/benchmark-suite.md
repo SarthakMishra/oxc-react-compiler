@@ -28,35 +28,24 @@ Last updated: 2026-03-12
 
 **Upstream:** N/A
 
-**Done so far:**
-- `benchmarks/scripts/analyze-correctness.mjs` with regex-based memoization pattern extraction from OXC output
-- Extracts: cache size, sentinel checks, dependency checks, cache reads/writes, scope blocks
-- Divergence classification: `ok`, `no_memoization`, `conservative_miss`
-- JSON and markdown output formats
+**Completed (3a + 3c):**
+- `benchmarks/scripts/babel-compile.mjs` — Babel compilation via `babel-plugin-react-compiler`, structural AST pattern extraction (cache size, sentinel checks, dependency checks, scope blocks, cache reads/writes), automated divergence classification into `cosmetic`, `conservative_miss`, `over_memoization`, `semantic_difference`
+- Markdown and JSON report output with correctness scoring
+- Results across 16 fixtures: 14 conservative_miss, 1 over_memoization, 1 semantic_difference, score 0.938
+- npm scripts: `babel:update-snapshots`, `babel:diff`, `babel:diff-json`, `correctness`
 
 **Remaining:**
-- **3a: Structural AST diffing** — Parse both OXC and Babel outputs into ASTs (requires `babel-plugin-react-compiler` as a dependency), compare memoization blocks structurally (slot count, scope boundaries, dependency arrays)
-- **3b: Semantic equivalence via headless render** — Render OXC-compiled and Babel-compiled versions with identical props/state sequences, compare HTML output at each step
-- **3c: Full divergence classification** — Automated classification into conservative miss, over-memoization, semantic difference, and cosmetic categories based on actual Babel comparison (current classification is heuristic-only)
+- **3b: Semantic equivalence via headless render** — Render OXC-compiled and Babel-compiled versions with identical props/state sequences, compare HTML output at each step. Deferred: requires React DOM test setup.
 
-**Depends on:** Gap 1 (more fixtures), Babel integration as a dependency
+**Depends on:** React DOM test infrastructure (not yet built)
 
 ---
 
-## Gap 4: Differential snapshot tests [~]
+## Gap 4: Differential snapshot tests ✅
 
-**Upstream:** N/A
+~~**Upstream:** N/A~~
 
-**Done so far:**
-- `benchmarks/snapshots/` directory with 4 committed `.oxc.js` snapshot files
-- `--update-snapshots` and `--check-snapshots` workflows in `bench.mjs`
-- CI runs snapshot checking
-
-**Remaining:**
-- Add `.babel.js` snapshots (Babel's output for each fixture) — requires `babel-plugin-react-compiler` dependency
-- Add `.diff.json` snapshots (structural diff report from Gap 3a)
-
-**Depends on:** Gap 3a (Babel integration for comparison snapshots)
+**Completed**: Added `.babel.js` snapshots for all 16 fixtures via `npm run babel:update-snapshots`. Added `.diff.json` structural diff reports for all 16 fixtures. Updated `bench.mjs` docs to reference new commands. Babel dependencies added to `benchmarks/package.json`.
 
 ---
 
@@ -83,7 +72,7 @@ Last updated: 2026-03-12
 |-----|------|--------|
 | 1 | Fixture extraction pipeline | ✅ Done — 16 fixtures (4 per tier), 3 known-divergent |
 | 2 | Benchmark harness v2 | ✅ Done |
-| 3 | Deep correctness analysis | [~] Partial — regex analysis done, Babel AST diff missing |
-| 4 | Differential snapshot tests | [~] Partial — OXC snapshots done, Babel snapshots missing |
+| 3 | Deep correctness analysis | [~] Partial — AST diff + classification done, headless render (3b) remaining |
+| 4 | Differential snapshot tests | ✅ Done — `.babel.js` + `.diff.json` snapshots for all 16 fixtures |
 | 5 | CI integration | ✅ Done |
 | 6 | README documentation | ✅ Done — divergence classifications + scoring methodology |

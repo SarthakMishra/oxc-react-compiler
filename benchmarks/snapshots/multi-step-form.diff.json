@@ -1,0 +1,28 @@
+{
+  "fixture": "multi-step-form",
+  "size_tier": "L",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 12,
+    "sentinelChecks": 12,
+    "dependencyChecks": 0,
+    "scopeBlocks": 12,
+    "cacheReads": 0,
+    "cacheWrites": 0
+  },
+  "babel_patterns": {
+    "cacheSize": 92,
+    "sentinelChecks": 3,
+    "dependencyChecks": 60,
+    "scopeBlocks": 32,
+    "cacheReads": 32,
+    "cacheWrites": 92
+  },
+  "divergence": {
+    "type": "conservative_miss",
+    "severity": "acceptable",
+    "details": "OXC uses 80 fewer cache slots"
+  }
+}

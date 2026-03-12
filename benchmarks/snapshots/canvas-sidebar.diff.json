@@ -1,0 +1,28 @@
+{
+  "fixture": "canvas-sidebar",
+  "size_tier": "L",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 20,
+    "sentinelChecks": 19,
+    "dependencyChecks": 0,
+    "scopeBlocks": 19,
+    "cacheReads": 1,
+    "cacheWrites": 1
+  },
+  "babel_patterns": {
+    "cacheSize": 70,
+    "sentinelChecks": 5,
+    "dependencyChecks": 47,
+    "scopeBlocks": 22,
+    "cacheReads": 23,
+    "cacheWrites": 70
+  },
+  "divergence": {
+    "type": "conservative_miss",
+    "severity": "acceptable",
+    "details": "OXC uses 50 fewer cache slots"
+  }
+}

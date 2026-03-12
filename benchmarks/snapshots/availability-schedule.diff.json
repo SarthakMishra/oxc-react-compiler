@@ -1,0 +1,28 @@
+{
+  "fixture": "availability-schedule",
+  "size_tier": "L",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 0,
+    "sentinelChecks": 0,
+    "dependencyChecks": 0,
+    "scopeBlocks": 0,
+    "cacheReads": 0,
+    "cacheWrites": 0
+  },
+  "babel_patterns": {
+    "cacheSize": 31,
+    "sentinelChecks": 5,
+    "dependencyChecks": 17,
+    "scopeBlocks": 14,
+    "cacheReads": 14,
+    "cacheWrites": 31
+  },
+  "divergence": {
+    "type": "semantic_difference",
+    "severity": "bug",
+    "details": "Babel memoizes but OXC does not"
+  }
+}

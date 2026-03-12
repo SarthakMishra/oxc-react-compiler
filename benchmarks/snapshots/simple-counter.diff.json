@@ -1,0 +1,28 @@
+{
+  "fixture": "simple-counter",
+  "size_tier": "XS",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 3,
+    "sentinelChecks": 2,
+    "dependencyChecks": 0,
+    "scopeBlocks": 2,
+    "cacheReads": 1,
+    "cacheWrites": 1
+  },
+  "babel_patterns": {
+    "cacheSize": 2,
+    "sentinelChecks": 0,
+    "dependencyChecks": 1,
+    "scopeBlocks": 1,
+    "cacheReads": 1,
+    "cacheWrites": 2
+  },
+  "divergence": {
+    "type": "over_memoization",
+    "severity": "investigate",
+    "details": "OXC uses 1 more cache slots"
+  }
+}

@@ -6,9 +6,17 @@
     "bench": "node bench.mjs",
     "bench:update-snapshots": "node bench.mjs --update-snapshots",
     "bench:check-snapshots": "node bench.mjs --check-snapshots",
-    "extract-fixtures": "bash scripts/extract-fixtures.sh"
+    "extract-fixtures": "bash scripts/extract-fixtures.sh",
+    "babel:update-snapshots": "node scripts/babel-compile.mjs --update-snapshots",
+    "babel:diff": "node scripts/babel-compile.mjs --diff",
+    "babel:diff-json": "node scripts/babel-compile.mjs --diff --format json",
+    "correctness": "node scripts/analyze-correctness.mjs --all"
   },
   "dependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-react": "^7.28.5",
+    "@babel/preset-typescript": "^7.28.5",
+    "babel-plugin-react-compiler": "^1.0.0",
     "oxc-react-compiler": "file:../napi/react-compiler"
   }
 }

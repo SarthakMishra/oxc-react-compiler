@@ -9,8 +9,7 @@ Last updated: 2026-03-12
 
 ## Priority 4 -- Tooling (parallel, not blocking)
 
-- [ ] Deep correctness analysis — add Babel AST diffing, headless render comparison, full divergence classification -- [benchmark-suite.md](benchmark-suite.md)#gap-3-deep-correctness-analysis
-- [ ] Differential snapshot tests — add Babel comparison snapshots and diff.json reports -- [benchmark-suite.md](benchmark-suite.md)#gap-4-differential-snapshot-tests
+- [ ] Deep correctness analysis (3b) — headless render comparison for semantic equivalence -- [benchmark-suite.md](benchmark-suite.md)#gap-3-deep-correctness-analysis
 
 ---
 
@@ -44,4 +43,6 @@ _(Nothing blocked)_
 - **P3 Gap 2: Error diagnostic fixture tests** -- 17/17 DiagnosticKind variant coverage, 26 tests, `compile_program_with_config` API, `EnvironmentConfig::all_validations_enabled()`
 - **P3 Gap 3: Post-codegen output validation** -- oxc_semantic use-before-define checking, 6 semantic tests, found real codegen bugs (unresolved references)
 - **P4 Gap 1: Real-world fixture extraction** -- 16 fixtures (4 per tier), 12 from cal.com/excalidraw/shadcn, 3 known-divergent
+- **P4 Gap 3 (3a+3c): Deep correctness analysis** -- Babel AST diffing via `babel-compile.mjs`, structural pattern extraction, automated divergence classification (score 0.938)
+- **P4 Gap 4: Differential snapshot tests** -- `.babel.js` and `.diff.json` snapshots for all 16 fixtures
 - **P4 Gap 6: README correctness score docs** -- Divergence classifications, known acceptable divergences, scoring methodology

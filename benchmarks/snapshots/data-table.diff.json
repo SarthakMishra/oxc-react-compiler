@@ -1,0 +1,28 @@
+{
+  "fixture": "data-table",
+  "size_tier": "M",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 11,
+    "sentinelChecks": 10,
+    "dependencyChecks": 0,
+    "scopeBlocks": 10,
+    "cacheReads": 1,
+    "cacheWrites": 1
+  },
+  "babel_patterns": {
+    "cacheSize": 56,
+    "sentinelChecks": 3,
+    "dependencyChecks": 35,
+    "scopeBlocks": 21,
+    "cacheReads": 21,
+    "cacheWrites": 56
+  },
+  "divergence": {
+    "type": "conservative_miss",
+    "severity": "acceptable",
+    "details": "OXC uses 45 fewer cache slots"
+  }
+}

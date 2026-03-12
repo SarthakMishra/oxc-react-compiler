@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 24      | 1–24   | Full compiler: HIR foundation, BuildHIR, SSA, optimization, inference, reactive scopes, validation, pipeline, lint rules, testing, end-to-end wiring, structured diagnostic categories, source map exposure, codegen correctness & memoization pipeline foundation, E2E dual-mode rendering tests, sprout eval harness, benchmark fixture pipeline, benchmark harness v2 with timed NAPI, correctness analysis, CI pipeline, error diagnostic full coverage, post-codegen semantic validation, real-world benchmark fixtures, README correctness scoring |
+| [001.md](001.md) | 25      | 1–25   | Full compiler: HIR foundation, BuildHIR, SSA, optimization, inference, reactive scopes, validation, pipeline, lint rules, testing, end-to-end wiring, structured diagnostic categories, source map exposure, codegen correctness & memoization pipeline foundation, E2E dual-mode rendering tests, sprout eval harness, benchmark fixture pipeline, benchmark harness v2 with timed NAPI, correctness analysis, CI pipeline, error diagnostic full coverage, post-codegen semantic validation, real-world benchmark fixtures, README correctness scoring, Babel differential analysis and snapshots |
 
 ## Archive
 

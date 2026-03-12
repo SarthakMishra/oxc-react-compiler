@@ -1,0 +1,28 @@
+{
+  "fixture": "todo-list",
+  "size_tier": "S",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 7,
+    "sentinelChecks": 6,
+    "dependencyChecks": 0,
+    "scopeBlocks": 6,
+    "cacheReads": 1,
+    "cacheWrites": 1
+  },
+  "babel_patterns": {
+    "cacheSize": 24,
+    "sentinelChecks": 5,
+    "dependencyChecks": 11,
+    "scopeBlocks": 13,
+    "cacheReads": 13,
+    "cacheWrites": 24
+  },
+  "divergence": {
+    "type": "conservative_miss",
+    "severity": "acceptable",
+    "details": "OXC uses 17 fewer cache slots"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "fixture": "color-picker",
+  "size_tier": "M",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 8,
+    "sentinelChecks": 8,
+    "dependencyChecks": 0,
+    "scopeBlocks": 8,
+    "cacheReads": 0,
+    "cacheWrites": 0
+  },
+  "babel_patterns": {
+    "cacheSize": 30,
+    "sentinelChecks": 3,
+    "dependencyChecks": 18,
+    "scopeBlocks": 11,
+    "cacheReads": 12,
+    "cacheWrites": 30
+  },
+  "divergence": {
+    "type": "conservative_miss",
+    "severity": "acceptable",
+    "details": "OXC uses 22 fewer cache slots"
+  }
+}

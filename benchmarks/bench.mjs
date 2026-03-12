@@ -16,6 +16,8 @@
  *   --filter pattern    Only run fixtures matching pattern
  *   --update-snapshots  Write current OXC output to snapshots/
  *   --check-snapshots   Verify snapshots match current output
+ *   --update-babel-snapshots  Generate Babel comparison snapshots and diff reports
+ *   --diff              Run OXC vs Babel structural comparison
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';

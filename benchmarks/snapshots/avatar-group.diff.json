@@ -1,0 +1,28 @@
+{
+  "fixture": "avatar-group",
+  "size_tier": "XS",
+  "babel_error": null,
+  "oxc_error": null,
+  "oxc_transformed": true,
+  "oxc_patterns": {
+    "cacheSize": 3,
+    "sentinelChecks": 3,
+    "dependencyChecks": 0,
+    "scopeBlocks": 3,
+    "cacheReads": 0,
+    "cacheWrites": 0
+  },
+  "babel_patterns": {
+    "cacheSize": 10,
+    "sentinelChecks": 0,
+    "dependencyChecks": 6,
+    "scopeBlocks": 4,
+    "cacheReads": 4,
+    "cacheWrites": 10
+  },
+  "divergence": {
+    "type": "conservative_miss",
+    "severity": "acceptable",
+    "details": "OXC uses 7 fewer cache slots"
+  }
+}
