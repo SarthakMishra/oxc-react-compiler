@@ -174,7 +174,6 @@ concise-arrow-expr.js
 conditional-break-labeled.js
 conditional-early-return.js
 conditional-on-mutable.js
-conditional-set-state-in-render.js
 conflict-codegen-instrument-forget.js
 conflicting-dollar-sign-variable.js
 consecutive-use-memo.ts
@@ -282,7 +281,6 @@ error.assign-ref-in-effect-hint.js
 error.bug-infer-mutation-aliasing-effects.js
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-expected-consistent-destructuring.js
-error.bug-invariant-local-or-context-references.js
 error.call-args-destructuring-asignment-complex.js
 error.capitalized-function-call-aliased.js
 error.capture-ref-for-mutation.tsx
@@ -336,13 +334,8 @@ error.invalid-reassign-local-variable-in-async-callback.js
 error.invalid-ref-value-as-props.js
 error.invalid-set-and-read-ref-during-render.js
 error.invalid-set-and-read-ref-nested-property-during-render.js
-error.invalid-setState-in-render-unbound-state.js
 error.invalid-setState-in-useMemo-indirect-useCallback.js
 error.invalid-setState-in-useMemo.js
-error.invalid-setstate-unconditional-with-keyed-state.js
-error.invalid-unconditional-set-state-hook-return-in-render.js
-error.invalid-unconditional-set-state-in-render.js
-error.invalid-unconditional-set-state-prop-in-render.js
 error.invalid-use-ref-added-to-dep-without-type-info.js
 error.invalid-write-but-dont-read-ref-in-render.js
 error.invalid-write-ref-prop-in-render.js
@@ -373,8 +366,6 @@ error.todo-repro-unmemoized-callback-captured-in-context-variable.tsx
 error.todo-useCallback-set-ref-nested-property-ref-modified-later-preserve-memoization.js
 error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
-error.unconditional-set-state-in-render-after-loop-break.js
-error.unconditional-set-state-in-render-with-loop-throw.js
 error.unconditional-set-state-lambda.js
 error.unconditional-set-state-nested-function-expressions.js
 error.useCallback-accesses-ref-mutated-later-via-function-preserve-memoization.js
