@@ -2406,6 +2406,7 @@ fn is_global_name(name: &str) -> bool {
             | "process"
             | "__dirname"
             | "__filename"
+            | "eval"
     )
 }
 

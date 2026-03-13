@@ -81,7 +81,10 @@ pub fn run_pipeline(
         hir, errors,
     );
 
-    // Bail early if hooks/capitalized/global validation found critical errors
+    // Pass 14.6: validate_no_eval
+    crate::validation::validate_no_eval::validate_no_eval(hir, errors);
+
+    // Bail early if hooks/capitalized/global/eval validation found critical errors
     if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
         return Err(());
     }

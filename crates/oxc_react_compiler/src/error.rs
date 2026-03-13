@@ -60,6 +60,8 @@ pub enum DiagnosticKind {
     MalformedBreakTarget,
     /// Internal invariant violation (assert_valid_mutable_ranges)
     InvariantViolation,
+    /// Use of eval() which is not supported (validate_no_eval)
+    EvalUnsupported,
     /// General/unclassified diagnostic
     Other,
 }

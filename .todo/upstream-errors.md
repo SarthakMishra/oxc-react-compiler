@@ -123,10 +123,13 @@ Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ### Gap 9: Other
 
-**Count:** 8 fixtures
+**Count:** ~7 remaining fixtures (was 8)
 **What's needed:** Triage individually -- these are miscellaneous validation errors that don't fit the above categories. Some may be one-off edge cases in existing validation passes.
-**Fixture gain estimate:** ~3-8
+**Fixture gain estimate:** ~3-7
 **Depends on:** Analysis of individual fixtures
+
+**Partially completed:**
+- `validate_no_eval` pass added (Pass 14.6): detects `eval()` calls and bails out with `EvalUnsupported` diagnostic. Upstream: `ValidateNoJSXInTryStatements.ts` (eval check). Rust module: `crates/oxc_react_compiler/src/validation/validate_no_eval.rs`. Also added `"eval"` to `is_global_name`.
 
 ## Total Fixture Gain Estimate
 

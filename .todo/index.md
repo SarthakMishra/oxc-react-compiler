@@ -58,7 +58,7 @@ We compile functions that upstream rejects with validation errors. These are
 - [ ] Hooks must be same function (4 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
 - [ ] Cannot call setState during render (2 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
 - [ ] Cannot access variable before declared (2 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
-- [ ] Other upstream errors (8 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-9-other
+- [ ] Other upstream errors (~7 remaining fixtures, eval done) — [upstream-errors.md](upstream-errors.md)#gap-9-other
 
 Note: 21 "Invariant/Todo" upstream errors are internal compiler failures in
 Babel -- these should be skipped, not matched.
@@ -138,6 +138,7 @@ All P0-P5 items have been implemented. Detail files have been removed.
 - Global hook names in SSA for conditional hook detection (+8 fixtures)
 - Hooks-as-values validation (+9 fixtures)
 - validate_no_global_reassignment pass (new)
+- validate_no_eval pass (new, Pass 14.6 -- EvalUnsupported diagnostic)
 
 ### Render Equivalence (formerly render-equivalence.md)
 
