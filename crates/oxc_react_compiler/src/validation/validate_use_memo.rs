@@ -1,6 +1,6 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{HIR, IdentifierId, InstructionValue};
-use rustc_hash::FxHashMap;
+use crate::hir::types::{HIR, IdentifierId, InstructionValue, Type};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Validate correct usage of `useMemo` and `useCallback`.
 ///
@@ -48,6 +48,8 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
                     check_memo_callback_async(hir, callback_id, instr.loc, errors);
                     // Check if the callback returns void (useMemo must return a value)
                     check_memo_callback_void(hir, callback_id, instr.loc, errors);
+                    // Check if the callback calls setState
+                    check_memo_callback_set_state(hir, callback_id, instr.loc, errors);
                 }
             }
         }
@@ -121,6 +123,86 @@ fn check_memo_callback_void(
             }
         }
     }
+}
+
+/// Check if the useMemo callback calls setState, which could cause infinite loops.
+fn check_memo_callback_set_state(
+    hir: &HIR,
+    callback_id: IdentifierId,
+    _call_loc: crate::hir::types::SourceLocation,
+    errors: &mut ErrorCollector,
+) {
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if instr.lvalue.identifier.id != callback_id {
+                continue;
+            }
+            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
+                // Collect setState identifiers in the callback body
+                let set_state_ids = collect_set_state_ids(&lowered_func.body);
+
+                // Check all call expressions in the callback body
+                for (_, inner_block) in &lowered_func.body.blocks {
+                    for inner_instr in &inner_block.instructions {
+                        if let InstructionValue::CallExpression { callee, .. } = &inner_instr.value
+                        {
+                            if set_state_ids.contains(&callee.identifier.id) {
+                                errors.push(CompilerError::invalid_react_with_kind(
+                                    inner_instr.loc,
+                                    "Calling setState from useMemo may trigger an infinite loop. \
+                                     Each time the memo callback is evaluated it will change the \
+                                     state, which will cause React to re-render and re-evaluate \
+                                     the memo callback."
+                                        .to_string(),
+                                    DiagnosticKind::UseMemoValidation,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Collect all setState identifier IDs in an HIR body.
+fn collect_set_state_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
+    let mut set_state_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if instr.lvalue.identifier.type_ == Type::SetState {
+                set_state_ids.insert(instr.lvalue.identifier.id);
+            }
+            if let Some(name) = &instr.lvalue.identifier.name {
+                if is_set_state_name(name) {
+                    set_state_ids.insert(instr.lvalue.identifier.id);
+                }
+            }
+            match &instr.value {
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if place.identifier.type_ == Type::SetState
+                        || set_state_ids.contains(&place.identifier.id)
+                    {
+                        set_state_ids.insert(instr.lvalue.identifier.id);
+                    }
+                    if let Some(name) = &place.identifier.name {
+                        if is_set_state_name(name) {
+                            set_state_ids.insert(instr.lvalue.identifier.id);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    set_state_ids
+}
+
+/// Check if a name looks like a setState function (setX where X is uppercase).
+fn is_set_state_name(name: &str) -> bool {
+    name.starts_with("set") && name.len() > 3 && name.as_bytes()[3].is_ascii_uppercase()
 }
 
 /// Check if the function expression producing the given identifier is async.

@@ -296,7 +296,6 @@ error.invalid-array-push-frozen.js
 error.invalid-computed-store-to-frozen-value.js
 error.invalid-conditional-call-aliased-hook-import.js
 error.invalid-conditional-call-aliased-react-hook.js
-error.invalid-conditional-setState-in-useMemo.js
 error.invalid-delete-computed-property-of-frozen-value.js
 error.invalid-delete-property-of-frozen-value.js
 error.invalid-derived-computation-in-effect.js
@@ -323,7 +322,6 @@ error.invalid-pass-ref-to-function.js
 error.invalid-prop-mutation-indirect.js
 error.invalid-property-store-to-frozen-value.js
 error.invalid-reassign-local-variable-in-async-callback.js
-error.invalid-setState-in-useMemo.js
 error.modify-state-2.js
 error.modify-state.js
 error.modify-useReducer-state.js
