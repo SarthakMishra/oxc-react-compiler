@@ -2,4 +2,4 @@
 source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
 expression: "format!(\"{errors:?}\")"
 ---
-[]
+["useMemo callback must not be async. The callback should return a value synchronously."]

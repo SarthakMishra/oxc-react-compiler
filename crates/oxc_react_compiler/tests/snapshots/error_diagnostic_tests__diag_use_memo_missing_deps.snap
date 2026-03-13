@@ -2,4 +2,4 @@
 source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
 expression: "format!(\"{errors:?}\")"
 ---
-[]
+["\"useMemo\" requires exactly 2 arguments (a callback and a dependency array), but received 1."]
