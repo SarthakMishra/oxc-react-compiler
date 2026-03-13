@@ -23,7 +23,7 @@ divergences break down as follows:
 
 ## Active Work
 
-_(Nothing active)_
+- [~] Temp variable inlining pass (recursive cross-scope counting done; needs remaining P1 fixes to yield fixture gains) — [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
 
 ---
 
@@ -40,7 +40,6 @@ structure differs. Sub-breakdown:
 
 All items are interdependent -- they must be fixed together for fixtures to pass.
 
-- [ ] Temp variable inlining pass (collapse SSA chains in codegen) — [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
 - [ ] JSX syntax preservation in codegen (emit `<div>` not `_jsx()`) — [memoization-structure.md](memoization-structure.md)#gap-2-jsx-syntax-preservation-in-codegen
 - [ ] Scope merging/splitting heuristic audit vs upstream — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
 - [ ] Sentinel scope emission for non-reactive allocating expressions — [memoization-structure.md](memoization-structure.md)#gap-5-sentinel-scope-emission
@@ -111,6 +110,11 @@ All P0-P5 items have been implemented. Detail files have been removed.
 - Skip functions with zero cache slots (+90 fixtures)
 - Upstream error matching (+120 fixtures)
 - OutputMode::Lint and gating directives (+37 fixtures)
+
+### Temp Variable Inlining Foundation (2026-03-13)
+
+- Recursive cross-scope temp use-counting in codegen.rs
+- FxHash migration for all codegen collections
 
 ### Validation SSA Improvements (2026-03-13)
 

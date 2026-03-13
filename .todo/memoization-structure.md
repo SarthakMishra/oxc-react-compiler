@@ -35,18 +35,19 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 
 ## Implementation Plan
 
-### Gap 1: Temp Variable Inlining Pass
+### Gap 1: Temp Variable Inlining Pass [IN PROGRESS]
 
 **Upstream:** Babel's codegen never sees raw SSA temps -- its IR-to-code translation directly inlines simple expressions. The relevant upstream logic is spread across `CodegenReactiveFunction.ts` and `PrintReactiveFunction.ts`.
-**Current state:** Our codegen in `codegen.rs` faithfully emits every SSA temporary as a separate `const` declaration. The `prune_temporary_lvalues` pass (Pass 9.5) removes some trivial temps but not all.
-**What's needed:**
-- Implement a temp-inlining pass that runs after `rename_variables` (Pass 59) but before codegen
-- For each temporary `tN` that is: (a) assigned exactly once, (b) used exactly once, (c) the use immediately follows the definition with no intervening side effects -- inline the RHS expression into the use site
-- Example: `const t0 = useRef; const t1 = null; const t2 = t0(t1)` collapses to `const t2 = useRef(null)`
-- This pass operates on the `ReactiveFunction` tree, walking instructions and maintaining a use-count map
-- Alternatively, this can be done during codegen itself (peephole inlining) by buffering pending simple assignments and substituting when the temp is referenced
-**Fixture gain estimate:** ~150-200 (many structural mismatches are purely due to temp explosion)
-**Depends on:** None
+**Current state (updated 2026-03-13):** Recursive cross-scope temp use-counting has been implemented directly in `codegen.rs`. The codegen now walks nested `ReactiveTerminal::Scope` blocks when counting temp uses, so temps referenced only inside child scopes are correctly identified as single-use and inlined. All hash collections in codegen were migrated to `FxHashMap`/`FxHashSet` for performance. Conformance remains at 304/1717 -- this is a foundational fix that unblocks other P1 items rather than moving fixtures on its own.
+
+**What remains:**
+- The inlining logic itself is functional and correct for cross-scope cases
+- Fixture gains will materialize when combined with other P1 fixes (JSX preservation, sentinel scopes, over-scoped deps) -- the interdependency noted in the risk section is the key blocker
+- May need additional refinement once JSX preservation (Gap 2) lands, as JSX nodes create additional temp chains that are not yet exercised
+
+**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs`
+**Fixture gain estimate:** ~150-200 (compound effect with other P1 gaps; 0 in isolation)
+**Depends on:** None (but gains depend on Gap 2 + Gap 5 + Gap 6)
 
 ### Gap 2: JSX Syntax Preservation in Codegen
 

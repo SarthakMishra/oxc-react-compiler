@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::hir::types::{
     InstructionValue, Place, Primitive, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
@@ -16,7 +17,7 @@ use crate::hir::types::{
 /// (e.g. `"\"div\""`).  When a temp is in this map, it should **not** be
 /// emitted as a separate `const tN = …` statement; instead, its expression
 /// is substituted directly at the use-site.
-type InlineMap = HashMap<String, String>;
+type InlineMap = FxHashMap<String, String>;
 
 /// Returns `true` when the identifier corresponds to a compiler-generated
 /// temporary (unnamed, printed as `tN`).
@@ -34,11 +35,12 @@ fn is_temp_place(place: &Place) -> bool {
 
 /// Count how many times each temp identifier is *used* (appears on the RHS)
 /// within a flat slice of reactive instructions, only counting plain
-/// `Instruction` items (not nested terminals / scopes).
+/// `Instruction` and `Terminal` place references at this level (not nested
+/// terminals / scopes).
 ///
 /// The returned map only contains entries for temp places (`name.is_none()`).
-fn count_temp_uses(instructions: &[ReactiveInstruction]) -> HashMap<String, u32> {
-    let mut counts: HashMap<String, u32> = HashMap::new();
+fn count_temp_uses_flat(instructions: &[ReactiveInstruction]) -> FxHashMap<String, u32> {
+    let mut counts: FxHashMap<String, u32> = FxHashMap::default();
     for ri in instructions {
         match ri {
             ReactiveInstruction::Instruction(instr) => {
@@ -53,8 +55,77 @@ fn count_temp_uses(instructions: &[ReactiveInstruction]) -> HashMap<String, u32>
     counts
 }
 
+/// Count how many times each temp identifier is *used* across the entire
+/// subtree rooted at the given instruction slice — recursing into nested
+/// `Scope` bodies and `Terminal` child blocks.
+fn count_temp_uses_recursive(instructions: &[ReactiveInstruction]) -> FxHashMap<String, u32> {
+    let mut counts: FxHashMap<String, u32> = FxHashMap::default();
+    count_temp_uses_in_slice(instructions, &mut counts);
+    counts
+}
+
+fn count_temp_uses_in_slice(instructions: &[ReactiveInstruction], counts: &mut FxHashMap<String, u32>) {
+    for ri in instructions {
+        match ri {
+            ReactiveInstruction::Instruction(instr) => {
+                visit_instr_uses(&instr.value, counts);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                visit_terminal_uses(terminal, counts);
+                visit_terminal_child_blocks(terminal, counts);
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                count_temp_uses_in_slice(&scope_block.instructions.instructions, counts);
+            }
+        }
+    }
+}
+
+/// Recurse into the child `ReactiveBlock` fields of a terminal to count temp
+/// uses in nested blocks (e.g. if/else branches, loop bodies, etc.).
+fn visit_terminal_child_blocks(terminal: &ReactiveTerminal, counts: &mut FxHashMap<String, u32>) {
+    match terminal {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
+            count_temp_uses_in_slice(&consequent.instructions, counts);
+            count_temp_uses_in_slice(&alternate.instructions, counts);
+        }
+        ReactiveTerminal::Switch { cases, .. } => {
+            for (_, block) in cases {
+                count_temp_uses_in_slice(&block.instructions, counts);
+            }
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { body, test, .. } => {
+            count_temp_uses_in_slice(&test.instructions, counts);
+            count_temp_uses_in_slice(&body.instructions, counts);
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            count_temp_uses_in_slice(&init.instructions, counts);
+            count_temp_uses_in_slice(&test.instructions, counts);
+            if let Some(upd) = update {
+                count_temp_uses_in_slice(&upd.instructions, counts);
+            }
+            count_temp_uses_in_slice(&body.instructions, counts);
+        }
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            count_temp_uses_in_slice(&init.instructions, counts);
+            count_temp_uses_in_slice(&test.instructions, counts);
+            count_temp_uses_in_slice(&body.instructions, counts);
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            count_temp_uses_in_slice(&block.instructions, counts);
+            count_temp_uses_in_slice(&handler.instructions, counts);
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            count_temp_uses_in_slice(&block.instructions, counts);
+        }
+        ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
+    }
+}
+
 /// Count temp uses in terminal place references (test conditions, return values, etc.)
-fn visit_terminal_uses(terminal: &ReactiveTerminal, counts: &mut HashMap<String, u32>) {
+fn visit_terminal_uses(terminal: &ReactiveTerminal, counts: &mut FxHashMap<String, u32>) {
     match terminal {
         ReactiveTerminal::Return { value, .. } | ReactiveTerminal::Throw { value, .. } => {
             bump_temp(value, counts);
@@ -83,7 +154,7 @@ fn visit_terminal_uses(terminal: &ReactiveTerminal, counts: &mut HashMap<String,
 
 /// Walk all *operand* places in an `InstructionValue` and increment the
 /// use-count for any that are temps.
-fn visit_instr_uses(value: &InstructionValue, counts: &mut HashMap<String, u32>) {
+fn visit_instr_uses(value: &InstructionValue, counts: &mut FxHashMap<String, u32>) {
     match value {
         InstructionValue::LoadLocal { place }
         | InstructionValue::LoadContext { place }
@@ -212,7 +283,7 @@ fn visit_instr_uses(value: &InstructionValue, counts: &mut HashMap<String, u32>)
     }
 }
 
-fn bump_temp(place: &Place, counts: &mut HashMap<String, u32>) {
+fn bump_temp(place: &Place, counts: &mut FxHashMap<String, u32>) {
     if is_temp_place(place) {
         let name = format!("t{}", place.identifier.id.0);
         *counts.entry(name).or_insert(0) += 1;
@@ -272,17 +343,17 @@ fn is_inlinable(value: &InstructionValue) -> bool {
 /// Build the inline map for a flat block of instructions.
 ///
 /// Algorithm:
-/// 1. Count how many times each temp is used (across the whole block).
+/// 1. Count how many times each temp is used — both at this flat level
+///    (`flat_counts`) and across the entire subtree (`total_counts`).
 /// 2. Walk instructions in order.  For each instruction whose lvalue is an
 ///    unnamed temp:
-///    a. Its use-count must be exactly 1.
+///    a. Its total use-count must be exactly 1.
 ///    b. The value must be `is_inlinable`.
 ///    c. For call-like instructions (CallExpression / MethodCall /
-///    NewExpression) we additionally require that the very next
-///    instruction in the sequence uses this temp as an operand
-///    (checked by ensuring no intervening side-effecting instructions
-///    follow before the single use site — approximated here by the
-///    single-use guarantee already holding).
+///       NewExpression) we additionally require that the single use is at
+///       the *same* nesting level (flat_count == 1) — we must not inline
+///       a side-effecting call into a reactive scope body that may be
+///       skipped by the cache guard.
 ///    If all conditions hold, generate the expression string and insert into
 ///    the map.
 ///
@@ -292,14 +363,17 @@ fn is_inlinable(value: &InstructionValue) -> bool {
 /// already inlined to `"div"` becomes `_jsx("div", …)`).
 fn build_inline_map(
     instructions: &[ReactiveInstruction],
-    protected_names: &HashSet<String>,
+    protected_names: &FxHashSet<String>,
 ) -> InlineMap {
-    let use_counts = count_temp_uses(instructions);
-    let mut inline_map: InlineMap = HashMap::new();
+    // Flat counts: only uses at this block level (no recursion into scopes/terminals)
+    let flat_counts = count_temp_uses_flat(instructions);
+    // Total counts: uses across the entire subtree (recursive into scopes/terminals)
+    let total_counts = count_temp_uses_recursive(instructions);
+    let mut inline_map: InlineMap = FxHashMap::default();
 
     // Collect temps that are used in scope declarations (outputs from child scopes) —
     // these must never be removed as dead even if they have 0 intra-block uses.
-    let mut scope_output_temps: HashSet<String> = HashSet::new();
+    let mut scope_output_temps: FxHashSet<String> = FxHashSet::default();
     for ri in instructions {
         if let ReactiveInstruction::Scope(scope_block) = ri {
             for (_, decl) in &scope_block.scope.declarations {
@@ -316,9 +390,9 @@ fn build_inline_map(
             continue;
         }
         let temp_name = format!("t{}", lvalue.identifier.id.0);
-        // Check use count
-        let use_count = use_counts.get(&temp_name).copied().unwrap_or(0);
-        if use_count == 0 {
+        // Check total use count (across all nested blocks)
+        let total_count = total_counts.get(&temp_name).copied().unwrap_or(0);
+        if total_count == 0 {
             // Dead temp — mark for removal by inserting empty sentinel
             // But NOT if it's a scope output (used in cache storage/else branch)
             // And NOT if it has side effects
@@ -340,12 +414,28 @@ fn build_inline_map(
             }
             continue;
         }
-        if use_count != 1 {
+        if total_count != 1 {
             continue;
         }
         // Must be an inlinable value
         if !is_inlinable(&instr.value) {
             continue;
+        }
+        // For call-like values (side-effecting), only inline if the single use
+        // is at the same nesting level. If flat_count == 0, the use is inside
+        // a nested scope/terminal — the scope body may be skipped by the cache
+        // guard, which would suppress the call entirely.
+        let is_call_like = matches!(
+            &instr.value,
+            InstructionValue::CallExpression { .. }
+                | InstructionValue::MethodCall { .. }
+                | InstructionValue::NewExpression { .. }
+        );
+        if is_call_like {
+            let flat_count = flat_counts.get(&temp_name).copied().unwrap_or(0);
+            if flat_count == 0 {
+                continue; // use is inside a nested scope — unsafe to inline call
+            }
         }
         // Generate the RHS expression string
         if let Some(expr) = expr_string(&instr.value, &inline_map) {
@@ -589,10 +679,10 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     // Track variables declared via DeclareLocal so that subsequent
     // StoreLocal / Destructure can emit bare assignments instead of
     // re-declaring with const/let.
-    let mut declared = HashSet::new();
+    let mut declared = FxHashSet::default();
 
     // Collect parameter names for destructuring hoisting
-    let param_names: HashSet<String> = rf
+    let param_names: FxHashSet<String> = rf
         .params
         .iter()
         .map(|p| match p {
@@ -605,8 +695,8 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     // (e.g., `const { status } = t0;`) to the top of the function body,
     // before any reactive scope checks that may reference those variables.
     // Hoisted parameter destructures are never temps, so we use an empty inline map.
-    let empty_inline_map = InlineMap::new();
-    let mut hoisted_indices = HashSet::new();
+    let empty_inline_map = InlineMap::default();
+    let mut hoisted_indices = FxHashSet::default();
     for (i, instr) in rf.body.instructions.iter().enumerate() {
         if let ReactiveInstruction::Instruction(instruction) = instr
             && let InstructionValue::Destructure { value, .. } = &instruction.value {
@@ -644,9 +734,9 @@ fn codegen_block(
     output: &mut String,
     cache_slot: &mut u32,
     indent: usize,
-    declared: &mut HashSet<String>,
+    declared: &mut FxHashSet<String>,
 ) {
-    let inline_map = build_inline_map(&block.instructions, &HashSet::new());
+    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default());
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
@@ -669,10 +759,10 @@ fn codegen_block_skip_hoisted(
     output: &mut String,
     cache_slot: &mut u32,
     indent: usize,
-    declared: &mut HashSet<String>,
-    hoisted_indices: &HashSet<usize>,
+    declared: &mut FxHashSet<String>,
+    hoisted_indices: &FxHashSet<usize>,
 ) {
-    let inline_map = build_inline_map(&block.instructions, &HashSet::new());
+    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default());
     for (i, instr) in block.instructions.iter().enumerate() {
         if hoisted_indices.contains(&i) {
             continue;
@@ -699,8 +789,8 @@ fn codegen_block_skip_declares(
     output: &mut String,
     cache_slot: &mut u32,
     indent: usize,
-    declared: &mut HashSet<String>,
-    protected_names: &HashSet<String>,
+    declared: &mut FxHashSet<String>,
+    protected_names: &FxHashSet<String>,
 ) {
     let inline_map = build_inline_map(&block.instructions, protected_names);
     for instr in &block.instructions {
@@ -729,7 +819,7 @@ fn codegen_instruction(
     instr: &crate::hir::types::Instruction,
     output: &mut String,
     indent: &str,
-    declared: &mut HashSet<String>,
+    declared: &mut FxHashSet<String>,
     inline_map: &InlineMap,
 ) {
     let lvalue_name = place_name(&instr.lvalue);
@@ -1246,7 +1336,7 @@ fn codegen_terminal(
     output: &mut String,
     cache_slot: &mut u32,
     indent: usize,
-    declared: &mut HashSet<String>,
+    declared: &mut FxHashSet<String>,
     inline_map: &InlineMap,
 ) {
     let indent_str = "  ".repeat(indent);
@@ -1356,7 +1446,7 @@ fn codegen_scope(
     output: &mut String,
     cache_slot: &mut u32,
     indent: usize,
-    declared: &mut HashSet<String>,
+    declared: &mut FxHashSet<String>,
 ) {
     let indent_str = "  ".repeat(indent);
     let deps = &scope.scope.dependencies;
@@ -1366,7 +1456,7 @@ fn codegen_scope(
     // These must be emitted before the scope's dependency check since the
     // check may reference these variables (e.g., `$[0] !== count`).
     // DeclareLocal/DeclareContext are never inlinable, so we use an empty inline map.
-    let empty_inline_map = InlineMap::new();
+    let empty_inline_map = InlineMap::default();
     for instr in &scope.instructions.instructions {
         if let ReactiveInstruction::Instruction(instruction) = instr
             && let InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. } =
@@ -1411,7 +1501,7 @@ fn codegen_scope(
     // Generate scope body (DeclareLocal/DeclareContext already hoisted above)
     // Scope declaration names are "protected" — they're used by the cache storage
     // and else-branch reload, so they must not be eliminated as dead temps.
-    let scope_decl_names: HashSet<String> = scope
+    let scope_decl_names: FxHashSet<String> = scope
         .scope
         .declarations
         .iter()
@@ -1486,7 +1576,7 @@ fn codegen_hir_body(hir: &crate::hir::types::HIR, output: &mut String, indent: u
         crate::reactive_scopes::build_reactive_function::build_reactive_block_from_hir(
             hir, hir.entry,
         );
-    let mut declared = HashSet::new();
+    let mut declared = FxHashSet::default();
     let mut cache_slot = 0u32;
     codegen_block(&reactive_block, output, &mut cache_slot, indent, &mut declared);
 }
@@ -1717,7 +1807,7 @@ fn binary_op_str(op: crate::hir::types::BinaryOp) -> &'static str {
 
 fn pattern_has_declared_names(
     pattern: &crate::hir::types::DestructurePattern,
-    declared: &HashSet<String>,
+    declared: &FxHashSet<String>,
 ) -> bool {
     use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
     match pattern {
@@ -1772,7 +1862,7 @@ fn pattern_has_declared_names(
 /// Collect all variable names from a destructure pattern into the declared set.
 fn collect_pattern_names(
     pattern: &crate::hir::types::DestructurePattern,
-    declared: &mut HashSet<String>,
+    declared: &mut FxHashSet<String>,
 ) {
     use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
     match pattern {
@@ -2126,8 +2216,8 @@ fn codegen_block_with_map(
     indent: usize,
     source: &str,
 ) {
-    let inline_map = build_inline_map(&block.instructions, &HashSet::new());
-    let mut declared = HashSet::new();
+    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default());
+    let mut declared = FxHashSet::default();
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
