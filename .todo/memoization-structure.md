@@ -135,13 +135,16 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 ### Gap 10: Overlap Merge Regression
 
 **Upstream:** `MergeOverlappingReactiveScopes.ts`
-**Current state:** An attempt to implement overlap-based scope merging in `merge_overlapping_reactive_scopes_hir` was reverted because it caused regressions. The issue is that upstream operates on a reactive scope tree structure where scope ranges are well-defined, while our implementation operates on flat instruction ranges. The flat approach incorrectly merged scopes that happened to have overlapping instruction IDs but were semantically separate.
+**Current state:** Two attempts have been made and reverted:
+1. **Initial attempt (flat-range overlap):** Merged scopes with overlapping instruction ID ranges. Reverted because upstream operates on a reactive scope tree where scope ranges are well-defined, while our flat approach incorrectly merged semantically separate scopes.
+2. **DSU rewrite attempt (2026-03-13):** A 3-phase disjoint-set-union algorithm was implemented -- Phase 1 builds a union-find grouping scopes with overlapping ranges, Phase 2 merges grouped scopes into a single representative, Phase 3 rebuilds the scope list. This produced structurally correct merges but generated invalid JavaScript: merged scopes spanning multiple blocks caused `const` declarations inside an `if`-block to be referenced outside their lexical scope. The root cause is that our codegen emits scopes as `if (...)` blocks, and merging scopes that cross block boundaries creates const-scoping violations.
+
 **What's needed:**
-- Study how upstream `MergeOverlappingReactiveScopes.ts` builds and traverses the scope tree
-- Determine if our `merge_overlapping_reactive_scopes_hir` needs to build a proper scope tree before merging, or if the flat approach can be salvaged with better overlap criteria
-- Re-implement with proper regression testing against the fixtures that broke
-**Depends on:** Understanding of upstream scope tree representation
-**Risk:** Medium -- incorrect overlap merging can cause scopes to be too large, leading to over-memoization and wrong slot counts
+- **Data-flow dependency analysis prerequisite:** Before merging scopes, the algorithm must verify that declarations within each scope are not referenced outside the merged block boundary. This requires tracking which identifiers are declared inside vs consumed outside -- essentially a mini liveness analysis scoped to the merge candidate set.
+- Alternatively, the codegen must be restructured to handle merged scopes that span blocks (e.g., hoisting declarations above the if-block, or using `let` instead of `const` for cross-block values)
+- Study how upstream `MergeOverlappingReactiveScopes.ts` avoids this problem -- it operates on a ReactiveFunction tree where scope nesting is explicit, so cross-block issues are structurally prevented
+**Depends on:** Data-flow analysis for cross-block declaration safety, or codegen restructuring
+**Risk:** Medium -- incorrect overlap merging causes scopes to be too large (over-memoization, wrong slot counts) or generates invalid JS (const scoping violations)
 
 ## Measurement Strategy
 

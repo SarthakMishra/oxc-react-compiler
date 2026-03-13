@@ -1,7 +1,7 @@
 # Upstream Errors -- Validation Gaps
 
-> **Priority**: P2 (~46 remaining fixtures, high tractability -- each fix is "emit error + bail")
-> **Impact**: ~46 remaining fixtures where we compile but Babel bails with a validation error
+> **Priority**: P2 (~34 remaining fixtures, high tractability -- each fix is "emit error + bail")
+> **Impact**: ~34 remaining fixtures where we compile but Babel bails with a validation error
 > **Tractability**: HIGH -- each sub-category is a focused validation improvement
 
 ## Problem Statement
@@ -68,17 +68,25 @@ Newly passing fixtures include: `capture-ref-for-mutation`, `invalid-disallow-mu
 **Fixture gain estimate:** ~5-8
 **Depends on:** None
 
-### Gap 4: Reassign Outside Component
+### Gap 4: Reassign Outside Component (partially complete)
 
-**Count:** 6 fixtures
+**Count:** ~2 remaining (6 of 8 now passing)
 **Upstream error:** "Cannot reassign variables outside component"
-**Upstream:** `ValidateLocalsNotReassignedAfterRender.ts`
-**Current state:** `validate_locals_not_reassigned_after_render.rs` exists. May not detect reassignment of module-level variables from within component functions.
-**What's needed:**
-- Detect when a component/hook function assigns to a variable declared in an outer (module) scope
-- Emit the appropriate error
-- This is related to Gap 1 (both involve mutation tracking) but focuses on scope-crossing assignments
-**Fixture gain estimate:** ~4-6
+**Upstream:** `ValidateLocalsNotReassignedAfterRender.ts`, `ValidateNoGlobalReassignment.ts` (split across two passes)
+
+**Completed (2026-03-13):** Two-pronged fix:
+1. `validate_no_global_reassignment.rs` rewritten with nested function scope analysis -- properly tracks function declarations, arrow functions, and function expressions as scope boundaries, distinguishing global vs local reassignment. Handles increment/decrement operators, compound assignments, and plain assignments.
+2. `validate_locals_not_reassigned_after_render.rs` enhanced with async function/arrow detection -- reassignments inside async callbacks now correctly flagged as post-render mutations.
+3. `build.rs` fixed function declaration lowering -- StoreLocal instruction now connects function value to its binding identifier, enabling proper scope tracking.
+
+Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_global_reassignment.rs`, `crates/oxc_react_compiler/src/validation/validate_locals_not_reassigned_after_render.rs`, `crates/oxc_react_compiler/src/hir/build.rs`. +8 fixtures (331 -> 339/1717).
+
+Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.assign-global-in-jsx-children`, `error.reassign-global-fn-arg`, `error.mutate-global-increment-op-invalid-react`, `error.invalid-reassign-local-variable-in-async-callback`, `error.declare-reassign-variable-in-function-declaration`, `error.todo-repro-named-function-with-shadowed-local-same-name` (x2).
+
+**What remains (~2 fixtures):**
+- Edge cases likely involving indirect reassignment patterns (reassignment through destructuring, or module-scope variable mutation via object property aliasing)
+- May require deeper SSA identity tracking (see Cross-Cutting Issue above)
+**Fixture gain estimate:** ~1-2
 **Depends on:** None
 
 ### Gap 5: Ref Access During Render
@@ -134,18 +142,19 @@ Newly passing fixtures include: `capture-ref-for-mutation`, `invalid-disallow-mu
 
 ### Gap 9: Other
 
-**Count:** ~7 remaining fixtures (was 8)
+**Count:** ~3 remaining fixtures (was 8)
 **What's needed:** Triage individually -- these are miscellaneous validation errors that don't fit the above categories. Some may be one-off edge cases in existing validation passes.
-**Fixture gain estimate:** ~3-7
+**Fixture gain estimate:** ~1-3
 **Depends on:** Analysis of individual fixtures
 
 **Partially completed:**
 - `validate_no_eval` pass added (Pass 14.6): detects `eval()` calls and bails out with `EvalUnsupported` diagnostic. Upstream: `ValidateNoJSXInTryStatements.ts` (eval check). Rust module: `crates/oxc_react_compiler/src/validation/validate_no_eval.rs`. Also added `"eval"` to `is_global_name`.
+- Hooks-in-nested-functions (Rule 4) added to `validate_hooks_usage.rs` (2026-03-13): `check_hooks_in_nested_functions` detects hook calls inside FunctionExpression and ObjectMethod bodies. Emits bail diagnostic. +4 fixtures: `error.bail.rules-of-hooks-3d692676194b`, `error.bail.rules-of-hooks-8503ca76d6f8`, `error.invalid-hook-in-nested-object-method`, `error.invalid.invalid-rules-of-hooks-d952b82c2597`. Rust module: `crates/oxc_react_compiler/src/validation/validate_hooks_usage.rs`. Conformance: 339 -> 343/1717.
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 56 (19 from Gap 1 frozen mutation [6 initial + 13 enhancement], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements).
-Remaining achievable: ~17-37 of the remaining ~46 fixtures (some require deep
+Achieved so far: 68 (19 from Gap 1 frozen mutation [6 initial + 13 enhancement], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions).
+Remaining achievable: ~7-27 of the remaining ~34 fixtures (some require deep
 alias tracking that may not be worth the complexity). The 21 Invariant/Todo
 fixtures should be registered as known skips.
 

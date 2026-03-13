@@ -1133,14 +1133,10 @@ reverse-postorder.js
 rewrite-phis-in-lambda-capture-context.js
 rules-of-hooks/allow-locals-named-like-hooks.js
 rules-of-hooks/allow-props-named-like-hooks.js
-rules-of-hooks/error.bail.rules-of-hooks-3d692676194b.js
-rules-of-hooks/error.bail.rules-of-hooks-8503ca76d6f8.js
 rules-of-hooks/error.invalid-dynamic-hook-via-hooklike-local.js
 rules-of-hooks/error.invalid-hook-as-prop.js
 rules-of-hooks/error.invalid-hook-for.js
 rules-of-hooks/error.invalid-hook-from-hook-return.js
-rules-of-hooks/error.invalid-hook-in-nested-object-method.js
-rules-of-hooks/error.invalid.invalid-rules-of-hooks-d952b82c2597.js
 rules-of-hooks/rules-of-hooks-0e2214abc294.js
 rules-of-hooks/rules-of-hooks-4f6c78a14bf7.js
 rules-of-hooks/rules-of-hooks-69521d94fa03.js

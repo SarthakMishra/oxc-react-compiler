@@ -7,6 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// 1. Hooks must be called at the top level (not inside conditions/loops)
 /// 2. Hooks must be called in the same order every render
 /// 3. Hooks must not be referenced as normal values (must be called)
+/// 4. Hooks must not be called inside nested function expressions
 pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
     // Track which blocks are inside conditionals/loops
     let conditional_blocks = find_conditional_blocks(hir);
@@ -124,6 +125,112 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    // Rule 4: Hooks must not be called inside nested function expressions
+    check_hooks_in_nested_functions(hir, errors);
+}
+
+/// Check for hook calls inside nested function expressions and object methods.
+///
+/// Upstream: Hooks must be called at the top level in the body of a function
+/// component or custom hook, and may not be called within function expressions.
+fn check_hooks_in_nested_functions(hir: &HIR, errors: &mut ErrorCollector) {
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            let nested_hir: Option<&HIR> = match &instr.value {
+                InstructionValue::FunctionExpression { lowered_func, .. } => {
+                    Some(&lowered_func.body)
+                }
+                InstructionValue::ObjectMethod { lowered_func } => Some(&lowered_func.body),
+                _ => None,
+            };
+            if let Some(body) = nested_hir {
+                check_nested_hir_for_hook_calls(body, errors);
+            }
+        }
+    }
+}
+
+/// Recursively scan a nested HIR for hook calls and emit errors.
+fn check_nested_hir_for_hook_calls(body: &HIR, errors: &mut ErrorCollector) {
+    // Build name-resolution map for this nested body
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+
+    for (_, block) in &body.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadGlobal { binding } => {
+                    id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                }
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name {
+                        id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                    }
+                }
+                _ => {}
+            }
+            if let Some(name) = &instr.lvalue.identifier.name {
+                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
+            }
+        }
+    }
+
+    for (_, block) in &body.blocks {
+        for instr in &block.instructions {
+            // Check CallExpression for hook calls
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                let name = callee
+                    .identifier
+                    .name
+                    .clone()
+                    .or_else(|| id_to_name.get(&callee.identifier.id).cloned());
+                if let Some(name) = name
+                    && is_hook_name(&name)
+                {
+                    errors.push(CompilerError::invalid_react_with_kind(
+                        instr.loc,
+                        format!(
+                            "Hooks must be called at the top level in the body of a function \
+                             component or custom hook, and may not be called within function \
+                             expressions. See the Rules of Hooks \
+                             (https://react.dev/warnings/invalid-hook-call-warning). \
+                             Cannot call {name} within a function expression."
+                        ),
+                        DiagnosticKind::HooksViolation,
+                    ));
+                }
+            }
+
+            // Check MethodCall for hook-named methods
+            if let InstructionValue::MethodCall { property, .. } = &instr.value
+                && is_hook_name(property)
+            {
+                errors.push(CompilerError::invalid_react_with_kind(
+                    instr.loc,
+                    format!(
+                        "Hooks must be called at the top level in the body of a function \
+                         component or custom hook, and may not be called within function \
+                         expressions. See the Rules of Hooks \
+                         (https://react.dev/warnings/invalid-hook-call-warning). \
+                         Cannot call {property} within a function expression."
+                    ),
+                    DiagnosticKind::HooksViolation,
+                ));
+            }
+
+            // Recurse into deeper nested functions
+            let nested_hir: Option<&HIR> = match &instr.value {
+                InstructionValue::FunctionExpression { lowered_func, .. } => {
+                    Some(&lowered_func.body)
+                }
+                InstructionValue::ObjectMethod { lowered_func } => Some(&lowered_func.body),
+                _ => None,
+            };
+            if let Some(nested_body) = nested_hir {
+                check_nested_hir_for_hook_calls(nested_body, errors);
             }
         }
     }

@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-13 (post global-reassignment + async-callback validation, 339/1717)
+Last updated: 2026-03-13 (post hooks-in-nested-functions validation + merge_scopes investigation, 343/1717)
 
-Current conformance: 339/1717 pass (19.7%), 0 panics, 0 unexpected divergences.
+Current conformance: 343/1717 pass (20.0%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -24,7 +24,7 @@ Gap 4 scope heuristics) are fixed.
 | Compiled with memo | ~923 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~46 | We compile but upstream bails |
+| Upstream errors | ~34 | We compile but upstream bails |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -56,9 +56,9 @@ codegen) are now resolved. Property-path deps yielded +3 fixtures (315 -> 318).
 - [~] Scope merging/splitting heuristic audit vs upstream (name-based dep comparison done; overlap merge + setState heuristic reverted) — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 - [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation
-- [ ] Overlap merge regression risk (reverted, needs investigation) — [memoization-structure.md](memoization-structure.md)#gap-10-overlap-merge-regression
+- [ ] Overlap merge regression risk (DSU rewrite attempted + reverted; needs data-flow dependency analysis) — [memoization-structure.md](memoization-structure.md)#gap-10-overlap-merge-regression
 
-## Priority 2 -- Upstream Errors (~46 fixtures remaining)
+## Priority 2 -- Upstream Errors (~34 fixtures remaining)
 
 We compile functions that upstream rejects with validation errors. These are
 "free" fixture gains -- emit the right error and bail, source matches.
@@ -70,7 +70,7 @@ We compile functions that upstream rejects with validation errors. These are
 - [ ] Hooks must be same function (4 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
 - [ ] Cannot call setState during render (2 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
 - [ ] Cannot access variable before declared (2 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
-- [ ] Other upstream errors (~7 remaining fixtures, eval done) — [upstream-errors.md](upstream-errors.md)#gap-9-other
+- [ ] Other upstream errors (~3 remaining fixtures, eval + hooks-in-nested done) — [upstream-errors.md](upstream-errors.md)#gap-9-other
 
 Note: 21 "Invariant/Todo" upstream errors are internal compiler failures in
 Babel -- these should be skipped, not matched.
@@ -112,6 +112,13 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Hooks-in-Nested-Functions Validation + MergeOverlappingReactiveScopes Investigation (2026-03-13)
+
+- `validate_hooks_usage.rs`: Rule 4 added -- `check_hooks_in_nested_functions` detects hook calls inside FunctionExpression/ObjectMethod bodies and emits bail diagnostic
+- 4 fixtures removed from known-failures.txt: `error.bail.rules-of-hooks-3d692676194b`, `error.bail.rules-of-hooks-8503ca76d6f8`, `error.invalid-hook-in-nested-object-method`, `error.invalid.invalid-rules-of-hooks-d952b82c2597`
+- `merge_scopes.rs`: 3-phase DSU algorithm for MergeOverlappingReactiveScopes attempted (union-find with scope grouping and merge). Produced invalid JS due to const scoping across blocks. Reverted to flat-range merge. Data-flow dependency analysis identified as prerequisite for correct overlap merging.
+- Conformance: 339 -> 343/1717 (+4)
 
 ### Global Reassignment + Async Callback Validation (2026-03-13)
 
