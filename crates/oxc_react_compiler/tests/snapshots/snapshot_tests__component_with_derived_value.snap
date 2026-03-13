@@ -10,9 +10,9 @@ function Display(t0) {
   let count;
   let label;
   let t16;
-  if ($[0] !== items) {
+  if ($[0] !== items.length) {
     count = items.length;
-    $[0] = items;
+    $[0] = items.length;
   }
   if (t40) {
     t16 = "Has items";

@@ -134,7 +134,7 @@ Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 37 (6 from Gap 1 frozen mutation, 31 from Gap 2 preserve-memo pipeline gate fixes).
+Achieved so far: 43 (6 from Gap 1 frozen mutation, 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements).
 Remaining achievable: ~30-50 of the remaining ~59 fixtures (some require deep
 alias tracking that may not be worth the complexity). The 21 Invariant/Todo
 fixtures should be registered as known skips.

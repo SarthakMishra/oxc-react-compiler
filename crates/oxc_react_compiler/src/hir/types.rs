@@ -935,7 +935,7 @@ pub struct ReactiveScopeDeclaration {
     pub scope: ScopeId,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DependencyPathEntry {
     pub property: String,
     pub optional: bool,

@@ -605,7 +605,6 @@ jsx-attribute-default-to-true.tsx
 jsx-attribute-with-jsx-element-value.js
 jsx-attribute-with-jsx-fragment-value.flow.js
 jsx-bracket-in-text.jsx
-jsx-empty-expression.js
 jsx-fragment.js
 jsx-freeze.js
 jsx-html-entity.js
@@ -618,7 +617,6 @@ jsx-lowercase-memberexpr.jsx
 jsx-member-expression-tag-grouping.js
 jsx-member-expression.js
 jsx-memberexpr-tag-in-lambda.js
-jsx-namespaced-name.js
 jsx-outlining-child-stored-in-id.js
 jsx-outlining-dup-key-diff-value.js
 jsx-outlining-dupe-attr-after-rename.js
@@ -676,7 +674,6 @@ mixedreadonly-mutating-map.js
 module-scoped-bindings.js
 multi-directive.js
 multiple-calls-to-hoisted-callback-from-other-callback.js
-multiple-components-first-is-invalid.js
 mutable-lifetime-loops.js
 mutable-lifetime-with-aliasing.js
 mutable-liverange-loop.js

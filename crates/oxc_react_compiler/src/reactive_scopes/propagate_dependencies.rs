@@ -120,7 +120,147 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
         }
     }
 
-    // Phase 2: For each instruction in a scope, find operands from outside the scope
+    // Phase 1.5: Build temporary resolution map.
+    //
+    // DIVERGENCE: Upstream `PropagateScopeDependencies.ts` uses `collectTemporaries()` to
+    // follow LoadLocal → PropertyLoad → ComputedLoad chains, resolving each SSA temporary
+    // to its root named variable + property path. Our HIR creates fresh IDs per Place, so
+    // we need this mapping to produce proper property-path dependencies like `props.x`
+    // instead of just `props`.
+    //
+    // Map: temp_lvalue_id → (root_identifier, property_path)
+    // For LoadLocal { place: x } → temp:  temp → (x.identifier, [])
+    // For PropertyLoad { object: temp, property: "x" } → temp2:  temp2 → (x.identifier, ["x"])
+    // For ComputedLoad { object: temp, property: p } → temp2:  chain stops (dynamic key)
+    use crate::hir::types::DependencyPathEntry;
+
+    /// Lightweight resolution info for SSA temporaries.
+    /// Stores only the fields needed for dependency resolution (id, name, loc),
+    /// avoiding the full Identifier clone overhead (which includes
+    /// Option<Box<ReactiveScope>>, MutableRange, Type, etc.).
+    struct TemporaryInfo {
+        root_id: IdentifierId,
+        root_name: Option<String>,
+        root_reactive: bool,
+        root_loc: oxc_span::Span,
+        path: Vec<DependencyPathEntry>,
+    }
+
+    impl TemporaryInfo {
+        /// Reconstruct a minimal Identifier for use in ReactiveScopeDependency.
+        fn to_identifier(&self) -> crate::hir::types::Identifier {
+            crate::hir::types::Identifier {
+                id: self.root_id,
+                declaration_id: None,
+                name: self.root_name.clone(),
+                mutable_range: crate::hir::types::MutableRange {
+                    start: crate::hir::types::InstructionId(0),
+                    end: crate::hir::types::InstructionId(0),
+                },
+                scope: None,
+                type_: crate::hir::types::Type::default(),
+                loc: self.root_loc,
+            }
+        }
+    }
+
+    let mut temp_map: FxHashMap<IdentifierId, TemporaryInfo> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    // LoadLocal { place: x } → temp: map temp to root=x, path=[]
+                    // But also check if the source place itself is a resolved temp
+                    if let Some(resolved) = temp_map.get(&place.identifier.id) {
+                        // Chain through: if x was itself a resolved temp, propagate
+                        temp_map.insert(
+                            instr.lvalue.identifier.id,
+                            TemporaryInfo {
+                                root_id: resolved.root_id,
+                                root_name: resolved.root_name.clone(),
+                                root_reactive: resolved.root_reactive,
+                                root_loc: resolved.root_loc,
+                                path: resolved.path.clone(),
+                            },
+                        );
+                    } else if place.identifier.name.is_some() {
+                        // Root named variable
+                        temp_map.insert(
+                            instr.lvalue.identifier.id,
+                            TemporaryInfo {
+                                root_id: place.identifier.id,
+                                root_name: place.identifier.name.clone(),
+                                root_reactive: place.reactive,
+                                root_loc: place.identifier.loc,
+                                path: Vec::new(),
+                            },
+                        );
+                    }
+                }
+                InstructionValue::PropertyLoad { object, property } => {
+                    // PropertyLoad { object: temp, property: "x" } → temp2
+                    // Resolve temp → root, then temp2 → (root, path ++ ["x"])
+                    if let Some(resolved) = temp_map.get(&object.identifier.id) {
+                        let mut new_path = resolved.path.clone();
+                        new_path.push(DependencyPathEntry {
+                            property: property.clone(),
+                            optional: false,
+                        });
+                        temp_map.insert(
+                            instr.lvalue.identifier.id,
+                            TemporaryInfo {
+                                root_id: resolved.root_id,
+                                root_name: resolved.root_name.clone(),
+                                root_reactive: resolved.root_reactive,
+                                root_loc: resolved.root_loc,
+                                path: new_path,
+                            },
+                        );
+                    } else if object.identifier.name.is_some() {
+                        // Direct property load of a named variable (no LoadLocal intermediate)
+                        temp_map.insert(
+                            instr.lvalue.identifier.id,
+                            TemporaryInfo {
+                                root_id: object.identifier.id,
+                                root_name: object.identifier.name.clone(),
+                                root_reactive: object.reactive,
+                                root_loc: object.identifier.loc,
+                                path: vec![DependencyPathEntry {
+                                    property: property.clone(),
+                                    optional: false,
+                                }],
+                            },
+                        );
+                    }
+                }
+                // StoreLocal/StoreContext: propagate resolution to the store target
+                InstructionValue::StoreLocal { lvalue, value, .. }
+                | InstructionValue::StoreContext { lvalue, value } => {
+                    if let Some(resolved) = temp_map.get(&value.identifier.id) {
+                        // If the value being stored resolves to a root, map the lvalue too
+                        // (only for const assignments — reassignments break the chain)
+                        if lvalue.identifier.name.is_none() {
+                            temp_map.insert(
+                                instr.lvalue.identifier.id,
+                                TemporaryInfo {
+                                    root_id: resolved.root_id,
+                                    root_name: resolved.root_name.clone(),
+                                    root_reactive: resolved.root_reactive,
+                                    root_loc: resolved.root_loc,
+                                    path: resolved.path.clone(),
+                                },
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Phase 2: For each instruction in a scope, find operands from outside the scope.
+    // Uses temp_map to resolve SSA temporaries to root named variables with property paths.
     let mut scope_deps: FxHashMap<ScopeId, Vec<ReactiveScopeDependency>> = FxHashMap::default();
 
     for (_, block) in &hir.blocks {
@@ -149,37 +289,62 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                 false
             };
 
-            // Collect READ operands — only values that are consumed (not written to)
-            let operands = collect_read_operand_places(&instr.value);
-            for place in operands {
-                let op_id = place.identifier.id;
-                // If this operand is not declared/written within the same scope, and not a global, it's a dependency
-                if !is_scope_internal(place) && !non_reactive_ids.contains(&place.identifier.id) {
-                    // Check if already added
-                    let deps = scope_deps.entry(scope_id).or_default();
-                    let already_added = deps.iter().any(|d| d.identifier.id == op_id);
-                    if !already_added {
-                        deps.push(ReactiveScopeDependency {
-                            identifier: place.identifier.clone(),
-                            reactive: place.reactive,
-                            path: Vec::new(),
-                        });
-                    }
+            // Check if a resolved root identifier is scope-internal by name
+            let is_root_scope_internal = |identifier: &crate::hir::types::Identifier| -> bool {
+                if declared_ids.is_some_and(|s| s.contains(&identifier.id)) {
+                    return true;
                 }
-            }
+                if let Some(name) = &identifier.name
+                    && written_names.is_some_and(|s| s.contains(name))
+                {
+                    return true;
+                }
+                false
+            };
 
-            // Handle property loads: build dependency paths
-            if let InstructionValue::PropertyLoad { object, property } = &instr.value {
-                let obj_id = object.identifier.id;
-                if !is_scope_internal(object) && !non_reactive_ids.contains(&obj_id) {
-                    let deps = scope_deps.entry(scope_id).or_default();
-                    // Check if we already have a dep for this object and can extend its path
-                    let existing = deps.iter_mut().find(|d| d.identifier.id == obj_id);
-                    if let Some(dep) = existing {
-                        dep.path.push(crate::hir::types::DependencyPathEntry {
-                            property: property.clone(),
-                            optional: false,
-                        });
+            // Collect READ operands — only values that are consumed (not written to).
+            // DIVERGENCE: Skip PropertyLoad's object operand from regular dep collection.
+            // PropertyLoad is a "path-building" instruction — its object is an intermediate
+            // in a property chain (e.g., `props` in `props.x`). The full property path
+            // (e.g., `props.x`) will be resolved through temp_map when the downstream
+            // consumer references the PropertyLoad's result. Adding the bare object here
+            // would create a dep like `{props, []}` that subsumes `{props, ["x"]}` in
+            // derive_minimal_dependencies, losing the property path information.
+            let operands = collect_read_operand_places_for_deps(&instr.value);
+            for place in operands {
+                // Try to resolve through temp_map first
+                if let Some(resolved) = temp_map.get(&place.identifier.id) {
+                    // Resolved to a root named variable with property path
+                    let root = resolved.to_identifier();
+                    if !is_root_scope_internal(&root) && !non_reactive_ids.contains(&root.id) {
+                        let deps = scope_deps.entry(scope_id).or_default();
+                        // Check if already have a dep for this root+path
+                        let already = deps
+                            .iter()
+                            .any(|d| d.identifier.id == root.id && d.path == resolved.path);
+                        if !already {
+                            deps.push(ReactiveScopeDependency {
+                                identifier: root,
+                                reactive: resolved.root_reactive,
+                                path: resolved.path.clone(),
+                            });
+                        }
+                    }
+                } else {
+                    // No resolution — use as-is (named variable or unresolved temp)
+                    let op_id = place.identifier.id;
+                    if !is_scope_internal(place) && !non_reactive_ids.contains(&place.identifier.id)
+                    {
+                        let deps = scope_deps.entry(scope_id).or_default();
+                        let already_added =
+                            deps.iter().any(|d| d.identifier.id == op_id && d.path.is_empty());
+                        if !already_added {
+                            deps.push(ReactiveScopeDependency {
+                                identifier: place.identifier.clone(),
+                                reactive: place.reactive,
+                                path: Vec::new(),
+                            });
+                        }
                     }
                 }
             }
@@ -267,6 +432,33 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                 }
             }
         }
+    }
+}
+
+/// Like `collect_read_operand_places`, but skips PropertyLoad's object operand.
+///
+/// PropertyLoad is a "path-building" instruction. Its object is an intermediate
+/// in a property chain (e.g., `props` in `props.x`). The complete property path
+/// will be resolved through the temp_map when the downstream consumer references
+/// the PropertyLoad result. Including the bare object here would create a shallow
+/// dependency (`props`) that subsumes the deeper one (`props.x`) during
+/// `derive_minimal_dependencies`, losing property-path granularity.
+fn collect_read_operand_places_for_deps(
+    value: &InstructionValue,
+) -> Vec<&crate::hir::types::Place> {
+    match value {
+        // Skip PropertyLoad/PropertyDelete — their object is an intermediate
+        // in a property chain, handled via temp_map resolution
+        InstructionValue::PropertyLoad { .. } | InstructionValue::PropertyDelete { .. } => {
+            Vec::new()
+        }
+        // Skip LoadLocal/LoadContext — these are "path-building" instructions that
+        // load a named variable into an SSA temp. The dependency will be resolved
+        // when downstream instructions reference the temp through temp_map.
+        // Including the source place here would add a bare dep like `{props, []}`
+        // that subsumes deeper property paths like `{props, ["x"]}`.
+        InstructionValue::LoadLocal { .. } | InstructionValue::LoadContext { .. } => Vec::new(),
+        _ => collect_read_operand_places(value),
     }
 }
 

@@ -11,10 +11,10 @@ function Summary(t0) {
   let hasMany;
   let label;
   let t24;
-  if ($[0] !== items || $[1] !== threshold) {
+  if ($[0] !== items.length || $[1] !== threshold) {
     count = items.length;
     hasMany = count > threshold;
-    $[0] = items;
+    $[0] = items.length;
     $[1] = threshold;
   }
   if (t57) {

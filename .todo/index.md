@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-13 (post preserve-memo fix, 309/1717)
+Last updated: 2026-03-13 (post property-path deps + sentinel codegen fix, 318/1717)
 
-Current conformance: 309/1717 pass (18.0%), 0 panics, 0 unexpected divergences.
+Current conformance: 318/1717 pass (18.5%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -21,7 +21,7 @@ Gap 4 scope heuristics) are fixed.
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Compiled with memo | ~939 | Both compile, structure/deps/slots differ (+35 from sentinel regression) |
+| Compiled with memo | ~936 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
 | Upstream errors | ~59 | We compile but upstream bails |
@@ -43,14 +43,15 @@ structure differs. Sub-breakdown (updated post-sentinel activation):
 - ~~400 over-scoped (too many cache slots; globals/stable values as deps)~~ **RESOLVED** -- globals/stable values excluded from deps
 - ~~280 sentinel pattern never emitted~~ **RESOLVED** -- sentinel scopes now emitted
 - ~90 under-scoped (too few cache slots; missing scopes for some expressions)
-- ~40 same slots, wrong deps (dependency tracking diverges)
+- ~37 same slots, wrong deps (dependency tracking diverges; property-path resolution now active)
 - ~94 other structural (temp variable naming, code ordering)
 - +35 regressions from sentinel activation (scopes correct, deps/slots still wrong)
 
 All items are interdependent -- they must be fixed together for fixtures to pass.
 Sentinel scope activation was a necessary structural prerequisite; the 35
 regressions are expected and will resolve with over-scoped dep fixes (Gap 6)
-and slot count alignment (Gap 3). Gap 6 (over-scoped deps) is now resolved.
+and slot count alignment (Gap 3). Gap 6 (over-scoped deps), Gap 7 (property-path deps), and Gap 8 (sentinel
+codegen) are now resolved. Property-path deps yielded +3 fixtures (315 -> 318).
 
 - [ ] Scope merging/splitting heuristic audit vs upstream — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
@@ -109,6 +110,17 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Property-Path Dependency Resolution + Sentinel Codegen Fix (2026-03-13)
+
+- `propagate_dependencies.rs`: temp_map built via `collectTemporaries()` equivalent -- resolves SSA temps to root named variable + property path (e.g., `props.x` instead of just `props`)
+- `propagate_dependencies.rs`: `collect_read_operand_places_for_deps` now uses temp_map to emit proper `ReactiveScopeDependency` with `DependencyPathEntry` paths
+- `codegen.rs`: `dependency_display_name()` renders deps with property paths (e.g., `props.x.y`, `obj?.field`)
+- `codegen.rs`: Sentinel scope codegen fix -- stores first declaration value into sentinel slot so subsequent renders reload from cache
+- `types.rs`: Added `PartialEq, Eq` derives to `DependencyPathEntry` for deduplication
+- `propagate_dependencies.rs`: `TemporaryInfo` struct avoids full `Identifier` clone overhead
+- 3 fixtures removed from known-failures.txt: `jsx-empty-expression.js`, `jsx-namespaced-name.js`, `multiple-components-first-is-invalid.js`
+- Conformance: 315 -> 318/1717 (+3)
 
 ### Over-Scoped Dependency Fix (2026-03-13)
 

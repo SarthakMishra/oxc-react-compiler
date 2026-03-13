@@ -13,13 +13,13 @@ function Toggle(t0) {
     let t18;
     let t15;
     let t21;
-    if ($[0] !== isOn) {
+    if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
       t21 = (
         <div>
           ON
         </div>
       );
-      $[0] = isOn;
+      $[0] = t18;
       $[1] = t18;
       $[2] = t15;
       $[3] = t21;

@@ -11,13 +11,13 @@ function Status(t0) {
     let t21;
     let t17;
     let t25;
-    if ($[0] !== isActive) {
+    if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
       t25 = (
         <div className="active">
           Active
         </div>
       );
-      $[0] = isActive;
+      $[0] = t21;
       $[1] = t21;
       $[2] = t17;
       $[3] = t25;

@@ -1559,7 +1559,7 @@ fn codegen_scope(
             .iter()
             .enumerate()
             .map(|(i, dep)| {
-                let dep_name = identifier_display_name(&dep.identifier);
+                let dep_name = dependency_display_name(dep);
                 format!("$[{}] !== {}", slot_start + i as u32, dep_name)
             })
             .collect();
@@ -1586,10 +1586,18 @@ fn codegen_scope(
     );
 
     // Store dep values for next comparison (before declarations, matching upstream order)
-    if !deps.is_empty() {
-        let inner_indent = "  ".repeat(indent + 1);
+    let inner_indent = "  ".repeat(indent + 1);
+    if deps.is_empty() {
+        // For constant scopes (sentinel check), store the first declaration value
+        // into the sentinel slot to mark it as computed. On subsequent renders,
+        // the sentinel check will fail and the else-branch will reload from cache.
+        if let Some((_, first_decl)) = scope.scope.declarations.first() {
+            let decl_name = identifier_display_name(&first_decl.identifier);
+            output.push_str(&format!("{inner_indent}$[{slot_start}] = {decl_name};\n"));
+        }
+    } else {
         for (i, dep) in deps.iter().enumerate() {
-            let dep_name = identifier_display_name(&dep.identifier);
+            let dep_name = dependency_display_name(dep);
             output.push_str(&format!(
                 "{}$[{}] = {};\n",
                 inner_indent,
@@ -1833,6 +1841,25 @@ fn identifier_display_name(identifier: &crate::hir::types::Identifier) -> Cow<'_
         Some(name) => Cow::Borrowed(name.as_str()),
         None => Cow::Owned(format!("t{}", identifier.id.0)),
     }
+}
+
+/// Render a scope dependency as a string, including its property path.
+/// E.g., `{identifier: props, path: ["x", "y"]}` → `"props.x.y"`.
+fn dependency_display_name(dep: &crate::hir::types::ReactiveScopeDependency) -> String {
+    let base = identifier_display_name(&dep.identifier);
+    if dep.path.is_empty() {
+        return base.into_owned();
+    }
+    let mut result = base.into_owned();
+    for entry in &dep.path {
+        if entry.optional {
+            result.push_str("?.");
+        } else {
+            result.push('.');
+        }
+        result.push_str(&entry.property);
+    }
+    result
 }
 
 fn binary_op_str(op: crate::hir::types::BinaryOp) -> &'static str {

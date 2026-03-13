@@ -13,7 +13,7 @@ When both our compiler and Babel memoize a function, our output differs structur
 | Over-scoped (too many cache slots) | ~400 | Globals/stable values treated as reactive deps |
 | ~~Sentinel pattern never emitted~~ | ~~280~~ | ~~RESOLVED -- sentinel scopes now emitted~~ |
 | Under-scoped (too few cache slots) | ~90 | Missing scopes for some expressions |
-| Same slots, wrong deps | ~40 | Dependency tracking diverges |
+| Same slots, wrong deps | ~37 | Dependency tracking diverges (property-path resolution now active) |
 | Other structural | ~94 | Temp variable naming, code ordering |
 | Sentinel regressions (temporary) | +35 | Scopes correct, deps/slots still wrong |
 
@@ -96,6 +96,20 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 
 **Completed**: Globals, stable hook returns (SetState, Ref), and property accesses of globals are no longer treated as reactive dependencies. Three files modified: `infer_types.rs` (type inference for stable hook returns), `infer_reactive_places.rs` (globals and stable values excluded from reactive marking), `propagate_dependencies.rs` (global property accesses filtered from dependency propagation). Conformance unchanged at 272/1717 -- gains expected to compound with remaining P1 fixes (Gap 3 slot counts, Gap 4 scope heuristics).
 
+### Gap 7: Property-Path Dependency Resolution ✅
+
+~~**Upstream:** `PropagateScopeDependencies.ts` uses `collectTemporaries()` to follow LoadLocal → PropertyLoad → ComputedLoad chains, resolving each SSA temporary to its root named variable + property path. Dependencies are emitted as e.g. `props.x` rather than just `props`.~~
+~~**Current state:** `propagate_dependencies.rs` emitted dependencies using the raw SSA temp identifier, losing property path information.~~
+
+**Completed**: Full property-path dependency resolution implemented in `propagate_dependencies.rs`. A `temp_map: FxHashMap<IdentifierId, TemporaryInfo>` is built in Phase 1.5, tracing LoadLocal/LoadContext → PropertyLoad chains to resolve SSA temps to `(root_identifier, property_path)`. The `collect_read_operand_places_for_deps` function uses this map to emit `ReactiveScopeDependency` with proper `DependencyPathEntry` paths. `codegen.rs` gained `dependency_display_name()` to render deps with dot-separated property paths (including optional chaining `?.`). Sentinel scope codegen was also fixed to store the first declaration value into the sentinel slot (previously sentinel scopes had no cache-store, causing re-computation every render). `DependencyPathEntry` gained `PartialEq, Eq` derives for deduplication. Conformance: 315 → 318/1717 (+3). Implementation files: `propagate_dependencies.rs`, `codegen.rs`, `types.rs`.
+
+### Gap 8: Sentinel Scope Codegen Correctness ✅
+
+~~**Upstream:** Sentinel scopes (zero reactive deps) store the first declaration value into cache slot 0 after computation, so subsequent renders skip re-computation via the sentinel check.~~
+~~**Current state:** Sentinel scopes emitted the sentinel check but never stored anything into the cache slot, causing re-computation every render.~~
+
+**Completed**: Fixed in `codegen.rs`. When `deps.is_empty()` (sentinel scope), the codegen now stores the first declaration value (`$[slot_start] = declName`) after the if-block body. This matches upstream behavior where sentinel scopes mark themselves as "computed" by writing a value to the sentinel slot. Part of the Gap 7 changeset.
+
 ## Measurement Strategy
 
 After each gap, run conformance and measure:
@@ -105,14 +119,15 @@ cargo test conformance -- --nocapture 2>&1 | tail -5
 
 Expected progression (gaps are interdependent, so gains compound):
 - Gap 1 (temp inlining) ✅ + Gap 2 (JSX) ✅ + Gap 5 (sentinel) ✅: structural foundation complete, 35 temporary regressions
-- Gap 6 (over-scoped deps) ✅: globals/stable values excluded from deps, conformance unchanged (compound effect pending)
+- Gap 6 (over-scoped deps) ✅: globals/stable values excluded from deps
+- Gap 7 (property-path deps) ✅ + Gap 8 (sentinel codegen) ✅: deps now emit `props.x` not just `props`, sentinel scopes store values correctly (+3 fixtures)
 - After Gap 4 (scope heuristics): ~50-100 additional
 - After Gap 3 (slot count alignment): remaining residual
 - Total potential from this category: ~400-600 new passes
 
 ## Risks and Notes
 
-- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), and over-scoped deps (Gap 6) are all complete. The 35 regressions from Gap 5 confirm the interdependency: scopes are correct but deps/slots still diverge. Slot count alignment (Gap 3) and scope heuristics (Gap 4) are the remaining blockers before compound fixture gains materialize.
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), and sentinel codegen (Gap 8) are all complete. Property-path deps yielded +3 fixtures, showing the compound effect is beginning. Slot count alignment (Gap 3) and scope heuristics (Gap 4) are the remaining blockers before larger compound fixture gains materialize.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.
 - **JSX edge cases**: Self-closing elements, boolean attributes (`<div disabled />`), computed property names in JSX, namespace attributes (`xml:lang`).
 - **Scope merging audit scope**: The merge/prune passes are among the most complex in the compiler. A full audit requires careful line-by-line comparison with upstream TypeScript.
