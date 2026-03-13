@@ -298,7 +298,6 @@ error.invalid-conditional-call-aliased-hook-import.js
 error.invalid-conditional-call-aliased-react-hook.js
 error.invalid-delete-computed-property-of-frozen-value.js
 error.invalid-delete-property-of-frozen-value.js
-error.invalid-derived-computation-in-effect.js
 error.invalid-destructure-to-local-global-variables.js
 error.invalid-disallow-mutating-refs-in-render-transitive.js
 error.invalid-function-expression-mutates-immutable-value.js
