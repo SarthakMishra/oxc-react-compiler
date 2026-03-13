@@ -31,10 +31,8 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
             // Track through LoadLocal/LoadContext: if loading a ref variable,
             // the result is also a ref
             match &instr.value {
-                InstructionValue::LoadLocal { place }
-                | InstructionValue::LoadContext { place } => {
-                    if place.identifier.type_ == Type::Ref
-                        || ref_ids.contains(&place.identifier.id)
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if place.identifier.type_ == Type::Ref || ref_ids.contains(&place.identifier.id)
                     {
                         ref_ids.insert(instr.lvalue.identifier.id);
                     }
@@ -44,18 +42,30 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
                         }
                     }
                 }
+                // Track through PropertyLoad: `props.ref` or `x.someRef` produces a ref
+                InstructionValue::PropertyLoad { property, .. } => {
+                    if is_ref_name(property) {
+                        ref_ids.insert(instr.lvalue.identifier.id);
+                    }
+                }
                 _ => {}
             }
         }
     }
 
-    // Pass 2: Check for ref.current access
+    // Pass 2: Check for ref.current access (read or write)
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::PropertyLoad { object, property } = &instr.value
-                && property == "current"
-                && ref_ids.contains(&object.identifier.id)
-            {
+            let is_ref_current = match &instr.value {
+                InstructionValue::PropertyLoad { object, property } => {
+                    property == "current" && ref_ids.contains(&object.identifier.id)
+                }
+                InstructionValue::PropertyStore { object, property, .. } => {
+                    property == "current" && ref_ids.contains(&object.identifier.id)
+                }
+                _ => false,
+            };
+            if is_ref_current {
                 errors.push(CompilerError::invalid_react_with_kind(
                     instr.loc,
                     "Cannot access refs during render. \

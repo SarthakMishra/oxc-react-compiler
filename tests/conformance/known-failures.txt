@@ -277,7 +277,6 @@ error._todo.computed-lval-in-destructure.js
 error.assign-global-in-component-tag-function.js
 error.assign-global-in-jsx-children.js
 error.assign-ref-in-effect-hint.js
-error.bug-infer-mutation-aliasing-effects.js
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-expected-consistent-destructuring.js
 error.call-args-destructuring-asignment-complex.js
@@ -302,7 +301,6 @@ error.invalid-delete-computed-property-of-frozen-value.js
 error.invalid-delete-property-of-frozen-value.js
 error.invalid-derived-computation-in-effect.js
 error.invalid-destructure-to-local-global-variables.js
-error.invalid-disallow-mutating-ref-in-render.js
 error.invalid-disallow-mutating-refs-in-render-transitive.js
 error.invalid-function-expression-mutates-immutable-value.js
 error.invalid-hoisting-setstate.js
@@ -324,12 +322,8 @@ error.invalid-pass-mutable-function-as-prop.js
 error.invalid-pass-ref-to-function.js
 error.invalid-prop-mutation-indirect.js
 error.invalid-property-store-to-frozen-value.js
-error.invalid-read-ref-prop-in-render-property-load.js
 error.invalid-reassign-local-variable-in-async-callback.js
 error.invalid-setState-in-useMemo.js
-error.invalid-use-ref-added-to-dep-without-type-info.js
-error.invalid-write-but-dont-read-ref-in-render.js
-error.invalid-write-ref-prop-in-render.js
 error.modify-state-2.js
 error.modify-state.js
 error.modify-useReducer-state.js
