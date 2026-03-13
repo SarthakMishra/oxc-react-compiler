@@ -69,18 +69,29 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 **Fixture gain estimate:** Compound effect with other gaps
 **Depends on:** Gap 1 (temp inlining reduces slot count)
 
-### Gap 4: Scope Merging/Splitting Heuristic Review
+### Gap 4: Scope Merging/Splitting Heuristic Review [IN PROGRESS]
 
 **Upstream:** `MergeOverlappingReactiveScopes.ts`, `PruneNonEscapingScopes.ts`, `PruneAlwaysInvalidatingScopes.ts`
-**Current state:** We have `merge_scopes.rs` and `prune_scopes.rs` implementing these passes, but the heuristics may diverge in edge cases
-**What's needed:**
-- Audit `merge_overlapping_reactive_scopes_hir` against upstream `MergeOverlappingReactiveScopes.ts` -- check the merge condition (do we merge scopes whose ranges overlap the same way Babel does?)
-- Audit `merge_reactive_scopes_that_invalidate_together` against upstream -- check the "invalidate together" heuristic
+**Current state (updated 2026-03-13):** Significant progress on `merge_reactive_scopes_that_invalidate_together`:
+
+**Completed sub-items:**
+- Name-based dep comparison: `DepKey = (Option<String>, Vec<DependencyPathEntry>)` replaces IdentifierId-based comparison. Our HIR creates fresh IdentifierIds per Place reference, so ID-based comparison made almost all scopes appear to have different deps. Name-based comparison correctly identifies scopes that invalidate together.
+- Double-merge prevention: `merged_indices` FxHashSet prevents a scope from being merged into multiple targets in a single pass.
+- Dependency union on merge: When merging scopes, deps are now unioned (deduplicated by DepKey) and declarations are merged.
+- Non-reactive propagation through Destructure: All targets of a destructure of a non-reactive value are marked non-reactive (with recursive `collect_destructure_target_ids` for nested patterns).
+- Non-reactive propagation through CallExpression: When callee + all args are non-reactive, the result is treated as non-reactive. This handles `require('shared-runtime')` returning a stable module object. DIVERGENCE: Upstream does not have this rule; we rely on the fact that truly reactive calls (hooks) have their return types set separately.
+
+**Reverted attempts:**
+- Overlap merge (`merge_overlapping_reactive_scopes_hir`): An attempt to merge scopes with overlapping instruction ranges was reverted because it caused regressions. The overlap detection logic needs more careful alignment with upstream `MergeOverlappingReactiveScopes.ts` which operates on a reactive scope tree, not flat instruction ranges. See Gap 10.
+- setState non-reactive heuristic: Treating `setState` calls as non-reactive was reverted because it caused false positives where setState return values (which are `undefined` but still used) were incorrectly excluded from dependency tracking. See Gap 9.
+
+**What remains:**
+- Audit `merge_overlapping_reactive_scopes_hir` against upstream `MergeOverlappingReactiveScopes.ts` -- the overlap merge logic needs investigation (see Gap 10)
 - Audit scope terminal construction (`build_reactive_scope_terminals_hir`) -- verify we create scope boundaries at the same points
-- Fix any divergences found
-- Re-measure after fixes
+- Re-measure after remaining fixes
 **Fixture gain estimate:** ~50-100 (scope boundary differences cause wrong slot groupings)
 **Depends on:** None (can be done in parallel with Gap 1)
+**Implementation files:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`, `crates/oxc_react_compiler/src/reactive_scopes/propagate_dependencies.rs`
 
 ### Gap 5: Sentinel Scope Emission ✅
 
@@ -110,6 +121,28 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 
 **Completed**: Fixed in `codegen.rs`. When `deps.is_empty()` (sentinel scope), the codegen now stores the first declaration value (`$[slot_start] = declName`) after the if-block body. This matches upstream behavior where sentinel scopes mark themselves as "computed" by writing a value to the sentinel slot. Part of the Gap 7 changeset.
 
+### Gap 9: setState False Positive in Non-Reactive Propagation
+
+**Upstream:** N/A (this is a divergence-specific issue in our non-reactive propagation logic)
+**Current state:** An attempt was made to treat `setState` calls as non-reactive (since setState itself is a stable function). This was reverted because it caused false positives: some code patterns use the return value of setState or have setState in dependency arrays, and marking the call result as non-reactive incorrectly excluded downstream values from dependency tracking.
+**What's needed:**
+- Investigate which specific patterns caused regressions when setState was marked non-reactive
+- Determine if a narrower heuristic is possible (e.g., only mark non-reactive when the call result is unused)
+- Alternatively, this may not be needed if the current CallExpression heuristic (callee + all args non-reactive) already handles the important cases without false positives
+**Depends on:** None
+**Risk:** Low priority -- the current behavior (treating setState calls as reactive) is conservative and correct, just potentially over-scoped
+
+### Gap 10: Overlap Merge Regression
+
+**Upstream:** `MergeOverlappingReactiveScopes.ts`
+**Current state:** An attempt to implement overlap-based scope merging in `merge_overlapping_reactive_scopes_hir` was reverted because it caused regressions. The issue is that upstream operates on a reactive scope tree structure where scope ranges are well-defined, while our implementation operates on flat instruction ranges. The flat approach incorrectly merged scopes that happened to have overlapping instruction IDs but were semantically separate.
+**What's needed:**
+- Study how upstream `MergeOverlappingReactiveScopes.ts` builds and traverses the scope tree
+- Determine if our `merge_overlapping_reactive_scopes_hir` needs to build a proper scope tree before merging, or if the flat approach can be salvaged with better overlap criteria
+- Re-implement with proper regression testing against the fixtures that broke
+**Depends on:** Understanding of upstream scope tree representation
+**Risk:** Medium -- incorrect overlap merging can cause scopes to be too large, leading to over-memoization and wrong slot counts
+
 ## Measurement Strategy
 
 After each gap, run conformance and measure:
@@ -127,7 +160,8 @@ Expected progression (gaps are interdependent, so gains compound):
 
 ## Risks and Notes
 
-- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), and sentinel codegen (Gap 8) are all complete. Property-path deps yielded +3 fixtures, showing the compound effect is beginning. Slot count alignment (Gap 3) and scope heuristics (Gap 4) are the remaining blockers before larger compound fixture gains materialize.
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), and sentinel codegen (Gap 8) are all complete. Scope merge heuristics (Gap 4) have been partially addressed (name-based dep comparison, non-reactive propagation). Slot count alignment (Gap 3) and remaining scope heuristic work (overlap merging, scope terminals) are the final blockers before larger compound fixture gains materialize.
+- **Reverted changes are informative**: Two attempted changes (overlap merge and setState non-reactive) were reverted due to regressions. These are tracked as Gap 9 and Gap 10 for future investigation when more infrastructure is in place.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.
 - **JSX edge cases**: Self-closing elements, boolean attributes (`<div disabled />`), computed property names in JSX, namespace attributes (`xml:lang`).
 - **Scope merging audit scope**: The merge/prune passes are among the most complex in the compiler. A full audit requires careful line-by-line comparison with upstream TypeScript.

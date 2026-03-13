@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-13 (post scope-merge heuristic improvements, 318/1717)
+Last updated: 2026-03-13 (post frozen-mutation enhancement, 331/1717)
 
-Current conformance: 318/1717 pass (18.5%), 0 panics, 0 unexpected divergences.
+Current conformance: 331/1717 pass (19.3%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -21,10 +21,10 @@ Gap 4 scope heuristics) are fixed.
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Compiled with memo | ~936 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps) |
+| Compiled with memo | ~923 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~59 | We compile but upstream bails |
+| Upstream errors | ~46 | We compile but upstream bails |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -63,7 +63,7 @@ codegen) are now resolved. Property-path deps yielded +3 fixtures (315 -> 318).
 We compile functions that upstream rejects with validation errors. These are
 "free" fixture gains -- emit the right error and bail, source matches.
 
-- [~] Frozen mutation detection ("This value cannot be modified", 18 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
+- [~] Frozen mutation detection ("This value cannot be modified", 5 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
 - [ ] Missing/extra deps in exhaustive-deps (8 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
 - [ ] Cannot reassign variables outside component (6 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
 - [ ] Cannot access refs during render (6 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-5-ref-access-during-render
@@ -112,6 +112,27 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Frozen Mutation Detection -- Enhancement (2026-03-13)
+
+- `validate_no_mutation_after_freeze.rs`: Hook-return pre-freeze -- values returned from hook calls (useContext, useState, etc.) and their destructured targets are frozen at definition site
+- `validate_no_mutation_after_freeze.rs`: Function-capture freeze -- when a function is passed to a hook call, all variables it captures are frozen after the call
+- `validate_no_mutation_after_freeze.rs`: Nested function mutation scanning -- FunctionExpression bodies are recursively scanned for mutations to outer frozen variables
+- `validate_no_mutation_after_freeze.rs`: `collect_frozen_from_destructure` handles nested array/object destructure patterns for hook returns
+- 13 fixtures removed from known-failures.txt (including capture-ref-for-mutation, modify-state, modify-useReducer-state, context mutations, skip-useMemoCache, etc.)
+- Conformance: 318 -> 331/1717 (+13)
+
+### Scope Merge Heuristic Improvements (2026-03-13)
+
+- `merge_scopes.rs`: Name-based dep comparison (`DepKey = (Option<String>, Vec<DependencyPathEntry>)`) replaces IdentifierId-based comparison, fixing false "different deps" when SSA creates unique IDs per Place
+- `merge_scopes.rs`: Double-merge prevention via `merged_indices` set -- prevents a scope from being merged into multiple targets
+- `merge_scopes.rs`: Dependency union and declaration merge when combining scopes
+- `propagate_dependencies.rs`: Non-reactive propagation through `Destructure` instructions (all targets of a non-reactive destructure are non-reactive)
+- `propagate_dependencies.rs`: Non-reactive propagation through `CallExpression` when callee + all args are non-reactive (handles `require('shared-runtime')`)
+- `propagate_dependencies.rs`: Recursive `collect_destructure_target_ids` for nested object/array destructure patterns
+- REVERTED: Overlap merge change (caused regressions in scope boundary detection)
+- REVERTED: setState heuristic change (caused false positives in non-reactive propagation)
+- Conformance: 318/1717 (unchanged -- structural improvements, no net fixture movement)
 
 ### Property-Path Dependency Resolution + Sentinel Codegen Fix (2026-03-13)
 
