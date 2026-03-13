@@ -33,8 +33,15 @@ pub fn infer_types(hir: &mut HIR) {
                 if name == "useRef" {
                     instr.lvalue.identifier.type_ = Type::Ref;
                     ref_ids.insert(instr.lvalue.identifier.id);
-                } else if name == "useState" || name == "useReducer" {
-                    // The return value is [state, setState]. Track the tuple ID
+                } else if matches!(
+                    name,
+                    "useState"
+                        | "useReducer"
+                        | "useTransition"
+                        | "useOptimistic"
+                        | "useActionState"
+                ) {
+                    // The return value is [state, stableDispatch]. Track the tuple ID
                     // so we can propagate SetState to the second destructured element.
                     state_tuple_ids.insert(instr.lvalue.identifier.id);
                 }

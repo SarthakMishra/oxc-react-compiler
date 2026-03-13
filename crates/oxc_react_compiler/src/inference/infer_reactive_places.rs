@@ -1,4 +1,4 @@
-use crate::hir::types::{HIR, IdentifierId, InstructionValue, Place};
+use crate::hir::types::{HIR, IdentifierId, InstructionValue, Place, Type};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Infer which places are reactive (depend on props/state).
@@ -42,6 +42,23 @@ pub fn infer_reactive_places(hir: &mut HIR) {
         }
     }
 
+    // Build stable_ids: identifiers with Type::SetState or Type::Ref are stable
+    // (they never change between renders). These must not be marked reactive even
+    // if derived from a reactive source (e.g., destructured from useState return).
+    // Upstream: InferReactivePlaces.ts checks identifier.type for stability.
+    let mut stable_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut stable_names: FxHashSet<String> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if matches!(instr.lvalue.identifier.type_, Type::SetState | Type::Ref) {
+                stable_ids.insert(instr.lvalue.identifier.id);
+                if let Some(name) = &instr.lvalue.identifier.name {
+                    stable_names.insert(name.clone());
+                }
+            }
+        }
+    }
+
     // Phase 1: Seed reactive set with function params and hook returns
     let mut reactive_ids: FxHashSet<IdentifierId> = FxHashSet::default();
     let mut reactive_names: FxHashSet<String> = FxHashSet::default();
@@ -74,6 +91,8 @@ pub fn infer_reactive_places(hir: &mut HIR) {
     // Phase 2: Propagate reactivity through data flow (fixpoint)
     // Uses both ID-based and name-based matching since the HIR builder creates
     // fresh IDs for every Place reference.
+    // Stable identifiers (SetState, Ref) act as firewalls — they absorb
+    // reactivity from their sources but do not propagate it outward.
     let mut changed = true;
     while changed {
         changed = false;
@@ -82,14 +101,27 @@ pub fn infer_reactive_places(hir: &mut HIR) {
                 if reactive_ids.contains(&instr.lvalue.identifier.id) {
                     continue;
                 }
+                // Skip stable identifiers — they should never be marked reactive
+                if stable_ids.contains(&instr.lvalue.identifier.id) {
+                    continue;
+                }
                 if has_reactive_operand(&instr.value, &reactive_ids, &reactive_names) {
                     reactive_ids.insert(instr.lvalue.identifier.id);
                     if let Some(name) = id_to_name.get(&instr.lvalue.identifier.id) {
-                        reactive_names.insert(name.clone());
+                        // Don't add stable names to reactive_names to prevent
+                        // name-based propagation through stable values
+                        if !stable_names.contains(name) {
+                            reactive_names.insert(name.clone());
+                        }
                     }
                     // For Destructure, also mark pattern target names as reactive
+                    // (but skip stable targets like setState/dispatch)
                     if let InstructionValue::Destructure { lvalue_pattern, .. } = &instr.value {
-                        collect_pattern_names(lvalue_pattern, &mut reactive_names);
+                        collect_pattern_names_filtered(
+                            lvalue_pattern,
+                            &mut reactive_names,
+                            &stable_names,
+                        );
                     }
                     changed = true;
                 }
@@ -98,9 +130,12 @@ pub fn infer_reactive_places(hir: &mut HIR) {
     }
 
     // Phase 3: Apply reactive flags to places
+    // Skip stable identifiers even if they ended up in reactive_ids
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if reactive_ids.contains(&instr.lvalue.identifier.id) {
+            if reactive_ids.contains(&instr.lvalue.identifier.id)
+                && !stable_ids.contains(&instr.lvalue.identifier.id)
+            {
                 instr.lvalue.reactive = true;
             }
         }
@@ -195,20 +230,24 @@ fn has_reactive_operand(
     }
 }
 
-/// Collect all variable names from a destructure pattern.
-fn collect_pattern_names(
+/// Collect variable names from a destructure pattern, skipping stable names.
+/// Stable names (e.g., setState, dispatch) are excluded to prevent reactive
+/// propagation through stable hook return values.
+fn collect_pattern_names_filtered(
     pattern: &crate::hir::types::DestructurePattern,
     names: &mut FxHashSet<String>,
+    stable_names: &FxHashSet<String>,
 ) {
     use crate::hir::types::{DestructureArrayItem, DestructurePattern};
 
     match pattern {
         DestructurePattern::Object { properties, rest } => {
             for prop in properties {
-                collect_target_names(&prop.value, names);
+                collect_target_names_filtered(&prop.value, names, stable_names);
             }
             if let Some(rest_place) = rest
                 && let Some(name) = &rest_place.identifier.name
+                && !stable_names.contains(name)
             {
                 names.insert(name.clone());
             }
@@ -217,10 +256,12 @@ fn collect_pattern_names(
             for item in items {
                 match item {
                     DestructureArrayItem::Value(target) => {
-                        collect_target_names(target, names);
+                        collect_target_names_filtered(target, names, stable_names);
                     }
                     DestructureArrayItem::Spread(place) => {
-                        if let Some(name) = &place.identifier.name {
+                        if let Some(name) = &place.identifier.name
+                            && !stable_names.contains(name)
+                        {
                             names.insert(name.clone());
                         }
                     }
@@ -229,6 +270,7 @@ fn collect_pattern_names(
             }
             if let Some(rest_place) = rest
                 && let Some(name) = &rest_place.identifier.name
+                && !stable_names.contains(name)
             {
                 names.insert(name.clone());
             }
@@ -236,20 +278,23 @@ fn collect_pattern_names(
     }
 }
 
-fn collect_target_names(
+fn collect_target_names_filtered(
     target: &crate::hir::types::DestructureTarget,
     names: &mut FxHashSet<String>,
+    stable_names: &FxHashSet<String>,
 ) {
     use crate::hir::types::DestructureTarget;
 
     match target {
         DestructureTarget::Place(place) => {
-            if let Some(name) = &place.identifier.name {
+            if let Some(name) = &place.identifier.name
+                && !stable_names.contains(name)
+            {
                 names.insert(name.clone());
             }
         }
         DestructureTarget::Pattern(nested) => {
-            collect_pattern_names(nested, names);
+            collect_pattern_names_filtered(nested, names, stable_names);
         }
     }
 }

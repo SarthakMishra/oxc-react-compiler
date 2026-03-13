@@ -89,17 +89,12 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 
 **Completed**: Sentinel scope emission is now active. `infer_reactive_scope_variables.rs` creates reactive scopes for allocating expressions (JSX elements, object/array literals) even when they have no reactive dependencies. `prune_scopes.rs` was updated to preserve these scopes. `codegen.rs` emits the sentinel pattern (`Symbol.for("react.memo_cache_sentinel")`) for scopes with zero reactive dependencies. Net conformance impact: -32 (35 regressions added to known-failures.txt, 3 newly passing). The regressions are expected -- the scopes are structurally correct but other P1 issues (over-scoped deps in Gap 6, slot counts in Gap 3) cause the overall output to still diverge. Implementation files: `infer_reactive_scope_variables.rs`, `prune_scopes.rs`, `codegen.rs`.
 
-### Gap 6: Over-Scoped Dependencies
+### Gap 6: Over-Scoped Dependencies ✅
 
-**Upstream:** Babel correctly identifies global values (e.g., `Math.max`, `console.log`), stable hook returns (e.g., `setState` from `useState`), and other non-reactive values, and excludes them from dependency tracking.
-**Current state:** We treat some globals and stable values as reactive, causing them to appear as dependencies in scopes. This results in more cache slots than needed (~400 fixtures).
-**What's needed:**
-- Audit `infer_reactive_places.rs` against upstream `InferReactivePlaces.ts` -- verify which identifiers are marked as reactive
-- Verify that globals are never marked reactive
-- Verify that stable hook returns (setState, dispatch, ref objects) are not marked reactive
-- May also involve `propagate_dependencies.rs` -- some dependencies may be added during propagation that upstream excludes
-**Fixture gain estimate:** ~100-200 (reducing false reactive deps fixes slot counts)
-**Depends on:** None
+~~**Upstream:** Babel correctly identifies global values (e.g., `Math.max`, `console.log`), stable hook returns (e.g., `setState` from `useState`), and other non-reactive values, and excludes them from dependency tracking.~~
+~~**Current state:** We treat some globals and stable values as reactive, causing them to appear as dependencies in scopes. This results in more cache slots than needed (~400 fixtures).~~
+
+**Completed**: Globals, stable hook returns (SetState, Ref), and property accesses of globals are no longer treated as reactive dependencies. Three files modified: `infer_types.rs` (type inference for stable hook returns), `infer_reactive_places.rs` (globals and stable values excluded from reactive marking), `propagate_dependencies.rs` (global property accesses filtered from dependency propagation). Conformance unchanged at 272/1717 -- gains expected to compound with remaining P1 fixes (Gap 3 slot counts, Gap 4 scope heuristics).
 
 ## Measurement Strategy
 
@@ -110,14 +105,14 @@ cargo test conformance -- --nocapture 2>&1 | tail -5
 
 Expected progression (gaps are interdependent, so gains compound):
 - Gap 1 (temp inlining) ✅ + Gap 2 (JSX) ✅ + Gap 5 (sentinel) ✅: structural foundation complete, 35 temporary regressions
-- After Gap 6 (over-scoped deps): should resolve bulk of the 35 regressions + unlock ~100-200 new passes
+- Gap 6 (over-scoped deps) ✅: globals/stable values excluded from deps, conformance unchanged (compound effect pending)
 - After Gap 4 (scope heuristics): ~50-100 additional
 - After Gap 3 (slot count alignment): remaining residual
 - Total potential from this category: ~400-600 new passes
 
 ## Risks and Notes
 
-- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), and sentinel scope emission (Gap 5) are all complete. The 35 regressions from Gap 5 confirm the interdependency: scopes are correct but deps/slots still diverge. Over-scoped deps (Gap 6) and slot count alignment (Gap 3) are the remaining blockers before compound fixture gains materialize.
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), and over-scoped deps (Gap 6) are all complete. The 35 regressions from Gap 5 confirm the interdependency: scopes are correct but deps/slots still diverge. Slot count alignment (Gap 3) and scope heuristics (Gap 4) are the remaining blockers before compound fixture gains materialize.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.
 - **JSX edge cases**: Self-closing elements, boolean attributes (`<div disabled />`), computed property names in JSX, namespace attributes (`xml:lang`).
 - **Scope merging audit scope**: The merge/prune passes are among the most complex in the compiler. A full audit requires careful line-by-line comparison with upstream TypeScript.

@@ -1,5 +1,6 @@
 use crate::hir::types::{
-    HIR, IdentifierId, InstructionValue, ReactiveScopeDeclaration, ReactiveScopeDependency, ScopeId,
+    HIR, IdentifierId, InstructionValue, ReactiveScopeDeclaration, ReactiveScopeDependency,
+    ScopeId, Type,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -17,6 +18,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
     // Used to propagate non-reactivity through StoreLocal/LoadLocal chains.
     let mut non_reactive_names: FxHashSet<String> = FxHashSet::default();
 
+    // First pass: seed non-reactive IDs from globals, primitives, and stable types
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -25,25 +27,68 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                 | InstructionValue::JSXText { .. } => {
                     non_reactive_ids.insert(instr.lvalue.identifier.id);
                 }
-                // When a non-reactive value is stored to a local variable, the variable
-                // name itself becomes non-reactive.
-                InstructionValue::StoreLocal { lvalue, value, .. } => {
-                    if non_reactive_ids.contains(&value.identifier.id) {
-                        non_reactive_ids.insert(lvalue.identifier.id);
-                        if let Some(name) = &lvalue.identifier.name {
+                _ => {
+                    // Stable hook returns (setState, dispatch, ref) are never reactive deps
+                    if matches!(instr.lvalue.identifier.type_, Type::SetState | Type::Ref) {
+                        non_reactive_ids.insert(instr.lvalue.identifier.id);
+                        if let Some(name) = &instr.lvalue.identifier.name {
                             non_reactive_names.insert(name.clone());
                         }
                     }
                 }
-                // LoadLocal of a non-reactive name produces a non-reactive value.
-                InstructionValue::LoadLocal { place } => {
-                    if let Some(name) = &place.identifier.name
-                        && non_reactive_names.contains(name)
-                    {
-                        non_reactive_ids.insert(instr.lvalue.identifier.id);
-                    }
+            }
+        }
+    }
+
+    // Second pass: propagate non-reactivity through StoreLocal, LoadLocal,
+    // and PropertyLoad chains (e.g., Math → Math.max, console → console.log).
+    // Uses fixpoint iteration for property chains of arbitrary depth.
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                if non_reactive_ids.contains(&instr.lvalue.identifier.id) {
+                    continue;
                 }
-                _ => {}
+                let should_add = match &instr.value {
+                    InstructionValue::StoreLocal { value, .. }
+                    | InstructionValue::StoreContext { value, .. } => {
+                        non_reactive_ids.contains(&value.identifier.id)
+                    }
+                    InstructionValue::LoadLocal { place }
+                    | InstructionValue::LoadContext { place } => {
+                        non_reactive_ids.contains(&place.identifier.id)
+                            || place
+                                .identifier
+                                .name
+                                .as_deref()
+                                .is_some_and(|n| non_reactive_names.contains(n))
+                    }
+                    // Property access of a non-reactive object (e.g., Math.max,
+                    // console.log, JSON.parse) produces a non-reactive value.
+                    InstructionValue::PropertyLoad { object, .. } => {
+                        non_reactive_ids.contains(&object.identifier.id)
+                    }
+                    _ => false,
+                };
+                if should_add {
+                    non_reactive_ids.insert(instr.lvalue.identifier.id);
+                    if let Some(name) = &instr.lvalue.identifier.name {
+                        non_reactive_names.insert(name.clone());
+                    }
+                    // Also propagate store/context target names
+                    match &instr.value {
+                        InstructionValue::StoreLocal { lvalue, .. }
+                        | InstructionValue::StoreContext { lvalue, .. } => {
+                            if let Some(name) = &lvalue.identifier.name {
+                                non_reactive_names.insert(name.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                    changed = true;
+                }
             }
         }
     }
