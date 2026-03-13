@@ -2,7 +2,7 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-13 (post property-path deps + sentinel codegen fix, 318/1717)
+Last updated: 2026-03-13 (post scope-merge heuristic improvements, 318/1717)
 
 Current conformance: 318/1717 pass (18.5%), 0 panics, 0 unexpected divergences.
 
@@ -53,8 +53,10 @@ regressions are expected and will resolve with over-scoped dep fixes (Gap 6)
 and slot count alignment (Gap 3). Gap 6 (over-scoped deps), Gap 7 (property-path deps), and Gap 8 (sentinel
 codegen) are now resolved. Property-path deps yielded +3 fixtures (315 -> 318).
 
-- [ ] Scope merging/splitting heuristic audit vs upstream — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
+- [~] Scope merging/splitting heuristic audit vs upstream (name-based dep comparison done; overlap merge + setState heuristic reverted) — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
+- [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation
+- [ ] Overlap merge regression risk (reverted, needs investigation) — [memoization-structure.md](memoization-structure.md)#gap-10-overlap-merge-regression
 
 ## Priority 2 -- Upstream Errors (~59 fixtures remaining)
 
