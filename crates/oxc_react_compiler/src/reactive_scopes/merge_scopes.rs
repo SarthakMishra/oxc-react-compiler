@@ -1,4 +1,5 @@
-use crate::hir::types::{HIR, InstructionId, ReactiveFunction, ScopeId};
+use crate::hir::types::{DependencyPathEntry, HIR, InstructionId, ReactiveFunction, ScopeId};
+use std::collections::BTreeSet;
 
 /// Merge overlapping reactive scopes in the HIR.
 ///
@@ -71,31 +72,58 @@ pub fn merge_reactive_scopes_that_invalidate_together(reactive_fn: &mut Reactive
     merge_scopes_in_block(&mut reactive_fn.body);
 }
 
+/// Canonical dependency key for comparing scope deps by name + path,
+/// not by IdentifierId (which is SSA-unique per Place reference).
+/// DIVERGENCE: Upstream uses identifier name + property path for dep comparison.
+/// Our HIR creates fresh IdentifierIds per Place, so ID comparison would
+/// make almost all scopes appear to have different deps.
+type DepKey = (Option<String>, Vec<DependencyPathEntry>);
+
+fn dep_key_set(scope: &crate::hir::types::ReactiveScope) -> BTreeSet<DepKey> {
+    scope.dependencies.iter().map(|d| (d.identifier.name.clone(), d.path.clone())).collect()
+}
+
 fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock) {
-    // Collect scope indices that share the same dependencies
-    let mut scope_indices: Vec<(usize, Vec<crate::hir::types::IdentifierId>)> = Vec::new();
+    // Collect scope indices with their canonical dependency keys
+    let mut scope_indices: Vec<(usize, BTreeSet<DepKey>)> = Vec::new();
 
     for (i, instr) in block.instructions.iter().enumerate() {
         if let crate::hir::types::ReactiveInstruction::Scope(scope_block) = instr {
-            let dep_ids: Vec<crate::hir::types::IdentifierId> =
-                scope_block.scope.dependencies.iter().map(|d| d.identifier.id).collect();
-            scope_indices.push((i, dep_ids));
+            scope_indices.push((i, dep_key_set(&scope_block.scope)));
         }
     }
 
-    // Find pairs with identical deps and merge them
-    // We merge from the end to avoid invalidating indices
+    // Find consecutive pairs with identical deps and merge them.
+    // DIVERGENCE: Upstream MergeReactiveScopesThatInvalidateTogether.ts compares
+    // scopes by named dependency path (identifier name + property path), not by
+    // IdentifierId. Our HIR creates fresh IDs per Place, so ID comparison makes
+    // almost all scopes appear to have different deps. Name-based comparison
+    // correctly identifies scopes that invalidate together.
+    //
+    // We only merge scopes with strictly identical dep sets (not subsets) to
+    // match upstream semantics: "invalidate together" means the same deps.
+    let mut merged_indices: rustc_hash::FxHashSet<usize> = rustc_hash::FxHashSet::default();
     let mut to_merge: Vec<(usize, usize)> = Vec::new();
     for i in 0..scope_indices.len() {
+        if merged_indices.contains(&i) {
+            continue;
+        }
         for j in (i + 1)..scope_indices.len() {
-            if scope_indices[i].1 == scope_indices[j].1 && !scope_indices[i].1.is_empty() {
+            if merged_indices.contains(&j) {
+                continue;
+            }
+            let (_, ref a_deps) = scope_indices[i];
+            let (_, ref b_deps) = scope_indices[j];
+            // Merge only when deps are identical and non-empty
+            if !a_deps.is_empty() && a_deps == b_deps {
                 to_merge.push((scope_indices[i].0, scope_indices[j].0));
+                merged_indices.insert(j); // Prevent double-merge of scope j
             }
         }
     }
 
-    // For now, just merge the instructions of adjacent scopes with same deps
-    // A full implementation would restructure the tree more aggressively
+    // Merge scopes: move second scope's instructions into first.
+    // Process in reverse to preserve indices.
     for &(first_idx, second_idx) in to_merge.iter().rev() {
         if second_idx < block.instructions.len() && first_idx < block.instructions.len() {
             let second = block.instructions.remove(second_idx);
@@ -108,7 +136,17 @@ fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock) {
                     .instructions
                     .instructions
                     .extend(second_scope.instructions.instructions);
-                // Merge the merged list
+                // Union the dependency sets using a set for dedup
+                let existing_keys = dep_key_set(&first_scope.scope);
+                for dep in &second_scope.scope.dependencies {
+                    let key = (dep.identifier.name.clone(), dep.path.clone());
+                    if !existing_keys.contains(&key) {
+                        first_scope.scope.dependencies.push(dep.clone());
+                    }
+                }
+                // Merge declarations
+                first_scope.scope.declarations.extend(second_scope.scope.declarations);
+                // Track merged scope ID
                 first_scope.scope.merged.push(second_scope.scope.id);
             }
         }

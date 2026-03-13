@@ -70,6 +70,20 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                     InstructionValue::PropertyLoad { object, .. } => {
                         non_reactive_ids.contains(&object.identifier.id)
                     }
+                    // Destructure of a non-reactive value: all targets are non-reactive.
+                    // e.g., const {getNumber} = require('shared-runtime')
+                    InstructionValue::Destructure { value, .. } => {
+                        non_reactive_ids.contains(&value.identifier.id)
+                    }
+                    // DIVERGENCE: Upstream doesn't have this rule. We treat CallExpression
+                    // results as non-reactive when callee and all args are non-reactive.
+                    // This primarily handles `require('shared-runtime')` returning a
+                    // stable module object. Safe because truly reactive calls (hooks)
+                    // have their return types set separately (Type::SetState, Type::Ref).
+                    InstructionValue::CallExpression { callee, args } => {
+                        non_reactive_ids.contains(&callee.identifier.id)
+                            && args.iter().all(|a| non_reactive_ids.contains(&a.identifier.id))
+                    }
                     _ => false,
                 };
                 if should_add {
@@ -84,6 +98,14 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                             if let Some(name) = &lvalue.identifier.name {
                                 non_reactive_names.insert(name.clone());
                             }
+                        }
+                        // Propagate non-reactivity to all destructure targets
+                        InstructionValue::Destructure { lvalue_pattern, .. } => {
+                            collect_destructure_target_ids(
+                                lvalue_pattern,
+                                &mut non_reactive_ids,
+                                &mut non_reactive_names,
+                            );
                         }
                         _ => {}
                     }
@@ -609,6 +631,72 @@ fn collect_read_operand_places(value: &InstructionValue) -> Vec<&crate::hir::typ
     }
 
     places
+}
+
+/// Recursively collect all target place identifiers from a destructure pattern
+/// and mark them as non-reactive.
+fn collect_destructure_target_ids(
+    pattern: &crate::hir::types::DestructurePattern,
+    non_reactive_ids: &mut FxHashSet<IdentifierId>,
+    non_reactive_names: &mut FxHashSet<String>,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+
+    fn mark_place(
+        place: &crate::hir::types::Place,
+        ids: &mut FxHashSet<IdentifierId>,
+        names: &mut FxHashSet<String>,
+    ) {
+        ids.insert(place.identifier.id);
+        if let Some(name) = &place.identifier.name {
+            names.insert(name.clone());
+        }
+    }
+
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        mark_place(place, non_reactive_ids, non_reactive_names);
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        collect_destructure_target_ids(
+                            nested,
+                            non_reactive_ids,
+                            non_reactive_names,
+                        );
+                    }
+                }
+            }
+            if let Some(rest) = rest {
+                mark_place(rest, non_reactive_ids, non_reactive_names);
+            }
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(DestructureTarget::Place(place)) => {
+                        mark_place(place, non_reactive_ids, non_reactive_names);
+                    }
+                    DestructureArrayItem::Value(DestructureTarget::Pattern(nested)) => {
+                        collect_destructure_target_ids(
+                            nested,
+                            non_reactive_ids,
+                            non_reactive_names,
+                        );
+                    }
+                    DestructureArrayItem::Spread(place) => {
+                        mark_place(place, non_reactive_ids, non_reactive_names);
+                    }
+                    DestructureArrayItem::Hole => {}
+                }
+            }
+            if let Some(rest) = rest {
+                mark_place(rest, non_reactive_ids, non_reactive_names);
+            }
+        }
+    }
 }
 
 /// Collect all places referenced as operands in an instruction value (both reads and writes).
