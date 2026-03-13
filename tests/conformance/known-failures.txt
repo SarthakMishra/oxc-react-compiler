@@ -740,12 +740,12 @@ labeled-break-within-label-switch.ts
 lambda-array-access-member-expr-captured.ts
 lambda-array-access-member-expr-param.ts
 lambda-capture-returned-alias.js
-lambda-return-expression.ts
 lambda-mutate-shadowed-object.js
 lambda-mutated-non-reactive-to-reactive.js
 lambda-mutated-ref-non-reactive.js
 lambda-reassign-primitive.js
 lambda-reassign-shadowed-primitive.js
+lambda-return-expression.ts
 log-pruned-memoization.js
 logical-expression-object.js
 logical-reorder.flow.js
