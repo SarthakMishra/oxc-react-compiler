@@ -27,8 +27,8 @@ pub fn infer_types(hir: &mut HIR) {
             instr.lvalue.identifier.type_ = inferred;
 
             // Track hook return value identifiers
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
-                if let Some(name) = callee.identifier.name.as_deref() {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value
+                && let Some(name) = callee.identifier.name.as_deref() {
                     if name == "useRef" {
                         instr.lvalue.identifier.type_ = Type::Ref;
                         ref_ids.insert(instr.lvalue.identifier.id);
@@ -38,7 +38,6 @@ pub fn infer_types(hir: &mut HIR) {
                         state_tuple_ids.insert(instr.lvalue.identifier.id);
                     }
                 }
-            }
         }
     }
 
@@ -51,8 +50,8 @@ pub fn infer_types(hir: &mut HIR) {
             if let InstructionValue::Destructure { value, lvalue_pattern } = &instr.value {
                 if state_tuple_ids.contains(&value.identifier.id) {
                     // Mark second element of array destructure as SetState
-                    if let DestructurePattern::Array { items, .. } = lvalue_pattern {
-                        if let Some(DestructureArrayItem::Value(DestructureTarget::Place(p))) =
+                    if let DestructurePattern::Array { items, .. } = lvalue_pattern
+                        && let Some(DestructureArrayItem::Value(DestructureTarget::Place(p))) =
                             items.get(1)
                         {
                             // We can't mutate through the immutable reference, so collect
@@ -62,7 +61,6 @@ pub fn infer_types(hir: &mut HIR) {
                             // Store the setter ID in state_tuple_ids for pass 3
                             state_tuple_ids.insert(p.identifier.id);
                         }
-                    }
                 } else if ref_ids.contains(&value.identifier.id) {
                     // useRef destructuring is uncommon but handle it
                     ref_ids.remove(&value.identifier.id);

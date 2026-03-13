@@ -17,7 +17,7 @@ fn run_fixture(fixture_path: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(fixture_path);
 
     let source = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("Failed to read fixture {}: {}", fixture_path, e));
+        .unwrap_or_else(|e| panic!("Failed to read fixture {fixture_path}: {e}"));
 
     let result = compile_program(&source, fixture_path, &PluginOptions::default());
 
@@ -105,11 +105,10 @@ fn all_fixtures_have_tests() {
     if let Ok(entries) = std::fs::read_dir(&fixtures_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if let Some(ext) = path.extension() {
-                if ext == "tsx" || ext == "ts" {
+            if let Some(ext) = path.extension()
+                && (ext == "tsx" || ext == "ts") {
                     fixture_files.push(path.file_name().unwrap().to_string_lossy().into_owned());
                 }
-            }
         }
     }
 

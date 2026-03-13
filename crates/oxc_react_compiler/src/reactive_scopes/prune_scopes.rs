@@ -568,15 +568,14 @@ fn inline_loads_in_block(block: &mut ReactiveBlock) {
     let mut substitutions: FxHashMap<IdentifierId, Place> = FxHashMap::default();
 
     for instr in &block.instructions {
-        if let ReactiveInstruction::Instruction(instruction) = instr {
-            if let InstructionValue::LoadLocal { place: source } = &instruction.value {
+        if let ReactiveInstruction::Instruction(instruction) = instr
+            && let InstructionValue::LoadLocal { place: source } = &instruction.value {
                 let lvalue = &instruction.lvalue;
                 // Only inline unnamed temporaries (not user-declared variables)
                 if lvalue.identifier.name.is_none() {
                     substitutions.insert(lvalue.identifier.id, source.clone());
                 }
             }
-        }
     }
 
     if substitutions.is_empty() {

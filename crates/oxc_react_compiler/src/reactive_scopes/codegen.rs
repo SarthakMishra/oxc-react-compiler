@@ -278,11 +278,11 @@ fn is_inlinable(value: &InstructionValue) -> bool {
 ///    a. Its use-count must be exactly 1.
 ///    b. The value must be `is_inlinable`.
 ///    c. For call-like instructions (CallExpression / MethodCall /
-///       NewExpression) we additionally require that the very next
-///       instruction in the sequence uses this temp as an operand
-///       (checked by ensuring no intervening side-effecting instructions
-///       follow before the single use site — approximated here by the
-///       single-use guarantee already holding).
+///    NewExpression) we additionally require that the very next
+///    instruction in the sequence uses this temp as an operand
+///    (checked by ensuring no intervening side-effecting instructions
+///    follow before the single use site — approximated here by the
+///    single-use guarantee already holding).
 ///    If all conditions hold, generate the expression string and insert into
 ///    the map.
 ///
@@ -482,7 +482,7 @@ fn expr_string(value: &InstructionValue, im: &InlineMap) -> Option<String> {
                 match &attr.name {
                     crate::hir::types::JsxAttributeName::Named(name) => {
                         let key = if name.contains('-') || name.contains(':') {
-                            format!("\"{}\"", name)
+                            format!("\"{name}\"")
                         } else {
                             name.clone()
                         };
@@ -497,7 +497,7 @@ fn expr_string(value: &InstructionValue, im: &InlineMap) -> Option<String> {
             if children.len() == 1 {
                 props_parts.push(format!("children: {}", resolve(&children[0])));
             } else if children.len() > 1 {
-                let child_strs: Vec<String> = children.iter().map(|c| resolve(c)).collect();
+                let child_strs: Vec<String> = children.iter().map(&resolve).collect();
                 props_parts.push(format!("children: [{}]", child_strs.join(", ")));
             }
             let props_str = if props_parts.is_empty() && !has_spread {
@@ -514,23 +514,23 @@ fn expr_string(value: &InstructionValue, im: &InlineMap) -> Option<String> {
             } else if children.len() == 1 {
                 Some(format!("_jsx(_Fragment, {{ children: {} }})", resolve(&children[0])))
             } else {
-                let child_strs: Vec<String> = children.iter().map(|c| resolve(c)).collect();
+                let child_strs: Vec<String> = children.iter().map(&resolve).collect();
                 Some(format!("_jsxs(_Fragment, {{ children: [{}] }})", child_strs.join(", ")))
             }
         }
         InstructionValue::CallExpression { callee, args } => {
             let callee_name = resolve(callee);
-            let args_str: Vec<String> = args.iter().map(|a| resolve(a)).collect();
+            let args_str: Vec<String> = args.iter().map(&resolve).collect();
             Some(format!("{}({})", callee_name, args_str.join(", ")))
         }
         InstructionValue::MethodCall { receiver, property, args } => {
             let receiver_name = resolve(receiver);
-            let args_str: Vec<String> = args.iter().map(|a| resolve(a)).collect();
+            let args_str: Vec<String> = args.iter().map(&resolve).collect();
             Some(format!("{}.{}({})", receiver_name, property, args_str.join(", ")))
         }
         InstructionValue::NewExpression { callee, args } => {
             let callee_name = resolve(callee);
-            let args_str: Vec<String> = args.iter().map(|a| resolve(a)).collect();
+            let args_str: Vec<String> = args.iter().map(resolve).collect();
             Some(format!("new {}({})", callee_name, args_str.join(", ")))
         }
         _ => None,
@@ -608,8 +608,8 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     let empty_inline_map = InlineMap::new();
     let mut hoisted_indices = HashSet::new();
     for (i, instr) in rf.body.instructions.iter().enumerate() {
-        if let ReactiveInstruction::Instruction(instruction) = instr {
-            if let InstructionValue::Destructure { value, .. } = &instruction.value {
+        if let ReactiveInstruction::Instruction(instruction) = instr
+            && let InstructionValue::Destructure { value, .. } = &instruction.value {
                 let value_name = place_name(value);
                 if param_names.contains(value_name.as_ref()) {
                     let indent_str = "  ";
@@ -623,7 +623,6 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
                     hoisted_indices.insert(i);
                 }
             }
-        }
     }
 
     // Generate body, skipping hoisted instructions
@@ -774,8 +773,8 @@ fn codegen_instruction(
                 ""
             } else {
                 match type_ {
-                    Some(crate::hir::types::InstructionKind::Const)
-                    | Some(crate::hir::types::InstructionKind::HoistedConst) => "const ",
+                    Some(crate::hir::types::InstructionKind::Const |
+crate::hir::types::InstructionKind::HoistedConst) => "const ",
                     Some(crate::hir::types::InstructionKind::Let) => "let ",
                     Some(crate::hir::types::InstructionKind::Var) => "var ",
                     Some(crate::hir::types::InstructionKind::HoistedFunction) => "const ",
@@ -863,7 +862,7 @@ fn codegen_instruction(
                     crate::hir::types::JsxAttributeName::Named(name) => {
                         // Quote attribute names that aren't valid JS identifiers (e.g. aria-label, data-testid)
                         let key = if name.contains('-') || name.contains(':') {
-                            format!("\"{}\"", name)
+                            format!("\"{name}\"")
                         } else {
                             name.clone()
                         };
@@ -1369,19 +1368,18 @@ fn codegen_scope(
     // DeclareLocal/DeclareContext are never inlinable, so we use an empty inline map.
     let empty_inline_map = InlineMap::new();
     for instr in &scope.instructions.instructions {
-        if let ReactiveInstruction::Instruction(instruction) = instr {
-            if let InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. } =
+        if let ReactiveInstruction::Instruction(instruction) = instr
+            && let InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. } =
                 &instruction.value
             {
                 codegen_instruction(instruction, output, &indent_str, declared, &empty_inline_map);
             }
-        }
     }
 
     // Pre-declare scope output variables with `let` so the else-branch
     // (cache reload) can assign to them. Variables already declared by
     // DeclareLocal above are skipped.
-    for (_, decl) in scope.scope.declarations.iter() {
+    for (_, decl) in &scope.scope.declarations {
         let decl_name = identifier_display_name(&decl.identifier);
         if !declared.contains(decl_name.as_ref()) {
             declared.insert(decl_name.to_string());
@@ -1624,7 +1622,7 @@ fn extract_for_in_parts(init: &ReactiveBlock) -> (String, String) {
                 InstructionValue::StoreLocal { lvalue, .. }
                 | InstructionValue::DeclareLocal { lvalue, .. } => {
                     if let Some(name) = &lvalue.identifier.name {
-                        loop_var_name = name.clone();
+                        loop_var_name.clone_from(name);
                     }
                 }
                 _ => {}
@@ -1659,7 +1657,7 @@ fn extract_for_of_parts(init: &ReactiveBlock) -> (String, String) {
                 InstructionValue::StoreLocal { lvalue, .. }
                 | InstructionValue::DeclareLocal { lvalue, .. } => {
                     if let Some(name) = &lvalue.identifier.name {
-                        loop_var_name = name.clone();
+                        loop_var_name.clone_from(name);
                     }
                 }
                 _ => {}
@@ -1738,11 +1736,10 @@ fn pattern_has_declared_names(
                     }
                 }
             }
-            if let Some(rest_place) = rest {
-                if declared.contains(place_name(rest_place).as_ref()) {
+            if let Some(rest_place) = rest
+                && declared.contains(place_name(rest_place).as_ref()) {
                     return true;
                 }
-            }
             false
         }
         DestructurePattern::Array { items, rest } => {
@@ -1763,11 +1760,10 @@ fn pattern_has_declared_names(
                     DestructureArrayItem::Hole | DestructureArrayItem::Spread(_) => {}
                 }
             }
-            if let Some(rest_place) = rest {
-                if declared.contains(place_name(rest_place).as_ref()) {
+            if let Some(rest_place) = rest
+                && declared.contains(place_name(rest_place).as_ref()) {
                     return true;
                 }
-            }
             false
         }
     }

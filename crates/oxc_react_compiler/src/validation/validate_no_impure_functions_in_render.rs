@@ -47,8 +47,8 @@ pub fn validate_no_impure_functions_in_render(hir: &HIR, errors: &mut ErrorColle
         for instr in &block.instructions {
             match &instr.value {
                 InstructionValue::CallExpression { callee, .. } => {
-                    if let Some(name) = callee.identifier.name.as_deref() {
-                        if IMPURE_FUNCTIONS.contains(&name) {
+                    if let Some(name) = callee.identifier.name.as_deref()
+                        && IMPURE_FUNCTIONS.contains(&name) {
                             errors.push(CompilerError::invalid_react_with_kind(
                                 instr.loc,
                                 format!(
@@ -58,11 +58,10 @@ pub fn validate_no_impure_functions_in_render(hir: &HIR, errors: &mut ErrorColle
                                 DiagnosticKind::ImpureFunctionInRender,
                             ));
                         }
-                    }
                 }
                 InstructionValue::MethodCall { receiver, property, .. } => {
-                    if let Some(obj_name) = receiver.identifier.name.as_deref() {
-                        if IMPURE_METHOD_CALLS
+                    if let Some(obj_name) = receiver.identifier.name.as_deref()
+                        && IMPURE_METHOD_CALLS
                             .iter()
                             .any(|(o, m)| *o == obj_name && *m == property.as_str())
                         {
@@ -75,7 +74,6 @@ pub fn validate_no_impure_functions_in_render(hir: &HIR, errors: &mut ErrorColle
                                 DiagnosticKind::ImpureFunctionInRender,
                             ));
                         }
-                    }
                 }
                 _ => {}
             }

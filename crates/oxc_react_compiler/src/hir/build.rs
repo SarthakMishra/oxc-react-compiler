@@ -221,9 +221,7 @@ impl HIRBuilder {
         let id = self.current_block;
         self.blocks
             .iter_mut()
-            .find(|(bid, _)| *bid == id)
-            .map(|(_, b)| b)
-            .unwrap_or_else(|| panic!("current block (BlockId {id}) must exist in HIR blocks"))
+            .find(|(bid, _)| *bid == id).map_or_else(|| panic!("current block (BlockId {id}) must exist in HIR blocks"), |(_, b)| b)
     }
 
     // ------------------------------------------------------------------

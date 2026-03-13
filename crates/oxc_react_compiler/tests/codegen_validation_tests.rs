@@ -142,11 +142,11 @@ fn compile_and_validate(source: &str) -> (bool, Vec<String>) {
 #[test]
 fn codegen_valid_simple_component() {
     let (transformed, errors) = compile_and_validate(
-        r#"
+        r"
 function Counter({ count }) {
     return <div>{count}</div>;
 }
-"#,
+",
     );
     assert!(transformed);
     assert!(errors.is_empty(), "codegen output should be parseable: {errors:?}");
@@ -155,12 +155,12 @@ function Counter({ count }) {
 #[test]
 fn codegen_valid_hook() {
     let (transformed, errors) = compile_and_validate(
-        r#"
+        r"
 function useToggle(initial) {
     const [value, setValue] = useState(initial);
     return [value, () => setValue(!value)];
 }
-"#,
+",
     );
     assert!(transformed);
     assert!(errors.is_empty(), "hook codegen should be parseable: {errors:?}");
@@ -169,14 +169,14 @@ function useToggle(initial) {
 #[test]
 fn codegen_valid_conditional() {
     let (transformed, errors) = compile_and_validate(
-        r#"
+        r"
 function Toggle({ isOn }) {
     if (isOn) {
         return <div>ON</div>;
     }
     return <div>OFF</div>;
 }
-"#,
+",
     );
     assert!(transformed);
     assert!(errors.is_empty(), "conditional codegen should be parseable: {errors:?}");
@@ -200,11 +200,11 @@ function Display({ items }) {
 #[test]
 fn codegen_valid_export() {
     let (transformed, errors) = compile_and_validate(
-        r#"
+        r"
 export function App({ title }) {
     return <h1>{title}</h1>;
 }
-"#,
+",
     );
     assert!(transformed);
     assert!(errors.is_empty(), "exported component codegen should be parseable: {errors:?}");
@@ -213,11 +213,11 @@ export function App({ title }) {
 #[test]
 fn codegen_valid_export_default() {
     let (transformed, errors) = compile_and_validate(
-        r#"
+        r"
 export default function Page({ content }) {
     return <main>{content}</main>;
 }
-"#,
+",
     );
     assert!(transformed);
     assert!(errors.is_empty(), "export default codegen should be parseable: {errors:?}");
@@ -226,14 +226,14 @@ export default function Page({ content }) {
 #[test]
 fn codegen_valid_multiple_components() {
     let (transformed, errors) = compile_and_validate(
-        r#"
+        r"
 function Header({ title }) {
     return <h1>{title}</h1>;
 }
 function Footer({ text }) {
     return <footer>{text}</footer>;
 }
-"#,
+",
     );
     assert!(transformed);
     assert!(errors.is_empty(), "multiple components codegen should be parseable: {errors:?}");
@@ -255,11 +255,11 @@ function Layout({ children }) {
 #[test]
 fn codegen_valid_arrow_component() {
     let (transformed, errors) = compile_and_validate(
-        r#"
+        r"
 const Button = ({ onClick, label }) => {
     return <button onClick={onClick}>{label}</button>;
 };
-"#,
+",
     );
     assert!(transformed);
     assert!(errors.is_empty(), "arrow component codegen should be parseable: {errors:?}");
@@ -294,11 +294,11 @@ fn codegen_non_component() {
 #[test]
 fn semantic_simple_component() {
     let result = compile_program(
-        r#"
+        r"
 function Greeting({ name }) {
     return <div>Hello, {name}!</div>;
 }
-"#,
+",
         "test.tsx",
         &PluginOptions::default(),
     );
@@ -310,12 +310,12 @@ function Greeting({ name }) {
 #[test]
 fn semantic_hook_with_state() {
     let result = compile_program(
-        r#"
+        r"
 function Counter() {
     const [count, setCount] = useState(0);
     return <button onClick={() => setCount(count + 1)}>{count}</button>;
 }
-"#,
+",
         "test.tsx",
         &PluginOptions::default(),
     );
@@ -368,14 +368,14 @@ function App({ user }) {
 #[test]
 fn semantic_multiple_components() {
     let result = compile_program(
-        r#"
+        r"
 function Header({ title }) {
     return <h1>{title}</h1>;
 }
 function Footer({ text }) {
     return <footer>{text}</footer>;
 }
-"#,
+",
         "test.tsx",
         &PluginOptions::default(),
     );
@@ -387,11 +387,11 @@ function Footer({ text }) {
 #[test]
 fn semantic_arrow_component() {
     let result = compile_program(
-        r#"
+        r"
 const Button = ({ onClick, label }) => {
     return <button onClick={onClick}>{label}</button>;
 };
-"#,
+",
         "test.tsx",
         &PluginOptions::default(),
     );
@@ -405,7 +405,8 @@ fn test_color_picker_no_hang() {
     let source =
         std::fs::read_to_string("../../benchmarks/fixtures/realworld/color-picker.tsx").unwrap();
     let result = compile_program(&source, "color-picker.tsx", &PluginOptions::default());
-    assert!(result.transformed || !result.transformed, "Should complete without hanging");
+    // If we reach this point, the compiler completed without hanging.
+    let _ = result;
 }
 
 #[test]
@@ -414,5 +415,6 @@ fn test_availability_schedule_no_hang() {
         std::fs::read_to_string("../../benchmarks/fixtures/realworld/availability-schedule.tsx")
             .unwrap();
     let result = compile_program(&source, "availability-schedule.tsx", &PluginOptions::default());
-    assert!(result.transformed || !result.transformed, "Should complete without hanging");
+    // If we reach this point, the compiler completed without hanging.
+    let _ = result;
 }

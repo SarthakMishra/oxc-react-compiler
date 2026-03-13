@@ -3,6 +3,8 @@
 //! Uses proptest to generate random JavaScript-like source strings and ensures
 //! the compiler never panics, regardless of input shape.
 
+use std::fmt::Write as _;
+
 use oxc_react_compiler::{PluginOptions, compile_program};
 use proptest::prelude::*;
 
@@ -49,8 +51,10 @@ fn arb_hook_component() -> impl Strategy<Value = String> {
         ),
     )
         .prop_map(|(name, hooks)| {
-            let hook_lines: String =
-                hooks.iter().enumerate().map(|(i, h)| format!("  const v{i} = {h};\n")).collect();
+            let mut hook_lines = String::new();
+            for (i, h) in hooks.iter().enumerate() {
+                let _ = writeln!(hook_lines, "  const v{i} = {h};");
+            }
             format!("function {name}() {{\n{hook_lines}  return <div />;\n}}")
         })
 }
@@ -62,9 +66,9 @@ fn arb_nested_jsx() -> impl Strategy<Value = String> {
         let mut close = String::new();
         for i in 0..depth {
             let tag = if i % 2 == 0 { "div" } else { "span" };
-            open.push_str(&format!("<{tag}>"));
+            let _ = write!(open, "<{tag}>");
             // Build closing tags in reverse order.
-            close = format!("</{tag}>{close}");
+            close.insert_str(0, &format!("</{tag}>"));
         }
         format!("function {name}() {{ return ({open}hello{close}); }}")
     })

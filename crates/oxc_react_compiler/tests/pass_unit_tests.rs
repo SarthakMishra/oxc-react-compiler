@@ -69,7 +69,7 @@ fn test_infer_reactive_places_simple() {
     let temp = make_place(&mut ids, "t0");
 
     let instr =
-        make_instruction(&mut ids, temp, InstructionValue::LoadLocal { place: props.clone() });
+        make_instruction(&mut ids, temp, InstructionValue::LoadLocal { place: props });
 
     let block = BasicBlock {
         kind: BlockKind::Block,
@@ -387,7 +387,7 @@ fn test_codegen_empty_function() {
 
     let code = codegen_function(&rf);
     assert!(code.contains("function Empty()"));
-    assert!(code.contains("}"));
+    assert!(code.contains('}'));
 }
 
 #[test]
@@ -478,7 +478,7 @@ fn test_codegen_scope_block() {
         dependencies: vec![],
         declarations: vec![(
             lvalue.identifier.id,
-            ReactiveScopeDeclaration { identifier: lvalue.identifier.clone(), scope: ScopeId(0) },
+            ReactiveScopeDeclaration { identifier: lvalue.identifier, scope: ScopeId(0) },
         )],
         reassignments: vec![],
         early_return_value: None,

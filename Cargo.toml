@@ -12,6 +12,10 @@ edition = "2024"
 rust-version = "1.90.0"
 license = "MIT"
 repository = "https://github.com/SarthakMishra/oxc-react-compiler"
+description = "React Compiler (babel-plugin-react-compiler) ported to Rust using OXC"
+readme = "README.md"
+keywords = ["react", "compiler", "oxc", "memoization"]
+categories = ["compilers", "web-programming"]
 
 # <https://doc.rust-lang.org/rustc/lints/listing/allowed-by-default.html>
 [workspace.lints.rust]

@@ -8,13 +8,13 @@ use oxc_parser::Parser;
 use oxc_react_compiler_lint::{run_all_lint_rules, run_lint_rules};
 use oxc_span::SourceType;
 
-const SIMPLE_COMPONENT: &str = r#"
+const SIMPLE_COMPONENT: &str = r"
 function Greeting({ name }) {
     return <div>Hello {name}</div>;
 }
-"#;
+";
 
-const COMPONENT_WITH_HOOKS: &str = r#"
+const COMPONENT_WITH_HOOKS: &str = r"
 function Counter() {
     const [count, setCount] = useState(0);
     const doubled = useMemo(() => count * 2, [count]);
@@ -28,7 +28,7 @@ function Counter() {
         </div>
     );
 }
-"#;
+";
 
 const COMPLEX_COMPONENT: &str = r#"
 import { observable } from "mobx";

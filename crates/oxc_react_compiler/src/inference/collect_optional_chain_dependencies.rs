@@ -207,7 +207,7 @@ mod tests {
         };
 
         let result = collect_optional_chain_dependencies(&hir);
-        let chain = result.chains.get(&IdentifierId(11)).unwrap();
+        let chain = &result.chains[&IdentifierId(11)];
         assert_eq!(chain.root_id, IdentifierId(1));
         assert_eq!(chain.full_path.len(), 1);
         assert!(chain.full_path[0].optional);

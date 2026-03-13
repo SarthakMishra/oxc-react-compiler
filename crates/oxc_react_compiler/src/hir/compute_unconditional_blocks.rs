@@ -39,7 +39,7 @@ pub fn compute_unconditional_blocks(hir: &HIR) -> UnconditionalBlocks {
     let exit_blocks: Vec<BlockId> = block_ids
         .iter()
         .copied()
-        .filter(|bid| successors.get(bid).map_or(true, |s| s.is_empty()))
+        .filter(|bid| successors.get(bid).is_none_or(std::vec::Vec::is_empty))
         .collect();
 
     // If no exit blocks, all blocks are trivially unconditional (infinite loop)
@@ -261,20 +261,18 @@ fn compute_dominators_generic(
             };
             let mut new_idom = None;
             for p in pred_list {
-                if let Some(&pi) = id_to_idx.get(p) {
-                    if doms[pi].is_some() {
+                if let Some(&pi) = id_to_idx.get(p)
+                    && doms[pi].is_some() {
                         new_idom = Some(pi);
                         break;
                     }
-                }
             }
             if let Some(mut new_idom_val) = new_idom {
                 for p in pred_list {
-                    if let Some(&pi) = id_to_idx.get(p) {
-                        if doms[pi].is_some() && pi != new_idom_val {
+                    if let Some(&pi) = id_to_idx.get(p)
+                        && doms[pi].is_some() && pi != new_idom_val {
                             new_idom_val = intersect(&doms, pi, new_idom_val);
                         }
-                    }
                 }
                 if doms[b] != Some(new_idom_val) {
                     doms[b] = Some(new_idom_val);
@@ -286,11 +284,10 @@ fn compute_dominators_generic(
 
     let mut result = FxHashMap::default();
     for (i, dom) in doms.iter().enumerate() {
-        if let Some(d) = dom {
-            if i != entry_idx {
+        if let Some(d) = dom
+            && i != entry_idx {
                 result.insert(block_ids[i], block_ids[*d]);
             }
-        }
     }
     result
 }

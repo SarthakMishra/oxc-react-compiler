@@ -21,14 +21,14 @@ fn compile_with_all_validations(source: &str) -> Vec<String> {
 
 #[test]
 fn diagnostic_hooks_conditional() {
-    let source = r#"
+    let source = r"
 function Foo({ cond }) {
     if (cond) {
         const [x, setX] = useState(0);
     }
     return <div />;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_hooks_conditional", format!("{errors:?}"));
 }
@@ -37,24 +37,24 @@ function Foo({ cond }) {
 
 #[test]
 fn diagnostic_hooks_in_ternary() {
-    let source = r#"
+    let source = r"
 function Foo({ cond }) {
     const val = cond ? useState(0) : useState(1);
     return <div>{val}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_hooks_in_ternary", format!("{errors:?}"));
 }
 
 #[test]
 fn diagnostic_hooks_in_logical_expression() {
-    let source = r#"
+    let source = r"
 function Foo({ cond }) {
     const val = cond && useState(0);
     return <div>{val}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_hooks_in_logical", format!("{errors:?}"));
 }
@@ -66,7 +66,7 @@ function Foo({ cond }) {
 #[test]
 fn diagnostic_jsx_in_try_default_config() {
     // With default config (validation disabled), no diagnostic should fire
-    let source = r#"
+    let source = r"
 function Foo() {
     try {
         return <div>hello</div>;
@@ -74,7 +74,7 @@ function Foo() {
         return null;
     }
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_jsx_in_try", format!("{errors:?}"));
 }
@@ -82,7 +82,7 @@ function Foo() {
 #[test]
 fn diagnostic_jsx_in_try_enabled() {
     // With all validations enabled, should detect JSX in try block
-    let source = r#"
+    let source = r"
 function Foo() {
     try {
         return <div>hello</div>;
@@ -90,7 +90,7 @@ function Foo() {
         return null;
     }
 }
-"#;
+";
     let errors = compile_with_all_validations(source);
     insta::assert_snapshot!("diag_jsx_in_try_enabled", format!("{errors:?}"));
 }
@@ -101,13 +101,13 @@ function Foo() {
 
 #[test]
 fn diagnostic_set_state_in_render() {
-    let source = r#"
+    let source = r"
 function Foo() {
     const [count, setCount] = useState(0);
     setCount(1);
     return <div>{count}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_set_state_in_render", format!("{errors:?}"));
 }
@@ -118,7 +118,7 @@ function Foo() {
 
 #[test]
 fn diagnostic_set_state_in_effects() {
-    let source = r#"
+    let source = r"
 function Foo() {
     const [count, setCount] = useState(0);
     useEffect(() => {
@@ -126,7 +126,7 @@ function Foo() {
     }, []);
     return <div>{count}</div>;
 }
-"#;
+";
     let errors = compile_with_all_validations(source);
     insta::assert_snapshot!("diag_set_state_in_effects", format!("{errors:?}"));
 }
@@ -137,13 +137,13 @@ function Foo() {
 
 #[test]
 fn diagnostic_ref_access_in_render() {
-    let source = r#"
+    let source = r"
 function Foo() {
     const myRef = useRef(null);
     const value = myRef.current;
     return <div>{value}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_ref_access_in_render", format!("{errors:?}"));
 }
@@ -154,12 +154,12 @@ function Foo() {
 
 #[test]
 fn diagnostic_capitalized_calls() {
-    let source = r#"
+    let source = r"
 function Foo() {
     const result = MyComponent();
     return <div>{result}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_capitalized_calls", format!("{errors:?}"));
 }
@@ -170,13 +170,13 @@ function Foo() {
 
 #[test]
 fn diagnostic_context_variable_lvalues() {
-    let source = r#"
+    let source = r"
 function Foo() {
     const x = useContext(MyContext);
     x = 42;
     return <div>{x}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_context_variable_lvalues", format!("{errors:?}"));
 }
@@ -187,12 +187,12 @@ function Foo() {
 
 #[test]
 fn diagnostic_static_components() {
-    let source = r#"
+    let source = r"
 function Parent() {
     const Child = () => <div>child</div>;
     return <Child />;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_static_components", format!("{errors:?}"));
 }
@@ -203,7 +203,7 @@ function Parent() {
 
 #[test]
 fn diagnostic_derived_computations_in_effects() {
-    let source = r#"
+    let source = r"
 function Foo({ value }) {
     const [state, setState] = useState(0);
     useEffect(() => {
@@ -211,7 +211,7 @@ function Foo({ value }) {
     }, [value]);
     return <div>{state}</div>;
 }
-"#;
+";
     let errors = compile_with_all_validations(source);
     insta::assert_snapshot!("diag_derived_computations_in_effects", format!("{errors:?}"));
 }
@@ -222,7 +222,7 @@ function Foo({ value }) {
 
 #[test]
 fn diagnostic_locals_reassigned_after_render() {
-    let source = r#"
+    let source = r"
 function Foo() {
     let x = 1;
     useEffect(() => {
@@ -230,7 +230,7 @@ function Foo() {
     });
     return <div>{x}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_locals_reassigned_after_render", format!("{errors:?}"));
 }
@@ -241,24 +241,24 @@ function Foo() {
 
 #[test]
 fn diagnostic_use_memo_missing_deps() {
-    let source = r#"
+    let source = r"
 function Foo() {
     const value = useMemo(() => expensive());
     return <div>{value}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_use_memo_missing_deps", format!("{errors:?}"));
 }
 
 #[test]
 fn diagnostic_use_memo_async_callback() {
-    let source = r#"
+    let source = r"
 function Foo() {
     const value = useMemo(async () => await fetchData(), []);
     return <div>{value}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_use_memo_async", format!("{errors:?}"));
 }
@@ -269,12 +269,12 @@ function Foo() {
 
 #[test]
 fn diagnostic_memo_dependency_missing() {
-    let source = r#"
+    let source = r"
 function Foo({ a, b }) {
     const result = useMemo(() => a + b, [a]);
     return <div>{result}</div>;
 }
-"#;
+";
     let errors = compile_with_all_validations(source);
     insta::assert_snapshot!("diag_memo_dependency_missing", format!("{errors:?}"));
 }
@@ -285,14 +285,14 @@ function Foo({ a, b }) {
 
 #[test]
 fn diagnostic_effect_dependency_missing() {
-    let source = r#"
+    let source = r"
 function Foo({ value }) {
     useEffect(() => {
         console.log(value);
     }, []);
     return <div />;
 }
-"#;
+";
     let errors = compile_with_all_validations(source);
     insta::assert_snapshot!("diag_effect_dependency_missing", format!("{errors:?}"));
 }
@@ -303,13 +303,13 @@ function Foo({ value }) {
 
 #[test]
 fn diagnostic_immutability_violation() {
-    let source = r#"
+    let source = r"
 function Foo() {
     const [count, setCount] = useState(0);
     const obj = { setCount };
     return <div onClick={() => obj.setCount(1)}>{count}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_immutability_violation", format!("{errors:?}"));
 }
@@ -320,12 +320,12 @@ function Foo() {
 
 #[test]
 fn diagnostic_memoization_preservation() {
-    let source = r#"
+    let source = r"
 function Foo({ items }) {
     const sorted = useMemo(() => items.sort(), [items]);
     return <div>{sorted.length}</div>;
 }
-"#;
+";
     let errors = compile_with_all_validations(source);
     insta::assert_snapshot!("diag_memoization_preservation", format!("{errors:?}"));
 }
@@ -339,12 +339,12 @@ function Foo({ items }) {
 fn diagnostic_invariant_violation_not_triggered_by_valid_code() {
     // InvariantViolation is an internal compiler bug detector.
     // Valid code should never trigger it.
-    let source = r#"
+    let source = r"
 function Foo({ x }) {
     const doubled = x * 2;
     return <div>{doubled}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     assert!(
         !errors.iter().any(|e| e.contains("invariant")),
@@ -371,18 +371,18 @@ function Foo() {
 
 #[test]
 fn diagnostic_no_errors_clean_component() {
-    let source = r#"
+    let source = r"
 function Counter({ count }) {
     return <div>{count}</div>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     assert!(errors.is_empty(), "clean component should have no diagnostics: {errors:?}");
 }
 
 #[test]
 fn diagnostic_multiple_functions() {
-    let source = r#"
+    let source = r"
 function Good({ name }) {
     return <div>{name}</div>;
 }
@@ -391,7 +391,7 @@ function AlsoGood() {
     const [x, setX] = useState(0);
     return <span>{x}</span>;
 }
-"#;
+";
     let errors = compile_and_get_diagnostics(source);
     insta::assert_snapshot!("diag_multiple_functions", format!("{errors:?}"));
 }
@@ -417,12 +417,12 @@ fn diagnostic_all_validations_clean_code() {
     // Simple component without useMemo to avoid MemoizationPreservation diagnostic
     // (which fires when enable_preserve_existing_memoization_guarantees is on and
     // the compiler can't guarantee the same memoization boundaries).
-    let source = r#"
+    let source = r"
 function Foo({ name, count }) {
     const doubled = count * 2;
     return <div>{doubled} - {name}</div>;
 }
-"#;
+";
     let errors = compile_with_all_validations(source);
     assert!(errors.is_empty(), "clean code should produce no diagnostics: {errors:?}");
 }

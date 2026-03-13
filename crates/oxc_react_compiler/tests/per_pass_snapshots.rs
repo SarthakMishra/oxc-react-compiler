@@ -30,12 +30,12 @@ fn compile_fixture(source: &str) -> String {
 #[test]
 fn snapshot_basic_memoization() {
     let code = compile_fixture(
-        r#"
+        r"
 function Doubler({ value }) {
     const doubled = value * 2;
     return <span>{doubled}</span>;
 }
-"#,
+",
     );
     insta::assert_snapshot!("basic_memoization", code);
 }
@@ -71,13 +71,13 @@ function Status({ isActive }) {
 #[test]
 fn snapshot_hook_dependencies() {
     let code = compile_fixture(
-        r#"
+        r"
 function Counter() {
     const [count, setCount] = useState(0);
     const next = count + 1;
     return <button onClick={() => setCount(next)}>{count}</button>;
 }
-"#,
+",
     );
     insta::assert_snapshot!("hook_dependencies", code);
 }

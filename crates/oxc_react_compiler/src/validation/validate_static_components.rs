@@ -21,8 +21,8 @@ pub fn validate_static_components(hir: &HIR, errors: &mut ErrorCollector) {
     // Phase 2: Check for inline component definitions
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::FunctionExpression { name, lowered_func, .. } = &instr.value {
-                if let Some(name) = name {
+            if let InstructionValue::FunctionExpression { name, lowered_func, .. } = &instr.value
+                && let Some(name) = name {
                     if !is_component_name(name) {
                         continue;
                     }
@@ -51,7 +51,6 @@ pub fn validate_static_components(hir: &HIR, errors: &mut ErrorCollector) {
                         DiagnosticKind::StaticComponents,
                     ));
                 }
-            }
         }
     }
 }
@@ -65,11 +64,10 @@ fn collect_memo_wrapped_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
             match &instr.value {
                 // React.memo(Component) or memo(Component)
                 InstructionValue::CallExpression { callee, args } => {
-                    if let Some(name) = callee.identifier.name.as_deref() {
-                        if (name == "memo" || name == "forwardRef") && !args.is_empty() {
+                    if let Some(name) = callee.identifier.name.as_deref()
+                        && (name == "memo" || name == "forwardRef") && !args.is_empty() {
                             wrapped.insert(args[0].identifier.id);
                         }
-                    }
                 }
                 // React.memo() as a method call
                 InstructionValue::MethodCall { property, args, .. } => {

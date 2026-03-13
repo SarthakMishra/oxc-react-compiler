@@ -19,8 +19,8 @@ pub fn validate_blocklisted_imports(hir: &HIR, blocklist: &[String], errors: &mu
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::LoadGlobal { binding } = &instr.value {
-                if blocklist.iter().any(|b| b == &binding.name) {
+            if let InstructionValue::LoadGlobal { binding } = &instr.value
+                && blocklist.iter().any(|b| b == &binding.name) {
                     errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
                         format!(
@@ -30,7 +30,6 @@ pub fn validate_blocklisted_imports(hir: &HIR, blocklist: &[String], errors: &mu
                         DiagnosticKind::BlocklistedImport,
                     ));
                 }
-            }
         }
     }
 }

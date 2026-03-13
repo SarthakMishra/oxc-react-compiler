@@ -155,7 +155,7 @@ mod tests {
 
         let result = collect_hoistable_property_loads(&hir, &unconditional);
         assert!(result.non_null_objects.contains(&IdentifierId(1)));
-        let paths = result.loads.get(&IdentifierId(1)).unwrap();
+        let paths = &result.loads[&IdentifierId(1)];
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0], vec!["name"]);
     }
@@ -203,7 +203,7 @@ mod tests {
         };
 
         let result = collect_hoistable_property_loads(&hir, &unconditional);
-        let paths = result.loads.get(&IdentifierId(1)).unwrap();
+        let paths = &result.loads[&IdentifierId(1)];
         assert_eq!(paths.len(), 2);
         assert!(paths.contains(&vec!["a".to_string()]));
         assert!(paths.contains(&vec!["a".to_string(), "b".to_string()]));

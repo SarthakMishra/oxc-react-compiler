@@ -510,8 +510,8 @@ fn compile_statement<'a>(
         }
         Statement::ExpressionStatement(expr_stmt) => {
             // Handle bare expression: React.memo(props => { ... });
-            if let Expression::CallExpression(call) = &expr_stmt.expression {
-                if is_react_wrapper_call(call) {
+            if let Expression::CallExpression(call) = &expr_stmt.expression
+                && is_react_wrapper_call(call) {
                     // For standalone wrapper calls, the wrapper name itself acts as
                     // the function type hint (Component by default for memo/forwardRef).
                     let fn_type = ReactFunctionType::Component;
@@ -528,7 +528,6 @@ fn compile_statement<'a>(
                         diagnostics,
                     );
                 }
-            }
         }
         _ => {}
     }
@@ -859,8 +858,8 @@ fn classify_function_name(name: &str) -> ReactFunctionType {
 /// name if available, or fall back to a generic name.
 fn extract_wrapper_name(call: &CallExpression<'_>) -> String {
     // Try to get the name from the first argument (inner function)
-    if let Some(first_arg) = call.arguments.first() {
-        if !matches!(first_arg, Argument::SpreadElement(_)) {
+    if let Some(first_arg) = call.arguments.first()
+        && !matches!(first_arg, Argument::SpreadElement(_)) {
             let inner_expr: &Expression<'_> =
                 unsafe { &*std::ptr::from_ref::<Argument<'_>>(first_arg).cast::<Expression<'_>>() };
             let inner = inner_expr.without_parentheses();
@@ -877,7 +876,6 @@ fn extract_wrapper_name(call: &CallExpression<'_>) -> String {
                 _ => {}
             }
         }
-    }
     // No inner name found — use a generic placeholder
     "Component".to_string()
 }

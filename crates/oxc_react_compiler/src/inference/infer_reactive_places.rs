@@ -207,11 +207,10 @@ fn collect_pattern_names(
             for prop in properties {
                 collect_target_names(&prop.value, names);
             }
-            if let Some(rest_place) = rest {
-                if let Some(name) = &rest_place.identifier.name {
+            if let Some(rest_place) = rest
+                && let Some(name) = &rest_place.identifier.name {
                     names.insert(name.clone());
                 }
-            }
         }
         DestructurePattern::Array { items, rest } => {
             for item in items {
@@ -227,11 +226,10 @@ fn collect_pattern_names(
                     DestructureArrayItem::Hole => {}
                 }
             }
-            if let Some(rest_place) = rest {
-                if let Some(name) = &rest_place.identifier.name {
+            if let Some(rest_place) = rest
+                && let Some(name) = &rest_place.identifier.name {
                     names.insert(name.clone());
                 }
-            }
         }
     }
 }

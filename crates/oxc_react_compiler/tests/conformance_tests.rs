@@ -182,7 +182,7 @@ fn normalize_import_spacing(line: &str) -> String {
         return line.to_string();
     };
     let inside = &line[open + 1..close];
-    let normalized: Vec<&str> = inside.split(',').map(|p| p.trim()).collect();
+    let normalized: Vec<&str> = inside.split(',').map(str::trim).collect();
     let joined = normalized.join(", ");
     format!("{}{{ {} }}{}", &line[..open], joined, &line[close + 1..])
 }
@@ -242,7 +242,7 @@ fn tokenize(code: &str) -> Vec<String> {
             }
             i += 1; // closing quote
             // Normalize to double-quote form for comparison
-            tokens.push(format!("\"{}\"", content));
+            tokens.push(format!("\"{content}\""));
             continue;
         }
 
@@ -324,7 +324,7 @@ fn tokenize(code: &str) -> Vec<String> {
         // Detect label definition: `ident :` where ident is not a keyword
         if idx + 1 < result.len()
             && result[idx + 1] == ":"
-            && token.chars().next().map_or(false, |c| c.is_ascii_alphabetic() || c == '_')
+            && token.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
             && !matches!(
                 token.as_str(),
                 "if" | "else"
@@ -425,7 +425,7 @@ fn load_known_failures() -> HashSet<String> {
     match std::fs::read_to_string(&path) {
         Ok(contents) => contents
             .lines()
-            .map(|l| l.trim())
+            .map(str::trim)
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
             .map(String::from)
             .collect(),
@@ -435,24 +435,23 @@ fn load_known_failures() -> HashSet<String> {
 
 /// Collect all fixture files recursively.
 fn collect_fixture_files(dir: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    if !dir.exists() {
-        return files;
-    }
-
     fn walk(dir: &Path, files: &mut Vec<PathBuf>) {
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
                     walk(&path, files);
-                } else if let Some(ext) = path.extension() {
-                    if matches!(ext.to_str(), Some("tsx" | "ts" | "js" | "jsx")) {
+                } else if let Some(ext) = path.extension()
+                    && matches!(ext.to_str(), Some("tsx" | "ts" | "js" | "jsx")) {
                         files.push(path);
                     }
-                }
             }
         }
+    }
+
+    let mut files = Vec::new();
+    if !dir.exists() {
+        return files;
     }
 
     walk(dir, &mut files);
@@ -472,7 +471,7 @@ struct FixtureResult {
     /// Whether this fixture is in the known-failures list.
     known_failure: bool,
     /// Number of diagnostics emitted.
-    diagnostic_count: usize,
+    _diagnostic_count: usize,
 }
 
 /// Parse per-fixture compiler options from `@directive` comments in the source.
@@ -480,6 +479,40 @@ struct FixtureResult {
 /// Parses both `PluginOptions` (compilation mode, panic threshold) and
 /// `EnvironmentConfig` (validation toggles, feature flags) from comment directives.
 fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
+    // Helper: extract the value after a directive like @name:"value" or @name(value)
+    fn find_directive_value<'a>(comment: &'a str, name: &str) -> Option<&'a str> {
+        let needle = format!("@{name}");
+        let pos = comment.find(&needle)?;
+        let after = &comment[pos + needle.len()..];
+        if let Some(rest) = after.strip_prefix(":\"") {
+            let end = rest.find('"').unwrap_or(rest.len());
+            Some(&rest[..end])
+        } else if let Some(rest) = after.strip_prefix(':') {
+            let end = rest.find([' ', '@']).unwrap_or(rest.len());
+            Some(&rest[..end])
+        } else if let Some(rest) = after.strip_prefix('(') {
+            let end = rest.find(')').unwrap_or(rest.len());
+            Some(&rest[..end])
+        } else {
+            None
+        }
+    }
+
+    // Parse all @-prefixed directives from the comment line.
+    // Multiple directives can appear on a single line: @foo @bar:true @baz:"val"
+    fn find_directive_bool(comment: &str, name: &str) -> Option<bool> {
+        let needle = format!("@{name}");
+        if let Some(pos) = comment.find(&needle) {
+            let after = &comment[pos + needle.len()..];
+            if after.starts_with(":false") {
+                return Some(false);
+            }
+            // bare @name or @name:true or @name followed by space/end
+            return Some(true);
+        }
+        None
+    }
+
     let mut opts = PluginOptions {
         // Default to Infer mode. While Babel's test harness uses "all" by default,
         // our compiled output for non-component functions still diverges significantly
@@ -501,25 +534,6 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
         }
         let comment = trimmed.trim_start_matches("//").trim();
 
-        // Helper: extract the value after a directive like @name:"value" or @name(value)
-        fn find_directive_value<'a>(comment: &'a str, name: &str) -> Option<&'a str> {
-            let needle = format!("@{name}");
-            let pos = comment.find(&needle)?;
-            let after = &comment[pos + needle.len()..];
-            if let Some(rest) = after.strip_prefix(":\"") {
-                let end = rest.find('"').unwrap_or(rest.len());
-                Some(&rest[..end])
-            } else if let Some(rest) = after.strip_prefix(':') {
-                let end = rest.find(|c: char| c == ' ' || c == '@').unwrap_or(rest.len());
-                Some(&rest[..end])
-            } else if let Some(rest) = after.strip_prefix('(') {
-                let end = rest.find(')').unwrap_or(rest.len());
-                Some(&rest[..end])
-            } else {
-                None
-            }
-        }
-
         // @compilationMode:"infer" | @compilationMode:"all" etc.
         if let Some(mode) = find_directive_value(comment, "compilationMode") {
             opts.compilation_mode = match mode {
@@ -537,21 +551,6 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
                 "NONE" | "none" => PanicThreshold::None,
                 _ => PanicThreshold::CriticalErrors,
             };
-        }
-
-        // Parse all @-prefixed directives from the comment line.
-        // Multiple directives can appear on a single line: @foo @bar:true @baz:"val"
-        fn find_directive_bool(comment: &str, name: &str) -> Option<bool> {
-            let needle = format!("@{name}");
-            if let Some(pos) = comment.find(&needle) {
-                let after = &comment[pos + needle.len()..];
-                if after.starts_with(":false") {
-                    return Some(false);
-                }
-                // bare @name or @name:true or @name followed by space/end
-                return Some(true);
-            }
-            None
         }
 
         if let Some(v) = find_directive_bool(comment, "enablePreserveExistingMemoizationGuarantees")
@@ -604,17 +603,14 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
         .to_string_lossy()
         .into_owned();
 
-    let source = match std::fs::read_to_string(fixture_path) {
-        Ok(s) => s,
-        Err(_) => {
-            return FixtureResult {
-                relative_path,
-                panicked: true,
-                matches_expected: None,
-                known_failure: false,
-                diagnostic_count: 0,
-            };
-        }
+    let Ok(source) = std::fs::read_to_string(fixture_path) else {
+        return FixtureResult {
+            relative_path,
+            panicked: true,
+            matches_expected: None,
+            known_failure: false,
+            _diagnostic_count: 0,
+        };
     };
 
     let filename = fixture_path.file_name().unwrap().to_string_lossy().into_owned();
@@ -654,7 +650,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                 panicked: false,
                 matches_expected,
                 known_failure: false,
-                diagnostic_count: compile_result.diagnostics.len(),
+                _diagnostic_count: compile_result.diagnostics.len(),
             }
         }
         Err(_) => FixtureResult {
@@ -662,7 +658,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
             panicked: true,
             matches_expected: None,
             known_failure: false,
-            diagnostic_count: 0,
+            _diagnostic_count: 0,
         },
     }
 }
@@ -687,13 +683,14 @@ fn has_fixture_files(dir: &Path) -> bool {
 }
 
 /// Download upstream fixtures using the GitHub API.
+#[expect(clippy::print_stderr)]
 fn download_fixtures(fixtures_dir: &Path) {
     use serde_json::Value;
 
     eprintln!("Downloading upstream React Compiler fixtures...");
-    eprintln!("Repository: {} (branch: {})", REPO, BRANCH);
+    eprintln!("Repository: {REPO} (branch: {BRANCH})");
 
-    let api_url = format!("https://api.github.com/repos/{}/git/trees/{}?recursive=1", REPO, BRANCH);
+    let api_url = format!("https://api.github.com/repos/{REPO}/git/trees/{BRANCH}?recursive=1");
 
     let response: Value = match ureq::get(&api_url)
         .header("Accept", "application/vnd.github.v3+json")
@@ -703,22 +700,19 @@ fn download_fixtures(fixtures_dir: &Path) {
         Ok(mut resp) => match resp.body_mut().read_json() {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("Failed to parse GitHub API response: {}", e);
+                eprintln!("Failed to parse GitHub API response: {e}");
                 return;
             }
         },
         Err(e) => {
-            eprintln!("Failed to fetch GitHub API: {}", e);
+            eprintln!("Failed to fetch GitHub API: {e}");
             return;
         }
     };
 
-    let tree = match response.get("tree").and_then(|t| t.as_array()) {
-        Some(t) => t,
-        None => {
-            eprintln!("Unexpected API response format (no 'tree' array)");
-            return;
-        }
+    let Some(tree) = response.get("tree").and_then(|t| t.as_array()) else {
+        eprintln!("Unexpected API response format (no 'tree' array)");
+        return;
     };
 
     let fixture_entries: Vec<&str> = tree
@@ -729,7 +723,7 @@ fn download_fixtures(fixtures_dir: &Path) {
             if entry_type == "blob"
                 && path.starts_with(FIXTURE_PREFIX)
                 && !path.contains("__snapshots__")
-                && !path.ends_with(".snap")
+                && !Path::new(path).extension().is_some_and(|e| e.eq_ignore_ascii_case("snap"))
                 && !path.contains(".expected")
             {
                 Some(path)
@@ -750,7 +744,7 @@ fn download_fixtures(fixtures_dir: &Path) {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let raw_url = format!("https://raw.githubusercontent.com/{}/{}/{}", REPO, BRANCH, filepath);
+        let raw_url = format!("https://raw.githubusercontent.com/{REPO}/{BRANCH}/{filepath}");
 
         match ureq::get(&raw_url).header("User-Agent", "oxc-react-compiler-tests").call() {
             Ok(mut resp) => {
@@ -767,7 +761,7 @@ fn download_fixtures(fixtures_dir: &Path) {
         }
     }
 
-    eprintln!("Done! Downloaded {} fixture files.", count);
+    eprintln!("Done! Downloaded {count} fixture files.");
 }
 
 /// Ensure fixtures are available, downloading if enabled and needed.
@@ -786,6 +780,7 @@ fn ensure_fixtures(fixtures_dir: &Path) -> bool {
 }
 
 #[test]
+#[expect(clippy::print_stdout, clippy::print_stderr)]
 fn upstream_conformance() {
     let fixtures_dir = upstream_fixtures_dir();
 
@@ -821,16 +816,16 @@ fn upstream_conformance() {
         results.iter().filter(|r| !r.panicked && r.matches_expected == Some(true)).collect();
     let diverged: Vec<&FixtureResult> =
         results.iter().filter(|r| !r.panicked && r.matches_expected == Some(false)).collect();
-    let no_expected: Vec<&FixtureResult> =
-        results.iter().filter(|r| !r.panicked && r.matches_expected.is_none()).collect();
+    let no_expected_count =
+        results.iter().filter(|r| !r.panicked && r.matches_expected.is_none()).count();
 
     // Print summary.
     println!("\n=== Upstream Conformance Summary ===");
-    println!("Total fixtures:    {}", total);
+    println!("Total fixtures:    {total}");
     println!("Compiled OK:       {}", total - panicked.len());
     println!("  Matched expected: {}", matched.len());
     println!("  Diverged:         {}", diverged.len());
-    println!("  No expected file: {}", no_expected.len());
+    println!("  No expected file: {no_expected_count}");
     println!("Panicked:          {}", panicked.len());
     println!("Known failures:    {}", results.iter().filter(|r| r.known_failure).count());
     println!();
@@ -872,13 +867,11 @@ fn upstream_conformance() {
 
     // The test fails if there are unexpected panics (not in known-failures).
     // Divergences without .expected files don't fail — they just track progress.
-    if !unexpected_panics.is_empty() {
-        panic!(
-            "{} fixture(s) caused the compiler to panic (not in known-failures.txt). \
-             See the list above.",
-            unexpected_panics.len()
-        );
-    }
+    assert!(unexpected_panics.is_empty(), 
+        "{} fixture(s) caused the compiler to panic (not in known-failures.txt). \
+         See the list above.",
+        unexpected_panics.len()
+    );
 
     println!("Conformance test passed (no unexpected panics).");
 }

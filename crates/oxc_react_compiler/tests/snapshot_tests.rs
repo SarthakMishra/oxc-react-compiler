@@ -7,11 +7,11 @@ use oxc_react_compiler::compile_program;
 
 #[test]
 fn test_simple_component() {
-    let source = r#"
+    let source = r"
 function Counter({ count }) {
     return <div>{count}</div>;
 }
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed, "simple component should be transformed");
     assert!(!result.code.is_empty());
@@ -20,12 +20,12 @@ function Counter({ count }) {
 
 #[test]
 fn test_hook_component() {
-    let source = r#"
+    let source = r"
 function useCounter() {
     const [count, setCount] = useState(0);
     return { count, increment: () => setCount(count + 1) };
 }
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed, "hook should be transformed");
     assert!(!result.code.is_empty());
@@ -59,11 +59,11 @@ fn test_non_component() {
 
 #[test]
 fn test_compilation_mode_all() {
-    let source = r#"
+    let source = r"
 function helper(x) {
     return x * 2;
 }
-"#;
+";
     let mut options = PluginOptions::default();
     options.compilation_mode = oxc_react_compiler::entrypoint::options::CompilationMode::All;
     let result = compile_program(source, "test.ts", &options);
@@ -76,11 +76,11 @@ function helper(x) {
 
 #[test]
 fn test_component_with_props_destructuring() {
-    let source = r#"
+    let source = r"
 function Greeting({ name, age }) {
     return <div>Hello {name}, you are {age}</div>;
 }
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed);
     insta::assert_snapshot!("component_props_destructuring", result.code);
@@ -88,11 +88,11 @@ function Greeting({ name, age }) {
 
 #[test]
 fn test_arrow_function_component() {
-    let source = r#"
+    let source = r"
 const Button = ({ onClick, label }) => {
     return <button onClick={onClick}>{label}</button>;
 };
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed, "arrow component should be transformed");
     insta::assert_snapshot!("arrow_function_component", result.code);
@@ -100,14 +100,14 @@ const Button = ({ onClick, label }) => {
 
 #[test]
 fn test_component_with_conditional() {
-    let source = r#"
+    let source = r"
 function Toggle({ isOn }) {
     if (isOn) {
         return <div>ON</div>;
     }
     return <div>OFF</div>;
 }
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed);
     insta::assert_snapshot!("component_with_conditional", result.code);
@@ -129,11 +129,11 @@ function Display({ items }) {
 
 #[test]
 fn test_exported_component() {
-    let source = r#"
+    let source = r"
 export function App({ title }) {
     return <h1>{title}</h1>;
 }
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed);
     insta::assert_snapshot!("exported_component", result.code);
@@ -141,11 +141,11 @@ export function App({ title }) {
 
 #[test]
 fn test_export_default_component() {
-    let source = r#"
+    let source = r"
 export default function Page({ content }) {
     return <main>{content}</main>;
 }
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed);
     insta::assert_snapshot!("export_default_component", result.code);
@@ -153,7 +153,7 @@ export default function Page({ content }) {
 
 #[test]
 fn test_multiple_components() {
-    let source = r#"
+    let source = r"
 function Header({ title }) {
     return <h1>{title}</h1>;
 }
@@ -161,7 +161,7 @@ function Header({ title }) {
 function Footer({ text }) {
     return <footer>{text}</footer>;
 }
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed);
     insta::assert_snapshot!("multiple_components", result.code);
@@ -169,13 +169,13 @@ function Footer({ text }) {
 
 #[test]
 fn test_hook_with_use_state() {
-    let source = r#"
+    let source = r"
 function useToggle(initial) {
     const [value, setValue] = useState(initial);
     const toggle = () => setValue(!value);
     return [value, toggle];
 }
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed);
     insta::assert_snapshot!("hook_with_use_state", result.code);
@@ -201,13 +201,14 @@ function Layout({ children }) {
 /// Verifies that a simple component with props produces memoized output
 /// with cache allocation, dependency checks, cache stores, and cache loads.
 #[test]
+#[expect(clippy::print_stderr)]
 fn test_e2e_memoization() {
-    let source = r#"
+    let source = r"
 function Counter() {
     const [count, setCount] = useState(0);
     return <div>{count}</div>;
 }
-"#;
+";
     let result = compile_program(source, "test.tsx", &PluginOptions::default());
     assert!(result.transformed, "component should be transformed");
 
@@ -230,8 +231,7 @@ function Counter() {
         // Document current state: memoization pipeline is partially operational
         // Once all assertions pass, remove this branch and make them hard failures
         eprintln!(
-            "Memoization pipeline status: cache_alloc={}, dep_check={}, cache_store={}",
-            has_cache_alloc, has_dep_check, has_cache_store
+            "Memoization pipeline status: cache_alloc={has_cache_alloc}, dep_check={has_dep_check}, cache_store={has_cache_store}"
         );
     }
 }
