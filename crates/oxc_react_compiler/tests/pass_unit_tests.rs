@@ -68,8 +68,7 @@ fn test_infer_reactive_places_simple() {
 
     let temp = make_place(&mut ids, "t0");
 
-    let instr =
-        make_instruction(&mut ids, temp, InstructionValue::LoadLocal { place: props });
+    let instr = make_instruction(&mut ids, temp, InstructionValue::LoadLocal { place: props });
 
     let block = BasicBlock {
         kind: BlockKind::Block,
@@ -484,6 +483,7 @@ fn test_codegen_scope_block() {
         early_return_value: None,
         merged: vec![],
         loc: dummy_span(),
+        is_allocating: false,
     };
 
     let scope_block = ReactiveScopeBlock {

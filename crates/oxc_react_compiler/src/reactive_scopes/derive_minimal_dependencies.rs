@@ -79,6 +79,7 @@ mod tests {
                         early_return_value: None,
                         merged: Vec::new(),
                         loc: Span::default(),
+                        is_allocating: false,
                     })),
                     type_: Type::default(),
                     loc: Span::default(),

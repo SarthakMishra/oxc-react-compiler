@@ -915,6 +915,11 @@ pub struct ReactiveScope {
     pub early_return_value: Option<EarlyReturnValue>,
     pub merged: Vec<ScopeId>,
     pub loc: SourceLocation,
+    /// Scope was created for non-reactive allocating expressions (JSX, objects,
+    /// arrays, etc.) that need sentinel-based caching. When true and
+    /// `dependencies` is empty, codegen emits `Symbol.for("react.memo_cache_sentinel")`
+    /// instead of dependency checks.
+    pub is_allocating: bool,
 }
 
 #[derive(Debug, Clone)]
