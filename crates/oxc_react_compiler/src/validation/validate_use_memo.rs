@@ -1,5 +1,6 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{HIR, InstructionValue};
+use crate::hir::types::{HIR, IdentifierId, InstructionValue};
+use rustc_hash::FxHashMap;
 
 /// Validate correct usage of `useMemo` and `useCallback`.
 ///
@@ -9,13 +10,19 @@ use crate::hir::types::{HIR, InstructionValue};
 /// 2. The callback argument should be a function expression (not an arbitrary value).
 /// 3. The callback passed to `useMemo` should not be async.
 pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
+    // Build id-to-name map for resolving SSA temporaries
+    let id_to_name = build_name_map(hir);
+
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let InstructionValue::CallExpression { callee, args } = &instr.value {
-                let name = match &callee.identifier.name {
-                    Some(n) => n.as_str(),
-                    None => continue,
-                };
+                let name = callee
+                    .identifier
+                    .name
+                    .as_deref()
+                    .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+
+                let Some(name) = name else { continue };
 
                 if name != "useMemo" && name != "useCallback" {
                     continue;
@@ -45,6 +52,32 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
             }
         }
     }
+}
+
+/// Build a map from identifier ID → name for SSA resolution.
+fn build_name_map(hir: &HIR) -> FxHashMap<IdentifierId, String> {
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadGlobal { binding } => {
+                    id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                }
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name {
+                        id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                    }
+                }
+                _ => {}
+            }
+            if let Some(name) = &instr.lvalue.identifier.name {
+                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
+            }
+        }
+    }
+
+    id_to_name
 }
 
 /// Check if the function expression producing the given identifier returns void.

@@ -326,7 +326,6 @@ error.invalid-prop-mutation-indirect.js
 error.invalid-property-store-to-frozen-value.js
 error.invalid-read-ref-prop-in-render-property-load.js
 error.invalid-reassign-local-variable-in-async-callback.js
-error.invalid-setState-in-useMemo-indirect-useCallback.js
 error.invalid-setState-in-useMemo.js
 error.invalid-use-ref-added-to-dep-without-type-info.js
 error.invalid-write-but-dont-read-ref-in-render.js
@@ -358,7 +357,6 @@ error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
 error.unconditional-set-state-lambda.js
 error.unconditional-set-state-nested-function-expressions.js
-error.useCallback-accesses-ref-mutated-later-via-function-preserve-memoization.js
 error.useMemo-non-literal-depslist.ts
 error.validate-object-entries-mutation.js
 error.validate-object-values-mutation.js
@@ -380,7 +378,6 @@ exhaustive-deps/error.invalid-exhaustive-deps-disallow-unused-stable-types.js
 exhaustive-deps/error.invalid-exhaustive-effect-deps-extra-only.js
 exhaustive-deps/error.invalid-exhaustive-effect-deps-missing-only.js
 exhaustive-deps/error.invalid-exhaustive-effect-deps.js
-exhaustive-deps/error.invalid-missing-nonreactive-dep-inner-function.js
 exhaustive-deps/error.invalid-missing-nonreactive-dep-unmemoized.js
 exhaustive-deps/error.invalid-missing-nonreactive-dep.js
 exhaustive-deps/error.sketchy-code-exhaustive-deps.js
