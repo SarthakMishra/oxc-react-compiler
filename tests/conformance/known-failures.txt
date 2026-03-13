@@ -271,7 +271,6 @@ early-return-nested-early-return-within-reactive-scope.js
 early-return-no-declarations-reassignments-dependencies.js
 early-return-within-reactive-scope.js
 early-return.js
-ecma/error.reserved-words.ts
 empty-catch-statement.ts
 empty-eslint-suppressions-config.js
 error._todo.computed-lval-in-destructure.js
@@ -286,13 +285,10 @@ error.capitalized-function-call-aliased.js
 error.capture-ref-for-mutation.tsx
 error.declare-reassign-variable-in-function-declaration.js
 error.dont-hoist-inline-reference.js
-error.fault-tolerance-reports-multiple-errors.js
 error.hoist-optional-member-expression-with-conditional-optional.js
 error.hoist-optional-member-expression-with-conditional.js
 error.hook-call-freezes-captured-identifier.tsx
 error.hook-call-freezes-captured-memberexpr.jsx
-error.hook-ref-value.js
-error.invalid-access-ref-during-render.js
 error.invalid-access-ref-in-reducer-init.js
 error.invalid-access-ref-in-reducer.js
 error.invalid-access-ref-in-render-mutate-object-with-ref-function.js
@@ -328,12 +324,8 @@ error.invalid-pass-mutable-function-as-prop.js
 error.invalid-pass-ref-to-function.js
 error.invalid-prop-mutation-indirect.js
 error.invalid-property-store-to-frozen-value.js
-error.invalid-read-ref-prop-in-render-destructure.js
 error.invalid-read-ref-prop-in-render-property-load.js
 error.invalid-reassign-local-variable-in-async-callback.js
-error.invalid-ref-value-as-props.js
-error.invalid-set-and-read-ref-during-render.js
-error.invalid-set-and-read-ref-nested-property-during-render.js
 error.invalid-setState-in-useMemo-indirect-useCallback.js
 error.invalid-setState-in-useMemo.js
 error.invalid-use-ref-added-to-dep-without-type-info.js
@@ -347,7 +339,6 @@ error.reassign-global-fn-arg.js
 error.reassignment-to-global-indirect.js
 error.ref-like-name-not-Ref.js
 error.ref-like-name-not-a-ref.js
-error.ref-optional.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js
 error.todo-allow-assigning-to-inferred-ref-prop-in-callback.js
@@ -363,13 +354,11 @@ error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-object-expression-get-syntax.js
 error.todo-repro-named-function-with-shadowed-local-same-name.js
 error.todo-repro-unmemoized-callback-captured-in-context-variable.tsx
-error.todo-useCallback-set-ref-nested-property-ref-modified-later-preserve-memoization.js
 error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
 error.unconditional-set-state-lambda.js
 error.unconditional-set-state-nested-function-expressions.js
 error.useCallback-accesses-ref-mutated-later-via-function-preserve-memoization.js
-error.useCallback-set-ref-nested-property-dont-preserve-memoization.js
 error.useMemo-non-literal-depslist.ts
 error.validate-object-entries-mutation.js
 error.validate-object-values-mutation.js
@@ -387,7 +376,6 @@ evaluation-order-mutate-call-after-dependency-load.ts
 evaluation-order-mutate-store-after-dependency-load.ts
 exhaustive-deps/compile-files-with-exhaustive-deps-violation-in-effects.js
 exhaustive-deps/error.exhaustive-deps-effect-events.js
-exhaustive-deps/error.invalid-dep-on-ref-current-value.js
 exhaustive-deps/error.invalid-exhaustive-deps-disallow-unused-stable-types.js
 exhaustive-deps/error.invalid-exhaustive-effect-deps-extra-only.js
 exhaustive-deps/error.invalid-exhaustive-effect-deps-missing-only.js
@@ -407,10 +395,7 @@ extend-scopes-if.js
 fast-refresh-dont-refresh-const-changes-prod.js
 fast-refresh-refresh-on-const-changes-dev.js
 fast-refresh-reloading.js
-fault-tolerance/error.try-finally-and-ref-access.js
-fault-tolerance/error.try-finally-ref-access-and-mutation.js
 fault-tolerance/error.var-declaration-and-mutation-of-props.js
-fault-tolerance/error.var-declaration-and-ref-access.js
 fbt/bug-fbt-plural-multiple-function-calls.ts
 fbt/bug-fbt-plural-multiple-mixed-call-tag.tsx
 fbt/error.todo-fbt-as-local.js

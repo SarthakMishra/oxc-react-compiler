@@ -1,5 +1,6 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{HIR, InstructionValue, Place, Type};
+use crate::hir::types::{HIR, IdentifierId, InstructionValue, Type};
+use rustc_hash::FxHashSet;
 
 /// Validate that ref values are not accessed during render.
 ///
@@ -7,18 +8,59 @@ use crate::hir::types::{HIR, InstructionValue, Place, Type};
 /// because refs are mutable and not tracked by React.
 ///
 /// Uses both type-based detection (Type::Ref from useRef() calls) and
-/// naming heuristic fallback for cases where type information is unavailable.
+/// naming heuristic fallback. Resolves identities through SSA temporaries.
 pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) {
+    // Collect all identifier IDs that are ref-like (by type or name)
+    let mut ref_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+
+    // Pass 1: Identify ref identifiers from their definition sites
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            // Check type on the lvalue
+            if instr.lvalue.identifier.type_ == Type::Ref {
+                ref_ids.insert(instr.lvalue.identifier.id);
+            }
+
+            // Check name on the lvalue
+            if let Some(name) = &instr.lvalue.identifier.name {
+                if is_ref_name(name) {
+                    ref_ids.insert(instr.lvalue.identifier.id);
+                }
+            }
+
+            // Track through LoadLocal/LoadContext: if loading a ref variable,
+            // the result is also a ref
+            match &instr.value {
+                InstructionValue::LoadLocal { place }
+                | InstructionValue::LoadContext { place } => {
+                    if place.identifier.type_ == Type::Ref
+                        || ref_ids.contains(&place.identifier.id)
+                    {
+                        ref_ids.insert(instr.lvalue.identifier.id);
+                    }
+                    if let Some(name) = &place.identifier.name {
+                        if is_ref_name(name) {
+                            ref_ids.insert(instr.lvalue.identifier.id);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Pass 2: Check for ref.current access
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let InstructionValue::PropertyLoad { object, property } = &instr.value
                 && property == "current"
-                && is_ref(object)
+                && ref_ids.contains(&object.identifier.id)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
                     instr.loc,
-                    "Accessing ref.current during render. \
-                     Refs are mutable and reading them during render can cause tearing."
+                    "Cannot access refs during render. \
+                     React refs are values that are not needed for rendering. \
+                     Refs should only be accessed in effects or event handlers."
                         .to_string(),
                     DiagnosticKind::RefAccessInRender,
                 ));
@@ -27,19 +69,7 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
     }
 }
 
-/// Detect if a place is a React ref, using type information first,
-/// then falling back to naming heuristic.
-fn is_ref(place: &Place) -> bool {
-    // Type-based detection: infer_types marks useRef() return values as Type::Ref
-    if place.identifier.type_ == Type::Ref {
-        return true;
-    }
-
-    // Naming heuristic fallback for cases where type inference didn't run
-    // or the ref was passed in as a prop (no call site to infer from)
-    place
-        .identifier
-        .name
-        .as_deref()
-        .is_some_and(|name| name.ends_with("Ref") || name.ends_with("ref") || name == "ref")
+/// Check if a name looks like a React ref.
+fn is_ref_name(name: &str) -> bool {
+    name.ends_with("Ref") || name.ends_with("ref") || name == "ref"
 }
