@@ -1,7 +1,7 @@
 # Upstream Errors -- Validation Gaps
 
-> **Priority**: P2 (~59 remaining fixtures, high tractability -- each fix is "emit error + bail")
-> **Impact**: ~59 remaining fixtures where we compile but Babel bails with a validation error
+> **Priority**: P2 (~46 remaining fixtures, high tractability -- each fix is "emit error + bail")
+> **Impact**: ~46 remaining fixtures where we compile but Babel bails with a validation error
 > **Tractability**: HIGH -- each sub-category is a focused validation improvement
 
 ## Problem Statement
@@ -16,25 +16,35 @@ Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ## Sub-categories
 
-### Gap 1: Frozen Mutation Detection (partially complete)
+### Gap 1: Frozen Mutation Detection (mostly complete)
 
-**Count:** 18 remaining (8 of 26 now passing)
+**Count:** 5 remaining (21 of 26 now passing)
 **Upstream error:** "This value cannot be modified"
 **Upstream:** `ValidateLocalsNotReassignedAfterRender.ts`, `InferMutableRanges.ts`
 
-**Completed (2026-03-13):** `validate_no_mutation_after_freeze` pass added as Pass 16.5, running after `infer_mutation_aliasing_effects`. Detects property stores, computed stores, and array push on frozen values. Also detects for-in/for-of loops over context variables. Rust module: `crates/oxc_react_compiler/src/validation/validate_no_mutation_after_freeze.rs`. Pipeline integration: `crates/oxc_react_compiler/src/entrypoint/pipeline.rs`. +6 fixtures passing.
+**Completed (2026-03-13, initial):** `validate_no_mutation_after_freeze` pass added as Pass 16.5, running after `infer_mutation_aliasing_effects`. Detects property stores, computed stores, and array push on frozen values. Also detects for-in/for-of loops over context variables. +6 fixtures passing.
 
-**What remains (20 fixtures):**
-- ~~Track "frozen" status on values~~ Done for direct mutations
+**Completed (2026-03-13, enhancement):** Three major improvements to freeze tracking:
+1. Hook-return pre-freeze: Values returned by hook calls (useContext, useState, etc.) and all their destructured targets are frozen at definition site. Uses `collect_frozen_from_destructure` for nested array/object patterns. DIVERGENCE: Over-freezes setters (e.g., setState from useState), but setters are never mutated via property stores in practice.
+2. Function-capture freeze: When a function argument is passed to a hook call, all variables captured by that function are frozen after the call. Tracks captures via `func_captures` and `name_to_func_captures` maps.
+3. Nested function mutation scanning: `check_nested_function_mutation` recursively scans FunctionExpression bodies for mutations to outer frozen variables, including checking aliasing effects.
+
+Rust module: `crates/oxc_react_compiler/src/validation/validate_no_mutation_after_freeze.rs`. +13 fixtures (318 -> 331/1717).
+
+Newly passing fixtures include: `capture-ref-for-mutation`, `invalid-disallow-mutating-refs-in-render-transitive`, `invalid-function-expression-mutates-immutable-value`, `invalid-jsx-captures-context-variable`, `invalid-mutate-context`, `invalid-mutate-context-in-callback`, `invalid-non-imported-reanimated-shared-value-writes`, `modify-state`, `modify-useReducer-state`, `todo-allow-assigning-to-inferred-ref-prop-in-callback`, `todo-for-loop-with-context-variable-iterator`, `invalid-hook-from-property-of-other-hook`, `skip-useMemoCache`.
+
+**What remains (5 fixtures):**
+- ~~Track "frozen" status on values~~ Done
 - ~~Detect mutations to frozen values: property writes, array push~~ Done
+- ~~Context variable mutations~~ Done (hook-return pre-freeze + function-capture freeze)
+- ~~Mutations inside nested functions~~ Done (nested function scanning)
+- ~~Indirect mutations through captured closures~~ Done (function-capture freeze)
 - Alias tracking: if `a = b` and `b` is frozen, mutating `a` should also error (e.g., `invalid-mutate-after-aliased-freeze`)
-- Delete operations on frozen values (e.g., `invalid-delete-computed-property-of-frozen-value`)
-- Indirect mutation through function calls (e.g., `invalid-pass-mutable-function-as-prop`)
-- Mutations to frozen refs (e.g., `invalid-pass-ref-to-function`)
-- Context variable mutations (e.g., `invalid-mutate-context`, `invalid-mutate-context-in-callback`)
-- Props mutation in effects (e.g., `invalid-props-mutation-in-effect-indirect`)
+- Delete operations on frozen values (e.g., `invalid-delete-computed-property-of-frozen-value`, `invalid-delete-property-of-frozen-value`)
+- Indirect mutation through function calls passed as props (e.g., `invalid-pass-mutable-function-as-prop`, `invalid-pass-ref-to-function`)
+- Props mutation in effects via indirect references (e.g., `invalid-props-mutation-in-effect-indirect`)
 - **Known limitation:** SSA pass assigns unique IDs per Place even for the same variable, making alias/identity tracking harder across instructions
-**Fixture gain estimate:** ~10-15 more (some require deep alias propagation)
+**Fixture gain estimate:** ~2-5 more (remaining cases require deep alias propagation)
 **Depends on:** None
 
 ### Gap 2: Validate Preserve Existing Memoization ✅
@@ -134,8 +144,8 @@ Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 43 (6 from Gap 1 frozen mutation, 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements).
-Remaining achievable: ~30-50 of the remaining ~59 fixtures (some require deep
+Achieved so far: 56 (19 from Gap 1 frozen mutation [6 initial + 13 enhancement], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements).
+Remaining achievable: ~17-37 of the remaining ~46 fixtures (some require deep
 alias tracking that may not be worth the complexity). The 21 Invariant/Todo
 fixtures should be registered as known skips.
 

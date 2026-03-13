@@ -275,8 +275,6 @@ early-return.js
 empty-catch-statement.ts
 empty-eslint-suppressions-config.js
 error._todo.computed-lval-in-destructure.js
-error.assign-global-in-component-tag-function.js
-error.assign-global-in-jsx-children.js
 error.assign-ref-in-effect-hint.js
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-couldnt-find-binding-for-decl.js
@@ -284,7 +282,6 @@ error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-unnamed-temporary.js
 error.call-args-destructuring-asignment-complex.js
 error.capitalized-function-call-aliased.js
-error.declare-reassign-variable-in-function-declaration.js
 error.dont-hoist-inline-reference.js
 error.hook-call-freezes-captured-identifier.tsx
 error.hook-call-freezes-captured-memberexpr.jsx
@@ -315,7 +312,6 @@ error.invalid-mutation-of-possible-props-phi-indirect.js
 error.invalid-pass-mutable-function-as-prop.js
 error.invalid-pass-ref-to-function.js
 error.invalid-props-mutation-in-effect-indirect.js
-error.invalid-reassign-local-variable-in-async-callback.js
 error.invalid-ref-in-callback-invoked-during-render.js
 error.invalid-return-mutable-function-from-hook.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
@@ -323,9 +319,7 @@ error.invalid-type-provider-nonhook-name-typed-as-hook.js
 error.invalid-unclosed-eslint-suppression.js
 error.modify-state-2.js
 error.mutate-function-property.js
-error.mutate-global-increment-op-invalid-react.js
 error.not-useEffect-external-mutate.js
-error.reassign-global-fn-arg.js
 error.ref-like-name-not-Ref.js
 error.ref-like-name-not-a-ref.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js
@@ -338,7 +332,6 @@ error.todo-hook-call-spreads-mutable-iterator.js
 error.todo-missing-source-locations.js
 error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-object-expression-get-syntax.js
-error.todo-repro-named-function-with-shadowed-local-same-name.js
 error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
 error.unconditional-set-state-lambda.js
@@ -695,7 +688,6 @@ new-mutability/capturing-function-alias-computed-load-4-iife.js
 new-mutability/capturing-function-alias-computed-load-iife.js
 new-mutability/error.mutate-frozen-value.js
 new-mutability/error.not-useEffect-external-mutate.js
-new-mutability/error.todo-repro-named-function-with-shadowed-local-same-name.js
 new-mutability/iife-return-modified-later-phi.js
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections-2.js
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections.js

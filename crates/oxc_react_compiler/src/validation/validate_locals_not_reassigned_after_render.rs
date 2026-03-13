@@ -3,22 +3,67 @@ use crate::hir::types::{HIR, InstructionValue};
 use rustc_hash::FxHashSet;
 
 /// Validate that local variables assigned during render are not reassigned
-/// in event handlers or effects.
+/// in event handlers, effects, or async functions.
 ///
 /// Variables initialized during render carry reactive semantics. If they are
 /// later reassigned inside a callback passed to `useEffect` or an event handler,
 /// the compiler cannot safely memoize them because the mutation happens outside
 /// the render phase.
+///
+/// Also detects reassignment in async functions, which always execute after
+/// render completes (upstream: "Cannot reassign variable in async function").
 pub fn validate_locals_not_reassigned_after_render(hir: &HIR, errors: &mut ErrorCollector) {
     // Step 1: Collect variables assigned during render (top-level block instructions).
     let render_assigned = collect_render_assigned(hir);
 
-    // Step 2: Find function expressions that are passed to effect hooks or event handlers.
-    // Then check if those functions reassign any render-phase variables.
+    // Step 2: Track which function names (by lvalue name) reassign render variables.
+    // This implements a simplified version of upstream's `reassigningFunctions` map.
+    // TODO: use reassigning_funcs for propagation through CallExpression args
+    let mut reassigning_funcs: FxHashSet<String> = FxHashSet::default();
+
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
-                // Check all instructions inside the nested function body
+            match &instr.value {
+                InstructionValue::FunctionExpression { lowered_func, .. }
+                | InstructionValue::ObjectMethod { lowered_func, .. } => {
+                    // Check if the nested function body reassigns any render-phase variables
+                    let is_async = lowered_func.is_async;
+                    if check_nested_reassignments_silent(
+                        &lowered_func.body,
+                        &render_assigned,
+                        is_async,
+                    ) {
+                        // This function reassigns render vars — track it
+                        if let Some(name) = &instr.lvalue.identifier.name {
+                            reassigning_funcs.insert(name.clone());
+                        }
+
+                        // If async, emit the async-specific error immediately
+                        if is_async {
+                            errors.push(CompilerError::invalid_react_with_kind(
+                                instr.loc,
+                                "Cannot reassign variable in async function. \
+                                 Reassigning a variable in an async function can cause \
+                                 inconsistent behavior because the async function may \
+                                 continue to run after the component has been updated."
+                                    .to_string(),
+                                DiagnosticKind::LocalsReassignedAfterRender,
+                            ));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Step 3: Check for function expressions (non-async) that directly reassign
+    // render variables — emit errors for those found in event handlers/effects.
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
+                && !lowered_func.is_async
+            {
                 check_nested_reassignments(&lowered_func.body, &render_assigned, errors);
             }
         }
@@ -47,6 +92,36 @@ fn collect_render_assigned(hir: &HIR) -> FxHashSet<String> {
 }
 
 /// Check a nested HIR (function body) for reassignments of render-phase variables.
+/// Returns true if any reassignment is found (does NOT emit errors).
+fn check_nested_reassignments_silent(
+    nested_hir: &HIR,
+    render_assigned: &FxHashSet<String>,
+    check_deeply: bool,
+) -> bool {
+    for (_, block) in &nested_hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+                && render_assigned.contains(name)
+            {
+                return true;
+            }
+
+            // For async functions, check deeper into nested callbacks
+            // (e.g., await foo().then(result => { value = result; }))
+            if check_deeply
+                && let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
+                && check_nested_reassignments_silent(&lowered_func.body, render_assigned, true)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check a nested HIR (function body) for reassignments of render-phase variables.
+/// Emits errors for each reassignment found. Recurses into nested functions.
 fn check_nested_reassignments(
     nested_hir: &HIR,
     render_assigned: &FxHashSet<String>,
@@ -67,6 +142,11 @@ fn check_nested_reassignments(
                     ),
                     DiagnosticKind::LocalsReassignedAfterRender,
                 ));
+            }
+
+            // Recurse into nested functions (e.g., callbacks within callbacks)
+            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
+                check_nested_reassignments(&lowered_func.body, render_assigned, errors);
             }
         }
     }

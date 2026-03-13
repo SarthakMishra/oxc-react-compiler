@@ -1284,15 +1284,29 @@ impl HIRBuilder {
         };
 
         self.emit(
-            InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::HoistedFunction },
+            InstructionValue::DeclareLocal {
+                lvalue: lvalue.clone(),
+                type_: InstructionKind::HoistedFunction,
+            },
             loc,
         );
 
-        self.emit(
+        let func_value = self.emit(
             InstructionValue::FunctionExpression {
                 name,
                 lowered_func: Box::new(inner_hir),
                 expr_type: FunctionExprType::FunctionExpression,
+            },
+            loc,
+        );
+
+        // Connect the function expression result to the declared name.
+        // Without this StoreLocal, DCE removes the FunctionExpression as unused.
+        self.emit(
+            InstructionValue::StoreLocal {
+                lvalue,
+                value: func_value,
+                type_: Some(InstructionKind::Const),
             },
             loc,
         );

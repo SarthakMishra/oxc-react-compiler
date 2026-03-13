@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-13 (post frozen-mutation enhancement, 331/1717)
+Last updated: 2026-03-13 (post global-reassignment + async-callback validation, 339/1717)
 
-Current conformance: 331/1717 pass (19.3%), 0 panics, 0 unexpected divergences.
+Current conformance: 339/1717 pass (19.7%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -58,14 +58,14 @@ codegen) are now resolved. Property-path deps yielded +3 fixtures (315 -> 318).
 - [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation
 - [ ] Overlap merge regression risk (reverted, needs investigation) — [memoization-structure.md](memoization-structure.md)#gap-10-overlap-merge-regression
 
-## Priority 2 -- Upstream Errors (~59 fixtures remaining)
+## Priority 2 -- Upstream Errors (~46 fixtures remaining)
 
 We compile functions that upstream rejects with validation errors. These are
 "free" fixture gains -- emit the right error and bail, source matches.
 
 - [~] Frozen mutation detection ("This value cannot be modified", 5 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
 - [ ] Missing/extra deps in exhaustive-deps (8 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
-- [ ] Cannot reassign variables outside component (6 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
+- [~] Cannot reassign variables outside component (partially done, ~2 remaining of 6) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
 - [ ] Cannot access refs during render (6 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-5-ref-access-during-render
 - [ ] Hooks must be same function (4 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
 - [ ] Cannot call setState during render (2 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
@@ -112,6 +112,15 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Global Reassignment + Async Callback Validation (2026-03-13)
+
+- `validate_no_global_reassignment.rs`: Rewritten with nested function scope analysis -- tracks function declarations, arrow functions, and function expressions as scope boundaries, correctly distinguishing global vs local reassignment
+- `validate_locals_not_reassigned_after_render.rs`: Enhanced with async function/arrow detection -- reassignments inside async callbacks now correctly flagged
+- `build.rs`: Fixed function declaration lowering to emit StoreLocal connecting the function value to its binding identifier
+- 8 fixtures removed from known-failures.txt
+- Newly passing: error.assign-global-in-component-tag-function, error.assign-global-in-jsx-children, error.reassign-global-fn-arg, error.mutate-global-increment-op-invalid-react, error.invalid-reassign-local-variable-in-async-callback, error.declare-reassign-variable-in-function-declaration, error.todo-repro-named-function-with-shadowed-local-same-name (x2)
+- Conformance: 331 -> 339/1717 (+8)
 
 ### Frozen Mutation Detection -- Enhancement (2026-03-13)
 
