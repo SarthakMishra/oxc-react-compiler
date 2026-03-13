@@ -303,7 +303,6 @@ error.invalid-destructure-to-local-global-variables.js
 error.invalid-disallow-mutating-refs-in-render-transitive.js
 error.invalid-function-expression-mutates-immutable-value.js
 error.invalid-hoisting-setstate.js
-error.invalid-impure-functions-in-render.js
 error.invalid-jsx-captures-context-variable.js
 error.invalid-known-incompatible-hook-return-property.js
 error.invalid-mutate-after-aliased-freeze.js
@@ -705,7 +704,6 @@ new-mutability/capturing-function-alias-computed-load-2-iife.js
 new-mutability/capturing-function-alias-computed-load-3-iife.js
 new-mutability/capturing-function-alias-computed-load-4-iife.js
 new-mutability/capturing-function-alias-computed-load-iife.js
-new-mutability/error.invalid-impure-functions-in-render.js
 new-mutability/error.invalid-referencing-frozen-hoisted-storecontext-const.js
 new-mutability/error.invalid-useCallback-captures-reassigned-context.js
 new-mutability/error.mutate-frozen-value.js
