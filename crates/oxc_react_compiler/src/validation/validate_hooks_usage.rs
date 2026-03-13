@@ -6,12 +6,28 @@ use rustc_hash::FxHashSet;
 /// Validate that hooks are called according to the Rules of Hooks:
 /// 1. Hooks must be called at the top level (not inside conditions/loops)
 /// 2. Hooks must be called in the same order every render
+/// 3. Hooks must not be referenced as normal values (must be called)
 pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
     // Track which blocks are inside conditionals/loops
     let conditional_blocks = find_conditional_blocks(hir);
 
+    // Collect identifier IDs that are used as hook callees — these are valid hook usages.
+    // In SSA form, `useState(0)` decomposes into `t0 = LoadLocal(useState); t1 = Call(t0, ...)`,
+    // so we need to track the callee's identifier ID, not the lvalue's.
+    let mut hook_callee_ids: FxHashSet<crate::hir::types::IdentifierId> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                // Track the callee identifier ID — this is the LoadLocal/LoadGlobal
+                // result that is being used as a function call target.
+                hook_callee_ids.insert(callee.identifier.id);
+            }
+        }
+    }
+
     for (block_id, block) in &hir.blocks {
         for instr in &block.instructions {
+            // Rule 1: Hooks called conditionally
             if let InstructionValue::CallExpression { callee, .. } = &instr.value
                 && let Some(name) = &callee.identifier.name
                 && is_hook_name(name)
@@ -25,6 +41,38 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
                     ),
                     DiagnosticKind::HooksViolation,
                 ));
+            }
+
+            // Rule 3: Hooks referenced as values (not called)
+            // Check for instructions that load a hook name without calling it
+            match &instr.value {
+                InstructionValue::LoadLocal { place }
+                | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name
+                        && is_hook_name(name)
+                        && !hook_callee_ids.contains(&instr.lvalue.identifier.id)
+                    {
+                        errors.push(CompilerError::invalid_react_with_kind(
+                            instr.loc,
+                            "Hooks may not be referenced as normal values, \
+                             they must be called. See https://react.dev/reference/rules/react-calls-components-and-hooks".to_string(),
+                            DiagnosticKind::HooksViolation,
+                        ));
+                    }
+                }
+                InstructionValue::PropertyLoad { property, .. } => {
+                    if is_hook_name(property)
+                        && !hook_callee_ids.contains(&instr.lvalue.identifier.id)
+                    {
+                        errors.push(CompilerError::invalid_react_with_kind(
+                            instr.loc,
+                            "Hooks may not be referenced as normal values, \
+                             they must be called. See https://react.dev/reference/rules/react-calls-components-and-hooks".to_string(),
+                            DiagnosticKind::HooksViolation,
+                        ));
+                    }
+                }
+                _ => {}
             }
         }
     }

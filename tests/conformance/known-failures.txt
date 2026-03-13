@@ -297,7 +297,6 @@ error.hoist-optional-member-expression-with-conditional-optional.js
 error.hoist-optional-member-expression-with-conditional.js
 error.hook-call-freezes-captured-identifier.tsx
 error.hook-call-freezes-captured-memberexpr.jsx
-error.hook-property-load-local-hook.js
 error.hook-ref-value.js
 error.invalid-access-ref-during-render.js
 error.invalid-access-ref-in-reducer-init.js
@@ -305,7 +304,6 @@ error.invalid-access-ref-in-reducer.js
 error.invalid-access-ref-in-render-mutate-object-with-ref-function.js
 error.invalid-access-ref-in-state-initializer.js
 error.invalid-array-push-frozen.js
-error.invalid-assign-hook-to-local.js
 error.invalid-computed-store-to-frozen-value.js
 error.invalid-conditional-call-aliased-hook-import.js
 error.invalid-conditional-call-aliased-react-hook.js
@@ -348,7 +346,6 @@ error.invalid-setState-in-render-unbound-state.js
 error.invalid-setState-in-useMemo-indirect-useCallback.js
 error.invalid-setState-in-useMemo.js
 error.invalid-setstate-unconditional-with-keyed-state.js
-error.invalid-ternary-with-hook-values.js
 error.invalid-unconditional-set-state-hook-return-in-render.js
 error.invalid-unconditional-set-state-in-render.js
 error.invalid-unconditional-set-state-prop-in-render.js
@@ -359,7 +356,6 @@ error.modify-state-2.js
 error.modify-state.js
 error.modify-useReducer-state.js
 error.mutate-function-property.js
-error.propertyload-hook.js
 error.reassign-global-fn-arg.js
 error.reassignment-to-global-indirect.js
 error.ref-like-name-not-Ref.js
@@ -577,7 +573,6 @@ hook-call.js
 hook-declaration-basic.flow.js
 hook-inside-logical-expression.js
 hook-noAlias.js
-hook-property-load-local.js
 hook-ref-callback.js
 hooks-freeze-arguments.js
 hooks-freeze-possibly-mutable-arguments.js
@@ -1223,13 +1218,10 @@ reverse-postorder.js
 rewrite-phis-in-lambda-capture-context.js
 rules-of-hooks/allow-locals-named-like-hooks.js
 rules-of-hooks/allow-props-named-like-hooks.js
-rules-of-hooks/error.invalid-call-phi-possibly-hook.js
 rules-of-hooks/error.invalid-conditionally-call-local-named-like-hook.js
 rules-of-hooks/error.invalid-conditionally-call-prop-named-like-hook.js
 rules-of-hooks/error.invalid-conditionally-methodcall-hooklike-property-of-local.js
-rules-of-hooks/error.invalid-condtionally-call-hooklike-property-of-local.js
 rules-of-hooks/error.invalid-dynamic-hook-via-hooklike-local.js
-rules-of-hooks/error.invalid-hook-as-conditional-test.js
 rules-of-hooks/error.invalid-hook-as-prop.js
 rules-of-hooks/error.invalid-hook-for.js
 rules-of-hooks/error.invalid-hook-from-hook-return.js
@@ -1237,7 +1229,6 @@ rules-of-hooks/error.invalid-hook-from-property-of-other-hook.js
 rules-of-hooks/error.invalid-hook-if-alternate.js
 rules-of-hooks/error.invalid-hook-if-consequent.js
 rules-of-hooks/error.invalid-hook-in-nested-object-method.js
-rules-of-hooks/error.invalid-hook-reassigned-in-conditional.js
 rules-of-hooks/error.invalid-rules-of-hooks-f69800950ff0.js
 rules-of-hooks/rules-of-hooks-4f6c78a14bf7.js
 rules-of-hooks/rules-of-hooks-69521d94fa03.js
