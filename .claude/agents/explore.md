@@ -1,22 +1,6 @@
 ---
 name: explore
-description: "Fast agent specialized for exploring codebases using Serena's LSP-powered semantic tools. Use this when you need to find files, search code for keywords, understand symbol relationships, or answer questions about the codebase. Works with both the Rust core and the TypeScript NAPI/Vite plugin layer.
-
-Examples:
-
-<example>
-Context: User wants to understand how a module works
-user: \"How does the HIR lowering work?\"
-assistant: \"I'll launch the explore agent to trace the HIR build logic.\"
-<Task tool call to launch explore>
-</example>
-
-<example>
-Context: Need to find related files before implementing a pass
-user: \"Find all files related to reactive scope inference\"
-assistant: \"Let me use the explore agent to map out the reactive scope modules.\"
-<Task tool call to launch explore>
-</example>"
+description: "Fast agent specialized for exploring codebases using Serena's LSP-powered semantic tools. Use this when you need to find files, search code for keywords, understand symbol relationships, or answer questions about the codebase. Works with both the Rust core and the TypeScript NAPI/Vite plugin layer.\n\nExamples:\n\n<example>\nContext: User wants to understand how a module works\nuser: \"How does the HIR lowering work?\"\nassistant: \"I'll launch the explore agent to trace the HIR build logic.\"\n<Task tool call to launch explore>\n</example>\n\n<example>\nContext: Need to find related files before implementing a pass\nuser: \"Find all files related to reactive scope inference\"\nassistant: \"Let me use the explore agent to map out the reactive scope modules.\"\n<Task tool call to launch explore>\n</example>"
 model: haiku
 ---
 

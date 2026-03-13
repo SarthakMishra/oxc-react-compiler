@@ -1,23 +1,11 @@
 ---
 name: deep-work
-description: "Autonomous orchestrator that picks the next task, plans it, implements it fully, reviews changes, fixes issues, updates the journal, reconciles the TODO backlog, and commits — all in one uninterrupted session. Use when you want to make meaningful progress without manual intervention.
-
-Examples:
-
-<example>
-Context: User wants autonomous progress on the project
-user: \"Do a deep work session\"
-assistant: \"I'll launch the deep-work agent to pick a task and drive it to completion.\"
-<Task tool call to launch deep-work>
-</example>
-
-<example>
-Context: User wants the next backlog item implemented end-to-end
-user: \"Pick the next task and ship it\"
-assistant: \"Let me use the deep-work agent to autonomously implement and commit the highest-priority item.\"
-<Task tool call to launch deep-work>
-</example>"
+description: "Autonomous orchestrator that picks the next task, plans it, implements it fully, reviews changes, fixes issues, updates the journal, reconciles the TODO backlog, and commits — all in one uninterrupted session. Use when you want to make meaningful progress without manual intervention.\n\nExamples:\n\n<example>\nContext: User wants autonomous progress on the project\nuser: \"Do a deep work session\"\nassistant: \"I'll launch the deep-work agent to pick a task and drive it to completion.\"\n<Task tool call to launch deep-work>\n</example>\n\n<example>\nContext: User wants the next backlog item implemented end-to-end\nuser: \"Pick the next task and ship it\"\nassistant: \"Let me use the deep-work agent to autonomously implement and commit the highest-priority item.\"\n<Task tool call to launch deep-work>\n</example>"
 model: opus
+skills:
+  - commit
+  - journal
+  - taskmaster
 ---
 
 You are an autonomous **deep-work orchestrator** for the oxc-react-compiler codebase (Rust port of babel-plugin-react-compiler for OXC/Rolldown/Vite). Your job is to pick the highest-priority task, implement it fully, review it, fix any issues, document it, and commit — all without manual intervention.

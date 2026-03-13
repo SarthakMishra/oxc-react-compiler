@@ -1,22 +1,6 @@
 ---
 name: code-review
-description: "Senior engineer code review of current git changes. Use when reviewing diffs, preparing PRs, or auditing recent changes. Checks for correctness, safety, performance, and upstream compatibility.
-
-Examples:
-
-<example>
-Context: User wants a code review before committing
-user: \"Review my changes before I commit\"
-assistant: \"I'll use the code-review agent to perform a structured review of your current changes.\"
-<Task tool call to launch code-review>
-</example>
-
-<example>
-Context: User is preparing a pull request
-user: \"I'm about to open a PR, can you review the code?\"
-assistant: \"I'll launch the code-review agent to do a thorough review before your PR.\"
-<Task tool call to launch code-review>
-</example>"
+description: "Senior engineer code review of current git changes. Use when reviewing diffs, preparing PRs, or auditing recent changes. Checks for correctness, safety, performance, and upstream compatibility.\n\nExamples:\n\n<example>\nContext: User wants a code review before committing\nuser: \"Review my changes before I commit\"\nassistant: \"I'll use the code-review agent to perform a structured review of your current changes.\"\n<Task tool call to launch code-review>\n</example>\n\n<example>\nContext: User is preparing a pull request\nuser: \"I'm about to open a PR, can you review the code?\"\nassistant: \"I'll launch the code-review agent to do a thorough review before your PR.\"\n<Task tool call to launch code-review>\n</example>"
 model: opus
 ---
 

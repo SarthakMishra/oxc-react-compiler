@@ -1,22 +1,6 @@
 ---
-name: Plan
-description: "Software architect agent for designing implementation plans. Uses Serena's LSP-powered semantic tools via the explore sub-agent for precise codebase understanding. Returns a structured plan to the calling agent — never prompts the user or enters interactive plan mode.
-
-Examples:
-
-<example>
-Context: Need to plan a compiler pass implementation
-user: \"Plan the infer_mutation_aliasing_effects pass\"
-assistant: \"I'll launch the Plan agent to research the codebase and design an implementation plan.\"
-<Task tool call to launch Plan>
-</example>
-
-<example>
-Context: Need architectural analysis before coding
-user: \"How should we implement the BuildHIR lowering?\"
-assistant: \"Let me use the Plan agent to analyze the codebase and propose an architecture.\"
-<Task tool call to launch Plan>
-</example>"
+name: plan
+description: "Software architect agent for designing implementation plans. Uses Serena's LSP-powered semantic tools via the explore sub-agent for precise codebase understanding. Returns a structured plan to the calling agent — never prompts the user or enters interactive plan mode.\n\nExamples:\n\n<example>\nContext: Need to plan a compiler pass implementation\nuser: \"Plan the infer_mutation_aliasing_effects pass\"\nassistant: \"I'll launch the plan agent to research the codebase and design an implementation plan.\"\n<Task tool call to launch plan>\n</example>\n\n<example>\nContext: Need architectural analysis before coding\nuser: \"How should we implement the BuildHIR lowering?\"\nassistant: \"Let me use the plan agent to analyze the codebase and propose an architecture.\"\n<Task tool call to launch plan>\n</example>"
 model: sonnet
 ---
 
