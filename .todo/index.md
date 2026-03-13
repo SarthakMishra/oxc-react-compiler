@@ -40,7 +40,6 @@ structure differs. Sub-breakdown:
 
 All items are interdependent -- they must be fixed together for fixtures to pass.
 
-- [ ] JSX syntax preservation in codegen (emit `<div>` not `_jsx()`) — [memoization-structure.md](memoization-structure.md)#gap-2-jsx-syntax-preservation-in-codegen
 - [ ] Scope merging/splitting heuristic audit vs upstream — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
 - [ ] Sentinel scope emission for non-reactive allocating expressions — [memoization-structure.md](memoization-structure.md)#gap-5-sentinel-scope-emission
 - [ ] Over-scoped deps: stop treating globals/stable values as reactive deps — [memoization-structure.md](memoization-structure.md)#gap-6-over-scoped-dependencies
@@ -115,6 +114,13 @@ All P0-P5 items have been implemented. Detail files have been removed.
 
 - Recursive cross-scope temp use-counting in codegen.rs
 - FxHash migration for all codegen collections
+
+### JSX Syntax Preservation (2026-03-13)
+
+- JSX syntax preservation fully implemented in codegen.rs
+- `_jsx()`/`_jsxs()`/`_Fragment` calls replaced with actual JSX syntax (`<div>`, `<Component>`, `<>...</>`)
+- `react/jsx-runtime` import removed from generated output
+- 23 snapshot files updated; conformance unchanged at 304/1717 (normalization masks JSX differences)
 
 ### Validation SSA Improvements (2026-03-13)
 

@@ -3,14 +3,19 @@ source: crates/oxc_react_compiler/tests/per_pass_snapshots.rs
 expression: code
 ---
 import { c as _c } from "react/compiler-runtime";
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function UserCard(t0) {
   const $ = _c(4);
   const { name, age, role } = t0;
   let t41;
   if ($[0] !== age || $[1] !== name || $[2] !== role) {
-    t41 = _jsxs("div", { children: [_jsx("h2", { children: name }), _jsxs("p", { children: ["Age: ", age] }), _jsxs("p", { children: ["Role: ", role] })] });
+    t41 = (
+      <div>
+        <h2>{name}</h2>
+        <p>Age: {age}</p>
+        <p>Role: {role}</p>
+      </div>
+    );
     $[0] = age;
     $[1] = name;
     $[2] = role;

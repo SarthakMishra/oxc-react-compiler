@@ -43,29 +43,18 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 **What remains:**
 - The inlining logic itself is functional and correct for cross-scope cases
 - Fixture gains will materialize when combined with other P1 fixes (JSX preservation, sentinel scopes, over-scoped deps) -- the interdependency noted in the risk section is the key blocker
-- May need additional refinement once JSX preservation (Gap 2) lands, as JSX nodes create additional temp chains that are not yet exercised
+- May need additional refinement now that JSX preservation (Gap 2) has landed, as JSX nodes create additional temp chains that are now exercised
 
 **Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs`
 **Fixture gain estimate:** ~150-200 (compound effect with other P1 gaps; 0 in isolation)
 **Depends on:** None (but gains depend on Gap 2 + Gap 5 + Gap 6)
 
-### Gap 2: JSX Syntax Preservation in Codegen
+### Gap 2: JSX Syntax Preservation in Codegen ✅
 
-**Upstream:** `CodegenReactiveFunction.ts` emits JSX syntax directly (`<div>`, `<Component>`, `<>{...}</>`)
-**Current state:** `codegen.rs` lines 325-348 emit `_jsx("div", { ... })` and `_jsxs(_Fragment, { children: [...] })` function call syntax
-**What's needed:**
-- Modify the `InstructionValue::JsxExpression` arm in `codegen_instruction()` to emit JSX syntax:
-  - `_jsx("div", { className: x })` becomes `<div className={x} />`
-  - `_jsx(Component, { prop: val })` becomes `<Component prop={val} />`
-  - `_jsxs("div", { children: [a, b] })` becomes `<div>{a}{b}</div>`
-  - `_jsx(_Fragment, { children: x })` becomes `<>{x}</>`
-- Handle self-closing vs open/close tags (self-closing when no children)
-- Handle spread props: `_jsx("div", { ...props })` becomes `<div {...props} />`
-- Handle string children vs expression children
-- Remove the `jsx-runtime` import from the generated import header since JSX syntax doesn't need it
-- Keep the `_c` import from `react/compiler-runtime`
-**Fixture gain estimate:** ~100-150 (independent of temp inlining)
-**Depends on:** None (independent of Gap 1)
+~~**Upstream:** `CodegenReactiveFunction.ts` emits JSX syntax directly (`<div>`, `<Component>`, `<>{...}</>`)~~
+~~**Current state:** `codegen.rs` lines 325-348 emit `_jsx("div", { ... })` and `_jsxs(_Fragment, { children: [...] })` function call syntax~~
+
+**Completed**: JSX syntax preservation fully implemented in `codegen.rs`. The `InstructionValue::JsxExpression` arm now emits proper JSX syntax (`<div>`, `<Component>`, `<>...</>`) instead of `_jsx()`/`_jsxs()` function calls. Self-closing vs open/close tags, spread props, string/expression children, and fragment shorthand all handled. The `react/jsx-runtime` import is removed from generated output; only `_c` from `react/compiler-runtime` remains. 23 snapshot files updated. Conformance unchanged at 304/1717 due to JSX normalization in the test harness. Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs`.
 
 ### Gap 3: Cache Slot Count Alignment
 
@@ -97,11 +86,11 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 **Upstream:** Babel creates reactive scopes for allocating expressions (JSX elements, object/array literals) even when they have no reactive dependencies. These scopes use the sentinel pattern (`Symbol.for("react.memo_cache_sentinel")`) instead of dependency checking.
 **Current state:** `infer_reactive_scope_variables.rs` only creates scopes for reactive identifiers. An attempt to add `is_allocating` tracking was made but reverted because it gained 0 fixtures while losing 10 (the structural output still didn't match even with correct scope creation).
 **What's needed:**
-- Revisit allocating scope creation AFTER Gap 1 (temp inlining) and Gap 2 (JSX preservation) are done -- the previous attempt failed because structural differences masked the fix
+- Revisit allocating scope creation now that Gap 2 (JSX preservation) is done -- the previous attempt failed because structural differences masked the fix. Gap 1 (temp inlining) is also in place.
 - Add sentinel pattern emission to codegen: instead of `if ($[0] !== dep)`, emit `if ($[0] === Symbol.for("react.memo_cache_sentinel"))` for allocating-only scopes
 - This is the root cause of ~280 divergences
 **Fixture gain estimate:** ~100-200 (but only after Gaps 1+2 are done)
-**Depends on:** Gap 1, Gap 2 (previous attempt failed without these)
+**Depends on:** Gap 1 ✅, Gap 2 ✅ (both now complete -- this gap is unblocked)
 
 ### Gap 6: Over-Scoped Dependencies
 
@@ -131,7 +120,7 @@ Expected progression (gaps are interdependent, so gains compound):
 
 ## Risks and Notes
 
-- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. The temp inlining + JSX preservation combo should be done first as they are the most impactful pair.
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1) and JSX preservation (Gap 2) are now both complete -- sentinel scope emission (Gap 5) is the next unblocked high-impact item.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.
 - **JSX edge cases**: Self-closing elements, boolean attributes (`<div disabled />`), computed property names in JSX, namespace attributes (`xml:lang`).
 - **Scope merging audit scope**: The merge/prune passes are among the most complex in the compiler. A full audit requires careful line-by-line comparison with upstream TypeScript.

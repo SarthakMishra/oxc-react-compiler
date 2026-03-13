@@ -3,7 +3,6 @@ source: crates/oxc_react_compiler/tests/per_pass_snapshots.rs
 expression: code
 ---
 import { c as _c } from "react/compiler-runtime";
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 
 function Counter() {
   const $ = _c(3);
@@ -14,7 +13,7 @@ function Counter() {
     const t34 = () => {
       return setCount(next);
     };
-    t36 = _jsx("button", { onClick: t34, children: count });
+    t36 = <button onClick={t34}>{count}</button>;
     $[0] = count;
     $[1] = count;
     $[2] = t36;

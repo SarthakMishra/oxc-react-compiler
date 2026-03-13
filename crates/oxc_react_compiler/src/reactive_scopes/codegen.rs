@@ -565,47 +565,47 @@ fn expr_string(value: &InstructionValue, im: &InlineMap) -> Option<String> {
             Some(format!("[{}]", parts.join(", ")))
         }
         InstructionValue::JsxExpression { tag, props, children } => {
-            let tag_name = resolve(tag);
-            let mut props_parts = Vec::new();
-            let mut has_spread = false;
+            let raw_tag = resolve(tag);
+            let tag_name = jsx_tag_name(&raw_tag);
+            // Build props string in JSX syntax.
+            // NOTE: This duplicates `build_jsx_props_str` because `expr_string`
+            // uses a local closure `resolve` rather than an `InlineMap` reference.
+            // Keep both in sync when modifying JSX attribute emission.
+            let mut props_str = String::new();
             for attr in props {
                 match &attr.name {
                     crate::hir::types::JsxAttributeName::Named(name) => {
-                        let key = if name.contains('-') || name.contains(':') {
-                            format!("\"{name}\"")
-                        } else {
-                            name.clone()
-                        };
-                        props_parts.push(format!("{}: {}", key, resolve(&attr.value)));
+                        let val = resolve(&attr.value);
+                        let attr_val = jsx_attr_value_str(&val);
+                        props_str.push_str(&format!(" {name}{attr_val}"));
                     }
                     crate::hir::types::JsxAttributeName::Spread => {
-                        has_spread = true;
-                        props_parts.push(format!("...{}", resolve(&attr.value)));
+                        props_str.push_str(&format!(" {{...{}}}", resolve(&attr.value)));
                     }
                 }
             }
-            if children.len() == 1 {
-                props_parts.push(format!("children: {}", resolve(&children[0])));
-            } else if children.len() > 1 {
-                let child_strs: Vec<String> = children.iter().map(&resolve).collect();
-                props_parts.push(format!("children: [{}]", child_strs.join(", ")));
-            }
-            let props_str = if props_parts.is_empty() && !has_spread {
-                "{}".to_string()
+            // Emit JSX syntax
+            if children.is_empty() {
+                Some(format!("<{tag_name}{props_str} />"))
             } else {
-                format!("{{ {} }}", props_parts.join(", "))
-            };
-            let jsx_fn = if children.len() > 1 { "_jsxs" } else { "_jsx" };
-            Some(format!("{jsx_fn}({tag_name}, {props_str})"))
+                let mut children_str = String::new();
+                for child in children {
+                    let resolved = resolve(child);
+                    children_str.push_str(&jsx_child_str(&resolved));
+                }
+                Some(format!("<{tag_name}{props_str}>{children_str}</{tag_name}>"))
+            }
         }
         InstructionValue::JsxFragment { children } => {
             if children.is_empty() {
-                Some("_jsx(_Fragment, {})".to_string())
-            } else if children.len() == 1 {
-                Some(format!("_jsx(_Fragment, {{ children: {} }})", resolve(&children[0])))
+                Some("<></>".to_string())
             } else {
-                let child_strs: Vec<String> = children.iter().map(&resolve).collect();
-                Some(format!("_jsxs(_Fragment, {{ children: [{}] }})", child_strs.join(", ")))
+                let mut children_str = String::new();
+                for child in children {
+                    let resolved = resolve(child);
+                    children_str.push_str(&jsx_child_str(&resolved));
+                }
+                Some(format!("<>{children_str}</>"))
             }
         }
         InstructionValue::CallExpression { callee, args } => {
@@ -625,6 +625,89 @@ fn expr_string(value: &InstructionValue, im: &InlineMap) -> Option<String> {
         }
         _ => None,
     }
+}
+
+// ---------------------------------------------------------------------------
+// JSX syntax helpers
+// ---------------------------------------------------------------------------
+
+/// Returns true if the given resolved expression string is a string literal
+/// (double-quoted), indicating it came from a JSXText node or string constant.
+fn is_jsx_text_str(s: &str) -> bool {
+    s.len() >= 2 && s.starts_with('"') && s.ends_with('"')
+}
+
+/// Strip surrounding double quotes from a string literal representation.
+/// Input: `"hello world"`, Output: `hello world`
+fn strip_string_quotes(s: &str) -> &str {
+    if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        &s[1..s.len() - 1]
+    } else {
+        s
+    }
+}
+
+/// Format a JSX attribute value. String literals use `="value"` syntax,
+/// everything else uses `={expr}` syntax.
+fn jsx_attr_value_str(resolved: &str) -> String {
+    if is_jsx_text_str(resolved) {
+        // String literal attribute: attr="value"
+        format!("={resolved}")
+    } else if resolved == "true" {
+        // Boolean true shorthand: just the attribute name, no value
+        String::new()
+    } else {
+        // Expression attribute: attr={expr}
+        format!("={{{resolved}}}")
+    }
+}
+
+/// Convert a resolved tag name to JSX tag syntax.
+/// String literals like `"div"` → `div` (strip quotes for intrinsic elements).
+/// Non-string expressions like `Component` or `_temp` → pass through unchanged.
+fn jsx_tag_name(resolved: &str) -> &str {
+    if is_jsx_text_str(resolved) {
+        strip_string_quotes(resolved)
+    } else {
+        resolved
+    }
+}
+
+/// Format a JSX child for embedding in a JSX element body.
+/// - String literals → raw text (strip quotes)
+/// - Nested JSX elements (starts with `<`) → embed directly (no `{}` wrapper)
+/// - Everything else → wrap in `{expr}`
+fn jsx_child_str(resolved: &str) -> String {
+    if is_jsx_text_str(resolved) {
+        strip_string_quotes(resolved).to_string()
+    } else if resolved.starts_with('<') {
+        // Nested JSX element — embed directly without {} wrapper
+        resolved.to_string()
+    } else {
+        format!("{{{resolved}}}")
+    }
+}
+
+/// Build JSX props string for an opening tag: ` prop1={val1} prop2="str"`.
+fn build_jsx_props_str(
+    props: &[crate::hir::types::JsxAttribute],
+    inline_map: &InlineMap,
+) -> String {
+    let mut s = String::new();
+    for attr in props {
+        match &attr.name {
+            crate::hir::types::JsxAttributeName::Named(name) => {
+                let val = resolve_place(&attr.value, inline_map);
+                let attr_val = jsx_attr_value_str(&val);
+                s.push_str(&format!(" {name}{attr_val}"));
+            }
+            crate::hir::types::JsxAttributeName::Spread => {
+                let val = resolve_place(&attr.value, inline_map);
+                s.push_str(&format!(" {{...{val}}}"));
+            }
+        }
+    }
+    s
 }
 
 /// Resolve a place's name, substituting the inline expression if available.
@@ -943,67 +1026,63 @@ crate::hir::types::InstructionKind::HoistedConst) => "const ",
             ));
         }
         InstructionValue::JsxExpression { tag, props, children } => {
-            let tag_name = resolve_place(tag, inline_map);
-            // Build props object
-            let mut props_parts = Vec::new();
-            let mut has_spread = false;
-            for attr in props {
-                match &attr.name {
-                    crate::hir::types::JsxAttributeName::Named(name) => {
-                        // Quote attribute names that aren't valid JS identifiers (e.g. aria-label, data-testid)
-                        let key = if name.contains('-') || name.contains(':') {
-                            format!("\"{name}\"")
-                        } else {
-                            name.clone()
-                        };
-                        props_parts.push(format!(
-                            "{}: {}",
-                            key,
-                            resolve_place(&attr.value, inline_map)
-                        ));
-                    }
-                    crate::hir::types::JsxAttributeName::Spread => {
-                        has_spread = true;
-                        props_parts.push(format!("...{}", resolve_place(&attr.value, inline_map)));
-                    }
-                }
-            }
-            // Add children to props
-            if children.len() == 1 {
-                props_parts.push(format!("children: {}", resolve_place(&children[0], inline_map)));
-            } else if children.len() > 1 {
-                let child_strs: Vec<Cow<'_, str>> =
-                    children.iter().map(|c| resolve_place(c, inline_map)).collect();
-                props_parts.push(format!("children: [{}]", child_strs.join(", ")));
-            }
-            let props_str = if props_parts.is_empty() && !has_spread {
-                "{}".to_string()
+            let raw_tag = resolve_place(tag, inline_map);
+            let tag_name = jsx_tag_name(&raw_tag);
+            // Build JSX props string
+            let props_str = build_jsx_props_str(props, inline_map);
+            // Resolve children
+            let resolved_children: Vec<Cow<'_, str>> =
+                children.iter().map(|c| resolve_place(c, inline_map)).collect();
+
+            if resolved_children.is_empty() {
+                // Self-closing: <Tag props />
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = <{tag_name}{props_str} />;\n"
+                ));
+            } else if resolved_children.len() == 1 && !is_jsx_text_str(&resolved_children[0]) {
+                // Single expression child inline: <Tag props>{child}</Tag>
+                let child = jsx_child_str(&resolved_children[0]);
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = <{tag_name}{props_str}>{child}</{tag_name}>;\n"
+                ));
             } else {
-                format!("{{ {} }}", props_parts.join(", "))
-            };
-            // Use _jsxs for multiple children, _jsx for 0-1
-            let jsx_fn = if children.len() > 1 { "_jsxs" } else { "_jsx" };
-            output.push_str(&format!(
-                "{indent}{decl_keyword}{lvalue_name} = {jsx_fn}({tag_name}, {props_str});\n"
-            ));
+                // Multi-line: wrap in parens with indented children
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = (\n"
+                ));
+                output.push_str(&format!("{indent}  <{tag_name}{props_str}>\n"));
+                for child in &resolved_children {
+                    let child_str = jsx_child_str(child);
+                    output.push_str(&format!("{indent}    {child_str}\n"));
+                }
+                output.push_str(&format!("{indent}  </{tag_name}>\n"));
+                output.push_str(&format!("{indent});\n"));
+            }
         }
         InstructionValue::JsxFragment { children } => {
-            if children.is_empty() {
+            let resolved_children: Vec<Cow<'_, str>> =
+                children.iter().map(|c| resolve_place(c, inline_map)).collect();
+
+            if resolved_children.is_empty() {
                 output.push_str(&format!(
-                    "{indent}{decl_keyword}{lvalue_name} = _jsx(_Fragment, {{}});\n"
+                    "{indent}{decl_keyword}{lvalue_name} = <></>;\n"
                 ));
-            } else if children.len() == 1 {
+            } else if resolved_children.len() == 1 && !is_jsx_text_str(&resolved_children[0]) {
+                let child = jsx_child_str(&resolved_children[0]);
                 output.push_str(&format!(
-                    "{indent}{decl_keyword}{lvalue_name} = _jsx(_Fragment, {{ children: {} }});\n",
-                    resolve_place(&children[0], inline_map)
+                    "{indent}{decl_keyword}{lvalue_name} = <>{child}</>;\n"
                 ));
             } else {
-                let child_strs: Vec<Cow<'_, str>> =
-                    children.iter().map(|c| resolve_place(c, inline_map)).collect();
                 output.push_str(&format!(
-                    "{indent}{decl_keyword}{lvalue_name} = _jsxs(_Fragment, {{ children: [{}] }});\n",
-                    child_strs.join(", ")
+                    "{indent}{decl_keyword}{lvalue_name} = (\n"
                 ));
+                output.push_str(&format!("{indent}  <>\n"));
+                for child in &resolved_children {
+                    let child_str = jsx_child_str(child);
+                    output.push_str(&format!("{indent}    {child_str}\n"));
+                }
+                output.push_str(&format!("{indent}  </>\n"));
+                output.push_str(&format!("{indent});\n"));
             }
         }
         InstructionValue::ObjectExpression { properties } => {
@@ -1643,13 +1722,11 @@ fn count_terminal_slots(terminal: &ReactiveTerminal) -> u32 {
 
 /// Generate the import statement for the compiler runtime.
 ///
-/// When `needs_jsx` is true, also emits the JSX runtime import for `_jsx`/`_jsxs`/`_Fragment`.
-pub fn generate_import_statement(needs_jsx: bool) -> String {
-    let mut s = "import { c as _c } from \"react/compiler-runtime\";\n".to_string();
-    if needs_jsx {
-        s.push_str("import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from \"react/jsx-runtime\";\n");
-    }
-    s
+/// JSX syntax is preserved in output (not lowered to `_jsx()` calls), so only
+/// the compiler-runtime import is needed. The downstream bundler's JSX
+/// transform handles JSX lowering.
+pub fn generate_import_statement() -> String {
+    "import { c as _c } from \"react/compiler-runtime\";\n".to_string()
 }
 
 /// Apply compiled function to original source code.
@@ -1664,12 +1741,8 @@ pub fn apply_compilation(
 
     let mut result = String::with_capacity(original_source.len() + 256);
 
-    // Check if any compiled function uses JSX runtime calls
-    let needs_jsx = compiled_functions.iter().any(|(_, code)| {
-        code.contains("_jsx(") || code.contains("_jsxs(") || code.contains("_Fragment")
-    });
-    // Add import at the top
-    result.push_str(&generate_import_statement(needs_jsx));
+    // Add compiler-runtime import at the top (JSX syntax is preserved, no jsx-runtime needed)
+    result.push_str(&generate_import_statement());
 
     // Apply edits in reverse order (to preserve offsets)
     let mut edits: Vec<(usize, usize, &str)> = compiled_functions
