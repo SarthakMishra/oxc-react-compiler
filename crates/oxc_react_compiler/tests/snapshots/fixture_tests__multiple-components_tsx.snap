@@ -13,8 +13,8 @@ function Header(t0) {
   let t13;
   if ($[0] !== title) {
     t13 = _jsx("h1", { children: title });
-    $[1] = t13;
     $[0] = title;
+    $[1] = t13;
   } else {
     t13 = $[1];
   }
@@ -28,8 +28,8 @@ function Footer(t0) {
   let t13;
   if ($[0] !== text) {
     t13 = _jsx("footer", { children: text });
-    $[1] = t13;
     $[0] = text;
+    $[1] = t13;
   } else {
     t13 = $[1];
   }

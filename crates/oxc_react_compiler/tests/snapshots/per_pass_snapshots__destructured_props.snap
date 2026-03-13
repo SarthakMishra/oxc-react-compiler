@@ -9,12 +9,12 @@ function UserCard(t0) {
   const $ = _c(4);
   const { name, age, role } = t0;
   let t41;
-  if ($[0] !== name || $[1] !== age || $[2] !== role) {
+  if ($[0] !== age || $[1] !== name || $[2] !== role) {
     t41 = _jsxs("div", { children: [_jsx("h2", { children: name }), _jsxs("p", { children: ["Age: ", age] }), _jsxs("p", { children: ["Role: ", role] })] });
-    $[3] = t41;
-    $[0] = name;
-    $[1] = age;
+    $[0] = age;
+    $[1] = name;
     $[2] = role;
+    $[3] = t41;
   } else {
     t41 = $[3];
   }

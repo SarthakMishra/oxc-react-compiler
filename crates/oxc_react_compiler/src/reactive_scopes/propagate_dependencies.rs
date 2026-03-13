@@ -197,6 +197,17 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
         }
     }
 
+    // Sort dependencies by identifier name (alphabetical) to match upstream ordering.
+    // Babel's PropagateScopeDependencies outputs deps in a stable name-based order,
+    // while our insertion-order walk depends on HIR instruction sequence.
+    for deps in scope_deps.values_mut() {
+        deps.sort_by(|a, b| {
+            let a_name = a.identifier.name.as_deref().unwrap_or("");
+            let b_name = b.identifier.name.as_deref().unwrap_or("");
+            a_name.cmp(b_name)
+        });
+    }
+
     // Phase 4: Write the dependencies and declarations back onto ALL instructions
     // in each scope (not just the first one), because `find_scope_in_block` in
     // `build_reactive_function` may read the scope from any instruction.

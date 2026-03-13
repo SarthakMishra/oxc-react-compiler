@@ -11,11 +11,11 @@ const Button = function Button(t0) {
   const $ = _c(3);
   const { onClick, label } = t0;
   let t19;
-  if ($[0] !== onClick || $[1] !== label) {
+  if ($[0] !== label || $[1] !== onClick) {
     t19 = _jsx("button", { onClick: onClick, children: label });
+    $[0] = label;
+    $[1] = onClick;
     $[2] = t19;
-    $[0] = onClick;
-    $[1] = label;
   } else {
     t19 = $[2];
   }

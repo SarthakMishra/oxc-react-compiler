@@ -14,8 +14,8 @@ function useCounter() {
       return setCount(count + 1);
     };
     t22 = { count, increment: t21 };
-    $[1] = t22;
     $[0] = count;
+    $[1] = t22;
   } else {
     t22 = $[1];
   }

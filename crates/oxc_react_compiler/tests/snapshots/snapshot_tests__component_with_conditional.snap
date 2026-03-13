@@ -11,8 +11,8 @@ function Toggle(t0) {
   let t15;
   if ($[0] !== isOn) {
     t15 = isOn;
-    $[1] = t15;
     $[0] = isOn;
+    $[1] = t15;
   } else {
     t15 = $[1];
   }

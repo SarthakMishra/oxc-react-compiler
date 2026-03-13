@@ -24,11 +24,11 @@ function Display(t0) {
   }
   label = t16;
   let t53;
-  if ($[1] !== label || $[2] !== count) {
+  if ($[1] !== count || $[2] !== label) {
     t53 = _jsxs("div", { children: [label, ": ", count] });
+    $[1] = count;
+    $[2] = label;
     $[3] = t53;
-    $[1] = label;
-    $[2] = count;
   } else {
     t53 = $[3];
   }

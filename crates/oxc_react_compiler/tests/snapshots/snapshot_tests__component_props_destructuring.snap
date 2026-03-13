@@ -9,11 +9,11 @@ function Greeting(t0) {
   const $ = _c(3);
   const { name, age } = t0;
   let t23;
-  if ($[0] !== name || $[1] !== age) {
+  if ($[0] !== age || $[1] !== name) {
     t23 = _jsxs("div", { children: ["Hello ", name, ", you are ", age] });
+    $[0] = age;
+    $[1] = name;
     $[2] = t23;
-    $[0] = name;
-    $[1] = age;
   } else {
     t23 = $[2];
   }

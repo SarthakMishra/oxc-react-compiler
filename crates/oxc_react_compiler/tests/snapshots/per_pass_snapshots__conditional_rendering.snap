@@ -11,8 +11,8 @@ function Status(t0) {
   let t17;
   if ($[0] !== isActive) {
     t17 = isActive;
-    $[1] = t17;
     $[0] = isActive;
+    $[1] = t17;
   } else {
     t17 = $[1];
   }

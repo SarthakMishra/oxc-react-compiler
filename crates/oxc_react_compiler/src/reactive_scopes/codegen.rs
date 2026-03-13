@@ -1428,6 +1428,20 @@ fn codegen_scope(
         &scope_decl_names,
     );
 
+    // Store dep values for next comparison (before declarations, matching upstream order)
+    if !deps.is_empty() {
+        let inner_indent = "  ".repeat(indent + 1);
+        for (i, dep) in deps.iter().enumerate() {
+            let dep_name = identifier_display_name(&dep.identifier);
+            output.push_str(&format!(
+                "{}$[{}] = {};\n",
+                inner_indent,
+                slot_start + i as u32,
+                dep_name
+            ));
+        }
+    }
+
     // Store declarations into cache slots
     let decl_slot_start = *cache_slot;
     for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
@@ -1441,20 +1455,6 @@ fn codegen_scope(
         ));
     }
     *cache_slot += scope.scope.declarations.len() as u32;
-
-    // Store dep values for next comparison
-    if !deps.is_empty() {
-        let inner_indent = "  ".repeat(indent + 1);
-        for (i, dep) in deps.iter().enumerate() {
-            let dep_name = identifier_display_name(&dep.identifier);
-            output.push_str(&format!(
-                "{}$[{}] = {};\n",
-                inner_indent,
-                slot_start + i as u32,
-                dep_name
-            ));
-        }
-    }
 
     // Only emit else block if there are declarations to load from cache
     if !scope.scope.declarations.is_empty() {

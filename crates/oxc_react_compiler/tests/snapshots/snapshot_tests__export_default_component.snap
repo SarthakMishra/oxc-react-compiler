@@ -11,8 +11,8 @@ export default function Page(t0) {
   let t13;
   if ($[0] !== content) {
     t13 = _jsx("main", { children: content });
-    $[1] = t13;
     $[0] = content;
+    $[1] = t13;
   } else {
     t13 = $[1];
   }

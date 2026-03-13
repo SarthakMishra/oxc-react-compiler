@@ -4,7 +4,7 @@
 
 Last updated: 2026-03-12
 
-Current conformance: 69/1717 pass (4.9%), 0 panics, 1350 divergences.
+Current conformance: 84/1717 pass (4.9%), 0 panics, 1335 divergences.
 
 ---
 
@@ -31,7 +31,8 @@ Deep compiler work needed — temp variable explosion, scope analysis, cache slo
 - [ ] JSX syntax preservation in codegen (emit `<div>` not `_jsx()`) -- [memoization-structure.md](memoization-structure.md)#gap-2-jsx-syntax-preservation-in-codegen
 - [x] Cache slot count alignment (partial) — scope dependency tracking fix, empty scope pruning (+6 fixtures)
 - [ ] Scope merging/splitting heuristic audit vs upstream -- [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
-- [ ] Scope dependency tracking: exclude globals, improve property path deps, fix scope-internal detection
+- [x] Scope dependency tracking: exclude globals/primitives from deps, fix prune_non_escaping_scopes operand walk, ForIn/ForOf codegen
+- [ ] Scope creation for non-reactive allocating expressions (JSX, objects, arrays) — needed for ~346 "we don't memoize" fixtures
 
 ## Priority 3 -- Conformance: Over-Memoization Bail-Out (~698 fixtures)
 

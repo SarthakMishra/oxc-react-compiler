@@ -10,8 +10,8 @@ function Counter() {
   let t22;
   if ($[0] !== count) {
     t22 = _jsx("div", { children: count });
-    $[1] = t22;
     $[0] = count;
+    $[1] = t22;
   } else {
     t22 = $[1];
   }

@@ -1267,9 +1267,7 @@ repro-unreachable-code-early-return-in-useMemo.js
 repro-useMemo-if-else-both-early-return.js
 repro.js
 resolve-react-hooks-based-on-import-name.js
-rest-param-with-array-pattern.js
 rest-param-with-identifier.js
-rest-param-with-object-spread-pattern.js
 return-ref-callback-structure.js
 return-ref-callback.js
 reverse-postorder.js

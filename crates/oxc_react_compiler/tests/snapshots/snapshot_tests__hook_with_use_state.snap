@@ -11,11 +11,11 @@ function useToggle(initial) {
   };
   const toggle = t28;
   let t32;
-  if ($[0] !== value || $[1] !== toggle) {
+  if ($[0] !== toggle || $[1] !== value) {
     t32 = [value, toggle];
+    $[0] = toggle;
+    $[1] = value;
     $[2] = t32;
-    $[0] = value;
-    $[1] = toggle;
   } else {
     t32 = $[2];
   }

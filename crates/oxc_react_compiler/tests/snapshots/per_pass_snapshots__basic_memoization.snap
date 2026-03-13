@@ -13,8 +13,8 @@ function Doubler(t0) {
   if ($[0] !== value) {
     doubled = value * 2;
     t25 = _jsx("span", { children: doubled });
-    $[1] = t25;
     $[0] = value;
+    $[1] = t25;
   } else {
     t25 = $[1];
   }

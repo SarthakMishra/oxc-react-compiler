@@ -13,8 +13,8 @@ function Counter(t0) {
   let t13;
   if ($[0] !== count) {
     t13 = _jsx("div", { children: count });
-    $[1] = t13;
     $[0] = count;
+    $[1] = t13;
   } else {
     t13 = $[1];
   }

@@ -9,11 +9,11 @@ function Card(t0) {
   const $ = _c(3);
   const { title, children } = t0;
   let t31;
-  if ($[0] !== title || $[1] !== children) {
+  if ($[0] !== children || $[1] !== title) {
     t31 = _jsxs("div", { className: "card", children: [_jsx("h3", { children: title }), _jsx("div", { className: "body", children: children })] });
+    $[0] = children;
+    $[1] = title;
     $[2] = t31;
-    $[0] = title;
-    $[1] = children;
   } else {
     t31 = $[2];
   }

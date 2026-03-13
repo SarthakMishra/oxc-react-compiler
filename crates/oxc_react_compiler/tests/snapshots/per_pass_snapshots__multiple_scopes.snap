@@ -25,11 +25,11 @@ function Summary(t0) {
   }
   label = t24;
   let t75;
-  if ($[2] !== label || $[3] !== count) {
+  if ($[2] !== count || $[3] !== label) {
     t75 = _jsxs("div", { children: [_jsx("span", { children: label }), _jsxs("span", { children: ["(", count, ")"] })] });
+    $[2] = count;
+    $[3] = label;
     $[4] = t75;
-    $[2] = label;
-    $[3] = count;
   } else {
     t75 = $[4];
   }

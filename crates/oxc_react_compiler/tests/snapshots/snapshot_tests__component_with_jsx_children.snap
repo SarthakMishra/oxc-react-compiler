@@ -11,8 +11,8 @@ function Layout(t0) {
   let t15;
   if ($[0] !== children) {
     t15 = _jsx("div", { className: "container", children: children });
-    $[1] = t15;
     $[0] = children;
+    $[1] = t15;
   } else {
     t15 = $[1];
   }
