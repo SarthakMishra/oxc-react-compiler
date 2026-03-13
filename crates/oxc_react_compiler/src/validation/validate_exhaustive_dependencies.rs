@@ -1,6 +1,6 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{HIR, InstructionValue, Place};
-use rustc_hash::FxHashSet;
+use crate::hir::types::{HIR, IdentifierId, InstructionValue, Place};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Known hooks that accept a dependency array as their second argument.
 const HOOKS_WITH_DEPS: &[&str] = &["useMemo", "useCallback", "useEffect", "useLayoutEffect"];
@@ -14,13 +14,19 @@ const EFFECT_HOOKS: &[&str] = &["useEffect", "useLayoutEffect"];
 /// declared dependency array. Missing dependencies can cause stale closures;
 /// extra dependencies cause unnecessary re-computations.
 pub fn validate_exhaustive_dependencies(hir: &HIR, errors: &mut ErrorCollector) {
+    // Build id-to-name map for resolving SSA temporaries
+    let id_to_name = build_name_map(hir);
+
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let InstructionValue::CallExpression { callee, args } = &instr.value {
-                let name = match &callee.identifier.name {
-                    Some(n) => n.as_str(),
-                    None => continue,
-                };
+                let name = callee
+                    .identifier
+                    .name
+                    .as_deref()
+                    .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+
+                let Some(name) = name else { continue };
 
                 if !HOOKS_WITH_DEPS.contains(&name) {
                     continue;
@@ -125,4 +131,30 @@ fn collect_declared_deps(hir: &HIR, deps_place: &Place) -> FxHashSet<String> {
     }
 
     declared
+}
+
+/// Build a map from identifier ID → name for SSA resolution.
+fn build_name_map(hir: &HIR) -> FxHashMap<IdentifierId, String> {
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadGlobal { binding } => {
+                    id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                }
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name {
+                        id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                    }
+                }
+                _ => {}
+            }
+            if let Some(name) = &instr.lvalue.identifier.name {
+                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
+            }
+        }
+    }
+
+    id_to_name
 }
