@@ -38,9 +38,10 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                 // LoadLocal of a non-reactive name produces a non-reactive value.
                 InstructionValue::LoadLocal { place } => {
                     if let Some(name) = &place.identifier.name
-                        && non_reactive_names.contains(name) {
-                            non_reactive_ids.insert(instr.lvalue.identifier.id);
-                        }
+                        && non_reactive_names.contains(name)
+                    {
+                        non_reactive_ids.insert(instr.lvalue.identifier.id);
+                    }
                 }
                 _ => {}
             }
@@ -96,9 +97,10 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                     return true;
                 }
                 if let Some(name) = &place.identifier.name
-                    && written_names.is_some_and(|s| s.contains(name)) {
-                        return true;
-                    }
+                    && written_names.is_some_and(|s| s.contains(name))
+                {
+                    return true;
+                }
                 false
             };
 

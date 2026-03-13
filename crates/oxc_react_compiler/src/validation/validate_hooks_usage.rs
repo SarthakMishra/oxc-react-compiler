@@ -26,8 +26,7 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
                 InstructionValue::LoadGlobal { binding } => {
                     id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
                 }
-                InstructionValue::LoadLocal { place }
-                | InstructionValue::LoadContext { place } => {
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
                     if let Some(name) = &place.identifier.name {
                         id_to_name.insert(instr.lvalue.identifier.id, name.clone());
                     }
@@ -37,9 +36,7 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
 
             // Also use the identifier's own name if set
             if let Some(name) = &instr.lvalue.identifier.name {
-                id_to_name
-                    .entry(instr.lvalue.identifier.id)
-                    .or_insert_with(|| name.clone());
+                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
             }
 
             // Track callee IDs for Rule 3
@@ -57,21 +54,19 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
     for (block_id, block) in &hir.blocks {
         for instr in &block.instructions {
             // Rule 1: Hooks called conditionally
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
-                if let Some(name) =
-                    resolve_name(callee.identifier.id, &callee.identifier.name)
-                {
-                    if is_hook_name(&name) && conditional_blocks.contains(block_id) {
-                        errors.push(CompilerError::invalid_react_with_kind(
-                            instr.loc,
-                            format!(
-                                "React Hook \"{name}\" is called conditionally. \
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value
+                && let Some(name) = resolve_name(callee.identifier.id, &callee.identifier.name)
+                && is_hook_name(&name)
+                && conditional_blocks.contains(block_id)
+            {
+                errors.push(CompilerError::invalid_react_with_kind(
+                    instr.loc,
+                    format!(
+                        "React Hook \"{name}\" is called conditionally. \
                                  Hooks must be called in the exact same order in every render."
-                            ),
-                            DiagnosticKind::HooksViolation,
-                        ));
-                    }
-                }
+                    ),
+                    DiagnosticKind::HooksViolation,
+                ));
             }
 
             // Rule 1b: Method calls that look like hooks (e.g., Foo.useFoo())
@@ -91,8 +86,7 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
 
             // Rule 3: Hooks referenced as values (not called)
             match &instr.value {
-                InstructionValue::LoadLocal { place }
-                | InstructionValue::LoadContext { place } => {
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
                     if let Some(name) = &place.identifier.name
                         && is_hook_name(name)
                         && !hook_callee_ids.contains(&instr.lvalue.identifier.id)

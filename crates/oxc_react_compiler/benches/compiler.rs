@@ -15,11 +15,12 @@ fn load_fixtures() -> Vec<(String, String)> {
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(ext) = path.extension()
-                && (ext == "tsx" || ext == "ts" || ext == "jsx" || ext == "js") {
-                    let name = path.file_name().unwrap().to_string_lossy().into_owned();
-                    let source = std::fs::read_to_string(&path).unwrap();
-                    fixtures.push((name, source));
-                }
+                && (ext == "tsx" || ext == "ts" || ext == "jsx" || ext == "js")
+            {
+                let name = path.file_name().unwrap().to_string_lossy().into_owned();
+                let source = std::fs::read_to_string(&path).unwrap();
+                fixtures.push((name, source));
+            }
         }
     }
 

@@ -39,15 +39,16 @@ pub fn assert_well_formed_break_targets(hir: &HIR, errors: &mut ErrorCollector) 
     // Validate: every Goto target should be a valid block
     for (bid, block) in &hir.blocks {
         if let Terminal::Goto { block: target } = &block.terminal
-            && !all_block_ids.contains(target) {
-                errors.push(CompilerError::invalid_react_with_kind(
+            && !all_block_ids.contains(target)
+        {
+            errors.push(CompilerError::invalid_react_with_kind(
                     block.terminal_span(),
                     format!(
                         "Break/continue target block {target:?} referenced from block {bid:?} does not exist."
                     ),
                     DiagnosticKind::MalformedBreakTarget,
                 ));
-            }
+        }
     }
 }
 

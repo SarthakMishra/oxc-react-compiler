@@ -219,9 +219,10 @@ impl HIRBuilder {
     /// Get a mutable reference to the current basic block.
     fn current_block_mut(&mut self) -> &mut BasicBlock {
         let id = self.current_block;
-        self.blocks
-            .iter_mut()
-            .find(|(bid, _)| *bid == id).map_or_else(|| panic!("current block (BlockId {id}) must exist in HIR blocks"), |(_, b)| b)
+        self.blocks.iter_mut().find(|(bid, _)| *bid == id).map_or_else(
+            || panic!("current block (BlockId {id}) must exist in HIR blocks"),
+            |(_, b)| b,
+        )
     }
 
     // ------------------------------------------------------------------

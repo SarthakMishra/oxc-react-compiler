@@ -5,19 +5,19 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function useToggle(initial) {
-  const $ = _c(3);
-  const t28 = () => {
-    return setValue(!value);
-  };
-  const toggle = t28;
+  const $ = _c(2);
+  let toggle;
   let t32;
-  if ($[0] !== toggle || $[1] !== value) {
+  if ($[0] !== value) {
+    const t28 = () => {
+      return setValue(!value);
+    };
+    toggle = t28;
     t32 = [value, toggle];
-    $[0] = toggle;
-    $[1] = value;
-    $[2] = t32;
+    $[0] = value;
+    $[1] = t32;
   } else {
-    t32 = $[2];
+    t32 = $[1];
   }
   return t32;
 }

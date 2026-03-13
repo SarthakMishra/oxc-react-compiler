@@ -22,35 +22,36 @@ pub fn validate_static_components(hir: &HIR, errors: &mut ErrorCollector) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let InstructionValue::FunctionExpression { name, lowered_func, .. } = &instr.value
-                && let Some(name) = name {
-                    if !is_component_name(name) {
-                        continue;
-                    }
-
-                    // Skip if this function is wrapped in React.memo/forwardRef
-                    if memo_wrapped.contains(&instr.lvalue.identifier.id) {
-                        continue;
-                    }
-
-                    // Skip if the function captures reactive context — it may be
-                    // an intentional HOC pattern or render prop
-                    if !lowered_func.context.is_empty() {
-                        // Only warn if the captures include reactive values
-                        let has_reactive_capture = lowered_func.context.iter().any(|p| p.reactive);
-                        if has_reactive_capture {
-                            continue; // likely intentional — captures reactive state
-                        }
-                    }
-
-                    errors.push(CompilerError::invalid_react_with_kind(
-                        instr.loc,
-                        format!(
-                            "Component \"{name}\" is defined inline during render. \
-                             Move it outside the parent component to avoid remounting."
-                        ),
-                        DiagnosticKind::StaticComponents,
-                    ));
+                && let Some(name) = name
+            {
+                if !is_component_name(name) {
+                    continue;
                 }
+
+                // Skip if this function is wrapped in React.memo/forwardRef
+                if memo_wrapped.contains(&instr.lvalue.identifier.id) {
+                    continue;
+                }
+
+                // Skip if the function captures reactive context — it may be
+                // an intentional HOC pattern or render prop
+                if !lowered_func.context.is_empty() {
+                    // Only warn if the captures include reactive values
+                    let has_reactive_capture = lowered_func.context.iter().any(|p| p.reactive);
+                    if has_reactive_capture {
+                        continue; // likely intentional — captures reactive state
+                    }
+                }
+
+                errors.push(CompilerError::invalid_react_with_kind(
+                    instr.loc,
+                    format!(
+                        "Component \"{name}\" is defined inline during render. \
+                             Move it outside the parent component to avoid remounting."
+                    ),
+                    DiagnosticKind::StaticComponents,
+                ));
+            }
         }
     }
 }
@@ -65,9 +66,11 @@ fn collect_memo_wrapped_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                 // React.memo(Component) or memo(Component)
                 InstructionValue::CallExpression { callee, args } => {
                     if let Some(name) = callee.identifier.name.as_deref()
-                        && (name == "memo" || name == "forwardRef") && !args.is_empty() {
-                            wrapped.insert(args[0].identifier.id);
-                        }
+                        && (name == "memo" || name == "forwardRef")
+                        && !args.is_empty()
+                    {
+                        wrapped.insert(args[0].identifier.id);
+                    }
                 }
                 // React.memo() as a method call
                 InstructionValue::MethodCall { property, args, .. } => {

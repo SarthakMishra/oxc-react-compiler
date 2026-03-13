@@ -28,16 +28,17 @@ pub fn infer_types(hir: &mut HIR) {
 
             // Track hook return value identifiers
             if let InstructionValue::CallExpression { callee, .. } = &instr.value
-                && let Some(name) = callee.identifier.name.as_deref() {
-                    if name == "useRef" {
-                        instr.lvalue.identifier.type_ = Type::Ref;
-                        ref_ids.insert(instr.lvalue.identifier.id);
-                    } else if name == "useState" || name == "useReducer" {
-                        // The return value is [state, setState]. Track the tuple ID
-                        // so we can propagate SetState to the second destructured element.
-                        state_tuple_ids.insert(instr.lvalue.identifier.id);
-                    }
+                && let Some(name) = callee.identifier.name.as_deref()
+            {
+                if name == "useRef" {
+                    instr.lvalue.identifier.type_ = Type::Ref;
+                    ref_ids.insert(instr.lvalue.identifier.id);
+                } else if name == "useState" || name == "useReducer" {
+                    // The return value is [state, setState]. Track the tuple ID
+                    // so we can propagate SetState to the second destructured element.
+                    state_tuple_ids.insert(instr.lvalue.identifier.id);
                 }
+            }
         }
     }
 
@@ -53,14 +54,14 @@ pub fn infer_types(hir: &mut HIR) {
                     if let DestructurePattern::Array { items, .. } = lvalue_pattern
                         && let Some(DestructureArrayItem::Value(DestructureTarget::Place(p))) =
                             items.get(1)
-                        {
-                            // We can't mutate through the immutable reference, so collect
-                            // the ID to mark in a third pass
-                            state_tuple_ids.remove(&value.identifier.id);
-                            ref_ids.remove(&p.identifier.id); // avoid collision
-                            // Store the setter ID in state_tuple_ids for pass 3
-                            state_tuple_ids.insert(p.identifier.id);
-                        }
+                    {
+                        // We can't mutate through the immutable reference, so collect
+                        // the ID to mark in a third pass
+                        state_tuple_ids.remove(&value.identifier.id);
+                        ref_ids.remove(&p.identifier.id); // avoid collision
+                        // Store the setter ID in state_tuple_ids for pass 3
+                        state_tuple_ids.insert(p.identifier.id);
+                    }
                 } else if ref_ids.contains(&value.identifier.id) {
                     // useRef destructuring is uncommon but handle it
                     ref_ids.remove(&value.identifier.id);

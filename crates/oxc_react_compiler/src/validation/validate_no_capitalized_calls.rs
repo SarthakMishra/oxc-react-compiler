@@ -52,11 +52,10 @@ pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
                         if name.as_bytes().first().is_some_and(u8::is_ascii_uppercase) {
                             errors.push(CompilerError::invalid_react_with_kind(
                                 instr.loc,
-                                format!(
-                                    "Capitalized functions are reserved for components, which \
+                                "Capitalized functions are reserved for components, which \
                                      must be invoked with JSX. If this is a component, render \
                                      it using JSX syntax instead of calling it directly."
-                                ),
+                                    .to_string(),
                                 DiagnosticKind::CapitalizedCalls,
                             ));
                         }
@@ -69,11 +68,10 @@ pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
                     {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
-                            format!(
-                                "Capitalized functions are reserved for components, which \
+                            "Capitalized functions are reserved for components, which \
                                  must be invoked with JSX. If this is a component, render \
                                  it using JSX syntax instead of calling it directly."
-                            ),
+                                .to_string(),
                             DiagnosticKind::CapitalizedCalls,
                         ));
                     }

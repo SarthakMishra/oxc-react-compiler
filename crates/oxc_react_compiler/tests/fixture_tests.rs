@@ -106,9 +106,10 @@ fn all_fixtures_have_tests() {
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(ext) = path.extension()
-                && (ext == "tsx" || ext == "ts") {
-                    fixture_files.push(path.file_name().unwrap().to_string_lossy().into_owned());
-                }
+                && (ext == "tsx" || ext == "ts")
+            {
+                fixture_files.push(path.file_name().unwrap().to_string_lossy().into_owned());
+            }
         }
     }
 

@@ -40,10 +40,7 @@ fn collect_used_outside_scopes(
     }
 }
 
-fn collect_instruction_operand_ids(
-    value: &InstructionValue,
-    used: &mut FxHashSet<IdentifierId>,
-) {
+fn collect_instruction_operand_ids(value: &InstructionValue, used: &mut FxHashSet<IdentifierId>) {
     fn insert_place(place: &Place, used: &mut FxHashSet<IdentifierId>) {
         used.insert(place.identifier.id);
     }
@@ -169,8 +166,7 @@ fn collect_instruction_operand_ids(
         }
 
         // Functions — no direct operands (lowered_func is self-contained)
-        InstructionValue::FunctionExpression { .. }
-        | InstructionValue::ObjectMethod { .. } => {}
+        InstructionValue::FunctionExpression { .. } | InstructionValue::ObjectMethod { .. } => {}
 
         // Globals
         InstructionValue::StoreGlobal { value, .. } => {
@@ -273,8 +269,11 @@ fn prune_scopes_in_block(block: &mut ReactiveBlock, used_outside: &FxHashSet<Ide
 
                 prune_scopes_in_block(&mut scope_block.instructions, used_outside);
 
-                if any_used || scope_block.scope.declarations.is_empty() {
-                    // Keep the scope
+                if any_used
+                    || scope_block.scope.declarations.is_empty()
+                    || scope_block.scope.is_allocating
+                {
+                    // Keep the scope (also keep allocating/sentinel scopes)
                     new_instructions.push(ReactiveInstruction::Scope(scope_block));
                 } else {
                     // Unwrap the scope: emit its instructions directly
@@ -406,11 +405,12 @@ fn prune_unused_scopes_in_block(block: &mut ReactiveBlock, referenced: &FxHashSe
                 let has_used_decls =
                     scope_block.scope.declarations.iter().any(|(id, _)| referenced.contains(id));
 
-                // Keep scopes that either have used declarations or have dependencies
-                // (even if decls are empty, deps mean the scope is doing useful work).
-                // Only prune scopes with NO used declarations AND NO dependencies.
+                // Keep scopes that either have used declarations, have dependencies,
+                // or are allocating (sentinel scopes for non-reactive allocations).
+                // Only prune scopes with NO used declarations AND NO dependencies
+                // AND not allocating.
                 let has_deps = !scope_block.scope.dependencies.is_empty();
-                if has_used_decls || has_deps {
+                if has_used_decls || has_deps || scope_block.scope.is_allocating {
                     new_instructions.push(ReactiveInstruction::Scope(scope_block));
                 } else {
                     for inner in scope_block.instructions.instructions {
@@ -569,13 +569,14 @@ fn inline_loads_in_block(block: &mut ReactiveBlock) {
 
     for instr in &block.instructions {
         if let ReactiveInstruction::Instruction(instruction) = instr
-            && let InstructionValue::LoadLocal { place: source } = &instruction.value {
-                let lvalue = &instruction.lvalue;
-                // Only inline unnamed temporaries (not user-declared variables)
-                if lvalue.identifier.name.is_none() {
-                    substitutions.insert(lvalue.identifier.id, source.clone());
-                }
+            && let InstructionValue::LoadLocal { place: source } = &instruction.value
+        {
+            let lvalue = &instruction.lvalue;
+            // Only inline unnamed temporaries (not user-declared variables)
+            if lvalue.identifier.name.is_none() {
+                substitutions.insert(lvalue.identifier.id, source.clone());
             }
+        }
     }
 
     if substitutions.is_empty() {
@@ -683,10 +684,7 @@ fn substitute_places_in_terminal(
     }
 }
 
-fn substitute_places_in_value(
-    value: &mut InstructionValue,
-    subs: &FxHashMap<IdentifierId, Place>,
-) {
+fn substitute_places_in_value(value: &mut InstructionValue, subs: &FxHashMap<IdentifierId, Place>) {
     match value {
         InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
             substitute_place(place, subs);

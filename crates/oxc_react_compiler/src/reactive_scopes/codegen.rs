@@ -64,7 +64,10 @@ fn count_temp_uses_recursive(instructions: &[ReactiveInstruction]) -> FxHashMap<
     counts
 }
 
-fn count_temp_uses_in_slice(instructions: &[ReactiveInstruction], counts: &mut FxHashMap<String, u32>) {
+fn count_temp_uses_in_slice(
+    instructions: &[ReactiveInstruction],
+    counts: &mut FxHashMap<String, u32>,
+) {
     for ri in instructions {
         match ri {
             ReactiveInstruction::Instruction(instr) => {
@@ -350,10 +353,10 @@ fn is_inlinable(value: &InstructionValue) -> bool {
 ///    a. Its total use-count must be exactly 1.
 ///    b. The value must be `is_inlinable`.
 ///    c. For call-like instructions (CallExpression / MethodCall /
-///       NewExpression) we additionally require that the single use is at
-///       the *same* nesting level (flat_count == 1) — we must not inline
-///       a side-effecting call into a reactive scope body that may be
-///       skipped by the cache guard.
+///    NewExpression) we additionally require that the single use is at
+///    the *same* nesting level (flat_count == 1) — we must not inline
+///    a side-effecting call into a reactive scope body that may be
+///    skipped by the cache guard.
 ///    If all conditions hold, generate the expression string and insert into
 ///    the map.
 ///
@@ -640,11 +643,7 @@ fn is_jsx_text_str(s: &str) -> bool {
 /// Strip surrounding double quotes from a string literal representation.
 /// Input: `"hello world"`, Output: `hello world`
 fn strip_string_quotes(s: &str) -> &str {
-    if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    }
+    if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') { &s[1..s.len() - 1] } else { s }
 }
 
 /// Format a JSX attribute value. String literals use `="value"` syntax,
@@ -666,11 +665,7 @@ fn jsx_attr_value_str(resolved: &str) -> String {
 /// String literals like `"div"` → `div` (strip quotes for intrinsic elements).
 /// Non-string expressions like `Component` or `_temp` → pass through unchanged.
 fn jsx_tag_name(resolved: &str) -> &str {
-    if is_jsx_text_str(resolved) {
-        strip_string_quotes(resolved)
-    } else {
-        resolved
-    }
+    if is_jsx_text_str(resolved) { strip_string_quotes(resolved) } else { resolved }
 }
 
 /// Format a JSX child for embedding in a JSX element body.
@@ -782,20 +777,21 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     let mut hoisted_indices = FxHashSet::default();
     for (i, instr) in rf.body.instructions.iter().enumerate() {
         if let ReactiveInstruction::Instruction(instruction) = instr
-            && let InstructionValue::Destructure { value, .. } = &instruction.value {
-                let value_name = place_name(value);
-                if param_names.contains(value_name.as_ref()) {
-                    let indent_str = "  ";
-                    codegen_instruction(
-                        instruction,
-                        &mut output,
-                        indent_str,
-                        &mut declared,
-                        &empty_inline_map,
-                    );
-                    hoisted_indices.insert(i);
-                }
+            && let InstructionValue::Destructure { value, .. } = &instruction.value
+        {
+            let value_name = place_name(value);
+            if param_names.contains(value_name.as_ref()) {
+                let indent_str = "  ";
+                codegen_instruction(
+                    instruction,
+                    &mut output,
+                    indent_str,
+                    &mut declared,
+                    &empty_inline_map,
+                );
+                hoisted_indices.insert(i);
             }
+        }
     }
 
     // Generate body, skipping hoisted instructions
@@ -946,8 +942,10 @@ fn codegen_instruction(
                 ""
             } else {
                 match type_ {
-                    Some(crate::hir::types::InstructionKind::Const |
-crate::hir::types::InstructionKind::HoistedConst) => "const ",
+                    Some(
+                        crate::hir::types::InstructionKind::Const
+                        | crate::hir::types::InstructionKind::HoistedConst,
+                    ) => "const ",
                     Some(crate::hir::types::InstructionKind::Let) => "let ",
                     Some(crate::hir::types::InstructionKind::Var) => "var ",
                     Some(crate::hir::types::InstructionKind::HoistedFunction) => "const ",
@@ -1047,9 +1045,7 @@ crate::hir::types::InstructionKind::HoistedConst) => "const ",
                 ));
             } else {
                 // Multi-line: wrap in parens with indented children
-                output.push_str(&format!(
-                    "{indent}{decl_keyword}{lvalue_name} = (\n"
-                ));
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = (\n"));
                 output.push_str(&format!("{indent}  <{tag_name}{props_str}>\n"));
                 for child in &resolved_children {
                     let child_str = jsx_child_str(child);
@@ -1064,18 +1060,12 @@ crate::hir::types::InstructionKind::HoistedConst) => "const ",
                 children.iter().map(|c| resolve_place(c, inline_map)).collect();
 
             if resolved_children.is_empty() {
-                output.push_str(&format!(
-                    "{indent}{decl_keyword}{lvalue_name} = <></>;\n"
-                ));
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = <></>;\n"));
             } else if resolved_children.len() == 1 && !is_jsx_text_str(&resolved_children[0]) {
                 let child = jsx_child_str(&resolved_children[0]);
-                output.push_str(&format!(
-                    "{indent}{decl_keyword}{lvalue_name} = <>{child}</>;\n"
-                ));
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = <>{child}</>;\n"));
             } else {
-                output.push_str(&format!(
-                    "{indent}{decl_keyword}{lvalue_name} = (\n"
-                ));
+                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = (\n"));
                 output.push_str(&format!("{indent}  <>\n"));
                 for child in &resolved_children {
                     let child_str = jsx_child_str(child);
@@ -1540,9 +1530,9 @@ fn codegen_scope(
         if let ReactiveInstruction::Instruction(instruction) = instr
             && let InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. } =
                 &instruction.value
-            {
-                codegen_instruction(instruction, output, &indent_str, declared, &empty_inline_map);
-            }
+        {
+            codegen_instruction(instruction, output, &indent_str, declared, &empty_inline_map);
+        }
     }
 
     // Pre-declare scope output variables with `let` so the else-branch
@@ -1900,9 +1890,10 @@ fn pattern_has_declared_names(
                 }
             }
             if let Some(rest_place) = rest
-                && declared.contains(place_name(rest_place).as_ref()) {
-                    return true;
-                }
+                && declared.contains(place_name(rest_place).as_ref())
+            {
+                return true;
+            }
             false
         }
         DestructurePattern::Array { items, rest } => {
@@ -1924,9 +1915,10 @@ fn pattern_has_declared_names(
                 }
             }
             if let Some(rest_place) = rest
-                && declared.contains(place_name(rest_place).as_ref()) {
-                    return true;
-                }
+                && declared.contains(place_name(rest_place).as_ref())
+            {
+                return true;
+            }
             false
         }
     }

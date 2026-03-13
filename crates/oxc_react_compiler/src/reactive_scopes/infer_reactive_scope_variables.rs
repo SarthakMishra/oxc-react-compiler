@@ -3,7 +3,7 @@ use crate::hir::types::{
     InstructionValue, MutableRange, ReactiveScope, ScopeId, SourceLocation,
 };
 use crate::utils::disjoint_set::DisjointSet;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 // DIVERGENCE: Upstream InferReactiveScopeVariables uses a forward walk over
 // instructions to group identifiers into scopes by mutable-range overlap.
@@ -22,7 +22,7 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
     let mut dsu: DisjointSet<IdentifierId> = DisjointSet::new();
     let mut ranges: FxHashMap<IdentifierId, MutableRange> = FxHashMap::default();
     let mut is_reactive: FxHashMap<IdentifierId, bool> = FxHashMap::default();
-    let mut is_allocating_id: FxHashMap<IdentifierId, bool> = FxHashMap::default();
+    let mut is_allocating_id: FxHashSet<IdentifierId> = FxHashSet::default();
     // Phase 1: Collect all identifiers and their mutable ranges
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -30,7 +30,9 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
             dsu.make_set(id);
             ranges.insert(id, instr.lvalue.identifier.mutable_range);
             is_reactive.insert(id, instr.lvalue.reactive);
-            is_allocating_id.insert(id, is_allocating_instruction(&instr.value));
+            if is_allocating_instruction(&instr.value) {
+                is_allocating_id.insert(id);
+            }
         }
         for phi in &block.phis {
             let id = phi.place.identifier.id;
@@ -96,14 +98,11 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
         }
 
         // Check if any member is an allocating instruction (JSX, objects, arrays, etc.)
-        // TODO: Enable allocating-scope creation once P2 validation passes catch all
-        // upstream error fixtures. Currently disabled because creating allocating scopes
-        // causes 36 error fixtures to regress (we compile functions that upstream rejects).
-        let _any_allocating = members
-            .iter()
-            .any(|m| is_allocating_id.get(m).copied().unwrap_or(false));
+        // Allocating expressions get sentinel scopes even without reactive deps,
+        // matching upstream's `ValueKind.Mutable` check in InferReactiveScopeVariables.ts.
+        let any_allocating = members.iter().any(|m| is_allocating_id.contains(m));
 
-        if any_reactive && merged_range.end.0 > merged_range.start.0 {
+        if (any_reactive || any_allocating) && merged_range.end.0 > merged_range.start.0 {
             let scope_idx = scopes.len();
             let scope = ReactiveScope {
                 id: ScopeId(scope_id_counter),
@@ -114,7 +113,7 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
                 early_return_value: None,
                 merged: Vec::new(),
                 loc: SourceLocation::default(),
-                is_allocating: false, // TODO: set to `_any_allocating && !any_reactive` when enabled
+                is_allocating: any_allocating && !any_reactive,
             };
             scopes.push(scope);
             // Map all member identifiers to this scope index (cheap u64 copy, no clone)
@@ -406,5 +405,3 @@ fn collect_destructure_target_inner(target: &DestructureTarget, ids: &mut Vec<Id
         }
     }
 }
-
-

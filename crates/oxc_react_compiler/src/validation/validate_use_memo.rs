@@ -145,18 +145,17 @@ fn check_memo_callback_set_state(
                 for (_, inner_block) in &lowered_func.body.blocks {
                     for inner_instr in &inner_block.instructions {
                         if let InstructionValue::CallExpression { callee, .. } = &inner_instr.value
+                            && set_state_ids.contains(&callee.identifier.id)
                         {
-                            if set_state_ids.contains(&callee.identifier.id) {
-                                errors.push(CompilerError::invalid_react_with_kind(
-                                    inner_instr.loc,
-                                    "Calling setState from useMemo may trigger an infinite loop. \
+                            errors.push(CompilerError::invalid_react_with_kind(
+                                inner_instr.loc,
+                                "Calling setState from useMemo may trigger an infinite loop. \
                                      Each time the memo callback is evaluated it will change the \
                                      state, which will cause React to re-render and re-evaluate \
                                      the memo callback."
-                                        .to_string(),
-                                    DiagnosticKind::UseMemoValidation,
-                                ));
-                            }
+                                    .to_string(),
+                                DiagnosticKind::UseMemoValidation,
+                            ));
                         }
                     }
                 }
@@ -174,10 +173,10 @@ fn collect_set_state_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
             if instr.lvalue.identifier.type_ == Type::SetState {
                 set_state_ids.insert(instr.lvalue.identifier.id);
             }
-            if let Some(name) = &instr.lvalue.identifier.name {
-                if is_set_state_name(name) {
-                    set_state_ids.insert(instr.lvalue.identifier.id);
-                }
+            if let Some(name) = &instr.lvalue.identifier.name
+                && is_set_state_name(name)
+            {
+                set_state_ids.insert(instr.lvalue.identifier.id);
             }
             match &instr.value {
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
@@ -186,10 +185,10 @@ fn collect_set_state_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                     {
                         set_state_ids.insert(instr.lvalue.identifier.id);
                     }
-                    if let Some(name) = &place.identifier.name {
-                        if is_set_state_name(name) {
-                            set_state_ids.insert(instr.lvalue.identifier.id);
-                        }
+                    if let Some(name) = &place.identifier.name
+                        && is_set_state_name(name)
+                    {
+                        set_state_ids.insert(instr.lvalue.identifier.id);
                     }
                 }
                 _ => {}

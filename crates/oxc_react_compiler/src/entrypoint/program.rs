@@ -12,7 +12,8 @@ use crate::hir::environment::EnvironmentConfig;
 use crate::hir::globals::{is_component_name, is_hook_name};
 use crate::hir::types::ReactFunctionType;
 use crate::reactive_scopes::codegen::{
-    SourceMap, apply_compilation, codegen_function, codegen_function_with_source_map, has_cache_slots,
+    SourceMap, apply_compilation, codegen_function, codegen_function_with_source_map,
+    has_cache_slots,
 };
 
 /// Result of compiling a program.
@@ -526,23 +527,24 @@ fn compile_statement<'a>(
         Statement::ExpressionStatement(expr_stmt) => {
             // Handle bare expression: React.memo(props => { ... });
             if let Expression::CallExpression(call) = &expr_stmt.expression
-                && is_react_wrapper_call(call) {
-                    // For standalone wrapper calls, the wrapper name itself acts as
-                    // the function type hint (Component by default for memo/forwardRef).
-                    let fn_type = ReactFunctionType::Component;
-                    let name = extract_wrapper_name(call);
-                    try_compile_wrapper_call(
-                        call,
-                        &name,
-                        fn_type,
-                        config,
-                        source_text,
-                        generate_source_map,
-                        compiled,
-                        source_maps,
-                        diagnostics,
-                    );
-                }
+                && is_react_wrapper_call(call)
+            {
+                // For standalone wrapper calls, the wrapper name itself acts as
+                // the function type hint (Component by default for memo/forwardRef).
+                let fn_type = ReactFunctionType::Component;
+                let name = extract_wrapper_name(call);
+                try_compile_wrapper_call(
+                    call,
+                    &name,
+                    fn_type,
+                    config,
+                    source_text,
+                    generate_source_map,
+                    compiled,
+                    source_maps,
+                    diagnostics,
+                );
+            }
         }
         _ => {}
     }
@@ -874,23 +876,24 @@ fn classify_function_name(name: &str) -> ReactFunctionType {
 fn extract_wrapper_name(call: &CallExpression<'_>) -> String {
     // Try to get the name from the first argument (inner function)
     if let Some(first_arg) = call.arguments.first()
-        && !matches!(first_arg, Argument::SpreadElement(_)) {
-            let inner_expr: &Expression<'_> =
-                unsafe { &*std::ptr::from_ref::<Argument<'_>>(first_arg).cast::<Expression<'_>>() };
-            let inner = inner_expr.without_parentheses();
-            match inner {
-                Expression::FunctionExpression(func) => {
-                    if let Some(id) = func.id.as_ref() {
-                        return id.name.to_string();
-                    }
+        && !matches!(first_arg, Argument::SpreadElement(_))
+    {
+        let inner_expr: &Expression<'_> =
+            unsafe { &*std::ptr::from_ref::<Argument<'_>>(first_arg).cast::<Expression<'_>>() };
+        let inner = inner_expr.without_parentheses();
+        match inner {
+            Expression::FunctionExpression(func) => {
+                if let Some(id) = func.id.as_ref() {
+                    return id.name.to_string();
                 }
-                // Nested wrapper: React.memo(React.forwardRef(fn))
-                Expression::CallExpression(inner_call) if is_react_wrapper_call(inner_call) => {
-                    return extract_wrapper_name(inner_call);
-                }
-                _ => {}
             }
+            // Nested wrapper: React.memo(React.forwardRef(fn))
+            Expression::CallExpression(inner_call) if is_react_wrapper_call(inner_call) => {
+                return extract_wrapper_name(inner_call);
+            }
+            _ => {}
         }
+    }
     // No inner name found — use a generic placeholder
     "Component".to_string()
 }

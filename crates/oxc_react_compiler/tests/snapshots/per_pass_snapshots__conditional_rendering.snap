@@ -5,18 +5,28 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function Status(t0) {
-  const $ = _c(2);
+  const $ = _c(4);
   const { isActive } = t0;
-  let t17;
-  if ($[0] !== isActive) {
-    t17 = isActive;
-    $[0] = isActive;
-    $[1] = t17;
-  } else {
-    t17 = $[1];
-  }
-  if (t17) {
-    return <div className="active">Active</div>;
+  if (isActive) {
+    let t21;
+    let t17;
+    let t25;
+    if ($[0] !== isActive) {
+      t25 = (
+        <div className="active">
+          Active
+        </div>
+      );
+      $[0] = isActive;
+      $[1] = t21;
+      $[2] = t17;
+      $[3] = t25;
+    } else {
+      t21 = $[1];
+      t17 = $[2];
+      t25 = $[3];
+    }
+    return t25;
   }
   return <div className="inactive">Inactive</div>;
 }

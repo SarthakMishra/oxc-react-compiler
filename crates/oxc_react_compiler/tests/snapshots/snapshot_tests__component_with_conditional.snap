@@ -5,18 +5,28 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function Toggle(t0) {
-  const $ = _c(2);
+  const $ = _c(4);
   const { isOn } = t0;
-  let t15;
-  if ($[0] !== isOn) {
-    t15 = isOn;
-    $[0] = isOn;
-    $[1] = t15;
-  } else {
-    t15 = $[1];
-  }
-  if (t15) {
-    return <div>ON</div>;
+  if (isOn) {
+    let t18;
+    let t15;
+    let t21;
+    if ($[0] !== isOn) {
+      t21 = (
+        <div>
+          ON
+        </div>
+      );
+      $[0] = isOn;
+      $[1] = t18;
+      $[2] = t15;
+      $[3] = t21;
+    } else {
+      t18 = $[1];
+      t15 = $[2];
+      t21 = $[3];
+    }
+    return t21;
   }
   return <div>OFF</div>;
 }

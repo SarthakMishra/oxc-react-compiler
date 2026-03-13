@@ -73,11 +73,10 @@ fn check_effect_callback_for_derived_state(
                         {
                             errors.push(CompilerError::invalid_react_with_kind(
                                 inner_instr.loc,
-                                format!(
-                                    "Values derived from props and state should be calculated \
+                                "Values derived from props and state should be calculated \
                                      during render, not in an effect. \
                                      (https://react.dev/learn/you-might-not-need-an-effect)"
-                                ),
+                                    .to_string(),
                                 DiagnosticKind::DerivedComputationsInEffects,
                             ));
                         }
@@ -95,10 +94,12 @@ fn is_set_state_call(place: &Place, name_map: &FxHashMap<IdentifierId, String>) 
         .name
         .as_deref()
         .or_else(|| name_map.get(&place.identifier.id).map(String::as_str));
-    if let Some(name) = name {
-        if name.starts_with("set") && name.len() > 3 && name.as_bytes()[3].is_ascii_uppercase() {
-            return true;
-        }
+    if let Some(name) = name
+        && name.starts_with("set")
+        && name.len() > 3
+        && name.as_bytes()[3].is_ascii_uppercase()
+    {
+        return true;
     }
     place.identifier.type_ == crate::hir::types::Type::SetState
 }
@@ -113,13 +114,12 @@ fn collect_set_state_ids(hir: &HIR) -> rustc_hash::FxHashSet<IdentifierId> {
             if instr.lvalue.identifier.type_ == Type::SetState {
                 set_state_ids.insert(instr.lvalue.identifier.id);
             }
-            if let Some(name) = &instr.lvalue.identifier.name {
-                if name.starts_with("set")
-                    && name.len() > 3
-                    && name.as_bytes()[3].is_ascii_uppercase()
-                {
-                    set_state_ids.insert(instr.lvalue.identifier.id);
-                }
+            if let Some(name) = &instr.lvalue.identifier.name
+                && name.starts_with("set")
+                && name.len() > 3
+                && name.as_bytes()[3].is_ascii_uppercase()
+            {
+                set_state_ids.insert(instr.lvalue.identifier.id);
             }
             match &instr.value {
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {

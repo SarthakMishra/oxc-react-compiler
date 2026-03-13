@@ -28,11 +28,11 @@ pub fn outline_functions(hir: &mut HIR) {
         for instr in &block.instructions {
             if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
                 && lowered_func.context.is_empty()
-                    && !lowered_func.is_generator
-                    && !lowered_func.is_async
-                {
-                    hoistable_ids.push(instr.lvalue.identifier.id);
-                }
+                && !lowered_func.is_generator
+                && !lowered_func.is_async
+            {
+                hoistable_ids.push(instr.lvalue.identifier.id);
+            }
         }
     }
 
@@ -45,10 +45,11 @@ pub fn outline_functions(hir: &mut HIR) {
         for instr in &mut block.instructions {
             if hoistable_ids.contains(&instr.lvalue.identifier.id)
                 && let InstructionValue::FunctionExpression { name, .. } = &mut instr.value
-                    && name.is_none() {
-                        // Mark unnamed functions as hoistable via name convention
-                        *name = Some(format!("__hoistable_{}", instr.lvalue.identifier.id.0));
-                    }
+                && name.is_none()
+            {
+                // Mark unnamed functions as hoistable via name convention
+                *name = Some(format!("__hoistable_{}", instr.lvalue.identifier.id.0));
+            }
         }
     }
 }

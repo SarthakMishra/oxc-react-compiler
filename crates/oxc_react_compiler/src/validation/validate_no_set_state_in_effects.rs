@@ -74,10 +74,10 @@ fn collect_set_state_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
             if instr.lvalue.identifier.type_ == Type::SetState {
                 set_state_ids.insert(instr.lvalue.identifier.id);
             }
-            if let Some(name) = &instr.lvalue.identifier.name {
-                if is_set_state_name(name) {
-                    set_state_ids.insert(instr.lvalue.identifier.id);
-                }
+            if let Some(name) = &instr.lvalue.identifier.name
+                && is_set_state_name(name)
+            {
+                set_state_ids.insert(instr.lvalue.identifier.id);
             }
             match &instr.value {
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
@@ -86,10 +86,10 @@ fn collect_set_state_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                     {
                         set_state_ids.insert(instr.lvalue.identifier.id);
                     }
-                    if let Some(name) = &place.identifier.name {
-                        if is_set_state_name(name) {
-                            set_state_ids.insert(instr.lvalue.identifier.id);
-                        }
+                    if let Some(name) = &place.identifier.name
+                        && is_set_state_name(name)
+                    {
+                        set_state_ids.insert(instr.lvalue.identifier.id);
                     }
                 }
                 _ => {}
@@ -131,19 +131,18 @@ fn check_effect_body_for_set_state(
 
                         if let InstructionValue::CallExpression { callee: inner_callee, .. } =
                             &inner_instr.value
+                            && set_state_ids.contains(&inner_callee.identifier.id)
                         {
-                            if set_state_ids.contains(&inner_callee.identifier.id) {
-                                errors.push(CompilerError::invalid_react_with_kind(
-                                    inner_instr.loc,
-                                    format!(
-                                        "setState is called directly inside \"{hook_name}\". \
+                            errors.push(CompilerError::invalid_react_with_kind(
+                                inner_instr.loc,
+                                format!(
+                                    "setState is called directly inside \"{hook_name}\". \
                                          Synchronous setState in effects causes an extra \
                                          re-render. Consider deriving the value during render \
                                          or moving the update into a callback."
-                                    ),
-                                    DiagnosticKind::SetStateInEffects,
-                                ));
-                            }
+                                ),
+                                DiagnosticKind::SetStateInEffects,
+                            ));
                         }
                     }
                 }

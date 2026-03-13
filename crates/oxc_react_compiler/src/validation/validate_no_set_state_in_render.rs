@@ -21,10 +21,10 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
             }
 
             // Check name on the lvalue
-            if let Some(name) = &instr.lvalue.identifier.name {
-                if is_set_state_name(name) {
-                    set_state_ids.insert(instr.lvalue.identifier.id);
-                }
+            if let Some(name) = &instr.lvalue.identifier.name
+                && is_set_state_name(name)
+            {
+                set_state_ids.insert(instr.lvalue.identifier.id);
             }
 
             // Track through LoadLocal/LoadContext: if loading a setState variable,
@@ -36,10 +36,10 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
                     {
                         set_state_ids.insert(instr.lvalue.identifier.id);
                     }
-                    if let Some(name) = &place.identifier.name {
-                        if is_set_state_name(name) {
-                            set_state_ids.insert(instr.lvalue.identifier.id);
-                        }
+                    if let Some(name) = &place.identifier.name
+                        && is_set_state_name(name)
+                    {
+                        set_state_ids.insert(instr.lvalue.identifier.id);
                     }
                 }
                 _ => {}
@@ -50,19 +50,19 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
     // Pass 2: Check for unconditional setState calls
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
-                if set_state_ids.contains(&callee.identifier.id) {
-                    errors.push(CompilerError::invalid_react_with_kind(
-                        instr.loc,
-                        "Cannot call setState during render. \
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value
+                && set_state_ids.contains(&callee.identifier.id)
+            {
+                errors.push(CompilerError::invalid_react_with_kind(
+                    instr.loc,
+                    "Cannot call setState during render. \
                          Calling setState during render may trigger an infinite loop. \
                          * To reset state based on a condition, check if state is already \
                          set and early return.\n\
                          * To derive data from props/state, calculate it during render."
-                            .to_string(),
-                        DiagnosticKind::SetStateInRender,
-                    ));
-                }
+                        .to_string(),
+                    DiagnosticKind::SetStateInRender,
+                ));
             }
         }
     }

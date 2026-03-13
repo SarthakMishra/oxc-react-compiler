@@ -72,11 +72,10 @@ pub fn validate_no_impure_functions_in_render(hir: &HIR, errors: &mut ErrorColle
                     }
                 }
                 InstructionValue::MethodCall { receiver, property, .. } => {
-                    let obj_name = receiver
-                        .identifier
-                        .name
-                        .as_deref()
-                        .or_else(|| id_to_name.get(&receiver.identifier.id).map(String::as_str));
+                    let obj_name =
+                        receiver.identifier.name.as_deref().or_else(|| {
+                            id_to_name.get(&receiver.identifier.id).map(String::as_str)
+                        });
                     if let Some(obj_name) = obj_name
                         && IMPURE_METHOD_CALLS
                             .iter()

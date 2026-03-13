@@ -16,11 +16,11 @@
 //! To generate expected outputs:
 //!   node tests/conformance/run-upstream.mjs
 
+use oxc_react_compiler::hir::environment::ExhaustiveDepsMode;
 use oxc_react_compiler::{
     CompilationMode, EnvironmentConfig, GatingConfig, OutputMode, PanicThreshold, PluginOptions,
     compile_program_with_config,
 };
-use oxc_react_compiler::hir::environment::ExhaustiveDepsMode;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -444,9 +444,10 @@ fn collect_fixture_files(dir: &Path) -> Vec<PathBuf> {
                 if path.is_dir() {
                     walk(&path, files);
                 } else if let Some(ext) = path.extension()
-                    && matches!(ext.to_str(), Some("tsx" | "ts" | "js" | "jsx")) {
-                        files.push(path);
-                    }
+                    && matches!(ext.to_str(), Some("tsx" | "ts" | "js" | "jsx"))
+                {
+                    files.push(path);
+                }
             }
         }
     }
@@ -625,12 +626,13 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
         if let Some(val) = find_directive_value(comment, "validateExhaustiveEffectDependencies") {
             env.validate_exhaustive_effect_dependencies = true;
             env.validate_exhaustive_effect_dependencies_mode = match val {
-                "all" => ExhaustiveDepsMode::All,
                 "extra-only" => ExhaustiveDepsMode::ExtraOnly,
                 "missing-only" => ExhaustiveDepsMode::MissingOnly,
                 _ => ExhaustiveDepsMode::All,
             };
-        } else if find_directive_bool(comment, "validateExhaustiveEffectDependencies").unwrap_or(false) {
+        } else if find_directive_bool(comment, "validateExhaustiveEffectDependencies")
+            .unwrap_or(false)
+        {
             env.validate_exhaustive_effect_dependencies = true;
             env.validate_exhaustive_effect_dependencies_mode = ExhaustiveDepsMode::All;
         }
@@ -921,7 +923,8 @@ fn upstream_conformance() {
 
     // The test fails if there are unexpected panics (not in known-failures).
     // Divergences without .expected files don't fail — they just track progress.
-    assert!(unexpected_panics.is_empty(), 
+    assert!(
+        unexpected_panics.is_empty(),
         "{} fixture(s) caused the compiler to panic (not in known-failures.txt). \
          See the list above.",
         unexpected_panics.len()

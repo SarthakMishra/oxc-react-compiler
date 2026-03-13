@@ -22,10 +22,10 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
             }
 
             // Check name on the lvalue
-            if let Some(name) = &instr.lvalue.identifier.name {
-                if is_ref_name(name) {
-                    ref_ids.insert(instr.lvalue.identifier.id);
-                }
+            if let Some(name) = &instr.lvalue.identifier.name
+                && is_ref_name(name)
+            {
+                ref_ids.insert(instr.lvalue.identifier.id);
             }
 
             // Track through LoadLocal/LoadContext: if loading a ref variable,
@@ -36,10 +36,10 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
                     {
                         ref_ids.insert(instr.lvalue.identifier.id);
                     }
-                    if let Some(name) = &place.identifier.name {
-                        if is_ref_name(name) {
-                            ref_ids.insert(instr.lvalue.identifier.id);
-                        }
+                    if let Some(name) = &place.identifier.name
+                        && is_ref_name(name)
+                    {
+                        ref_ids.insert(instr.lvalue.identifier.id);
                     }
                 }
                 // Track through PropertyLoad: `props.ref` or `x.someRef` produces a ref
