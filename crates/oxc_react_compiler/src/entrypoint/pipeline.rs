@@ -202,7 +202,7 @@ pub fn run_pipeline(
             != crate::hir::environment::ExhaustiveDepsMode::Off
     {
         crate::validation::validate_exhaustive_dependencies::validate_exhaustive_dependencies(
-            hir, errors,
+            hir, config, errors,
         );
     }
 

@@ -368,13 +368,7 @@ escape-analysis-not-switch-test.js
 evaluation-order-mutate-call-after-dependency-load.ts
 evaluation-order-mutate-store-after-dependency-load.ts
 exhaustive-deps/compile-files-with-exhaustive-deps-violation-in-effects.js
-exhaustive-deps/error.exhaustive-deps-effect-events.js
-exhaustive-deps/error.invalid-exhaustive-deps-disallow-unused-stable-types.js
-exhaustive-deps/error.invalid-exhaustive-effect-deps-extra-only.js
 exhaustive-deps/error.invalid-exhaustive-effect-deps-missing-only.js
-exhaustive-deps/error.invalid-exhaustive-effect-deps.js
-exhaustive-deps/error.invalid-missing-nonreactive-dep-unmemoized.js
-exhaustive-deps/error.invalid-missing-nonreactive-dep.js
 exhaustive-deps/error.sketchy-code-exhaustive-deps.js
 exhaustive-deps/exhaustive-deps-allow-constant-folded-values.js
 exhaustive-deps/exhaustive-deps-allow-nonreactive-stable-types-as-extra-deps.js
