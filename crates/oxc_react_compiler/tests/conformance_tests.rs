@@ -654,9 +654,10 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
             let expected_path = fixture_path.with_extension("expected");
             let matches_expected = if expected_path.exists() {
                 let expected = std::fs::read_to_string(&expected_path).unwrap_or_default();
-                // Skip fixtures where upstream Babel also errors
+                // When upstream Babel errors, the correct behavior is to also
+                // not compile. If we didn't transform, that matches Babel's behavior.
                 if expected.starts_with("// UPSTREAM ERROR:") {
-                    None
+                    Some(!compile_result.transformed)
                 } else {
                     // Normalize both sides: strip TS types + lower JSX to _jsx()
                     let our_stripped = normalize_via_oxc(&compile_result.code);

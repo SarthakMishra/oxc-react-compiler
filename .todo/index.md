@@ -4,7 +4,7 @@
 
 Last updated: 2026-03-13
 
-Current conformance: 123/1717 pass (7.2%), 0 panics, 0 unexpected divergences.
+Current conformance: 243/1717 pass (14.2%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -46,6 +46,7 @@ Missing validation/bail-out logic and non-compiled transforms:
 - 204 compiled-no-memo (Babel transforms but no `_c()` — DCE, const prop, etc.)
 - 10 passthrough (source === expected, true no-ops)
 
+- [x] Upstream error matching: count non-transformed output as match when Babel errors (+120 fixtures, 123→243)
 - [ ] Audit validation passes for error accuracy vs upstream — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-3-ensure-validation-passes-emit-correct-errors
 - [ ] Mutation aliasing bail-out (escaped values analysis) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
 - [ ] "Too simple" function detection (functions without hooks/JSX in All mode) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-6-too-simple-function-detection
