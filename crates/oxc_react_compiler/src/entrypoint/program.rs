@@ -4,7 +4,7 @@ use oxc_diagnostics::OxcDiagnostic;
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
 
-use super::options::{CompilationMode, PluginOptions};
+use super::options::{CompilationMode, OutputMode, PluginOptions};
 use super::pipeline::run_full_pipeline;
 use crate::error::ErrorCollector;
 use crate::hir::build::HIRBuilder;
@@ -103,6 +103,16 @@ fn compile_program_inner_with_config(
         };
     }
 
+    // Lint mode: run analysis to collect diagnostics but don't transform the code.
+    if options.output_mode == OutputMode::Lint {
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics: vec![],
+            source_map: None,
+        };
+    }
+
     let mut compiled_functions: Vec<(Span, String)> = Vec::new();
     let mut function_source_maps: Vec<(Span, SourceMap)> = Vec::new();
     let mut diagnostics = Vec::new();
@@ -130,7 +140,12 @@ fn compile_program_inner_with_config(
         };
     }
 
-    let code = apply_compilation(source, &compiled_functions);
+    let mut code = apply_compilation(source, &compiled_functions);
+
+    // Apply gating wrapper if configured
+    if let Some(gating) = &options.gating {
+        code = gating.generate_wrapper(&code);
+    }
 
     let source_map = if generate_source_map {
         let composed = compose_source_maps(source, &compiled_functions, &function_source_maps);

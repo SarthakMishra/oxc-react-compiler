@@ -44,7 +44,9 @@ pub mod utils;
 pub mod validation;
 
 // Public API
-pub use entrypoint::options::{CompilationMode, PanicThreshold, PluginOptions};
+pub use entrypoint::options::{
+    CompilationMode, GatingConfig, OutputMode, PanicThreshold, PluginOptions,
+};
 pub use entrypoint::program::{
     CompileResult, compile_program, compile_program_with_config, compile_program_with_source_map,
 };

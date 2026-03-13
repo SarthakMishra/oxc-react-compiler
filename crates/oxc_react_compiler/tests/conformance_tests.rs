@@ -17,7 +17,8 @@
 //!   node tests/conformance/run-upstream.mjs
 
 use oxc_react_compiler::{
-    CompilationMode, EnvironmentConfig, PanicThreshold, PluginOptions, compile_program_with_config,
+    CompilationMode, EnvironmentConfig, GatingConfig, OutputMode, PanicThreshold, PluginOptions,
+    compile_program_with_config,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -551,6 +552,32 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
                 "NONE" | "none" => PanicThreshold::None,
                 _ => PanicThreshold::CriticalErrors,
             };
+        }
+
+        // @outputMode:"lint" etc.
+        if let Some(mode) = find_directive_value(comment, "outputMode") {
+            opts.output_mode = match mode {
+                "lint" => OutputMode::Lint,
+                "ssr" => OutputMode::SSR,
+                "client-no-memo" => OutputMode::ClientNoMemo,
+                _ => OutputMode::Client,
+            };
+        }
+
+        // @gating — use a stub gating config
+        if find_directive_bool(comment, "gating").unwrap_or(false) {
+            opts.gating = Some(GatingConfig {
+                import_source: "shared-runtime".to_string(),
+                function_name: "__gate".to_string(),
+            });
+        }
+
+        // @dynamicGating — also activates gating behavior
+        if find_directive_bool(comment, "dynamicGating").unwrap_or(false) {
+            opts.gating = Some(GatingConfig {
+                import_source: "shared-runtime".to_string(),
+                function_name: "__gate".to_string(),
+            });
         }
 
         if let Some(v) = find_directive_bool(comment, "enablePreserveExistingMemoizationGuarantees")

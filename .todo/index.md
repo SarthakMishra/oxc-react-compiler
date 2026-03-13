@@ -2,14 +2,15 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-12
+Last updated: 2026-03-13
 
-Current conformance: 86/1717 pass (5.0%), 0 panics, 0 unexpected divergences.
+Current conformance: 123/1717 pass (7.2%), 0 panics, 0 unexpected divergences.
 
-Note: 84 of 86 passing fixtures match by both compilers returning source
-unchanged (trivial match). Only 2 fixtures match with actual compiled `_c()`
-output. The remaining divergences are structural — wrong cache slot counts,
-missing sentinel scopes, and temp variable patterns.
+Note: Most passing fixtures match by both compilers returning source unchanged
+(trivial match via lint mode, validation bail-out, or non-component detection).
+Only 2 fixtures match with actual compiled `_c()` output. The remaining
+divergences are structural — wrong cache slot counts, missing sentinel scopes,
+and temp variable patterns.
 
 ---
 
@@ -18,15 +19,6 @@ missing sentinel scopes, and temp variable patterns.
 _(Nothing active)_
 
 ---
-
-## Priority 1 -- Conformance: TS Type Stripping ~~(~138 fixtures)~~ DONE
-
-- [x] Add oxc_codegen + oxc_transformer as dev-dependencies
-- [x] Implement parse-print roundtrip for type stripping in conformance tests
-- [x] JSX normalization via OXC transformer (lower JSX to _jsx in both sides)
-- [x] Bail on all validation errors (AllErrors threshold) — +24 fixtures
-- [x] Skip functions with zero cache slots (no reactive scopes) — +90 fixtures
-- [x] Verify impact and update known-failures.txt
 
 ## Priority 2 -- Conformance: Memoization Structure (~1119 compiled fixtures)
 
@@ -41,13 +33,11 @@ our structural output (scope boundaries, temp variables, dep tracking) doesn't
 match Babel even when scopes are correctly identified. All P2 items are
 interdependent — they must be fixed together for any fixture to pass.
 
-- [ ] Temp variable inlining pass (collapse SSA chains in codegen)
-- [ ] JSX syntax preservation in codegen (emit `<div>` not `_jsx()`)
-- [x] Cache slot count alignment (partial) — scope dependency tracking fix, empty scope pruning (+6 fixtures)
-- [ ] Scope merging/splitting heuristic audit vs upstream
-- [x] Scope dependency tracking: exclude globals/primitives from deps, fix prune_non_escaping_scopes operand walk, ForIn/ForOf codegen
+- [ ] Temp variable inlining pass (collapse SSA chains in codegen) — [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
+- [ ] JSX syntax preservation in codegen (emit `<div>` not `_jsx()`) — [memoization-structure.md](memoization-structure.md)#gap-2-jsx-syntax-preservation-in-codegen
+- [ ] Scope merging/splitting heuristic audit vs upstream — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
 - [ ] Scope creation for non-reactive allocating expressions (JSX, objects, arrays) — blocked on structural output matching
-- [ ] Correct `_c(N)` slot counts — currently ALL compiled divergences start at wrong slot count
+- [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 
 ## Priority 3 -- Conformance: Bail-Out + Non-Compiled (~429 fixtures)
 
@@ -56,18 +46,11 @@ Missing validation/bail-out logic and non-compiled transforms:
 - 204 compiled-no-memo (Babel transforms but no `_c()` — DCE, const prop, etc.)
 - 10 passthrough (source === expected, true no-ops)
 
-- [x] Categorize bail-out fixtures — 1121 both-compile-diff, 219 babel-transforms-no-memo, 10 our-bail-should-match
-- [x] Validation-error bail-out threshold (match Babel error severities) — DONE (AllErrors threshold)
-- [x] Zero-scope bail-out (return original source when no reactive scopes) — DONE
-- [ ] Audit validation passes for error accuracy vs upstream
-- [ ] Mutation aliasing bail-out (escaped values analysis)
-- [ ] "Too simple" function detection (functions without hooks/JSX in All mode)
-- [ ] Implement `@outputMode:"lint"`, `@gating`, `@dynamicGating` directives
+- [ ] Audit validation passes for error accuracy vs upstream — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-3-ensure-validation-passes-emit-correct-errors
+- [ ] Mutation aliasing bail-out (escaped values analysis) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
+- [ ] "Too simple" function detection (functions without hooks/JSX in All mode) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-6-too-simple-function-detection
+- [x] Implement `@outputMode:"lint"`, `@gating`, `@dynamicGating` directives (+37 fixtures, 86→123)
 - [ ] Compiled-no-memo transforms (DCE, constant propagation, arrow extraction)
-
-## Priority 4 -- Performance / Polish
-
-_(All previous items complete)_
 
 ---
 
