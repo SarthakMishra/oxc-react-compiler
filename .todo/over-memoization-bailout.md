@@ -51,32 +51,17 @@ Our current flow:
 
 ## Implementation Plan
 
-### Gap 1: Categorize Bail-Out Fixtures
+### Gap 1: Categorize Bail-Out Fixtures ✅
 
-**Upstream:** Various validation passes in `babel-plugin-react-compiler/src/`
-**Current state:** We know ~710 fixtures are over-memoized but haven't categorized WHY Babel skips them
-**What's needed:**
-- Write a script or extend the conformance test to detect which fixtures have expected output identical to input (Babel returned source unchanged)
-- For each such fixture, run our compiler and capture which diagnostics we emit vs which Babel emits
-- Group fixtures by bail-out reason: validation error, zero scopes, too simple, etc.
-- This triage drives the priority of subsequent gaps
-**Depends on:** None
+~~**Upstream:** Various validation passes in `babel-plugin-react-compiler/src/`~~
 
-### Gap 2: Validation-Error Bail-Out Threshold
+**Completed**: Bail-out fixtures categorized into 1121 both-compile-diff, 219 babel-transforms-no-memo, and 10 our-bail-should-match. Triage done via conformance test analysis.
 
-**Upstream:** `CompilerError.ts` -- Babel has error severities: `InvalidReact`, `InvalidJS`, `InvariantViolation`, `CannotPreserveMemoization`, `Todo`
-**Current state:** `error.rs` has `PanicThreshold` with `AnyError`, `CriticalErrors`, `NeverBail`. Pipeline bails only on `CriticalErrors` (invariant violations). Validation warnings/errors do not cause bail-out.
-**What's needed:**
-- Map Babel's error severity levels to our error system:
-  - `InvalidReact` (hooks rules violations, ref access in render) -> should cause bail-out
-  - `InvalidJS` (invalid JavaScript patterns) -> should cause bail-out
-  - `CannotPreserveMemoization` -> should cause bail-out when `enable_preserve_existing_memoization_guarantees` is on
-  - `Todo` (unhandled patterns) -> should cause bail-out
-  - `InvariantViolation` -> already causes bail-out via `CriticalErrors`
-- Add a new error severity field to `CompilerError` or `OxcDiagnostic` that distinguishes "informational warning" from "compilation-blocking error"
-- After each validation phase in `pipeline.rs`, check if any blocking errors were emitted and bail if so
-- When the pipeline bails, `try_compile_function` in `program.rs` returns `None`, which means the original source is preserved (this path already works)
-**Depends on:** Gap 1 (to know which bail-outs matter most)
+### Gap 2: Validation-Error Bail-Out Threshold ✅
+
+~~**Upstream:** `CompilerError.ts` -- Babel has error severities~~
+
+**Completed**: AllErrors threshold implemented. Pipeline bails on all validation errors, matching Babel's behavior. Added +24 fixtures to conformance.
 
 ### Gap 3: Ensure Validation Passes Emit Correct Errors
 
@@ -95,16 +80,11 @@ Our current flow:
 - Fix any gaps -- missing pattern detection or wrong severity
 **Depends on:** Gap 2 (need the error severity infrastructure first)
 
-### Gap 4: Zero-Scope Bail-Out
+### Gap 4: Zero-Scope Bail-Out ✅
 
-**Upstream:** In `compileFn` in `CompilationPipeline.ts`, after scope construction, Babel checks if there are zero reactive scopes. If so, it returns the original source.
-**Current state:** We don't check for zero scopes -- if the pipeline succeeds, we always codegen
-**What's needed:**
-- After `propagate_scope_dependencies_hir` (Pass 46) or after `prune_unused_scopes` (RF Pass), count remaining reactive scopes
-- If zero scopes remain, signal to the caller that no memoization is needed
-- This can be done by having `run_full_pipeline` return an enum: `Compiled(ReactiveFunction)` | `NoMemoizationNeeded`
-- When `NoMemoizationNeeded` is returned, `try_compile_function` returns `None` and original source is preserved
-**Depends on:** None (independent of error-based bail-out)
+~~**Upstream:** In `compileFn` in `CompilationPipeline.ts`, after scope construction, Babel checks if there are zero reactive scopes.~~
+
+**Completed**: Zero-scope bail-out implemented. Functions with no reactive scopes return original source unchanged. Added +90 fixtures to conformance.
 
 ### Gap 5: Mutation Aliasing Bail-Out
 

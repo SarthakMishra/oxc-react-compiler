@@ -305,7 +305,6 @@ error.invalid-array-push-frozen.js
 error.invalid-computed-store-to-frozen-value.js
 error.invalid-conditional-call-aliased-hook-import.js
 error.invalid-conditional-call-aliased-react-hook.js
-error.invalid-conditional-call-non-hook-imported-as-hook.js
 error.invalid-conditional-setState-in-useMemo.js
 error.invalid-delete-computed-property-of-frozen-value.js
 error.invalid-delete-property-of-frozen-value.js
@@ -569,7 +568,6 @@ holey-array-pattern-dce.js
 hook-call-freezes-captured-memberexpr.tsx
 hook-call.js
 hook-declaration-basic.flow.js
-hook-inside-logical-expression.js
 hook-noAlias.js
 hook-ref-callback.js
 hooks-freeze-arguments.js
@@ -837,7 +835,6 @@ object-shorthand-method-2.js
 object-shorthand-method-nested.js
 object-values-mutation.js
 object-values.js
-optional-call-chain-in-logical-expr.ts
 optional-call-chain-in-ternary.ts
 optional-call-chained.js
 optional-call-logical.js
@@ -1216,17 +1213,12 @@ reverse-postorder.js
 rewrite-phis-in-lambda-capture-context.js
 rules-of-hooks/allow-locals-named-like-hooks.js
 rules-of-hooks/allow-props-named-like-hooks.js
-rules-of-hooks/error.invalid-conditionally-call-local-named-like-hook.js
-rules-of-hooks/error.invalid-conditionally-call-prop-named-like-hook.js
 rules-of-hooks/error.invalid-dynamic-hook-via-hooklike-local.js
 rules-of-hooks/error.invalid-hook-as-prop.js
 rules-of-hooks/error.invalid-hook-for.js
 rules-of-hooks/error.invalid-hook-from-hook-return.js
 rules-of-hooks/error.invalid-hook-from-property-of-other-hook.js
-rules-of-hooks/error.invalid-hook-if-alternate.js
-rules-of-hooks/error.invalid-hook-if-consequent.js
 rules-of-hooks/error.invalid-hook-in-nested-object-method.js
-rules-of-hooks/error.invalid-rules-of-hooks-f69800950ff0.js
 rules-of-hooks/rules-of-hooks-4f6c78a14bf7.js
 rules-of-hooks/rules-of-hooks-69521d94fa03.js
 rules-of-hooks/rules-of-hooks-93dc5d5e538a.js
