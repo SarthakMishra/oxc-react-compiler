@@ -5,7 +5,9 @@
 // Place reference — there is no single stable ID across references.
 
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{AliasingEffect, HIR, IdentifierId, InstructionValue};
+use crate::hir::types::{
+    AliasingEffect, ArrayElement, HIR, IdentifierId, InstructionValue, ObjectPropertyKey, Place,
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 const FROZEN_MUTATION_ERROR: &str = "This value cannot be modified. Modifying a value used \
@@ -52,6 +54,13 @@ pub fn validate_no_mutation_after_freeze(hir: &HIR, errors: &mut ErrorCollector)
             if let Some(name) = &instr.lvalue.identifier.name {
                 id_to_source_name.insert(instr.lvalue.identifier.id, name);
             }
+
+            // Also map ALL operand place IDs to names. This is critical because
+            // our HIR creates fresh IdentifierIds per Place reference, so an
+            // operand in a JSX child or function arg has a different ID than the
+            // LoadLocal lvalue it came from. By mapping operand IDs too, we can
+            // resolve names when Freeze/Mutate effects reference operand places.
+            map_operand_ids(&instr.value, &mut id_to_source_name);
         }
     }
 
@@ -115,6 +124,143 @@ pub fn validate_no_mutation_after_freeze(hir: &HIR, errors: &mut ErrorCollector)
                 }
             }
         }
+    }
+}
+
+/// Map operand place IDs to variable names for all places in an instruction value.
+/// This covers the ID disconnect: operand places in JSX children, function args, etc.
+/// have fresh IDs that differ from the LoadLocal lvalue IDs.
+fn map_operand_ids<'a>(value: &'a InstructionValue, id_map: &mut FxHashMap<IdentifierId, &'a str>) {
+    let mut map_place = |place: &'a Place| {
+        if let Some(name) = &place.identifier.name {
+            id_map.entry(place.identifier.id).or_insert(name);
+        }
+    };
+
+    match value {
+        InstructionValue::LoadLocal { place }
+        | InstructionValue::LoadContext { place }
+        | InstructionValue::Await { value: place }
+        | InstructionValue::GetIterator { collection: place }
+        | InstructionValue::IteratorNext { iterator: place, .. }
+        | InstructionValue::NextPropertyOf { value: place }
+        | InstructionValue::UnaryExpression { value: place, .. }
+        | InstructionValue::TypeCastExpression { value: place, .. } => {
+            map_place(place);
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. }
+        | InstructionValue::StoreContext { lvalue, value } => {
+            map_place(lvalue);
+            map_place(value);
+        }
+        InstructionValue::DeclareLocal { lvalue, .. }
+        | InstructionValue::DeclareContext { lvalue } => {
+            map_place(lvalue);
+        }
+        InstructionValue::Destructure { value, .. } => {
+            map_place(value);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            map_place(left);
+            map_place(right);
+        }
+        InstructionValue::CallExpression { callee, args }
+        | InstructionValue::NewExpression { callee, args } => {
+            map_place(callee);
+            for arg in args {
+                map_place(arg);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            map_place(receiver);
+            for arg in args {
+                map_place(arg);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => {
+            map_place(object);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            map_place(object);
+            map_place(value);
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            map_place(object);
+            map_place(property);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            map_place(object);
+            map_place(property);
+            map_place(value);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            map_place(object);
+            map_place(property);
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            map_place(tag);
+            for attr in props {
+                map_place(&attr.value);
+            }
+            for child in children {
+                map_place(child);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                map_place(child);
+            }
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                map_place(&prop.value);
+                if let ObjectPropertyKey::Computed(key) = &prop.key {
+                    map_place(key);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    ArrayElement::Expression(p) | ArrayElement::Spread(p) => map_place(p),
+                    ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                map_place(sub);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value: tpl } => {
+            map_place(tag);
+            for sub in &tpl.subexpressions {
+                map_place(sub);
+            }
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            map_place(lvalue);
+        }
+        InstructionValue::StoreGlobal { value, .. } => {
+            map_place(value);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            map_place(decl);
+            for dep in deps {
+                map_place(dep);
+            }
+        }
+        // No operands to map
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. } => {}
     }
 }
 
