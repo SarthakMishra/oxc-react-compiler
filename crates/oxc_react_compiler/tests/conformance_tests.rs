@@ -118,6 +118,12 @@ fn normalize_output(code: &str) -> String {
         lines.push(normalized);
     }
 
+    // Sort import lines so import ordering differences don't cause false divergences.
+    // Separate leading imports from the rest, sort them, then rejoin.
+    let first_non_import =
+        lines.iter().position(|l| !l.starts_with("import ")).unwrap_or(lines.len());
+    lines[..first_non_import].sort();
+
     lines.join("\n")
 }
 
