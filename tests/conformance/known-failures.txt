@@ -296,8 +296,6 @@ error.invalid-access-ref-in-reducer.js
 error.invalid-access-ref-in-render-mutate-object-with-ref-function.js
 error.invalid-access-ref-in-state-initializer.js
 error.invalid-aliased-ref-in-callback-invoked-during-render-.js
-error.invalid-array-push-frozen.js
-error.invalid-computed-store-to-frozen-value.js
 error.invalid-conditional-call-aliased-hook-import.js
 error.invalid-conditional-call-aliased-react-hook.js
 error.invalid-delete-computed-property-of-frozen-value.js
@@ -313,7 +311,6 @@ error.invalid-known-incompatible-function.js
 error.invalid-known-incompatible-hook-return-property.js
 error.invalid-known-incompatible-hook.js
 error.invalid-mutate-after-aliased-freeze.js
-error.invalid-mutate-after-freeze.js
 error.invalid-mutate-context-in-callback.js
 error.invalid-mutate-context.js
 error.invalid-mutate-global-in-render-helper-phi-return-prop.js
@@ -327,7 +324,6 @@ error.invalid-non-imported-reanimated-shared-value-writes.jsx
 error.invalid-optional-member-expression-as-memo-dep-non-optional-in-body.js
 error.invalid-pass-mutable-function-as-prop.js
 error.invalid-pass-ref-to-function.js
-error.invalid-property-store-to-frozen-value.js
 error.invalid-props-mutation-in-effect-indirect.js
 error.invalid-reassign-local-variable-in-async-callback.js
 error.invalid-ref-in-callback-invoked-during-render.js
@@ -348,9 +344,7 @@ error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js
 error.todo-allow-assigning-to-inferred-ref-prop-in-callback.js
 error.todo-for-await-loops.js
-error.todo-for-in-loop-with-context-variable-iterator.js
 error.todo-for-loop-with-context-variable-iterator.js
-error.todo-for-of-loop-with-context-variable-iterator.js
 error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-hoisted-function-in-unreachable-code.js

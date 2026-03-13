@@ -4,7 +4,7 @@
 
 Last updated: 2026-03-13
 
-Current conformance: 272/1717 pass (15.8%), 0 panics, 0 unexpected divergences.
+Current conformance: 278/1717 pass (16.2%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -24,7 +24,7 @@ Gap 4 scope heuristics) are fixed.
 | Compiled with memo | ~939 | Both compile, structure/deps/slots differ (+35 from sentinel regression) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~96 | We compile but upstream bails |
+| Upstream errors | ~90 | We compile but upstream bails |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -55,12 +55,12 @@ and slot count alignment (Gap 3). Gap 6 (over-scoped deps) is now resolved.
 - [ ] Scope merging/splitting heuristic audit vs upstream — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 
-## Priority 2 -- Upstream Errors (96 fixtures)
+## Priority 2 -- Upstream Errors (90 fixtures)
 
 We compile functions that upstream rejects with validation errors. These are
 "free" fixture gains -- emit the right error and bail, source matches.
 
-- [ ] Frozen mutation detection ("This value cannot be modified", 26 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
+- [~] Frozen mutation detection ("This value cannot be modified", 20 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
 - [ ] ValidatePreserveExistingMemoization ("Compilation Skipped", 13 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-2-validate-preserve-existing-memoization
 - [ ] Missing/extra deps in exhaustive-deps (8 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
 - [ ] Cannot reassign variables outside component (6 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
@@ -145,6 +145,16 @@ All P0-P5 items have been implemented. Detail files have been removed.
 - `_jsx()`/`_jsxs()`/`_Fragment` calls replaced with actual JSX syntax (`<div>`, `<Component>`, `<>...</>`)
 - `react/jsx-runtime` import removed from generated output
 - 23 snapshot files updated; conformance unchanged at 304/1717 (normalization masks JSX differences)
+
+### Frozen Mutation Detection -- Initial Pass (2026-03-13)
+
+- `validate_no_mutation_after_freeze` pass added (Pass 16.5, runs after infer_mutation_aliasing_effects)
+- Detects mutations to frozen values: property stores, computed stores, array push on frozen arrays
+- Also detects for-in/for-of loops over context variables (upstream "Todo" errors)
+- 6 fixtures now passing: invalid-array-push-frozen, invalid-computed-store-to-frozen-value, invalid-mutate-after-freeze, invalid-property-store-to-frozen-value, todo-for-in-loop-with-context-variable-iterator, todo-for-of-loop-with-context-variable-iterator
+- Conformance: 272 -> 278/1717 (+6)
+- Implementation files: `validate_no_mutation_after_freeze.rs`, `pipeline.rs`
+- 20 fixtures remain (require deeper alias tracking, delete operations, indirect mutation through function calls)
 
 ### Validation SSA Improvements (2026-03-13)
 

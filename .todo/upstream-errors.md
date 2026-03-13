@@ -16,18 +16,25 @@ Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ## Sub-categories
 
-### Gap 1: Frozen Mutation Detection
+### Gap 1: Frozen Mutation Detection (partially complete)
 
-**Count:** 26 fixtures
+**Count:** 20 remaining (6 of 26 now passing)
 **Upstream error:** "This value cannot be modified"
 **Upstream:** `ValidateLocalsNotReassignedAfterRender.ts`, `InferMutableRanges.ts`
-**Current state:** `validate_locals_not_reassigned_after_render.rs` exists but does not track frozen/immutable values comprehensively. The mutation aliasing analysis (`infer_mutation_aliasing_effects.rs`, `infer_mutation_aliasing_ranges.rs`) may not propagate freeze status to all downstream aliases.
-**What's needed:**
-- Track "frozen" status on values that have been captured by a reactive scope (after the scope closes, the value is frozen)
-- Detect mutations to frozen values: property writes, method calls that mutate, array push/splice etc.
-- Emit a validation error when a frozen value is mutated
-- This requires understanding of which values are aliased -- if `a = b` and `b` is frozen, then mutating `a` is also an error
-**Fixture gain estimate:** ~20-26 (some may require deep alias tracking)
+
+**Completed (2026-03-13):** `validate_no_mutation_after_freeze` pass added as Pass 16.5, running after `infer_mutation_aliasing_effects`. Detects property stores, computed stores, and array push on frozen values. Also detects for-in/for-of loops over context variables. Rust module: `crates/oxc_react_compiler/src/validation/validate_no_mutation_after_freeze.rs`. Pipeline integration: `crates/oxc_react_compiler/src/entrypoint/pipeline.rs`. +6 fixtures passing.
+
+**What remains (20 fixtures):**
+- ~~Track "frozen" status on values~~ Done for direct mutations
+- ~~Detect mutations to frozen values: property writes, array push~~ Done
+- Alias tracking: if `a = b` and `b` is frozen, mutating `a` should also error (e.g., `invalid-mutate-after-aliased-freeze`)
+- Delete operations on frozen values (e.g., `invalid-delete-computed-property-of-frozen-value`)
+- Indirect mutation through function calls (e.g., `invalid-pass-mutable-function-as-prop`)
+- Mutations to frozen refs (e.g., `invalid-pass-ref-to-function`)
+- Context variable mutations (e.g., `invalid-mutate-context`, `invalid-mutate-context-in-callback`)
+- Props mutation in effects (e.g., `invalid-props-mutation-in-effect-indirect`)
+- **Known limitation:** SSA pass assigns unique IDs per Place even for the same variable, making alias/identity tracking harder across instructions
+**Fixture gain estimate:** ~10-15 more (some require deep alias propagation)
 **Depends on:** None
 
 ### Gap 2: Validate Preserve Existing Memoization
@@ -133,9 +140,20 @@ Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ## Total Fixture Gain Estimate
 
-Achievable: ~50-75 of the 96 fixtures (some require deep alias tracking that
-may not be worth the complexity). The 21 Invariant/Todo fixtures should be
-registered as known skips.
+Achieved so far: 6 (from Gap 1 frozen mutation detection).
+Remaining achievable: ~44-69 of the remaining 90 fixtures (some require deep
+alias tracking that may not be worth the complexity). The 21 Invariant/Todo
+fixtures should be registered as known skips.
+
+## Cross-Cutting Issue: SSA Place Identity
+
+**Discovered during Gap 1 implementation.** The SSA pass assigns a unique
+`IdentifierId` per `Place` even when multiple Places refer to the same source
+variable. This means alias tracking across instructions is harder than it should
+be -- you cannot simply compare `IdentifierId` values to determine if two Places
+refer to the same variable. This affects Gap 1 (alias-based frozen mutation
+detection), Gap 4 (reassign outside component), and Gap 5 (ref aliasing). A
+future SSA improvement to unify variable references would simplify all three.
 
 ## Measurement Strategy
 

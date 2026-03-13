@@ -99,6 +99,16 @@ pub fn run_pipeline(
     // Pass 16: infer_mutation_aliasing_effects
     crate::inference::infer_mutation_aliasing_effects::infer_mutation_aliasing_effects(hir);
 
+    // Pass 16.5: validate_no_mutation_after_freeze (uses effects from Pass 16)
+    crate::validation::validate_no_mutation_after_freeze::validate_no_mutation_after_freeze(
+        hir, errors,
+    );
+
+    // Bail if frozen-mutation detected (before expensive downstream passes)
+    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
+        return Err(());
+    }
+
     // Pass 17: SSR optimization (conditional, runs before DCE to allow removal of client-only code)
     if config.enable_ssr {
         crate::optimization::optimize_for_ssr::optimize_for_ssr(hir);

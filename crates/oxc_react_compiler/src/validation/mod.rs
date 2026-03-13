@@ -13,6 +13,7 @@ pub mod validate_no_freezing_known_mutable_functions;
 pub mod validate_no_global_reassignment;
 pub mod validate_no_impure_functions_in_render;
 pub mod validate_no_jsx_in_try;
+pub mod validate_no_mutation_after_freeze;
 pub mod validate_no_ref_access_in_render;
 pub mod validate_no_set_state_in_effects;
 pub mod validate_no_set_state_in_render;
