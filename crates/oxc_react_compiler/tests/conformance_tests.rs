@@ -20,6 +20,7 @@ use oxc_react_compiler::{
     CompilationMode, EnvironmentConfig, GatingConfig, OutputMode, PanicThreshold, PluginOptions,
     compile_program_with_config,
 };
+use oxc_react_compiler::hir::environment::ExhaustiveDepsMode;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -515,10 +516,10 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
     }
 
     let mut opts = PluginOptions {
-        // Default to Infer mode. While Babel's test harness uses "all" by default,
-        // our compiled output for non-component functions still diverges significantly
-        // (temp variable explosion, different dependency tracking). Using Infer avoids
-        // false regressions from compiling functions where our output isn't yet correct.
+        // Default to Infer mode. Babel's test harness uses "all" by default, but
+        // our compiled output for non-component/hook functions still diverges.
+        // Using Infer avoids false regressions from compiling functions where
+        // our output isn't yet correct.
         compilation_mode: CompilationMode::Infer,
         ..PluginOptions::default()
     };
@@ -616,6 +617,31 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
         }
         if let Some(v) = find_directive_bool(comment, "enableJsxOutlining") {
             env.enable_jsx_outlining = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "validateNoCapitalizedCalls") {
+            env.validate_no_capitalized_calls = v;
+        }
+        // @validateExhaustiveEffectDependencies or @validateExhaustiveEffectDependencies:"all"
+        if let Some(val) = find_directive_value(comment, "validateExhaustiveEffectDependencies") {
+            env.validate_exhaustive_effect_dependencies = true;
+            env.validate_exhaustive_effect_dependencies_mode = match val {
+                "all" => ExhaustiveDepsMode::All,
+                "extra-only" => ExhaustiveDepsMode::ExtraOnly,
+                "missing-only" => ExhaustiveDepsMode::MissingOnly,
+                _ => ExhaustiveDepsMode::All,
+            };
+        } else if find_directive_bool(comment, "validateExhaustiveEffectDependencies").unwrap_or(false) {
+            env.validate_exhaustive_effect_dependencies = true;
+            env.validate_exhaustive_effect_dependencies_mode = ExhaustiveDepsMode::All;
+        }
+        if let Some(v) = find_directive_bool(comment, "validateNoImpureFunctionsInRender") {
+            env.validate_no_impure_functions_in_render = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "validateNoDerivedComputationsInEffects") {
+            env.validate_no_derived_computations_in_effects = v;
+        }
+        if let Some(v) = find_directive_bool(comment, "validateNoJsxInTryStatements") {
+            env.validate_no_jsx_in_try_statements = v;
         }
     }
 
