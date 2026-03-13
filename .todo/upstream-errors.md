@@ -1,7 +1,7 @@
 # Upstream Errors -- Validation Gaps
 
-> **Priority**: P2 (96 fixtures, high tractability -- each fix is "emit error + bail")
-> **Impact**: 96 fixtures where we compile but Babel bails with a validation error
+> **Priority**: P2 (~59 remaining fixtures, high tractability -- each fix is "emit error + bail")
+> **Impact**: ~59 remaining fixtures where we compile but Babel bails with a validation error
 > **Tractability**: HIGH -- each sub-category is a focused validation improvement
 
 ## Problem Statement
@@ -18,7 +18,7 @@ Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ### Gap 1: Frozen Mutation Detection (partially complete)
 
-**Count:** 20 remaining (6 of 26 now passing)
+**Count:** 18 remaining (8 of 26 now passing)
 **Upstream error:** "This value cannot be modified"
 **Upstream:** `ValidateLocalsNotReassignedAfterRender.ts`, `InferMutableRanges.ts`
 
@@ -37,19 +37,13 @@ Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 **Fixture gain estimate:** ~10-15 more (some require deep alias propagation)
 **Depends on:** None
 
-### Gap 2: Validate Preserve Existing Memoization
+### Gap 2: Validate Preserve Existing Memoization ✅
 
-**Count:** 13 fixtures
-**Upstream error:** "Compilation Skipped" (preserve-memo mode)
-**Upstream:** `ValidatePreserveExistingMemoizationGuarantees.ts`
-**Current state:** `validate_preserved_manual_memoization.rs` exists but may not cover all patterns. The `@enablePreserveExistingMemoizationGuarantees` config flag needs to trigger this validation.
-**What's needed:**
-- Audit `validate_preserved_manual_memoization.rs` against upstream `ValidatePreserveExistingMemoizationGuarantees.ts`
-- Ensure the pass detects when the compiler cannot preserve existing useMemo/useCallback patterns
-- When detection fails, emit "Compilation Skipped" error and bail
-- Check that the `@enablePreserveExistingMemoizationGuarantees` directive is parsed from fixture headers
-**Fixture gain estimate:** ~10-13
-**Depends on:** None
+~~**Count:** 13 fixtures~~
+~~**Upstream error:** "Compilation Skipped" (preserve-memo mode)~~
+~~**Upstream:** `ValidatePreserveExistingMemoizationGuarantees.ts`~~
+
+**Completed (2026-03-13):** Pipeline gate fixes for Pass 5 and Pass 61. Pass 5 (`drop_manual_memoization`) now preserves memo markers when `validate_preserve_existing_memoization_guarantees` is set (not just `enable_preserve`). Pass 61 now runs on both config flags. Error messages aligned with upstream ("Existing memoization could not be preserved..."). Pruned memoizations silently skipped. All 20 preserve-memo-validation error fixtures now passing, plus 11 bonus error fixtures from other categories. Rust modules: `crates/oxc_react_compiler/src/entrypoint/pipeline.rs`, `crates/oxc_react_compiler/src/validation/validate_preserved_manual_memoization.rs`. +31 fixtures total (278 -> 309/1717).
 
 ### Gap 3: Exhaustive Deps Remaining
 
@@ -140,8 +134,8 @@ Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 6 (from Gap 1 frozen mutation detection).
-Remaining achievable: ~44-69 of the remaining 90 fixtures (some require deep
+Achieved so far: 37 (6 from Gap 1 frozen mutation, 31 from Gap 2 preserve-memo pipeline gate fixes).
+Remaining achievable: ~30-50 of the remaining ~59 fixtures (some require deep
 alias tracking that may not be worth the complexity). The 21 Invariant/Todo
 fixtures should be registered as known skips.
 

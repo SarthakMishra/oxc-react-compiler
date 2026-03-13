@@ -31,7 +31,11 @@ pub fn run_pipeline(
     crate::validation::validate_use_memo::validate_use_memo(hir, errors);
 
     // Pass 5: drop_manual_memoization (conditional)
-    if !config.enable_preserve_existing_memoization_guarantees {
+    // Keep manual memo markers if either the preserve-memo flag or the
+    // validate-memo flag is set — the markers are needed for Pass 61.
+    if !config.enable_preserve_existing_memoization_guarantees
+        && !config.validate_preserve_existing_memoization_guarantees
+    {
         crate::validation::drop_manual_memoization::drop_manual_memoization(hir);
     }
 
@@ -326,7 +330,11 @@ pub fn run_full_pipeline(
     crate::reactive_scopes::prune_scopes::prune_hoisted_contexts(&mut rf);
 
     // Pass 61: validate_preserved_manual_memoization (conditional)
-    if config.enable_preserve_existing_memoization_guarantees {
+    // Run when either the enable flag (which changes compiler behavior) or the
+    // validate-only flag (which just validates without changing behavior) is set.
+    if config.enable_preserve_existing_memoization_guarantees
+        || config.validate_preserve_existing_memoization_guarantees
+    {
         crate::validation::validate_preserved_manual_memoization::validate_preserved_manual_memoization(&rf, errors);
     }
 

@@ -4,47 +4,56 @@ use crate::hir::types::{
 };
 use rustc_hash::FxHashMap;
 
+const UNMEMOIZED_ERROR: &str = "Existing memoization could not be preserved. React Compiler \
+has skipped optimizing this component because the existing manual memoization \
+could not be preserved. This value was memoized in source but not in \
+compilation output.";
+
 /// Validate that compiler-generated memoization preserves manual memoization
 /// guarantees from `useMemo` / `useCallback`.
 ///
-/// The compiler inserts `StartMemoize` / `FinishMemoize` instruction pairs to
-/// mark regions that the developer explicitly memoized. After reactive scope
-/// inference, we verify that each manual memo region is fully contained within
-/// a single reactive scope. If a manual memo region spans multiple scopes (or
-/// none), the compiler's output would have different memoization semantics than
-/// the developer intended.
+/// Upstream: ValidatePreservedManualMemoization.ts
+///
+/// After reactive scope inference and RF optimization passes, walk the reactive
+/// function in evaluation order. For each manual memoization region (StartMemoize/
+/// FinishMemoize pair), check:
+///
+/// 1. The FinishMemoize is inside a reactive scope (if not, the compiler failed
+///    to create a scope for this memoized value).
+/// 2. The StartMemoize and FinishMemoize are in the same reactive scope (if not,
+///    the compiler split the memo region across scopes).
+///
+/// DIVERGENCE: Upstream checks `identifier.scope` on the FinishMemoize.decl, but
+/// our HIR doesn't populate `identifier.scope`. We use the current reactive scope
+/// context instead.
 pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &mut ErrorCollector) {
-    // Collect all StartMemoize/FinishMemoize pairs and which reactive scopes
-    // they appear in.
     let mut memo_scopes: FxHashMap<u32, MemoRegion> = FxHashMap::default();
-
     walk_reactive_block(&func.body, None, &mut memo_scopes);
 
-    // Validate each memo region
-    for (memo_id, region) in &memo_scopes {
-        // If start and finish are in different scopes, the manual memo is split
-        if region.start_scope != region.finish_scope {
-            let loc = region.loc;
-            errors.push(CompilerError::invalid_react_with_kind(
-                loc,
-                format!(
-                    "Manual memoization (memo id {memo_id}) is not preserved. \
-                     The memoized region spans multiple reactive scopes, which means \
-                     the compiler cannot guarantee the same memoization semantics."
-                ),
-                DiagnosticKind::MemoizationPreservation,
-            ));
+    for region in memo_scopes.values() {
+        // Skip pruned memoizations
+        if region.pruned {
+            continue;
         }
 
-        // If the memo region has been pruned, warn that it was removed
-        if region.pruned {
+        // If the FinishMemoize is outside any reactive scope, the value was
+        // supposed to be memoized but the compiler didn't create a scope for it.
+        if region.finish_scope.is_none() {
             errors.push(CompilerError::invalid_react_with_kind(
                 region.loc,
-                format!(
-                    "Manual memoization (memo id {memo_id}) was pruned. \
-                     The compiler determined the memoized value does not need \
-                     memoization, but this may change the program's semantics."
-                ),
+                UNMEMOIZED_ERROR,
+                DiagnosticKind::MemoizationPreservation,
+            ));
+            continue;
+        }
+
+        // If start and finish are in different scopes, the manual memo region
+        // was split across multiple reactive scopes — the memoization semantics
+        // won't be preserved.
+        if region.start_scope != region.finish_scope {
+            errors.push(CompilerError::invalid_react_with_kind(
+                region.loc,
+                UNMEMOIZED_ERROR,
                 DiagnosticKind::MemoizationPreservation,
             ));
         }
