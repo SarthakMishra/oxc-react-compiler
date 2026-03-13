@@ -43,6 +43,21 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
                 ));
             }
 
+            // Rule 1b: Method calls that look like hooks (e.g., Foo.useFoo())
+            if let InstructionValue::MethodCall { property, .. } = &instr.value
+                && is_hook_name(property)
+                && conditional_blocks.contains(block_id)
+            {
+                errors.push(CompilerError::invalid_react_with_kind(
+                    instr.loc,
+                    format!(
+                        "React Hook \"{property}\" is called conditionally. \
+                                 Hooks must be called in the exact same order in every render."
+                    ),
+                    DiagnosticKind::HooksViolation,
+                ));
+            }
+
             // Rule 3: Hooks referenced as values (not called)
             // Check for instructions that load a hook name without calling it
             match &instr.value {

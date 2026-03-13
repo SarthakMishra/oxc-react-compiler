@@ -288,8 +288,6 @@ error.capitalized-function-call-aliased.js
 error.capitalized-function-call.js
 error.capitalized-method-call.js
 error.capture-ref-for-mutation.tsx
-error.conditional-hook-unknown-hook-react-namespace.js
-error.conditional-hooks-as-method-call.js
 error.declare-reassign-variable-in-function-declaration.js
 error.dont-hoist-inline-reference.js
 error.fault-tolerance-reports-multiple-errors.js
@@ -1220,7 +1218,6 @@ rules-of-hooks/allow-locals-named-like-hooks.js
 rules-of-hooks/allow-props-named-like-hooks.js
 rules-of-hooks/error.invalid-conditionally-call-local-named-like-hook.js
 rules-of-hooks/error.invalid-conditionally-call-prop-named-like-hook.js
-rules-of-hooks/error.invalid-conditionally-methodcall-hooklike-property-of-local.js
 rules-of-hooks/error.invalid-dynamic-hook-via-hooklike-local.js
 rules-of-hooks/error.invalid-hook-as-prop.js
 rules-of-hooks/error.invalid-hook-for.js

@@ -4,7 +4,7 @@
 
 Last updated: 2026-03-13
 
-Current conformance: 252/1717 pass (14.7%), 0 panics, 0 unexpected divergences.
+Current conformance: 255/1717 pass (14.8%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
