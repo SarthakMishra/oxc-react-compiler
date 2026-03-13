@@ -1,7 +1,7 @@
 # Over-Memoization Bail-Out Heuristics
 
 > **Priority**: P3 (supports both upstream-error and compiled-no-memo categories)
-> **Impact**: Cross-cutting -- validation accuracy affects 96 upstream-error + some compiled-no-memo fixtures
+> **Impact**: Cross-cutting -- validation accuracy affects ~50 remaining upstream-error + some compiled-no-memo fixtures
 > **Tractability**: MODERATE -- requires line-by-line comparison with upstream validation passes
 
 ## Problem Statement
@@ -52,7 +52,7 @@ Our current flow:
 **What's needed:**
 - Systematic audit of each validation pass against its upstream counterpart
 - See [upstream-errors.md](upstream-errors.md) for the per-category breakdown of remaining gaps
-- Key areas: frozen mutation (26), preserve-memo (13), exhaustive deps (8), scope reassignment (6), ref aliasing (6)
+- Key areas: frozen mutation (8 remaining), exhaustive deps (2 remaining), scope reassignment (2 remaining), ref access (6), hook identity (2), setState (3), other (29 uncategorized)
 **Depends on:** Gap 2 (completed)
 
 ### Gap 4: Zero-Scope Bail-Out ✅

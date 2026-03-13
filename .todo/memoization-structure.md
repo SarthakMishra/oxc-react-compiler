@@ -69,29 +69,190 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 **Fixture gain estimate:** Compound effect with other gaps
 **Depends on:** Gap 1 (temp inlining reduces slot count)
 
-### Gap 4: Scope Merging/Splitting Heuristic Review [IN PROGRESS]
+### Gap 4: Scope Merging Architecture Rewrite
 
-**Upstream:** `MergeOverlappingReactiveScopes.ts`, `PruneNonEscapingScopes.ts`, `PruneAlwaysInvalidatingScopes.ts`
-**Current state (updated 2026-03-13):** Significant progress on `merge_reactive_scopes_that_invalidate_together`:
+**Status:** NOT STARTED (research complete, implementation plan ready)
 
-**Completed sub-items:**
-- Name-based dep comparison: `DepKey = (Option<String>, Vec<DependencyPathEntry>)` replaces IdentifierId-based comparison. Our HIR creates fresh IdentifierIds per Place reference, so ID-based comparison made almost all scopes appear to have different deps. Name-based comparison correctly identifies scopes that invalidate together.
-- Double-merge prevention: `merged_indices` FxHashSet prevents a scope from being merged into multiple targets in a single pass.
-- Dependency union on merge: When merging scopes, deps are now unioned (deduplicated by DepKey) and declarations are merged.
-- Non-reactive propagation through Destructure: All targets of a destructure of a non-reactive value are marked non-reactive (with recursive `collect_destructure_target_ids` for nested patterns).
-- Non-reactive propagation through CallExpression: When callee + all args are non-reactive, the result is treated as non-reactive. This handles `require('shared-runtime')` returning a stable module object. DIVERGENCE: Upstream does not have this rule; we rely on the fact that truly reactive calls (hooks) have their return types set separately.
+This gap supersedes the previous "Scope Merging/Splitting Heuristic Review" and Gap 10
+("Overlap Merge Regression"). Deep research into the upstream algorithm revealed that the
+current implementation is fundamentally wrong in two places:
 
-**Reverted attempts:**
-- Overlap merge (`merge_overlapping_reactive_scopes_hir`): An attempt to merge scopes with overlapping instruction ranges was reverted because it caused regressions. The overlap detection logic needs more careful alignment with upstream `MergeOverlappingReactiveScopes.ts` which operates on a reactive scope tree, not flat instruction ranges. See Gap 10.
-- setState non-reactive heuristic: Treating `setState` calls as non-reactive was reverted because it caused false positives where setState return values (which are `undefined` but still used) were incorrectly excluded from dependency tracking. See Gap 9.
+1. **`merge_overlapping_reactive_scopes_hir` (Pass 42)** uses a flat-range sort-and-merge,
+   but upstream uses an active-scope-stack algorithm with cross-scope mutation tracking.
+2. **`merge_reactive_scopes_that_invalidate_together` (post-conversion)** only merges
+   consecutive scopes with identical deps, but upstream also handles output-to-input scope
+   chaining and nested scope flattening.
 
-**What remains:**
-- Audit `merge_overlapping_reactive_scopes_hir` against upstream `MergeOverlappingReactiveScopes.ts` -- the overlap merge logic needs investigation (see Gap 10)
-- Audit scope terminal construction (`build_reactive_scope_terminals_hir`) -- verify we create scope boundaries at the same points
-- Re-measure after remaining fixes
-**Fixture gain estimate:** ~50-100 (scope boundary differences cause wrong slot groupings)
-**Depends on:** None (can be done in parallel with Gap 1)
-**Implementation files:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`, `crates/oxc_react_compiler/src/reactive_scopes/propagate_dependencies.rs`
+Both must be rewritten to match upstream. The work is broken into 6 sub-tasks ordered
+by dependency.
+
+**Completed sub-items (from previous Gap 4 work):**
+- Name-based dep comparison (`DepKey`) in `merge_reactive_scopes_that_invalidate_together`
+- Double-merge prevention via `merged_indices`
+- Dependency union and declaration merge on scope merge
+- Non-reactive propagation through Destructure and CallExpression
+
+**Reverted attempts (context for new plan):**
+- Flat-range overlap merge: merged semantically separate scopes
+- DSU rewrite: produced invalid JS (const scoping across blocks)
+- setState non-reactive heuristic: false positives (see Gap 9)
+
+#### Sub-task 4a: Active-scope-stack overlap detection (Pass 42)
+
+**Upstream:** `src/HIR/MergeOverlappingReactiveScopesHIR.ts` (note: in `src/HIR/`, NOT `src/ReactiveScopes/`)
+**Current state:** Flat sort-and-merge in `merge_overlapping_reactive_scopes_hir()`
+**Algorithm to implement:**
+
+Phase 1 -- Collect:
+- Build `scope_starts: FxHashMap<InstructionId, Vec<ReactiveScope>>` (scopes starting at each instruction)
+- Build `scope_ends: FxHashMap<InstructionId, Vec<ReactiveScope>>` (scopes ending at each instruction)
+- Build `place_scopes: FxHashMap<IdentifierId, ReactiveScope>` (each Place's scope assignment)
+
+Phase 2 -- Detect overlaps via active-scope stack:
+- Walk all instructions across all blocks in instruction-ID order
+- Maintain `active_scopes: Vec<ReactiveScope>` as a stack
+- At each instruction ID:
+  - **Pop ending scopes**: For each scope S ending here, if S is not at the top of the stack, union S with everything above it (they overlap). Then pop S and everything above it.
+  - **Push starting scopes**: Sort by end-time descending (earliest-ending at top). Auto-merge scopes with identical ranges.
+  - **Check mutations**: For each operand/lvalue that mutates, look up its scope via `place_scopes`. If the mutated scope is not at the top of the active stack, merge it with everything above it.
+- Use a `DisjointSet<ScopeId>` (union-find) to track merge groups.
+
+Phase 3 -- Rewrite:
+- For each union group, compute `[min(start), max(end)]` across all grouped scopes
+- Rewrite all Place scope annotations to use the merged representative
+
+**Key difference from reverted DSU attempt:** The DSU attempt only checked range overlap.
+The upstream algorithm additionally checks cross-scope mutations (e.g., `x.push(2)` where
+`x` belongs to an outer scope). This is the "active-scope stack" part that was completely
+missing. The const-scoping problem does not apply here because Pass 42 runs BEFORE
+`build_reactive_scope_terminals_hir` (Pass 43) -- scopes are still just annotations on
+identifiers, not block-structure modifications yet.
+
+**What's needed:**
+- Implement `DisjointSet<ScopeId>` (union-find with path compression)
+- Rewrite `merge_overlapping_reactive_scopes_hir` with the 3-phase algorithm
+- Walk instructions in ID order across blocks (requires ordered iteration)
+- Track mutation effects per instruction to detect cross-scope mutations
+
+**Depends on:** None
+**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
+
+#### Sub-task 4b: Output-to-input scope chaining in invalidate-together
+
+**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`
+**Current state:** `merge_scopes_in_block` only merges consecutive scopes with identical dependency sets.
+**What's needed:**
+
+Upstream merges scope A into scope B when ALL of the following hold:
+1. A's declarations are B's dependencies (A produces what B consumes)
+2. A's outputs are "always-invalidating types" (objects, arrays, functions, JSX) -- meaning
+   they always create new references, so B will always re-execute when A does
+3. Only simple/pure instructions exist between A and B (see safety checks in Sub-task 4d)
+4. A is eligible for merging (`scopeIsEligibleForMerging` -- see Sub-task 4e)
+
+This is the "transitive invalidation" pattern: if scope A produces `const obj = {x: 1}` and
+scope B depends on `obj`, they should merge because `obj` is a new reference every time A runs.
+
+**Depends on:** Sub-task 4d (safety checks), Sub-task 4e (eligibility check)
+**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
+
+#### Sub-task 4c: Nested scope flattening
+
+**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`
+**Current state:** Not implemented
+**What's needed:**
+
+When an inner scope has the exact same dependencies as its parent scope, flatten it away
+(absorb its instructions into the parent). This eliminates redundant cache checks:
+
+```
+// Before flattening:
+if ($[0] !== x) {       // outer scope, deps: [x]
+  if ($[1] !== x) {     // inner scope, deps: [x]  -- redundant!
+    t0 = f(x);
+    $[1] = x; $[2] = t0;
+  } else { t0 = $[2]; }
+  $[0] = x; $[3] = t0;
+} else { t0 = $[3]; }
+
+// After flattening:
+if ($[0] !== x) {       // single scope, deps: [x]
+  t0 = f(x);
+  $[0] = x; $[1] = t0;
+} else { t0 = $[1]; }
+```
+
+Use the existing `dep_key_set` comparison to check if inner and outer scopes have identical deps.
+
+**Depends on:** None
+**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
+
+#### Sub-task 4d: Safety checks for intermediate instructions
+
+**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`
+**Current state:** Not implemented -- the current merge has no safety checks on instructions between scopes
+**What's needed:**
+
+When merging two non-adjacent scopes, all instructions between them must be "safe to absorb":
+- **Allowed:** `LoadLocal`, `PropertyLoad`, `BinaryExpression`, `UnaryExpression`, `Primitive`,
+  `LoadContext`, `ComputedLoad`, `TypeCastExpression`, `TemplateLiteral` (pure/simple operations)
+- **Forbidden:** `StoreLocal`, `CallExpression`, `MethodCall`, `FunctionExpression`,
+  `JsxExpression`, `ObjectExpression`, `ArrayExpression`, or any instruction with side effects
+
+Additionally, each intermediate instruction's lvalue must be "last-used at-or-before the next
+scope" -- if an intermediate value escapes beyond the merged scope boundary, absorbing it would
+change observable behavior.
+
+**What's needed:**
+- Define an `is_simple_instruction(instr: &ReactiveInstruction) -> bool` predicate
+- Define a `is_last_use_before(lvalue: &Identifier, boundary: usize, block: &ReactiveBlock) -> bool` check
+- Apply both checks when considering merge candidates in Sub-task 4b
+
+**Depends on:** None (but consumed by Sub-task 4b)
+**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
+
+#### Sub-task 4e: `scopeIsEligibleForMerging` predicate
+
+**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`
+**Current state:** Not implemented
+**What's needed:**
+
+Only scopes producing "always-invalidating" outputs can be merge candidates. A scope is
+eligible when:
+- Its declarations include at least one value of type: Object, Array, Function, JSX
+  (these always create new references, guaranteeing the dependent scope must re-execute)
+- It has no reassignments (the scope does not contain `StoreLocal` to an identifier that
+  was declared in a different scope)
+
+This prevents merging scopes that produce primitive values (numbers, strings, booleans),
+which might be referentially equal across renders and should remain separately cached.
+
+**Depends on:** None (but consumed by Sub-task 4b)
+**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
+
+#### Sub-task 4f: DeclarationId alignment for dependency comparison
+
+**Upstream:** Uses `DeclarationId` (stable across SSA renaming) for dependency identity
+**Current state:** Name-based `DepKey = (Option<String>, Vec<DependencyPathEntry>)` workaround
+**What's needed:**
+
+The name-based workaround works for most cases but fails when:
+- Two different variables have the same name in nested scopes (shadowing)
+- A variable is destructured and re-bound (same name, different declaration)
+- The "intermediate lvalue last-used before boundary" check (Sub-task 4d) needs stable identity
+
+Options:
+1. **Add DeclarationId to Identifier** -- a stable ID assigned during declaration that persists
+   through SSA renaming. This is the upstream approach and the most correct solution.
+2. **Enhance DepKey with scope/block context** -- add the declaring block ID or scope depth to
+   disambiguate same-named variables. Less invasive but less robust.
+
+Option 1 is recommended but has high impact (touches HIR types, SSA pass, and all consumers).
+Option 2 is a pragmatic interim step.
+
+**Depends on:** None (improves correctness of all other sub-tasks)
+**Risk:** HIGH -- changes to Identifier type ripple through the entire compiler
+**Implementation files:** `crates/oxc_react_compiler/src/hir/types.rs`, `crates/oxc_react_compiler/src/hir/build.rs`, `crates/oxc_react_compiler/src/ssa/enter_ssa.rs`
 
 ### Gap 5: Sentinel Scope Emission ✅
 
@@ -132,19 +293,18 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 **Depends on:** None
 **Risk:** Low priority -- the current behavior (treating setState calls as reactive) is conservative and correct, just potentially over-scoped
 
-### Gap 10: Overlap Merge Regression
+### Gap 10: Overlap Merge Regression -- SUPERSEDED by Gap 4
 
-**Upstream:** `MergeOverlappingReactiveScopes.ts`
-**Current state:** Two attempts have been made and reverted:
-1. **Initial attempt (flat-range overlap):** Merged scopes with overlapping instruction ID ranges. Reverted because upstream operates on a reactive scope tree where scope ranges are well-defined, while our flat approach incorrectly merged semantically separate scopes.
-2. **DSU rewrite attempt (2026-03-13):** A 3-phase disjoint-set-union algorithm was implemented -- Phase 1 builds a union-find grouping scopes with overlapping ranges, Phase 2 merges grouped scopes into a single representative, Phase 3 rebuilds the scope list. This produced structurally correct merges but generated invalid JavaScript: merged scopes spanning multiple blocks caused `const` declarations inside an `if`-block to be referenced outside their lexical scope. The root cause is that our codegen emits scopes as `if (...)` blocks, and merging scopes that cross block boundaries creates const-scoping violations.
+~~**Upstream:** `MergeOverlappingReactiveScopes.ts`~~
+~~**Current state:** Two attempts have been made and reverted.~~
 
-**What's needed:**
-- **Data-flow dependency analysis prerequisite:** Before merging scopes, the algorithm must verify that declarations within each scope are not referenced outside the merged block boundary. This requires tracking which identifiers are declared inside vs consumed outside -- essentially a mini liveness analysis scoped to the merge candidate set.
-- Alternatively, the codegen must be restructured to handle merged scopes that span blocks (e.g., hoisting declarations above the if-block, or using `let` instead of `const` for cross-block values)
-- Study how upstream `MergeOverlappingReactiveScopes.ts` avoids this problem -- it operates on a ReactiveFunction tree where scope nesting is explicit, so cross-block issues are structurally prevented
-**Depends on:** Data-flow analysis for cross-block declaration safety, or codegen restructuring
-**Risk:** Medium -- incorrect overlap merging causes scopes to be too large (over-memoization, wrong slot counts) or generates invalid JS (const scoping violations)
+**Superseded**: This gap has been absorbed into the comprehensive Gap 4 rewrite plan.
+Sub-task 4a covers the active-scope-stack overlap detection algorithm that replaces
+both the flat-range merge and the reverted DSU attempt. The research revealed that
+the const-scoping problem from the DSU attempt does not apply when the algorithm
+runs at Pass 42 (before `build_reactive_scope_terminals_hir`), because scopes are
+still just annotations on identifiers at that point, not block-structure modifications.
+See Gap 4 Sub-task 4a for the full implementation plan.
 
 ## Measurement Strategy
 
@@ -157,14 +317,17 @@ Expected progression (gaps are interdependent, so gains compound):
 - Gap 1 (temp inlining) ✅ + Gap 2 (JSX) ✅ + Gap 5 (sentinel) ✅: structural foundation complete, 35 temporary regressions
 - Gap 6 (over-scoped deps) ✅: globals/stable values excluded from deps
 - Gap 7 (property-path deps) ✅ + Gap 8 (sentinel codegen) ✅: deps now emit `props.x` not just `props`, sentinel scopes store values correctly (+3 fixtures)
-- After Gap 4 (scope heuristics): ~50-100 additional
-- After Gap 3 (slot count alignment): remaining residual
+- After Sub-task 4a (active-scope-stack overlap): correct scope boundaries in HIR
+- After Sub-tasks 4b-4e (invalidate-together rewrite): correct scope merging in ReactiveFunction
+- After Gap 3 (slot count alignment): remaining residual (may be fully resolved by 4a-4e)
+- Sub-task 4f (DeclarationId): correctness improvement, may unlock edge-case fixtures
 - Total potential from this category: ~400-600 new passes
 
 ## Risks and Notes
 
-- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), and sentinel codegen (Gap 8) are all complete. Scope merge heuristics (Gap 4) have been partially addressed (name-based dep comparison, non-reactive propagation). Slot count alignment (Gap 3) and remaining scope heuristic work (overlap merging, scope terminals) are the final blockers before larger compound fixture gains materialize.
-- **Reverted changes are informative**: Two attempted changes (overlap merge and setState non-reactive) were reverted due to regressions. These are tracked as Gap 9 and Gap 10 for future investigation when more infrastructure is in place.
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), and sentinel codegen (Gap 8) are all complete. Scope merge heuristics (Gap 4) have been partially addressed (name-based dep comparison, non-reactive propagation). Slot count alignment (Gap 3) and the scope merging architecture rewrite (Gap 4 sub-tasks 4a-4f) are the final blockers before larger compound fixture gains materialize.
+- **Scope merging is a 2-pass problem**: The overlap detection (Pass 42, Sub-task 4a) runs on the HIR BEFORE block structure is created. The invalidate-together merge (post-conversion, Sub-tasks 4b-4e) runs on the ReactiveFunction tree AFTER conversion. These are separate algorithms operating on different data structures at different pipeline stages. The reverted DSU attempt conflated them.
+- **The const-scoping problem is a non-issue for Pass 42**: The reverted DSU attempt failed because it was tested after block structure existed. But Pass 42 runs before `build_reactive_scope_terminals_hir` (Pass 43), so scopes are just annotations at that point. The rewrite should not encounter the same problem.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.
 - **JSX edge cases**: Self-closing elements, boolean attributes (`<div disabled />`), computed property names in JSX, namespace attributes (`xml:lang`).
 - **Scope merging audit scope**: The merge/prune passes are among the most complex in the compiler. A full audit requires careful line-by-line comparison with upstream TypeScript.

@@ -2,14 +2,14 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-13 (post hooks-in-nested-functions validation + merge_scopes investigation, 343/1717)
+Last updated: 2026-03-13 (scope merging architecture plan added, 343/1717)
 
 Current conformance: 343/1717 pass (20.0%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
-Only 2 fixtures match with actual compiled `_c()` output. The remaining 1408
-divergences break down as follows:
+Only 2 fixtures match with actual compiled `_c()` output. The remaining 1374
+divergences break down as follows (counts are approximate and overlap):
 
 **Regression note (2026-03-13):** Sentinel scope emission (Gap 5) was activated,
 correctly adding reactive scopes for allocating expressions. This introduced 35
@@ -24,7 +24,7 @@ Gap 4 scope heuristics) are fixed.
 | Compiled with memo | ~923 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~34 | We compile but upstream bails |
+| Upstream errors | ~50 | We compile but upstream bails (63 total - 13 invariant/todo skips) |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -49,30 +49,40 @@ structure differs. Sub-breakdown (updated post-sentinel activation):
 
 All items are interdependent -- they must be fixed together for fixtures to pass.
 Sentinel scope activation was a necessary structural prerequisite; the 35
-regressions are expected and will resolve with over-scoped dep fixes (Gap 6)
-and slot count alignment (Gap 3). Gap 6 (over-scoped deps), Gap 7 (property-path deps), and Gap 8 (sentinel
+regressions are expected and will resolve with scope merging fixes and
+slot count alignment. Gap 6 (over-scoped deps), Gap 7 (property-path deps), and Gap 8 (sentinel
 codegen) are now resolved. Property-path deps yielded +3 fixtures (315 -> 318).
 
-- [~] Scope merging/splitting heuristic audit vs upstream (name-based dep comparison done; overlap merge + setState heuristic reverted) — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
-- [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
-- [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation
-- [ ] Overlap merge regression risk (DSU rewrite attempted + reverted; needs data-flow dependency analysis) — [memoization-structure.md](memoization-structure.md)#gap-10-overlap-merge-regression
+**Scope merging architecture rewrite (Gap 4):** Deep research revealed that both
+merge passes are fundamentally wrong. Pass 42 (overlap detection) needs an active-scope-stack
+algorithm with cross-scope mutation tracking. The post-conversion merge needs output-to-input
+chaining, nested scope flattening, and safety checks. See memoization-structure.md for the
+6-sub-task plan (4a through 4f). Gap 10 is superseded by Sub-task 4a.
 
-## Priority 2 -- Upstream Errors (~34 fixtures remaining)
+- [ ] **4a** Active-scope-stack overlap detection (rewrite Pass 42 merge algorithm) — [memoization-structure.md](memoization-structure.md)#sub-task-4a-active-scope-stack-overlap-detection-pass-42
+- [ ] **4d** Safety checks for intermediate instructions between scopes — [memoization-structure.md](memoization-structure.md)#sub-task-4d-safety-checks-for-intermediate-instructions
+- [ ] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
+- [ ] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
+- [ ] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
+- [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
+- [ ] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
+- [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation
+
+## Priority 2 -- Upstream Errors (~50 actionable fixtures remaining)
 
 We compile functions that upstream rejects with validation errors. These are
 "free" fixture gains -- emit the right error and bail, source matches.
 
-- [~] Frozen mutation detection ("This value cannot be modified", 5 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
-- [ ] Missing/extra deps in exhaustive-deps (8 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
-- [~] Cannot reassign variables outside component (partially done, ~2 remaining of 6) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
+- [~] Frozen mutation detection ("This value cannot be modified", 8 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
+- [ ] Missing/extra deps in exhaustive-deps (2 remaining, 6 fixed) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
+- [~] Cannot reassign variables outside component (2 remaining of 8) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
 - [ ] Cannot access refs during render (6 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-5-ref-access-during-render
-- [ ] Hooks must be same function (4 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
-- [ ] Cannot call setState during render (2 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
-- [ ] Cannot access variable before declared (2 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
-- [ ] Other upstream errors (~3 remaining fixtures, eval + hooks-in-nested done) — [upstream-errors.md](upstream-errors.md)#gap-9-other
+- [ ] Hooks must be same function (2 remaining, was 4) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
+- [ ] Cannot call setState during render (3 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
+- [ ] Cannot access variable before declared (1 fixture, 2 todo-* skippable) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
+- [ ] Other upstream errors (~29 remaining: mutation tracking, type providers, ref naming, preserve-memo edge cases) — [upstream-errors.md](upstream-errors.md)#gap-9-other
 
-Note: 21 "Invariant/Todo" upstream errors are internal compiler failures in
+Note: 15 "Invariant/Todo" upstream errors are internal compiler failures in
 Babel -- these should be skipped, not matched.
 
 ## Priority 3 -- Compiled No Memo (152 fixtures)

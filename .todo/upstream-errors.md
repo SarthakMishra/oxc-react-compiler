@@ -1,7 +1,7 @@
 # Upstream Errors -- Validation Gaps
 
-> **Priority**: P2 (~34 remaining fixtures, high tractability -- each fix is "emit error + bail")
-> **Impact**: ~34 remaining fixtures where we compile but Babel bails with a validation error
+> **Priority**: P2 (~50 actionable remaining fixtures, high tractability -- each fix is "emit error + bail")
+> **Impact**: ~50 remaining actionable fixtures where we compile but Babel bails with a validation error (63 total error fixtures - 13 invariant/todo skips = 50 actionable)
 > **Tractability**: HIGH -- each sub-category is a focused validation improvement
 
 ## Problem Statement
@@ -11,7 +11,7 @@ function (returning source unchanged), but our compiler proceeds and emits
 memoized output. Since both sides now return source unchanged when we bail,
 fixing each validation gap directly converts fixtures to passes.
 
-Note: 21 additional fixtures fail due to Babel internal errors (Invariant/Todo)
+Note: 15 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 -- these are upstream bugs, not validation gaps. We should skip them.
 
 ## Sub-categories
@@ -33,18 +33,20 @@ Rust module: `crates/oxc_react_compiler/src/validation/validate_no_mutation_afte
 
 Newly passing fixtures include: `capture-ref-for-mutation`, `invalid-disallow-mutating-refs-in-render-transitive`, `invalid-function-expression-mutates-immutable-value`, `invalid-jsx-captures-context-variable`, `invalid-mutate-context`, `invalid-mutate-context-in-callback`, `invalid-non-imported-reanimated-shared-value-writes`, `modify-state`, `modify-useReducer-state`, `todo-allow-assigning-to-inferred-ref-prop-in-callback`, `todo-for-loop-with-context-variable-iterator`, `invalid-hook-from-property-of-other-hook`, `skip-useMemoCache`.
 
-**What remains (5 fixtures):**
+**What remains (8 fixtures):**
 - ~~Track "frozen" status on values~~ Done
 - ~~Detect mutations to frozen values: property writes, array push~~ Done
 - ~~Context variable mutations~~ Done (hook-return pre-freeze + function-capture freeze)
 - ~~Mutations inside nested functions~~ Done (nested function scanning)
 - ~~Indirect mutations through captured closures~~ Done (function-capture freeze)
 - Alias tracking: if `a = b` and `b` is frozen, mutating `a` should also error (e.g., `invalid-mutate-after-aliased-freeze`)
+- Phi-node frozen tracking: values that *could* be frozen through phi nodes (e.g., `invalid-mutate-phi-which-could-be-frozen`)
 - Delete operations on frozen values (e.g., `invalid-delete-computed-property-of-frozen-value`, `invalid-delete-property-of-frozen-value`)
 - Indirect mutation through function calls passed as props (e.g., `invalid-pass-mutable-function-as-prop`, `invalid-pass-ref-to-function`)
 - Props mutation in effects via indirect references (e.g., `invalid-props-mutation-in-effect-indirect`)
+- State mutation variant (e.g., `modify-state-2.js`)
 - **Known limitation:** SSA pass assigns unique IDs per Place even for the same variable, making alias/identity tracking harder across instructions
-**Fixture gain estimate:** ~2-5 more (remaining cases require deep alias propagation)
+**Fixture gain estimate:** ~3-8 more (remaining cases require deep alias propagation)
 **Depends on:** None
 
 ### Gap 2: Validate Preserve Existing Memoization ✅
@@ -57,15 +59,14 @@ Newly passing fixtures include: `capture-ref-for-mutation`, `invalid-disallow-mu
 
 ### Gap 3: Exhaustive Deps Remaining
 
-**Count:** 8 fixtures
+**Count:** 2 remaining (6 fixed by extra-dep detection + mode gating, 2026-03-13)
 **Upstream error:** "Missing/extra deps"
 **Upstream:** `ValidateExhaustiveDeps.ts`
-**Current state:** `validate_exhaustive_dependencies.rs` exists with recent SSA name resolution improvements. 8 fixtures still diverge -- likely edge cases in dependency analysis.
+**Current state:** `validate_exhaustive_dependencies.rs` enhanced with extra dependency detection, per-mode validation (All/MissingOnly/ExtraOnly), and config-driven gating. 6 fixtures fixed (309→315/1717). 2 remain: `error.invalid-exhaustive-effect-deps-missing-only.js`, `error.sketchy-code-exhaustive-deps.js`.
 **What's needed:**
-- Analyze the 8 failing fixtures to understand which dependency patterns are missed
-- May involve: conditional dependencies, optional chaining in deps, computed property access as deps
-- SSA resolution was recently added -- remaining gaps are likely deeper semantic issues
-**Fixture gain estimate:** ~5-8
+- Analyze the 2 remaining fixtures -- likely edge cases in dependency collection or sketchy-code detection patterns
+- Note: 5 additional exhaustive-deps fixtures remain in known-failures but are compilation divergences (P1 territory), not validation-error fixtures
+**Fixture gain estimate:** ~1-2
 **Depends on:** None
 
 ### Gap 4: Reassign Outside Component (partially complete)
@@ -106,45 +107,52 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 
 ### Gap 6: Dynamic Hook Identity
 
-**Count:** 4 fixtures
+**Count:** 2 remaining (was 4; 2 resolved by SSA + conditional hook detection improvements)
 **Upstream error:** "Hooks must be same function"
 **Upstream:** `ValidateHooksUsage.ts`
-**Current state:** `validate_hooks_usage.rs` exists with SSA resolution. These 4 fixtures likely involve dynamic hook identity -- calling different hook implementations conditionally.
+**Current state:** `validate_hooks_usage.rs` exists with SSA resolution and conditional hook method call detection. 2 remain: `error.invalid-conditional-call-aliased-hook-import.js`, `error.invalid-conditional-call-aliased-react-hook.js` -- both involve aliased hook imports called conditionally.
 **What's needed:**
-- Detect patterns where a variable holding a hook function is assigned different values in different branches
-- Emit error when hook identity is not stable across renders
-**Fixture gain estimate:** ~2-4
+- Detect patterns where a hook import is aliased to a local variable and then called conditionally
+- The aliasing breaks SSA-based hook identity tracking
+**Fixture gain estimate:** ~1-2
 **Depends on:** None
 
 ### Gap 7: setState During Render
 
-**Count:** 2 fixtures
+**Count:** 3 fixtures
 **Upstream error:** "Cannot call setState during render"
 **Upstream:** `ValidateNoSetStateInRender.ts`
-**Current state:** `validate_no_set_state_in_render.rs` exists with SSA resolution (+9 fixtures recently). 2 remaining fixtures need transitive setState tracking.
+**Current state:** `validate_no_set_state_in_render.rs` exists with SSA resolution (+9 fixtures recently). 3 remaining: `error.invalid-hoisting-setstate.js`, `error.unconditional-set-state-lambda.js`, `error.unconditional-set-state-nested-function-expressions.js`.
 **What's needed:**
-- Track setState calls through helper functions (transitive detection)
+- Track setState calls through helper functions and lambdas (transitive detection)
+- Handle hoisted function declarations that call setState
 - If `helper()` calls `setState`, and the component calls `helper()` during render, that's an error
-**Fixture gain estimate:** ~1-2
+**Fixture gain estimate:** ~2-3
 **Depends on:** None
 
 ### Gap 8: Hoisting/TDZ
 
-**Count:** 2 fixtures
+**Count:** 1 actionable fixture (2 `todo-*` are upstream bugs, skippable)
 **Upstream error:** "Cannot access variable before declared"
 **Upstream:** Various validation logic in `HIRBuilder.ts`
-**Current state:** No TDZ analysis exists.
+**Current state:** No TDZ analysis exists. The actionable fixture is `error.invalid-hoisting-setstate.js` (overlaps with Gap 7). The 2 `todo-functiondecl-hoisting` fixtures are upstream TODOs.
 **What's needed:**
 - Detect references to `let`/`const` variables before their declaration point
 - This may be caught during HIR building or as a separate validation pass
-**Fixture gain estimate:** ~1-2
+**Fixture gain estimate:** ~1
 **Depends on:** None
 
-### Gap 9: Other
+### Gap 9: Other Validation Errors
 
-**Count:** ~3 remaining fixtures (was 8)
-**What's needed:** Triage individually -- these are miscellaneous validation errors that don't fit the above categories. Some may be one-off edge cases in existing validation passes.
-**Fixture gain estimate:** ~1-3
+**Count:** ~29 remaining uncategorized fixtures
+**What's needed:** These cover several sub-categories not yet tracked individually:
+- **Mutation tracking** (~11): `invalid-mutate-global-*`, `invalid-mutate-props-*`, `invalid-mutation-*`, `mutate-function-property`, `not-useEffect-external-mutate`, `invalid-return-mutable-function-from-hook`, `invalid-hook-function-argument-mutates-local-variable`
+- **Hook-call capture freeze** (2): `hook-call-freezes-captured-identifier.tsx`, `hook-call-freezes-captured-memberexpr.jsx`
+- **Type provider / incompatible module** (5): `invalid-known-incompatible-*`, `invalid-type-provider-*`
+- **Ref naming heuristic** (2): `ref-like-name-not-Ref`, `ref-like-name-not-a-ref`
+- **Preserve-memo edge cases** (2): `repro-preserve-memoization-inner-destructured-value-*`
+- **Other** (~7): `assign-ref-in-effect-hint`, `capitalized-function-call-aliased`, `call-args-destructuring-asignment-complex`, `dont-hoist-inline-reference`, `invalid-unclosed-eslint-suppression`, `useMemo-non-literal-depslist`, `_todo.computed-lval-in-destructure`, `todo.try-catch-with-throw`
+**Fixture gain estimate:** ~10-20 (many require focused per-fixture analysis)
 **Depends on:** Analysis of individual fixtures
 
 **Partially completed:**
@@ -154,8 +162,9 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 ## Total Fixture Gain Estimate
 
 Achieved so far: 68 (19 from Gap 1 frozen mutation [6 initial + 13 enhancement], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions).
-Remaining achievable: ~7-27 of the remaining ~34 fixtures (some require deep
-alias tracking that may not be worth the complexity). The 21 Invariant/Todo
+Remaining achievable: ~20-40 of the remaining ~50 actionable fixtures. The
+categorized gaps (1,3,4,5,6,7,8) account for ~24 fixtures; Gap 9 "Other" covers
+~29 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
 fixtures should be registered as known skips.
 
 ## Cross-Cutting Issue: SSA Place Identity
