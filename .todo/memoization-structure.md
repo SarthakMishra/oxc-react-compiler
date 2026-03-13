@@ -1,21 +1,22 @@
 # Memoization Structure Differences
 
-> **Priority**: MEDIUM (structural correctness -- ~605 fixtures)
-> **Impact**: ~605 divergences, moving pass rate significantly when combined with TS stripping
+> **Priority**: P1 (largest category -- 904 fixtures, 64% of all failures)
+> **Impact**: 904 divergences where both compilers produce `_c()` but structure differs
+> **Tractability**: LOW per-item, HIGH aggregate -- items are interdependent; no single fix moves the needle alone
 
 ## Problem Statement
 
-When both our compiler and Babel memoize a function, our output differs structurally in four ways:
+When both our compiler and Babel memoize a function, our output differs structurally. The 904 fixtures break down into:
 
-1. **Temp variable explosion** -- HIR SSA form leaks into codegen. Simple expressions like `useRef(null)` get decomposed into multiple temporaries: `const t32 = useRef; const t33 = null; const t34 = t32(t33)` instead of Babel's `const t0 = useRef(null)`.
+| Sub-category | Count | Root cause |
+|-------------|-------|------------|
+| Over-scoped (too many cache slots) | ~400 | Globals/stable values treated as reactive deps |
+| Sentinel pattern never emitted | ~280 | Non-reactive allocations need sentinel check scopes |
+| Under-scoped (too few cache slots) | ~90 | Missing scopes for some expressions |
+| Same slots, wrong deps | ~40 | Dependency tracking diverges |
+| Other structural | ~94 | Temp variable naming, code ordering |
 
-2. **JSX lowering** -- We emit `_jsx("div", {...})` function calls while Babel preserves `<div>...</div>` JSX syntax in its output. This is a fundamental codegen difference.
-
-3. **Cache slot count mismatches** -- Our `_c(N)` often has a different N than Babel's, because we create more temporaries and/or have different scope boundaries.
-
-4. **Scope boundary differences** -- Different reactive scope merging/splitting decisions lead to different cache slot groupings.
-
-Issues 1 and 3 are tightly coupled (fewer temps = fewer cache slots). Issues 2 and 4 are somewhat independent.
+The structural issues compound: a fixture may have wrong temp variables AND wrong slot counts AND missing sentinel scopes. Fixing one in isolation typically gains zero fixtures because the remaining issues still cause a mismatch.
 
 ## Files to Modify
 
@@ -25,11 +26,12 @@ Issues 1 and 3 are tightly coupled (fewer temps = fewer cache slots). Issues 2 a
 
 ### JSX Preservation
 - **`crates/oxc_react_compiler/src/reactive_scopes/codegen.rs`** -- lines 325-348, modify JSX codegen to emit JSX syntax instead of `_jsx()` calls
-- **`crates/oxc_react_compiler/src/reactive_scopes/codegen.rs`** -- line 920, update import header to not include jsx-runtime imports when preserving JSX
 
-### Scope Merging
+### Scope/Dependency Analysis
 - **`crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`** -- review merge heuristics vs upstream
 - **`crates/oxc_react_compiler/src/reactive_scopes/prune_scopes.rs`** -- review prune decisions vs upstream
+- **`crates/oxc_react_compiler/src/reactive_scopes/infer_reactive_scope_variables.rs`** -- reactive place inference
+- **`crates/oxc_react_compiler/src/reactive_scopes/propagate_dependencies.rs`** -- dependency tracking
 
 ## Implementation Plan
 
@@ -43,6 +45,7 @@ Issues 1 and 3 are tightly coupled (fewer temps = fewer cache slots). Issues 2 a
 - Example: `const t0 = useRef; const t1 = null; const t2 = t0(t1)` collapses to `const t2 = useRef(null)`
 - This pass operates on the `ReactiveFunction` tree, walking instructions and maintaining a use-count map
 - Alternatively, this can be done during codegen itself (peephole inlining) by buffering pending simple assignments and substituting when the temp is referenced
+**Fixture gain estimate:** ~150-200 (many structural mismatches are purely due to temp explosion)
 **Depends on:** None
 
 ### Gap 2: JSX Syntax Preservation in Codegen
@@ -58,8 +61,9 @@ Issues 1 and 3 are tightly coupled (fewer temps = fewer cache slots). Issues 2 a
 - Handle self-closing vs open/close tags (self-closing when no children)
 - Handle spread props: `_jsx("div", { ...props })` becomes `<div {...props} />`
 - Handle string children vs expression children
-- Remove the `jsx-runtime` import from the generated import header (line ~920) since JSX syntax doesn't need it
+- Remove the `jsx-runtime` import from the generated import header since JSX syntax doesn't need it
 - Keep the `_c` import from `react/compiler-runtime`
+**Fixture gain estimate:** ~100-150 (independent of temp inlining)
 **Depends on:** None (independent of Gap 1)
 
 ### Gap 3: Cache Slot Count Alignment
@@ -70,7 +74,8 @@ Issues 1 and 3 are tightly coupled (fewer temps = fewer cache slots). Issues 2 a
 - After Gap 1 (temp inlining) is done, re-measure cache slot divergences -- many may be resolved by having fewer temps
 - Compare `count_cache_slots` logic with upstream's `getScopeCount` in `CodegenReactiveFunction.ts`
 - Verify that scope outputs and declarations match upstream's expectations
-- This gap may be fully resolved by Gap 1 + Gap 4, or may require targeted fixes
+- This gap may be fully resolved by Gap 1 + Gap 4 + Gap 5 + Gap 6
+**Fixture gain estimate:** Compound effect with other gaps
 **Depends on:** Gap 1 (temp inlining reduces slot count)
 
 ### Gap 4: Scope Merging/Splitting Heuristic Review
@@ -83,18 +88,31 @@ Issues 1 and 3 are tightly coupled (fewer temps = fewer cache slots). Issues 2 a
 - Audit scope terminal construction (`build_reactive_scope_terminals_hir`) -- verify we create scope boundaries at the same points
 - Fix any divergences found
 - Re-measure after fixes
+**Fixture gain estimate:** ~50-100 (scope boundary differences cause wrong slot groupings)
 **Depends on:** None (can be done in parallel with Gap 1)
 
-### Gap 5: Test Normalization for JSX (alternative to Gap 2)
+### Gap 5: Sentinel Scope Emission
 
-**Upstream:** N/A (test infrastructure)
-**Current state:** The `normalize_output()` function in conformance tests does not normalize JSX vs `_jsx()` calls
+**Upstream:** Babel creates reactive scopes for allocating expressions (JSX elements, object/array literals) even when they have no reactive dependencies. These scopes use the sentinel pattern (`Symbol.for("react.memo_cache_sentinel")`) instead of dependency checking.
+**Current state:** `infer_reactive_scope_variables.rs` only creates scopes for reactive identifiers. An attempt to add `is_allocating` tracking was made but reverted because it gained 0 fixtures while losing 10 (the structural output still didn't match even with correct scope creation).
 **What's needed:**
-- If Gap 2 (JSX preservation) proves too complex for an initial pass, an alternative is to normalize BOTH our `_jsx()` output and Babel's `<div>` JSX syntax to a common form in the test comparison layer
-- This could use `oxc_codegen` (from the TS stripping work) to parse-print both outputs, which would normalize JSX to a consistent form
-- However, this is a workaround, not a fix -- the compiler should ideally emit JSX syntax to match Babel
-- Only pursue this if Gap 2 is blocked
-**Depends on:** TS stripping Gap 1 (oxc_codegen dependency)
+- Revisit allocating scope creation AFTER Gap 1 (temp inlining) and Gap 2 (JSX preservation) are done -- the previous attempt failed because structural differences masked the fix
+- Add sentinel pattern emission to codegen: instead of `if ($[0] !== dep)`, emit `if ($[0] === Symbol.for("react.memo_cache_sentinel"))` for allocating-only scopes
+- This is the root cause of ~280 divergences
+**Fixture gain estimate:** ~100-200 (but only after Gaps 1+2 are done)
+**Depends on:** Gap 1, Gap 2 (previous attempt failed without these)
+
+### Gap 6: Over-Scoped Dependencies
+
+**Upstream:** Babel correctly identifies global values (e.g., `Math.max`, `console.log`), stable hook returns (e.g., `setState` from `useState`), and other non-reactive values, and excludes them from dependency tracking.
+**Current state:** We treat some globals and stable values as reactive, causing them to appear as dependencies in scopes. This results in more cache slots than needed (~400 fixtures).
+**What's needed:**
+- Audit `infer_reactive_places.rs` against upstream `InferReactivePlaces.ts` -- verify which identifiers are marked as reactive
+- Verify that globals are never marked reactive
+- Verify that stable hook returns (setState, dispatch, ref objects) are not marked reactive
+- May also involve `propagate_dependencies.rs` -- some dependencies may be added during propagation that upstream excludes
+**Fixture gain estimate:** ~100-200 (reducing false reactive deps fixes slot counts)
+**Depends on:** None
 
 ## Measurement Strategy
 
@@ -103,15 +121,16 @@ After each gap, run conformance and measure:
 cargo test conformance -- --nocapture 2>&1 | tail -5
 ```
 
-Expected progression (approximate, overlapping categories):
-- After Gap 1 (temp inlining): ~150-200 new passes (many structural mismatches due to temps)
-- After Gap 2 (JSX preservation): ~100-150 additional passes
-- After Gap 3+4 (cache slots + scopes): ~50-100 additional passes
-- Total from this category: ~400-500 new passes (some fixtures have multiple issues)
+Expected progression (gaps are interdependent, so gains compound):
+- After Gap 1 (temp inlining) + Gap 2 (JSX): ~200-300 new passes
+- After Gap 4 (scope heuristics) + Gap 6 (over-scoped deps): ~100-200 additional
+- After Gap 5 (sentinel scopes): ~100-200 additional
+- After Gap 3 (slot count alignment): remaining residual
+- Total potential from this category: ~400-600 new passes
 
 ## Risks and Notes
 
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. The temp inlining + JSX preservation combo should be done first as they are the most impactful pair.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.
 - **JSX edge cases**: Self-closing elements, boolean attributes (`<div disabled />`), computed property names in JSX, namespace attributes (`xml:lang`).
-- **Overlap with Category 1**: Some of the 605 fixtures in this category may also be over-memoized (Category 1). Fixing structure alone won't make them pass -- they need bail-out heuristics too. The actual net gain from this category may be ~300-400 fixtures.
 - **Scope merging audit scope**: The merge/prune passes are among the most complex in the compiler. A full audit requires careful line-by-line comparison with upstream TypeScript.

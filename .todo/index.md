@@ -8,9 +8,16 @@ Current conformance: 304/1717 pass (17.7%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
-Only 2 fixtures match with actual compiled `_c()` output. The remaining
-divergences are structural — wrong cache slot counts, missing sentinel scopes,
-and temp variable patterns.
+Only 2 fixtures match with actual compiled `_c()` output. The remaining 1413
+divergences break down as follows:
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Compiled with memo | 904 | Both compile, structure/deps/slots differ |
+| No expected file | 261 | Can't compare (no upstream output) |
+| Compiled no memo | 152 | Needs DCE/const-prop/outlining |
+| Upstream errors | 96 | We compile but upstream bails |
+| @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
 
@@ -20,38 +27,69 @@ _(Nothing active)_
 
 ---
 
-## Priority 2 -- Conformance: Memoization Structure (~1119 compiled fixtures)
+## Priority 1 -- Memoization Structure (904 fixtures)
 
-Deep compiler work needed — all diverging fixtures where both compilers produce
-`_c()` output diverge at the slot count. Divergence breakdown:
-- 722 dep-check only (reactive memoization with `$[N] !== dep`)
-- 267 sentinel only (allocating expressions with `Symbol.for("react.memo_cache_sentinel")`)
-- 130 mixed (both sentinel + dep-check patterns)
+The largest divergence category. Both compilers produce `_c()` output but our
+structure differs. Sub-breakdown:
 
-Status: Allocating scope creation attempted but gains 0 fixtures because
-our structural output (scope boundaries, temp variables, dep tracking) doesn't
-match Babel even when scopes are correctly identified. All P2 items are
-interdependent — they must be fixed together for any fixture to pass.
+- ~400 over-scoped (too many cache slots; globals/stable values as deps)
+- ~280 sentinel pattern never emitted (non-reactive allocations need sentinel check scopes)
+- ~90 under-scoped (too few cache slots; missing scopes for some expressions)
+- ~40 same slots, wrong deps (dependency tracking diverges)
+- ~94 other structural (temp variable naming, code ordering)
+
+All items are interdependent -- they must be fixed together for fixtures to pass.
 
 - [ ] Temp variable inlining pass (collapse SSA chains in codegen) — [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
 - [ ] JSX syntax preservation in codegen (emit `<div>` not `_jsx()`) — [memoization-structure.md](memoization-structure.md)#gap-2-jsx-syntax-preservation-in-codegen
 - [ ] Scope merging/splitting heuristic audit vs upstream — [memoization-structure.md](memoization-structure.md)#gap-4-scope-mergingsplitting-heuristic-review
-- [ ] Scope creation for non-reactive allocating expressions (JSX, objects, arrays) — blocked on structural output matching
+- [ ] Sentinel scope emission for non-reactive allocating expressions — [memoization-structure.md](memoization-structure.md)#gap-5-sentinel-scope-emission
+- [ ] Over-scoped deps: stop treating globals/stable values as reactive deps — [memoization-structure.md](memoization-structure.md)#gap-6-over-scoped-dependencies
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 
-## Priority 3 -- Conformance: Bail-Out + Non-Compiled (~429 fixtures)
+## Priority 2 -- Upstream Errors (96 fixtures)
 
-Missing validation/bail-out logic and non-compiled transforms:
-- 215 upstream-error (Babel rejects with validation errors)
-- 204 compiled-no-memo (Babel transforms but no `_c()` — DCE, const prop, etc.)
-- 10 passthrough (source === expected, true no-ops)
+We compile functions that upstream rejects with validation errors. These are
+"free" fixture gains -- emit the right error and bail, source matches.
 
-- [x] Upstream error matching: count non-transformed output as match when Babel errors (+120 fixtures, 123→243)
+- [ ] Frozen mutation detection ("This value cannot be modified", 26 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
+- [ ] ValidatePreserveExistingMemoization ("Compilation Skipped", 13 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-2-validate-preserve-existing-memoization
+- [ ] Missing/extra deps in exhaustive-deps (8 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
+- [ ] Cannot reassign variables outside component (6 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
+- [ ] Cannot access refs during render (6 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-5-ref-access-during-render
+- [ ] Hooks must be same function (4 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
+- [ ] Cannot call setState during render (2 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
+- [ ] Cannot access variable before declared (2 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
+- [ ] Other upstream errors (8 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-9-other
+
+Note: 21 "Invariant/Todo" upstream errors are internal compiler failures in
+Babel -- these should be skipped, not matched.
+
+## Priority 3 -- Compiled No Memo (152 fixtures)
+
+Babel transforms but emits no `_c()`. Our compiler either adds memoization
+or fails to apply the same non-memo transforms.
+
+- [ ] DCE / constant propagation (remove dead branches, fold constants) — [compiled-no-memo.md](compiled-no-memo.md)#gap-1-dce-and-constant-propagation
+- [ ] Arrow function extraction / outlining — [compiled-no-memo.md](compiled-no-memo.md)#gap-2-arrow-extraction
 - [ ] Audit validation passes for error accuracy vs upstream — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-3-ensure-validation-passes-emit-correct-errors
 - [ ] Mutation aliasing bail-out (escaped values analysis) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
-- [ ] "Too simple" function detection (functions without hooks/JSX in All mode) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-6-too-simple-function-detection
-- [x] Implement `@outputMode:"lint"`, `@gating`, `@dynamicGating` directives (+37 fixtures, 86→123)
-- [ ] Compiled-no-memo transforms (DCE, constant propagation, arrow extraction)
+- [ ] "Too simple" function detection (zero reactive scopes) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-6-too-simple-function-detection
+
+## Priority 4 -- No Expected File (261 fixtures)
+
+These fixtures have no Babel expected output to compare against. Low priority
+since we cannot measure conformance without a reference.
+
+- [ ] Generate expected outputs for missing fixtures (run upstream compiler) — [no-expected-file.md](no-expected-file.md)#gap-1-generate-expected-outputs
+
+## Priority 5 -- Flow Fixtures (38 fixtures)
+
+OXC parser cannot handle Flow type annotations. These require either:
+- Flow-to-TS preprocessing, or
+- Skipping entirely (Flow is being deprecated in React ecosystem)
+
+- [ ] Decide strategy for @flow fixtures — [flow-fixtures.md](flow-fixtures.md)#gap-1-strategy
 
 ---
 
@@ -67,90 +105,56 @@ All P0-P5 items have been implemented. Detail files have been removed.
 
 ### Conformance Quick Wins (2026-03-12)
 
-- [x] TS type stripping via OXC parse→transform→print roundtrip (+30 fixtures)
-- [x] JSX normalization via OXC transformer (normalize JSX representation)
-- [x] Bail on all validation errors (AllErrors threshold, +24 fixtures)
-- [x] Skip functions with zero cache slots (+90 fixtures)
-- Total: 230/1717 → 374/1717 (+144 fixtures, 13.4% → 21.8%)
+- TS type stripping via OXC parse/transform/print roundtrip (+30 fixtures)
+- JSX normalization via OXC transformer
+- Bail on all validation errors (AllErrors threshold, +24 fixtures)
+- Skip functions with zero cache slots (+90 fixtures)
+- Upstream error matching (+120 fixtures)
+- OutputMode::Lint and gating directives (+37 fixtures)
+
+### Validation SSA Improvements (2026-03-13)
+
+- SSA name resolution in validate_use_memo (+3 fixtures)
+- PropertyStore/PropertyLoad ref tracking in ref-access-in-render (+6 fixtures)
+- setState detection in useMemo callbacks (+2 fixtures)
+- SSA resolution in impure function detection + performance.now() (+2 fixtures)
+- SSA resolution in derived-computation-in-effects (+1 fixture)
+- SSA resolution in exhaustive-dependency validation (correctness)
+- SSA resolution in set-state-in-render (+9 fixtures)
+- SSA resolution in ref-access-in-render (+15 fixtures)
+- SSA resolution in set-state-in-effects (correctness)
+- SSA resolution in capitalized call validation (+3 fixtures)
+- Conditional hook method calls (+3 fixtures)
+- Global hook names in SSA for conditional hook detection (+8 fixtures)
+- Hooks-as-values validation (+9 fixtures)
+- validate_no_global_reassignment pass (new)
 
 ### Render Equivalence (formerly render-equivalence.md)
 
-- Availability-schedule truncated output (zero memoization) fixed
-- Phi-node / temporary variable resolution in ternary/logical branches fixed
-- JSX hyphenated attribute name quoting (aria-label, data-*) fixed
-- Multi-step-form timeout/segfault investigated and resolved
-- Conservative memoization misses addressed (JSX codegen format, param destructuring, bail-out heuristics, scope analysis; conformance ratchet 163/1717)
+- Availability-schedule truncated output fixed
+- Phi-node / temporary variable resolution fixed
+- JSX hyphenated attribute name quoting fixed
+- Multi-step-form timeout/segfault resolved
+- Conservative memoization misses addressed
 - Render equivalence tracking added to CI
 
 ### Upstream Conformance (formerly upstream-conformance.md)
 
 - Upstream fixtures downloaded with expected outputs generated
-- Baseline conformance run and triaged (158/1717 pass, 0 panics)
-- known-failures.txt populated; conformance added to CI as non-blocking check
-- Panics fixed; high-priority divergences resolved (JSX parsing for .js files, conformance normalization)
+- Baseline conformance run and triaged
+- known-failures.txt populated; conformance added to CI
+- Panics fixed; high-priority divergences resolved
 
 ### Vite Caching (formerly vite-caching.md)
 
 - In-memory content-hash cache added to Vite plugin
 - Config change invalidation implemented
 - Optional disk cache for large projects added
-- Performance measured via vite-cache-bench.mjs script
 
-### P0: Critical Bugs
+### P0-P5 Implementation
 
-- [x] Destructured params not emitted in codegen (build.rs + codegen destructure pattern)
-- [x] Dependency filter drops all scope dependencies (propagate_dependencies.rs + prune_scopes.rs)
-- [x] canvas-sidebar 16ms outlier (O(N^2) fixed-point loop replaced with O(N) forward pass in infer_reactive_scope_variables; mimalloc, Cow codegen, double-alloc fix)
-
-### P1: Correctness
-
-- [x] ComputeUnconditionalBlocks (post-dominator analysis with RPO)
-- [x] CollectHoistablePropertyLoads
-- [x] CollectOptionalChainDependencies
-- [x] DeriveMinimalDependenciesHIR
-- [x] ScopeDependencyUtils
-- [x] Type-based ref/setState detection in validation passes
-
-### P2: Upstream Parity
-
-- [x] ExhaustiveDepsMode enum, ExternalFunctionConfig, OutputMode::ClientNoMemo
-- [x] Config gates: assertValidMutableRanges, enableNameAnonymousFunctions, enableTreatSetIdentifiersAsStateSetters, enableAllowSetStateFromRefsInEffects, enableVerboseNoSetStateInEffect
-- [x] Validation passes: validateNoImpureFunctionsInRender, validateBlocklistedImports, validateNoVoidUseMemo, assertWellFormedBreakTargets
-- [x] Enhanced passes: optimize_for_ssr, validate_static_components, outline_functions, outline_jsx (verified no-op)
-- [x] PruneTemporaryLValues optimization
-
-### P3: Code Quality
-
-- [x] DisjointSet Option API, expect/unwrap message improvements, ordered_map audit
-- [x] React.forwardRef/memo wrapper handling in program.rs
-- [x] DIVERGENCE comments across 7 files
-- [x] #![allow(dead_code)] reduced from ~40 to 5 files
-- [x] Cow-based identifier display in codegen (place_name, identifier_display_name)
-- [x] infer_reactive_scope_variables double allocation fix
-- [x] place.clone() investigated (no hotspot found)
-
-### P4: Testing and CI
-
-- [x] Upstream conformance fixture suite (conformance_tests.rs with auto-download)
-- [x] Per-pass insta snapshot tests (6 fixtures)
-- [x] Babel output differential testing (bench.mjs --diff)
-- [x] CI pipeline (ci.yml: clippy -D warnings, fmt check, release build)
-- [x] Proptest fuzz testing (4 strategies in fuzz_hir.rs)
-- [x] Vite plugin HMR support (handleHotUpdate in vite-plugin/index.ts)
-
-### P5: Polish
-
-- [x] Aggressive clippy lints (pedantic, nursery, cargo)
-- [x] Release profile (LTO fat, codegen-units 1, strip symbols, panic abort)
-- [x] NAPI never-throw (catch_unwind with safe fallbacks)
-- [x] Enum size control (const assert! for InstructionValue, Terminal, Place, Instruction)
-- [x] mimalloc global allocator in NAPI crate
-- [x] codegen.rs Cow optimization for place_name/identifier_display_name
-
-### Earlier Completed Work
-
-- Scope boundary alignment, codegen correctness, memoization pipeline
-- Tier 2 lint rules (Rules of Hooks, immutability, manual memoization, exhaustive deps)
-- Source maps, upstream conformance infra, documentation
-- Clippy cleanup (258 fixes, zero warnings), benchmark suite (16 real-world fixtures)
-- Test coverage: 156 tests across config, diagnostics, codegen, E2E, snapshots, fuzz
+- Critical bugs: destructured params, dependency filter, O(N^2) perf fix
+- Correctness: ComputeUnconditionalBlocks, CollectHoistablePropertyLoads, CollectOptionalChainDependencies, DeriveMinimalDependenciesHIR, ScopeDependencyUtils
+- Type-based ref/setState detection in validation passes
+- Config gates, validation passes, optimization passes
+- Code quality, testing/CI, polish (see git history for details)

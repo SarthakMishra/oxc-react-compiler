@@ -212,39 +212,29 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 | Metric | Value |
 |---|---|
 | Total upstream fixtures | 1717 |
-| Passing | 163 (9.5%) |
-| Failing (output divergence) | 1554 |
+| Passing | 304 (17.7%) |
+| Failing (output divergence) | 1413 |
 | Panics / crashes | 0 |
 
-#### Conformance by Category
+#### Divergence Breakdown
 
-Upstream fixtures are organized into subdirectories by feature area. The table below shows pass rates per category, sorted by total fixture count:
-
-| Category | Total | Passing | Pass Rate | Notes |
-|---|---|---|---|---|
-| Core compiler (top-level) | 1244 | 129 | 10.4% | General memoization, scope analysis, codegen |
-| rules-of-hooks | 95 | 30 | 31.6% | Hook call validation with CFG analysis |
-| preserve-memo-validation | 62 | 0 | 0% | Manual `useMemo`/`useCallback` preservation |
-| propagate-scope-deps-hir-fork | 60 | 0 | 0% | Dependency propagation edge cases |
-| new-mutability | 57 | 2 | 3.5% | Mutation tracking and aliasing |
-| reduce-reactive-deps | 48 | 0 | 0% | Dependency minimization |
-| fbt | 36 | 0 | 0% | Facebook translation framework support |
-| gating | 29 | 2 | 6.9% | Feature flag wrapping |
-| effect-derived-computations | 21 | 0 | 0% | Derived state in effects detection |
-| exhaustive-deps | 16 | 0 | 0% | Exhaustive dependency validation |
-| inner-function | 16 | 0 | 0% | Nested/inner function handling |
-| global-types | 12 | 0 | 0% | Global type inference |
-| Other (ssr, static-components, ...) | 21 | 0 | 0% | SSR, fault tolerance, meta-specific |
+| Category | Count | Description |
+|---|---|---|
+| Compiled with memo | 904 | We produce memoized output but structure/deps/slots differ |
+| No expected file | 261 | Upstream fixture has no `.expected` — can't compare |
+| Compiled no memo | 152 | Upstream applies DCE/const-prop/outlining; we pass through unchanged |
+| Upstream errors | 96 | Upstream bails with error; we compile successfully |
+| @flow fixtures | 38 | Use Flow type syntax; OXC parser can't handle them |
 
 #### Key Divergence Patterns
 
-Most of the 1554 failures fall into a few root causes:
+Most of the 1413 failures fall into a few root causes:
 
-- **Under-memoization** — OXC's reactive scope analysis merges fewer scopes and produces fewer cache slots than Babel. The output is functionally correct but less optimized. This accounts for the majority of core compiler divergences.
-- **Dependency propagation** — The `propagate-scope-deps-hir-fork` and `reduce-reactive-deps` fixtures test advanced dependency tree minimization that OXC does not yet fully replicate.
-- **Manual memoization preservation** — All 62 `preserve-memo-validation` fixtures fail, indicating the compiler does not yet reliably preserve user-written `useMemo`/`useCallback` in all edge cases.
-- **FBT/meta-specific** — 36 fbt (Facebook translation) fixtures require framework-specific handling not yet implemented.
-- **Hooks CFG analysis** — 30/95 rules-of-hooks fixtures pass (31.6%), the highest pass rate of any category, showing solid basic hook validation with remaining gaps in complex control flow.
+- **Over-scoped memoization (~400)** — Reactive scope computation is over-conservative; includes globals/stable values as deps, producing too many cache slots.
+- **Sentinel pattern (~280)** — Non-reactive allocations (JSX, objects) need scopes with `Symbol.for("react.memo_cache_sentinel")` check instead of `!==` comparison.
+- **Under-scoped (~90)** — Missing scopes for some expressions, producing too few cache slots.
+- **Upstream errors we miss (96)** — Frozen value mutation (26), preserve-memo validation (13), exhaustive deps (8), scope reassignment (6), ref aliasing (6), and other validation gaps.
+- **Compiled-no-memo transforms (152)** — Upstream applies DCE, constant propagation, and arrow extraction even when no memoization is needed; we return the source unchanged.
 
 Conformance runs as a non-blocking CI check — failures are tracked in `tests/conformance/known-failures.txt` and ratcheted as improvements land.
 
@@ -309,23 +299,21 @@ node benchmarks/scripts/render-compare.mjs
 
 ### General
 
-- **Proof of concept** — This is an AI-generated port and has not been validated against production workloads. Upstream conformance is at 9.5% (163/1717 fixtures). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation.
+- **Proof of concept** — This is an AI-generated port and has not been validated against production workloads. Upstream conformance is at 17.7% (304/1717 fixtures). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation.
 - **No oxlint integration** — Lint rules exist in `crates/oxc_react_compiler_lint` and are callable via the NAPI binding, but they are not integrated into the oxlint binary. This would require upstream work in the [oxc repo](https://github.com/oxc-project/oxc) to support external plugin crates — it is not achievable in this standalone POC repo.
 - **Source maps** — Source map generation covers compiled function regions with per-line identity mappings for unmodified code. Complex source map chaining with other Vite plugins has not been verified.
 
 ### Memoization & Scope Analysis
 
-- **Under-memoization** — OXC consistently produces fewer cache slots than Babel (e.g., 9 vs 89 on `multi-step-form`, 11 vs 56 on `data-table`). The output is functionally correct but misses optimization opportunities. This is the dominant divergence pattern across 14/16 benchmark fixtures.
-- **Dependency propagation** — Advanced dependency tree minimization (`propagate-scope-deps-hir-fork`, `reduce-reactive-deps`) is not fully replicated. All 108 fixtures in these categories fail (0% pass rate).
-- **Manual memoization preservation** — The compiler does not reliably preserve user-written `useMemo`/`useCallback` in all edge cases. All 62 `preserve-memo-validation` fixtures fail.
+- **Over-scoped memoization** — OXC's reactive scope analysis is over-conservative, including globals and stable values as dependencies, producing more cache slots than needed in some cases and fewer in others. This is the dominant divergence pattern (904 fixtures).
+- **Sentinel pattern** — Non-reactive allocations (JSX, objects, arrays) need scopes using the `Symbol.for("react.memo_cache_sentinel")` check pattern. This accounts for ~280 divergences.
+- **Manual memoization preservation** — The compiler does not reliably preserve user-written `useMemo`/`useCallback` in all edge cases (13 upstream error fixtures + 62 preserve-memo-validation fixtures).
 
 ### Feature Gaps
 
-- **FBT (Facebook Translation)** — The `fbt` macro/translation framework requires special handling that is not implemented. All 36 fbt fixtures fail.
-- **Exhaustive dependency validation** — All 16 `exhaustive-deps` fixtures and all 21 `effect-derived-computations` fixtures fail, indicating gaps in dependency completeness checking.
-- **Global type inference** — All 12 `global-types` fixtures fail. The compiler does not yet infer types from global declarations at the same fidelity as the upstream compiler.
-- **Inner function handling** — All 16 `inner-function` fixtures fail, covering nested function closures and nullable object access patterns.
-- **Gating** — Only 2/29 gating fixtures pass (6.9%). Feature flag wrapping works for basic cases but fails on more complex patterns.
+- **Upstream error detection** — 96 fixtures where the upstream compiler correctly bails with an error but OXC compiles successfully. Key gaps: frozen value mutation (26), preserve-memo validation (13), exhaustive deps (8), scope reassignment (6), ref aliasing (6).
+- **Compiled-no-memo transforms** — 152 fixtures where upstream applies DCE, constant propagation, or arrow extraction even without memoization. OXC returns the source unchanged.
+- **@flow fixtures** — 38 fixtures use Flow type syntax which the OXC parser cannot handle. These are expected to remain unsupported as Flow is deprecated.
 
 ## License
 
