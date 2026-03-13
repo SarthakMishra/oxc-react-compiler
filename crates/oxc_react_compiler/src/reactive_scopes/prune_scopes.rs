@@ -264,16 +264,28 @@ fn prune_scopes_in_block(block: &mut ReactiveBlock, used_outside: &FxHashSet<Ide
         match instr {
             ReactiveInstruction::Scope(mut scope_block) => {
                 // Check if any declaration of this scope is used outside
-                let any_used =
+                let any_decl_used =
                     scope_block.scope.declarations.iter().any(|(id, _)| used_outside.contains(id));
+                // Also check if any reassignment target is used outside
+                // (upstream checks both declarations and reassignments)
+                let any_reassign_used = scope_block
+                    .scope
+                    .reassignments
+                    .iter()
+                    .any(|ident| used_outside.contains(&ident.id));
 
                 prune_scopes_in_block(&mut scope_block.instructions, used_outside);
 
-                if any_used
-                    || scope_block.scope.declarations.is_empty()
+                // Keep if: any declaration or reassignment escapes, OR empty declarations
+                // (handled by PropagateEarlyReturns later), OR is allocating/sentinel scope,
+                // OR has an early return value.
+                if any_decl_used
+                    || any_reassign_used
+                    || (scope_block.scope.declarations.is_empty()
+                        && scope_block.scope.reassignments.is_empty())
                     || scope_block.scope.is_allocating
+                    || scope_block.scope.early_return_value.is_some()
                 {
-                    // Keep the scope (also keep allocating/sentinel scopes)
                     new_instructions.push(ReactiveInstruction::Scope(scope_block));
                 } else {
                     // Unwrap the scope: emit its instructions directly
@@ -434,31 +446,123 @@ fn prune_unused_scopes_in_block(block: &mut ReactiveBlock, referenced: &FxHashSe
 }
 
 /// Prune scopes that always invalidate (deps change every render).
+///
+/// Upstream: PruneAlwaysInvalidatingScopes.ts
+///
+/// Tracks values that are freshly allocated each render (arrays, objects, JSX,
+/// functions, new-expressions). If such a value is NOT inside a reactive scope,
+/// it is "unmemoized" — any scope depending on it will invalidate every render
+/// and should be pruned. Propagates through LoadLocal/StoreLocal aliases.
 pub fn prune_always_invalidating_scopes(rf: &mut ReactiveFunction) {
-    prune_always_invalidating_in_block(&mut rf.body);
+    let mut always_invalidating = FxHashSet::default();
+    let mut unmemoized = FxHashSet::default();
+    prune_always_invalidating_in_block(
+        &mut rf.body,
+        false,
+        &mut always_invalidating,
+        &mut unmemoized,
+    );
 }
 
-fn prune_always_invalidating_in_block(block: &mut ReactiveBlock) {
+fn is_always_invalidating_instruction(value: &InstructionValue) -> bool {
+    matches!(
+        value,
+        InstructionValue::ArrayExpression { .. }
+            | InstructionValue::ObjectExpression { .. }
+            | InstructionValue::JsxExpression { .. }
+            | InstructionValue::JsxFragment { .. }
+            | InstructionValue::NewExpression { .. }
+            | InstructionValue::FunctionExpression { .. }
+            | InstructionValue::ObjectMethod { .. }
+    )
+}
+
+fn prune_always_invalidating_in_block(
+    block: &mut ReactiveBlock,
+    within_scope: bool,
+    always_invalidating: &mut FxHashSet<IdentifierId>,
+    unmemoized: &mut FxHashSet<IdentifierId>,
+) {
     let mut new_instructions = Vec::new();
 
     for instr in std::mem::take(&mut block.instructions) {
         match instr {
-            ReactiveInstruction::Scope(mut scope_block) => {
-                prune_always_invalidating_in_block(&mut scope_block.instructions);
+            ReactiveInstruction::Instruction(instruction) => {
+                // Track always-invalidating values
+                if is_always_invalidating_instruction(&instruction.value) {
+                    always_invalidating.insert(instruction.lvalue.identifier.id);
+                    if !within_scope {
+                        unmemoized.insert(instruction.lvalue.identifier.id);
+                    }
+                }
 
-                // A scope always invalidates if it has a dependency on a value
-                // that is freshly created each render (e.g., an object literal
-                // or function expression outside any scope).
-                // For now, we keep all scopes — a full implementation would
-                // track value provenance.
-                new_instructions.push(ReactiveInstruction::Scope(scope_block));
+                // Propagate through LoadLocal/StoreLocal
+                match &instruction.value {
+                    InstructionValue::StoreLocal { value, .. }
+                    | InstructionValue::StoreContext { value, .. } => {
+                        if always_invalidating.contains(&value.identifier.id) {
+                            always_invalidating.insert(instruction.lvalue.identifier.id);
+                        }
+                        if unmemoized.contains(&value.identifier.id) {
+                            unmemoized.insert(instruction.lvalue.identifier.id);
+                        }
+                    }
+                    InstructionValue::LoadLocal { place }
+                    | InstructionValue::LoadContext { place } => {
+                        if always_invalidating.contains(&place.identifier.id) {
+                            always_invalidating.insert(instruction.lvalue.identifier.id);
+                        }
+                        if unmemoized.contains(&place.identifier.id) {
+                            unmemoized.insert(instruction.lvalue.identifier.id);
+                        }
+                    }
+                    _ => {}
+                }
+
+                new_instructions.push(ReactiveInstruction::Instruction(instruction));
+            }
+            ReactiveInstruction::Scope(mut scope_block) => {
+                // Recurse into scope body (within_scope = true)
+                prune_always_invalidating_in_block(
+                    &mut scope_block.instructions,
+                    true,
+                    always_invalidating,
+                    unmemoized,
+                );
+
+                // Check if any dependency is an unmemoized always-invalidating value
+                let always_invalidates = scope_block
+                    .scope
+                    .dependencies
+                    .iter()
+                    .any(|dep| unmemoized.contains(&dep.identifier.id));
+
+                if always_invalidates {
+                    // Prune: promote declarations that are always-invalidating
+                    // to unmemoized (they're now outside any scope)
+                    for (decl_id, _) in &scope_block.scope.declarations {
+                        if always_invalidating.contains(decl_id) {
+                            unmemoized.insert(*decl_id);
+                        }
+                    }
+                    // Emit inner instructions inline
+                    for inner in scope_block.instructions.instructions {
+                        new_instructions.push(inner);
+                    }
+                } else {
+                    new_instructions.push(ReactiveInstruction::Scope(scope_block));
+                }
             }
             ReactiveInstruction::Terminal(mut terminal) => {
-                for_each_block_in_terminal_mut(&mut terminal, prune_always_invalidating_in_block);
+                for_each_block_in_terminal_mut(&mut terminal, |block| {
+                    prune_always_invalidating_in_block(
+                        block,
+                        within_scope,
+                        always_invalidating,
+                        unmemoized,
+                    );
+                });
                 new_instructions.push(ReactiveInstruction::Terminal(terminal));
-            }
-            other => {
-                new_instructions.push(other);
             }
         }
     }
