@@ -76,7 +76,12 @@ pub fn run_pipeline(
         );
     }
 
-    // Bail early if hooks validation found critical errors
+    // Pass 14.5: validate_no_global_reassignment
+    crate::validation::validate_no_global_reassignment::validate_no_global_reassignment(
+        hir, errors,
+    );
+
+    // Bail early if hooks/capitalized/global validation found critical errors
     if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
         return Err(());
     }
