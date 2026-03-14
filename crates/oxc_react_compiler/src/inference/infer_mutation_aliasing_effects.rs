@@ -41,6 +41,30 @@ impl AbstractValue {
     }
 }
 
+/// Lattice join for value kinds. Returns the more pessimistic (less constrained) kind.
+/// Used during fixpoint iteration when the same identifier is created with different kinds.
+///
+/// Lattice order (bottom to top): Primitive < Global < Frozen < MaybeFrozen < Mutable
+///
+/// DIVERGENCE: `ValueKind::Context` is treated as equivalent to `Mutable` in the lattice.
+/// Upstream tracks context variables separately, but in our model Context values flow
+/// through the same lattice and merge to Mutable when joined with any non-Context kind.
+fn merge_value_kinds(a: ValueKind, b: ValueKind) -> ValueKind {
+    if a == b {
+        return a;
+    }
+    use ValueKind::{Frozen, Global, MaybeFrozen, Mutable, Primitive};
+    match (a, b) {
+        (Primitive, Global) | (Global, Primitive) => Global,
+        (Primitive | Global, Frozen) | (Frozen, Primitive | Global) => Frozen,
+        (Primitive | Global | Frozen, MaybeFrozen) | (MaybeFrozen, Primitive | Global | Frozen) => {
+            MaybeFrozen
+        }
+        // Mutable and Context are at the top of the lattice
+        _ => Mutable,
+    }
+}
+
 /// The abstract heap: maps each identifier to its abstract value.
 struct AbstractHeap {
     /// Maps IdentifierId -> index into `values`.
@@ -55,63 +79,100 @@ impl AbstractHeap {
     }
 
     /// Allocate a new abstract value and associate it with the given identifier.
-    fn create(&mut self, id: IdentifierId, kind: ValueKind) {
+    /// Returns `true` if this is a new allocation (id not previously tracked),
+    /// or if the kind was widened via lattice join on re-creation.
+    fn create(&mut self, id: IdentifierId, kind: ValueKind) -> bool {
+        if let Some(&idx) = self.id_to_value.get(&id) {
+            // Already exists — update kind if it changed (lattice widening).
+            let old_kind = self.values[idx].kind;
+            let new_kind = merge_value_kinds(old_kind, kind);
+            if new_kind != old_kind {
+                self.values[idx].kind = new_kind;
+                return true;
+            }
+            return false;
+        }
         let idx = self.values.len();
         self.values.push(AbstractValue::new(kind));
         self.values[idx].aliases.push(id);
         self.id_to_value.insert(id, idx);
+        true
     }
 
     /// Create a new abstract value derived from an existing one.
-    fn create_from(&mut self, from: IdentifierId, into: IdentifierId) {
+    /// Returns `true` if the heap changed.
+    fn create_from(&mut self, from: IdentifierId, into: IdentifierId) -> bool {
         let kind = self
             .id_to_value
             .get(&from)
             .and_then(|&idx| self.values.get(idx))
             .map_or(ValueKind::Mutable, |v| v.kind);
-        self.create(into, kind);
+        self.create(into, kind)
     }
 
     /// Make `into` an alias of `from` (they share the same abstract value).
-    fn alias(&mut self, from: IdentifierId, into: IdentifierId) {
+    /// Returns `true` if the heap changed.
+    fn alias(&mut self, from: IdentifierId, into: IdentifierId) -> bool {
         if let Some(&from_idx) = self.id_to_value.get(&from) {
+            if let Some(&existing_idx) = self.id_to_value.get(&into)
+                && existing_idx == from_idx
+            {
+                return false; // Already aliased
+            }
             self.id_to_value.insert(into, from_idx);
-            self.values[from_idx].aliases.push(into);
+            if !self.values[from_idx].aliases.contains(&into) {
+                self.values[from_idx].aliases.push(into);
+            }
+            true
         } else {
             // Source not tracked yet; create a fresh value for the target.
-            self.create(into, ValueKind::Mutable);
+            self.create(into, ValueKind::Mutable)
         }
     }
 
     /// Record that `into` captures a reference to `from`.
-    fn capture(&mut self, from: IdentifierId, into: IdentifierId) {
-        // Ensure both exist.
+    /// Returns `true` if the heap changed.
+    fn capture(&mut self, from: IdentifierId, into: IdentifierId) -> bool {
+        let mut changed = false;
         if !self.id_to_value.contains_key(&into) {
             self.create(into, ValueKind::Mutable);
+            changed = true;
         }
-        if let Some(&into_idx) = self.id_to_value.get(&into) {
+        if let Some(&into_idx) = self.id_to_value.get(&into)
+            && !self.values[into_idx].captures.contains(&from)
+        {
             self.values[into_idx].captures.push(from);
+            changed = true;
         }
+        changed
     }
 
-    /// Mark a value as mutated.
-    fn mutate(&mut self, id: IdentifierId) {
-        if let Some(&idx) = self.id_to_value.get(&id) {
+    /// Mark a value as mutated. Returns `true` if this is a new mutation.
+    fn mutate(&mut self, id: IdentifierId) -> bool {
+        if let Some(&idx) = self.id_to_value.get(&id)
+            && !self.values[idx].mutated
+        {
             self.values[idx].mutated = true;
+            return true;
         }
+        false
     }
 
-    /// Mark a value as conditionally mutated.
-    fn mutate_conditionally(&mut self, id: IdentifierId) {
-        if let Some(&idx) = self.id_to_value.get(&id) {
+    /// Mark a value as conditionally mutated. Returns `true` if changed.
+    fn mutate_conditionally(&mut self, id: IdentifierId) -> bool {
+        if let Some(&idx) = self.id_to_value.get(&id)
+            && !self.values[idx].conditionally_mutated
+        {
             self.values[idx].conditionally_mutated = true;
+            return true;
         }
+        false
     }
 
     /// Transitively mutate: mutate the value and everything it captures.
-    fn mutate_transitive(&mut self, id: IdentifierId) {
-        self.mutate(id);
-        // Collect captured IDs first to avoid borrow issues.
+    /// Returns `true` if any mutation was new.
+    fn mutate_transitive(&mut self, id: IdentifierId) -> bool {
+        let mut changed = self.mutate(id);
         let captured: Vec<IdentifierId> = self
             .id_to_value
             .get(&id)
@@ -119,16 +180,21 @@ impl AbstractHeap {
             .map(|v| v.captures.clone())
             .unwrap_or_default();
         for cap_id in captured {
-            self.mutate(cap_id);
+            changed |= self.mutate(cap_id);
         }
+        changed
     }
 
-    /// Freeze a value.
-    fn freeze(&mut self, id: IdentifierId, reason: FreezeReason) {
-        if let Some(&idx) = self.id_to_value.get(&id) {
+    /// Freeze a value. Returns `true` if this is a new freeze.
+    fn freeze(&mut self, id: IdentifierId, reason: FreezeReason) -> bool {
+        if let Some(&idx) = self.id_to_value.get(&id)
+            && !self.values[idx].frozen
+        {
             self.values[idx].frozen = true;
             self.values[idx].freeze_reason = Some(reason);
+            return true;
         }
+        false
     }
 
     /// Check if a value is frozen.
@@ -172,86 +238,95 @@ impl AbstractHeap {
 /// Infer mutation and aliasing effects for all instructions.
 ///
 /// This is the most computationally intensive pass in the compiler.
-/// Algorithm:
-/// 1. For each instruction, compute candidate effects
-/// 2. Build abstract heap model (pointer graph)
-/// 3. Propagate effects through the heap
-/// 4. Write resolved effects back to places
+///
+/// Algorithm (interleaved fixpoint):
+/// 1. Walk all instructions in program order. For each instruction:
+///    a. Compute raw effects from instruction syntax
+///    b. Immediately refine effects using current heap state (value kinds)
+///    c. Apply refined effects to the abstract heap
+///    d. Store refined effects on the instruction
+/// 2. Propagate mutations transitively through capture chains
+/// 3. Repeat steps 1-2 until the heap stabilizes (no new information)
+/// 4. Write final effects back to all places
+///
+/// This interleaved approach mirrors upstream's `applyEffect()` pattern where
+/// effect computation and heap building happen together, allowing later
+/// instructions to see value kinds established by earlier ones.
 #[expect(clippy::implicit_hasher)]
 pub fn infer_mutation_aliasing_effects(
     hir: &mut HIR,
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
 ) {
-    // Phase 1: Compute initial effects for each instruction.
-    for (_, block) in &mut hir.blocks {
-        for instr in &mut block.instructions {
-            let effects = compute_instruction_effects(&instr.value, &instr.lvalue, fn_signatures);
-            instr.effects = Some(effects);
-        }
-    }
-
-    // Phase 2: Build abstract heap from the computed effects.
-    let mut heap = AbstractHeap::new();
-
-    for (_, block) in &hir.blocks {
-        for instr in &block.instructions {
-            if let Some(ref effects) = instr.effects {
-                for effect in effects {
-                    process_effect_for_heap(&mut heap, effect);
-                }
-            }
-        }
-    }
-
-    // Phase 3: Propagate mutations through aliases (fixpoint).
-    // After building the heap, propagate transitive mutations. All captures of a mutated
-    // value should also be marked as mutated. We iterate until no more changes occur.
-    let mut changed = true;
-    let mut iterations = 0;
     const MAX_ITERATIONS: usize = 100;
+    let mut heap = AbstractHeap::new();
+    let mut iteration = 0;
+    let mut global_changed = true;
 
-    while changed && iterations < MAX_ITERATIONS {
-        changed = false;
-        iterations += 1;
+    // Outer fixpoint loop: re-walk all instructions until heap stabilizes.
+    // On each iteration, effects are recomputed using the current heap state,
+    // which may have been enriched by the previous iteration's refinements.
+    while global_changed && iteration < MAX_ITERATIONS {
+        global_changed = false;
+        iteration += 1;
 
-        // Collect propagation work to avoid borrow issues.
-        let mut to_mutate: Vec<usize> = Vec::new();
+        // Phase 1+2+3.5 (interleaved): compute → refine → apply to heap
+        for (_, block) in &mut hir.blocks {
+            for instr in &mut block.instructions {
+                // Compute raw effects from instruction syntax
+                let raw_effects =
+                    compute_instruction_effects(&instr.value, &instr.lvalue, fn_signatures);
 
-        for value_idx in 0..heap.values.len() {
-            if !heap.values[value_idx].mutated && !heap.values[value_idx].conditionally_mutated {
-                continue;
+                // Immediately refine using current heap state
+                let refined = refine_effects(&raw_effects, &heap);
+
+                // Apply refined effects to heap, tracking changes
+                for effect in &refined {
+                    if process_effect_for_heap(&mut heap, effect) {
+                        global_changed = true;
+                    }
+                }
+
+                // Store refined effects on instruction
+                instr.effects = Some(refined);
             }
+        }
 
-            let is_mutated = heap.values[value_idx].mutated;
-            let captured: Vec<IdentifierId> = heap.values[value_idx].captures.clone();
+        // Phase 3: Propagate unconditional mutations through capture chains (fixpoint).
+        // Only unconditional mutations propagate here — conditional mutations are already
+        // propagated inline by MutateTransitiveConditionally in process_effect_for_heap.
+        let mut prop_changed = true;
+        let mut prop_iterations = 0;
+        while prop_changed && prop_iterations < MAX_ITERATIONS {
+            prop_changed = false;
+            prop_iterations += 1;
 
-            for cap_id in captured {
-                if let Some(&cap_idx) = heap.id_to_value.get(&cap_id)
-                    && !heap.values[cap_idx].mutated
-                    && is_mutated
+            let mut to_mutate: Vec<usize> = Vec::new();
+
+            for value_idx in 0..heap.values.len() {
+                if !heap.values[value_idx].mutated && !heap.values[value_idx].conditionally_mutated
                 {
-                    to_mutate.push(cap_idx);
+                    continue;
+                }
+
+                let is_mutated = heap.values[value_idx].mutated;
+                let captured: Vec<IdentifierId> = heap.values[value_idx].captures.clone();
+
+                for cap_id in captured {
+                    if let Some(&cap_idx) = heap.id_to_value.get(&cap_id)
+                        && !heap.values[cap_idx].mutated
+                        && is_mutated
+                    {
+                        to_mutate.push(cap_idx);
+                    }
                 }
             }
-        }
 
-        for idx in to_mutate {
-            if !heap.values[idx].mutated {
-                heap.values[idx].mutated = true;
-                changed = true;
-            }
-        }
-    }
-
-    // Phase 3.5: Refine effects based on value kinds from the heap.
-    // Upstream: applyEffect() in InferMutationAliasingEffects.ts
-    // This resolves Apply effects into concrete effects and refines
-    // CreateFrom/Capture/Assign/Mutate based on source value kinds.
-    for (_, block) in &mut hir.blocks {
-        for instr in &mut block.instructions {
-            if let Some(ref effects) = instr.effects {
-                let refined = refine_effects(effects, &heap);
-                instr.effects = Some(refined);
+            for idx in to_mutate {
+                if !heap.values[idx].mutated {
+                    heap.values[idx].mutated = true;
+                    prop_changed = true;
+                    global_changed = true;
+                }
             }
         }
     }
@@ -272,71 +347,49 @@ pub fn infer_mutation_aliasing_effects(
 }
 
 /// Process a single aliasing effect to build the heap model.
-fn process_effect_for_heap(heap: &mut AbstractHeap, effect: &AliasingEffect) {
+/// Returns `true` if the heap was modified (new information added).
+fn process_effect_for_heap(heap: &mut AbstractHeap, effect: &AliasingEffect) -> bool {
     match effect {
-        AliasingEffect::Create { into, value, .. } => {
-            heap.create(into.identifier.id, *value);
-        }
+        AliasingEffect::Create { into, value, .. } => heap.create(into.identifier.id, *value),
         AliasingEffect::CreateFrom { from, into } => {
-            heap.create_from(from.identifier.id, into.identifier.id);
+            heap.create_from(from.identifier.id, into.identifier.id)
         }
         AliasingEffect::CreateFunction { captures, function: _, into } => {
-            heap.create(into.identifier.id, ValueKind::Mutable);
+            let mut changed = heap.create(into.identifier.id, ValueKind::Mutable);
             for cap in captures {
-                heap.capture(cap.identifier.id, into.identifier.id);
+                changed |= heap.capture(cap.identifier.id, into.identifier.id);
             }
+            changed
         }
-        AliasingEffect::Apply { receiver: _, function: _, args, into, signature } => {
-            // Create a fresh value for the return.
-            heap.create(into.identifier.id, ValueKind::Mutable);
-
-            // If there's a function signature, apply parameter effects.
-            if let Some(sig) = signature {
-                for (arg, param_effect) in args.iter().zip(sig.params.iter()) {
-                    match param_effect.effect {
-                        Effect::Mutate => heap.mutate(arg.identifier.id),
-                        Effect::ConditionallyMutate => heap.mutate_conditionally(arg.identifier.id),
-                        Effect::Capture => {
-                            heap.capture(arg.identifier.id, into.identifier.id);
-                        }
-                        Effect::Freeze => {
-                            heap.freeze(arg.identifier.id, FreezeReason::FrozenByValue);
-                        }
-                        _ => {}
-                    }
-                    if param_effect.alias_to_return {
-                        heap.alias(arg.identifier.id, into.identifier.id);
-                    }
-                }
-            }
+        AliasingEffect::Apply { .. } => {
+            // Apply effects are always resolved by refine_effects() before reaching
+            // process_effect_for_heap() in the interleaved architecture. If we get here,
+            // it means refine_effects() missed an Apply — which shouldn't happen.
+            // Skip gracefully rather than panicking; the Apply was already handled
+            // by refine_effects() producing concrete Create/Mutate/Capture effects.
+            false
         }
         AliasingEffect::Assign { from, into } | AliasingEffect::Alias { from, into } => {
-            heap.alias(from.identifier.id, into.identifier.id);
+            heap.alias(from.identifier.id, into.identifier.id)
         }
         AliasingEffect::MaybeAlias { from, into } => {
-            // Conservative: treat as alias.
-            heap.alias(from.identifier.id, into.identifier.id);
+            heap.alias(from.identifier.id, into.identifier.id)
         }
         AliasingEffect::Capture { from, into } => {
-            heap.capture(from.identifier.id, into.identifier.id);
+            heap.capture(from.identifier.id, into.identifier.id)
         }
         AliasingEffect::ImmutableCapture { from, into } => {
-            // Capture but mark the captured value as frozen.
-            heap.capture(from.identifier.id, into.identifier.id);
-            heap.freeze(from.identifier.id, FreezeReason::FrozenByValue);
+            let mut changed = heap.capture(from.identifier.id, into.identifier.id);
+            changed |= heap.freeze(from.identifier.id, FreezeReason::FrozenByValue);
+            changed
         }
-        AliasingEffect::Mutate { value } => {
-            heap.mutate(value.identifier.id);
-        }
+        AliasingEffect::Mutate { value } => heap.mutate(value.identifier.id),
         AliasingEffect::MutateConditionally { value } => {
-            heap.mutate_conditionally(value.identifier.id);
+            heap.mutate_conditionally(value.identifier.id)
         }
-        AliasingEffect::MutateTransitive { value } => {
-            heap.mutate_transitive(value.identifier.id);
-        }
+        AliasingEffect::MutateTransitive { value } => heap.mutate_transitive(value.identifier.id),
         AliasingEffect::MutateTransitiveConditionally { value } => {
-            heap.mutate_conditionally(value.identifier.id);
-            // Also conditionally mutate captures.
+            let mut changed = heap.mutate_conditionally(value.identifier.id);
             let captured: Vec<IdentifierId> = heap
                 .id_to_value
                 .get(&value.identifier.id)
@@ -344,17 +397,17 @@ fn process_effect_for_heap(heap: &mut AbstractHeap, effect: &AliasingEffect) {
                 .map(|v| v.captures.clone())
                 .unwrap_or_default();
             for cap_id in captured {
-                heap.mutate_conditionally(cap_id);
+                changed |= heap.mutate_conditionally(cap_id);
             }
+            changed
         }
-        AliasingEffect::Freeze { value, reason } => {
-            heap.freeze(value.identifier.id, *reason);
-        }
+        AliasingEffect::Freeze { value, reason } => heap.freeze(value.identifier.id, *reason),
         AliasingEffect::MutateFrozen { .. }
         | AliasingEffect::MutateGlobal { .. }
         | AliasingEffect::Impure { .. }
         | AliasingEffect::Render { .. } => {
             // These are diagnostic effects -- they don't modify the heap model.
+            false
         }
     }
 }
