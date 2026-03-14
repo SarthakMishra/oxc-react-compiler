@@ -2,7 +2,7 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Sub-task 4c completed, 342/1717)
+Last updated: 2026-03-14 (Transitive dep resolution in propagate_dependencies, 342/1717)
 
 Current conformance: 342/1717 pass (19.9%), 0 panics, 0 unexpected divergences.
 
@@ -72,6 +72,7 @@ chaining, nested scope flattening, and safety checks. See memoization-structure.
 - [x] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
 - [x] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
 - [x] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
+- [ ] Derived computation codegen: declarations emitted outside scope guards — [memoization-structure.md](memoization-structure.md)#gap-11-derived-computation-codegen-outside-scope-guards
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 - [ ] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
 - [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation
@@ -130,6 +131,17 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Transitive Dependency Resolution in propagate_dependencies (2026-03-14)
+
+- `propagate_dependencies.rs`: Phase 3 enhanced with StoreLocal/StoreContext target declaration tracking -- named variables written in a scope and used outside are registered as scope declarations via name-based consumer matching (bridges SSA ID mismatches)
+- `propagate_dependencies.rs`: Phase 3.5 added -- fixpoint loop builds `decl_deps_map` (declared_name -> declaring_scope_deps) and substitutes transitive dependencies (e.g., scope B depends on `doubled` which is declared by scope A with dep `[value]` -> scope B's dep becomes `[value]`)
+- Handles arbitrarily deep chains via fixpoint iteration (max 10 passes)
+- Codegen validation: `semantic_derived_values` snapshot reduced from 3 unresolved references to 1 (`hasItems` and `total` now resolved)
+- `component-with-derived` fixture: slot count reduced from 5 to 4, transitive `count` dep replaced with root `items.length`
+- Known limitation: name-based matching can false-positive on shadowed variables (same trade-off as dep_key_set/scope_written_names elsewhere; tracked under Sub-task 4f)
+- New gap discovered: derived computations (`const doubled = value * 2`) emitted outside scope guards -- see Gap 11
+- Conformance: unchanged (342/1717) -- structural prerequisite for compound gains
 
 ### Nested Scope Flattening -- Sub-task 4c (2026-03-14)
 

@@ -374,8 +374,15 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
     }
 
     // Phase 3: Determine declarations (identifiers defined in scope, used outside)
-    // Build a reverse-use map: operand_id -> set of consumer scope IDs (or None if outside scope)
+    // Build reverse-use maps:
+    //   operand_id → consumer scope IDs (or None if outside scope)
+    //   operand_name → consumer scope IDs (for cross-SSA-ID matching)
+    // DIVERGENCE: Upstream uses DeclarationId to match across SSA versions. We use
+    // both IdentifierId and name-based matching because our HIR creates fresh IDs
+    // per Place, so `doubled` in StoreLocal and `doubled` in LoadLocal have
+    // different IDs but the same name.
     let mut operand_consumers: FxHashMap<IdentifierId, Vec<Option<ScopeId>>> = FxHashMap::default();
+    let mut name_consumers: FxHashMap<String, Vec<Option<ScopeId>>> = FxHashMap::default();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -383,6 +390,9 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
             let operands = collect_operand_places(&instr.value);
             for place in operands {
                 operand_consumers.entry(place.identifier.id).or_default().push(consumer_scope);
+                if let Some(name) = &place.identifier.name {
+                    name_consumers.entry(name.clone()).or_default().push(consumer_scope);
+                }
             }
         }
         // Terminal uses are always "outside" any scope (scope = None)
@@ -390,10 +400,16 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
             crate::hir::types::Terminal::Return { value }
             | crate::hir::types::Terminal::Throw { value } => {
                 operand_consumers.entry(value.identifier.id).or_default().push(None);
+                if let Some(name) = &value.identifier.name {
+                    name_consumers.entry(name.clone()).or_default().push(None);
+                }
             }
             crate::hir::types::Terminal::If { test, .. }
             | crate::hir::types::Terminal::Branch { test, .. } => {
                 operand_consumers.entry(test.identifier.id).or_default().push(None);
+                if let Some(name) = &test.identifier.name {
+                    name_consumers.entry(name.clone()).or_default().push(None);
+                }
             }
             _ => {}
         }
@@ -425,6 +441,141 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                         ));
                     }
                 }
+
+                // Also check StoreLocal/StoreContext targets: named variables like
+                // `doubled` are written via `StoreLocal { lvalue: doubled, value: temp }`.
+                // The instruction-level lvalue is an SSA temp, but the actual named
+                // variable (`doubled`) is the store target. If it's used outside this
+                // scope, it should be a declaration.
+                match &instr.value {
+                    InstructionValue::StoreLocal { lvalue, .. }
+                    | InstructionValue::StoreContext { lvalue, .. } => {
+                        let target_id = lvalue.identifier.id;
+                        // Check by ID first, then fall back to name-based matching
+                        // (needed because StoreLocal target and LoadLocal source
+                        // may have different SSA IDs for the same variable).
+                        // TODO(4f): Name-based matching can false-positive on
+                        // shadowed/reused variable names. DeclarationId alignment
+                        // will fix this — same limitation as scope_written_names
+                        // and dep_key_set throughout the codebase.
+                        let target_used_outside =
+                            operand_consumers.get(&target_id).is_some_and(|consumers| {
+                                consumers
+                                    .iter()
+                                    .any(|consumer_scope| *consumer_scope != Some(scope.id))
+                            }) || lvalue.identifier.name.as_ref().is_some_and(|name| {
+                                name_consumers.get(name).is_some_and(|consumers| {
+                                    consumers
+                                        .iter()
+                                        .any(|consumer_scope| *consumer_scope != Some(scope.id))
+                                })
+                            });
+                        if target_used_outside {
+                            let decls = scope_decls.entry(scope.id).or_default();
+                            if !decls.iter().any(|(did, _)| *did == target_id) {
+                                decls.push((
+                                    target_id,
+                                    ReactiveScopeDeclaration {
+                                        identifier: lvalue.identifier.clone(),
+                                        scope: scope.id,
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // Phase 3.5: Resolve transitive dependencies.
+    //
+    // When scope A declares `doubled` (computed from `value`) and scope B depends
+    // on `doubled`, substitute B's dep on `doubled` with scope A's root deps (`value`).
+    // This enables `can_merge_scopes` to detect identical dep sets and merge scopes
+    // that operate on the same reactive inputs.
+    //
+    // DIVERGENCE: Upstream resolves transitive deps during collection via
+    // `collectTemporariesSidemap` + `visitOperand`. We do it as a post-pass because
+    // our temp_map only chains through unnamed SSA temporaries, not through named
+    // scope-declared variables. This achieves the same result.
+    //
+    // Uses a fixpoint loop to handle multi-level transitivity:
+    //   scope A: deps=[value], declares doubled
+    //   scope B: deps=[doubled], declares tripled
+    //   scope C: deps=[tripled]
+    // After pass 1: C's deps become [doubled], after pass 2: C's deps become [value].
+    {
+        // Map: declared_variable_name → (declaring_scope_id, that scope's deps)
+        let mut decl_deps_map: FxHashMap<String, (ScopeId, Vec<ReactiveScopeDependency>)> =
+            FxHashMap::default();
+
+        let max_iterations = 10;
+        for _iter in 0..max_iterations {
+            // Rebuild decl_deps_map from current scope_deps
+            decl_deps_map.clear();
+            for (scope_id, decl_vec) in &scope_decls {
+                if let Some(deps) = scope_deps.get(scope_id)
+                    && !deps.is_empty()
+                {
+                    for (_, decl) in decl_vec {
+                        if let Some(name) = &decl.identifier.name {
+                            decl_deps_map.insert(name.clone(), (*scope_id, deps.clone()));
+                        }
+                    }
+                }
+            }
+
+            // Substitute transitive deps in each scope
+            let mut changed = false;
+            let scope_ids_vec: Vec<ScopeId> = scope_deps.keys().copied().collect();
+            for sid in scope_ids_vec {
+                let deps = match scope_deps.get(&sid) {
+                    Some(d) => d.clone(),
+                    None => continue,
+                };
+                let mut new_deps: Vec<ReactiveScopeDependency> = Vec::with_capacity(deps.len());
+                let mut substituted = false;
+
+                // Helper: check if a dep with the same name+path is already in new_deps
+                let has_dep = |new_deps: &[ReactiveScopeDependency],
+                               dep: &ReactiveScopeDependency| {
+                    new_deps.iter().any(|d| {
+                        d.identifier.name.as_ref() == dep.identifier.name.as_ref()
+                            && d.path == dep.path
+                    })
+                };
+
+                for dep in &deps {
+                    if dep.path.is_empty()
+                        && let Some(name) = &dep.identifier.name
+                        && let Some((declaring_scope, root_deps)) = decl_deps_map.get(name)
+                        && *declaring_scope != sid
+                    {
+                        // Transitive: replace with root deps
+                        for root_dep in root_deps {
+                            if !has_dep(&new_deps, root_dep) {
+                                new_deps.push(root_dep.clone());
+                            }
+                        }
+                        substituted = true;
+                        continue;
+                    }
+                    // Keep as-is (direct dep or has property path)
+                    if !has_dep(&new_deps, dep) {
+                        new_deps.push(dep.clone());
+                    }
+                }
+
+                if substituted {
+                    scope_deps.insert(sid, new_deps);
+                    changed = true;
+                }
+            }
+
+            if !changed {
+                break;
             }
         }
     }

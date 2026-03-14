@@ -5,21 +5,18 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function Counter() {
-  const $ = _c(3);
-  if ($[0] !== count) {
-    const next = count + 1;
-    $[0] = count;
-  }
+  const $ = _c(2);
+  const next = count + 1;
   let t36;
-  if ($[1] !== count) {
+  if ($[0] !== count) {
     const t34 = () => {
       return setCount(next);
     };
     t36 = <button onClick={t34}>{count}</button>;
-    $[1] = count;
-    $[2] = t36;
+    $[0] = count;
+    $[1] = t36;
   } else {
-    t36 = $[2];
+    t36 = $[1];
   }
   return t36;
 }
