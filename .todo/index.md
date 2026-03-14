@@ -2,7 +2,7 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Sub-task 4a completed, 342/1717)
+Last updated: 2026-03-14 (Sub-task 4d completed, 342/1717)
 
 Current conformance: 342/1717 pass (19.9%), 0 panics, 0 unexpected divergences.
 
@@ -68,7 +68,7 @@ chaining, nested scope flattening, and safety checks. See memoization-structure.
 6-sub-task plan (4a through 4f). Gap 10 is superseded by Sub-task 4a.
 
 - [x] **4a** Active-scope-stack overlap detection (rewrite Pass 42 merge algorithm) — [memoization-structure.md](memoization-structure.md)#sub-task-4a-active-scope-stack-overlap-detection-pass-42
-- [ ] **4d** Safety checks for intermediate instructions between scopes — [memoization-structure.md](memoization-structure.md)#sub-task-4d-safety-checks-for-intermediate-instructions
+- [x] **4d** Safety checks for intermediate instructions between scopes — [memoization-structure.md](memoization-structure.md)#sub-task-4d-safety-checks-for-intermediate-instructions
 - [ ] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
 - [ ] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
 - [ ] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
@@ -130,6 +130,17 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Safety Checks for Intermediate Instructions -- Sub-task 4d (2026-03-14)
+
+- `merge_scopes.rs`: Added complete safety-check infrastructure for `MergeReactiveScopesThatInvalidateTogether`
+- `LastUsageMap` pre-pass (`build_last_usage_map` / `collect_last_usage_in_block` / `collect_last_usage_in_terminal`) mirroring upstream's `FindLastUsageVisitor`
+- `visit_instruction_read_places`: exhaustive operand collector over all `InstructionValue` variants
+- `is_simple_instruction` allowlist predicate + `is_const_store_local` special case
+- `IntermediateAccumulator` struct for tracking lvalues/aliases in gaps between scope candidates
+- `are_lvalues_last_used_by_scope` safety invariant check against `LastUsageMap`
+- Purely additive infrastructure (no behavioral changes); merge decision logic wired in Sub-task 4b
+- Conformance: unchanged (342/1717)
 
 ### Active-Scope-Stack Overlap Detection -- Sub-task 4a (2026-03-14)
 

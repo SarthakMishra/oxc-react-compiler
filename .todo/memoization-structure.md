@@ -163,29 +163,23 @@ Use the existing `dep_key_set` comparison to check if inner and outer scopes hav
 **Depends on:** None
 **Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
-#### Sub-task 4d: Safety checks for intermediate instructions
+#### Sub-task 4d: Safety checks for intermediate instructions ✅
 
-**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`
-**Current state:** Not implemented -- the current merge has no safety checks on instructions between scopes
-**What's needed:**
+~~**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`~~
+~~**Current state:** Not implemented -- the current merge has no safety checks on instructions between scopes~~
 
-When merging two non-adjacent scopes, all instructions between them must be "safe to absorb":
-- **Allowed:** `LoadLocal`, `PropertyLoad`, `BinaryExpression`, `UnaryExpression`, `Primitive`,
-  `LoadContext`, `ComputedLoad`, `TypeCastExpression`, `TemplateLiteral` (pure/simple operations)
-- **Forbidden:** `StoreLocal`, `CallExpression`, `MethodCall`, `FunctionExpression`,
-  `JsxExpression`, `ObjectExpression`, `ArrayExpression`, or any instruction with side effects
-
-Additionally, each intermediate instruction's lvalue must be "last-used at-or-before the next
-scope" -- if an intermediate value escapes beyond the merged scope boundary, absorbing it would
-change observable behavior.
-
-**What's needed:**
-- Define an `is_simple_instruction(instr: &ReactiveInstruction) -> bool` predicate
-- Define a `is_last_use_before(lvalue: &Identifier, boundary: usize, block: &ReactiveBlock) -> bool` check
-- Apply both checks when considering merge candidates in Sub-task 4b
-
-**Depends on:** None (but consumed by Sub-task 4b)
-**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
+**Completed**: Full safety-check infrastructure added to `merge_scopes.rs`. Implementation includes:
+- `LastUsageMap` (`FxHashMap<IdentifierId, u32>`) built by `build_last_usage_map` / `collect_last_usage_in_block` / `collect_last_usage_in_terminal` -- a whole-function pre-pass mirroring upstream's `FindLastUsageVisitor` that records the maximum instruction ID at which each identifier is read
+- `visit_instruction_read_places` -- exhaustive match over all `InstructionValue` variants to collect read operands (no catch-all arm, so new variants cause compile-time errors)
+- `is_simple_instruction` predicate -- replicates upstream's allowlist: BinaryExpression, ComputedLoad, JSXText, LoadGlobal, LoadLocal, Primitive, PropertyLoad, TemplateLiteral, UnaryExpression
+- `is_const_store_local` -- handles the StoreLocal(Const) special case allowed by upstream
+- `IntermediateAccumulator` struct -- tracks lvalues written and LoadLocal aliases in the gap between two scope candidates
+- `accumulate_intermediate_instruction` -- absorbs simple instructions into the accumulator
+- `are_lvalues_last_used_by_scope` -- consults the `LastUsageMap` to verify no lvalue written in the gap is read after the merged scope boundary (the key safety invariant)
+- `LastUsageMap` threaded through `merge_scopes_in_block` / `merge_scopes_in_terminal`
+- This is purely additive infrastructure; the merge decision logic that calls these helpers is wired in Sub-task 4b. Conformance unchanged (342/1717).
+- Upstream file: `src/ReactiveScopes/MergeReactiveScopesThatInvalidateTogether.ts`
+- Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
 #### Sub-task 4e: `scopeIsEligibleForMerging` predicate
 

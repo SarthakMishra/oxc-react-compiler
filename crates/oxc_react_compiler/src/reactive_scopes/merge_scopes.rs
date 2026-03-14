@@ -1,10 +1,382 @@
 use crate::hir::types::{
-    AliasingEffect, DependencyPathEntry, HIR, IdentifierId, InstructionId, ReactiveFunction,
-    ScopeId,
+    AliasingEffect, ArrayElement, DependencyPathEntry, DestructurePattern, DestructureTarget, HIR,
+    IdentifierId, Instruction, InstructionId, InstructionKind, InstructionValue, ObjectPropertyKey,
+    Place, ReactiveBlock, ReactiveFunction, ReactiveScope, ReactiveTerminal, ScopeId,
 };
 use crate::utils::disjoint_set::DisjointSet;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeSet;
+
+// ---------------------------------------------------------------------------
+// Sub-task 4d: Safety checks for intermediate instructions between scopes
+// ---------------------------------------------------------------------------
+
+/// Map from IdentifierId to the last instruction ID at which it was read.
+/// Matches upstream `FindLastUsageVisitor` from
+/// `MergeReactiveScopesThatInvalidateTogether.ts`.
+type LastUsageMap = FxHashMap<IdentifierId, u32>;
+
+/// Build a map of last-usage instruction IDs for all identifiers in the
+/// reactive function tree. For each identifier, records the maximum
+/// instruction ID at which it appears as a read operand.
+fn buildlast_usage_map(reactive_fn: &ReactiveFunction) -> LastUsageMap {
+    let mut map: LastUsageMap = FxHashMap::default();
+    collectlast_usage_in_block(&reactive_fn.body, &mut map);
+    map
+}
+
+fn collectlast_usage_in_block(block: &ReactiveBlock, map: &mut LastUsageMap) {
+    for instr in &block.instructions {
+        match instr {
+            crate::hir::types::ReactiveInstruction::Instruction(instr) => {
+                visit_instruction_read_places(&instr.value, instr.id.0, map);
+            }
+            crate::hir::types::ReactiveInstruction::Scope(scope_block) => {
+                collectlast_usage_in_block(&scope_block.instructions, map);
+            }
+            crate::hir::types::ReactiveInstruction::Terminal(terminal) => {
+                collectlast_usage_in_terminal(terminal, map);
+            }
+        }
+    }
+}
+
+fn collectlast_usage_in_terminal(terminal: &ReactiveTerminal, map: &mut LastUsageMap) {
+    match terminal {
+        ReactiveTerminal::If { test, consequent, alternate, .. } => {
+            // test is a read place — use u32::MAX since terminals don't have explicit IDs
+            record_place_usage(test, u32::MAX, map);
+            collectlast_usage_in_block(consequent, map);
+            collectlast_usage_in_block(alternate, map);
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            collectlast_usage_in_block(init, map);
+            collectlast_usage_in_block(test, map);
+            if let Some(upd) = update {
+                collectlast_usage_in_block(upd, map);
+            }
+            collectlast_usage_in_block(body, map);
+        }
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            collectlast_usage_in_block(init, map);
+            collectlast_usage_in_block(test, map);
+            collectlast_usage_in_block(body, map);
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { body, test, .. } => {
+            collectlast_usage_in_block(test, map);
+            collectlast_usage_in_block(body, map);
+        }
+        ReactiveTerminal::Switch { test, cases, .. } => {
+            record_place_usage(test, u32::MAX, map);
+            for (case_test, block) in cases {
+                if let Some(ct) = case_test {
+                    record_place_usage(ct, u32::MAX, map);
+                }
+                collectlast_usage_in_block(block, map);
+            }
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            collectlast_usage_in_block(block, map);
+            collectlast_usage_in_block(handler, map);
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            collectlast_usage_in_block(block, map);
+        }
+        ReactiveTerminal::Return { value, .. } => {
+            record_place_usage(value, u32::MAX, map);
+        }
+        ReactiveTerminal::Throw { value, .. } => {
+            record_place_usage(value, u32::MAX, map);
+        }
+    }
+}
+
+/// Record that `place` is read at `instr_id`, updating the max.
+fn record_place_usage(place: &Place, instr_id: u32, map: &mut LastUsageMap) {
+    map.entry(place.identifier.id).and_modify(|v| *v = (*v).max(instr_id)).or_insert(instr_id);
+}
+
+/// Visit all read-operand Places in an InstructionValue and record their usage.
+fn visit_instruction_read_places(value: &InstructionValue, instr_id: u32, map: &mut LastUsageMap) {
+    match value {
+        InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+            record_place_usage(place, instr_id, map);
+        }
+        InstructionValue::StoreLocal { value, .. }
+        | InstructionValue::StoreContext { value, .. } => {
+            record_place_usage(value, instr_id, map);
+        }
+        InstructionValue::Destructure { value, lvalue_pattern } => {
+            record_place_usage(value, instr_id, map);
+            visit_destructure_pattern_reads(lvalue_pattern, instr_id, map);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            record_place_usage(left, instr_id, map);
+            record_place_usage(right, instr_id, map);
+        }
+        InstructionValue::UnaryExpression { value, .. } => {
+            record_place_usage(value, instr_id, map);
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            record_place_usage(lvalue, instr_id, map);
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                record_place_usage(sub, instr_id, map);
+            }
+        }
+        InstructionValue::CallExpression { callee, args } => {
+            record_place_usage(callee, instr_id, map);
+            for arg in args {
+                record_place_usage(arg, instr_id, map);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            record_place_usage(receiver, instr_id, map);
+            for arg in args {
+                record_place_usage(arg, instr_id, map);
+            }
+        }
+        InstructionValue::NewExpression { callee, args } => {
+            record_place_usage(callee, instr_id, map);
+            for arg in args {
+                record_place_usage(arg, instr_id, map);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. } => {
+            record_place_usage(object, instr_id, map);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            record_place_usage(object, instr_id, map);
+            record_place_usage(value, instr_id, map);
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            record_place_usage(object, instr_id, map);
+            record_place_usage(property, instr_id, map);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            record_place_usage(object, instr_id, map);
+            record_place_usage(property, instr_id, map);
+            record_place_usage(value, instr_id, map);
+        }
+        InstructionValue::PropertyDelete { object, .. } => {
+            record_place_usage(object, instr_id, map);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            record_place_usage(object, instr_id, map);
+            record_place_usage(property, instr_id, map);
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                record_place_usage(&prop.value, instr_id, map);
+                if let ObjectPropertyKey::Computed(key_place) = &prop.key {
+                    record_place_usage(key_place, instr_id, map);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    ArrayElement::Expression(p) | ArrayElement::Spread(p) => {
+                        record_place_usage(p, instr_id, map);
+                    }
+                    ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            record_place_usage(tag, instr_id, map);
+            for attr in props {
+                record_place_usage(&attr.value, instr_id, map);
+            }
+            for child in children {
+                record_place_usage(child, instr_id, map);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                record_place_usage(child, instr_id, map);
+            }
+        }
+        InstructionValue::TypeCastExpression { value, .. }
+        | InstructionValue::Await { value }
+        | InstructionValue::NextPropertyOf { value } => {
+            record_place_usage(value, instr_id, map);
+        }
+        InstructionValue::GetIterator { collection } => {
+            record_place_usage(collection, instr_id, map);
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            record_place_usage(iterator, instr_id, map);
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            record_place_usage(tag, instr_id, map);
+            for sub in &value.subexpressions {
+                record_place_usage(sub, instr_id, map);
+            }
+        }
+        InstructionValue::StoreGlobal { value, .. } => {
+            record_place_usage(value, instr_id, map);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            record_place_usage(decl, instr_id, map);
+            for dep in deps {
+                record_place_usage(dep, instr_id, map);
+            }
+        }
+        // These have no read operands
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::DeclareLocal { .. }
+        | InstructionValue::DeclareContext { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
+    }
+}
+
+/// Visit read Places inside a destructure pattern (for last-usage tracking).
+fn visit_destructure_pattern_reads(
+    pattern: &DestructurePattern,
+    instr_id: u32,
+    map: &mut LastUsageMap,
+) {
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                if let DestructureTarget::Pattern(nested) = &prop.value {
+                    visit_destructure_pattern_reads(nested, instr_id, map);
+                }
+                // Place targets are writes, not reads
+            }
+            // rest is a write target, not recorded as a read
+            let _ = rest;
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    crate::hir::types::DestructureArrayItem::Value(DestructureTarget::Pattern(
+                        nested,
+                    )) => {
+                        visit_destructure_pattern_reads(nested, instr_id, map);
+                    }
+                    _ => {} // write targets or holes
+                }
+            }
+            let _ = rest; // write target, not recorded as a read
+        }
+    }
+}
+
+/// Returns whether an instruction value is "simple" and can be absorbed
+/// into a merged reactive scope without changing observable behavior.
+/// Matches the upstream allowlist in `MergeReactiveScopesThatInvalidateTogether.ts`.
+fn is_simple_instruction(value: &InstructionValue) -> bool {
+    matches!(
+        value,
+        InstructionValue::BinaryExpression { .. }
+            | InstructionValue::ComputedLoad { .. }
+            | InstructionValue::JSXText { .. }
+            | InstructionValue::LoadGlobal { .. }
+            | InstructionValue::LoadLocal { .. }
+            | InstructionValue::Primitive { .. }
+            | InstructionValue::PropertyLoad { .. }
+            | InstructionValue::TemplateLiteral { .. }
+            | InstructionValue::UnaryExpression { .. }
+    )
+}
+
+/// Returns true if this is a `StoreLocal` with `Const` binding kind (safe to absorb).
+/// `Reassign` and other kinds are side-effecting and must reset the merge candidate.
+fn is_const_store_local(value: &InstructionValue) -> bool {
+    matches!(value, InstructionValue::StoreLocal { type_: Some(InstructionKind::Const), .. })
+}
+
+/// Tracks intermediate instructions between two reactive scope candidates.
+/// Accumulates the lvalues produced by those instructions and a map of
+/// LoadLocal aliases (for the output-to-input chain check in Sub-task 4b).
+struct IntermediateAccumulator {
+    /// lvalue IdentifierIds produced by intermediate instructions.
+    /// Used by `are_lvalues_last_used_by_scope` to verify no escape.
+    lvalues: FxHashSet<IdentifierId>,
+    /// Alias map: intermediate LoadLocal lvalue.id -> source place.id.
+    /// Used by `can_merge_scopes` for the output-to-input check (Sub-task 4b).
+    temporaries: FxHashMap<IdentifierId, IdentifierId>,
+}
+
+#[expect(dead_code, reason = "Infrastructure for Sub-task 4b merge loop")]
+impl IntermediateAccumulator {
+    fn new() -> Self {
+        Self { lvalues: FxHashSet::default(), temporaries: FxHashMap::default() }
+    }
+
+    fn clear(&mut self) {
+        self.lvalues.clear();
+        self.temporaries.clear();
+    }
+}
+
+/// Attempts to absorb an intermediate instruction into the accumulator.
+/// Returns `true` if the instruction is safe (accumulator updated),
+/// `false` if it resets the merge candidate (caller must call `clear()`).
+#[expect(dead_code)] // Used by Sub-task 4b
+fn accumulate_intermediate_instruction(
+    instr: &Instruction,
+    acc: &mut IntermediateAccumulator,
+) -> bool {
+    if is_simple_instruction(&instr.value) {
+        acc.lvalues.insert(instr.lvalue.identifier.id);
+        // Track LoadLocal alias for output-to-input chain detection (Sub-task 4b)
+        if let InstructionValue::LoadLocal { place } = &instr.value {
+            acc.temporaries.insert(instr.lvalue.identifier.id, place.identifier.id);
+        }
+        true
+    } else if is_const_store_local(&instr.value) {
+        acc.lvalues.insert(instr.lvalue.identifier.id);
+        if let InstructionValue::StoreLocal { lvalue: store_lvalue, value: store_value, .. } =
+            &instr.value
+        {
+            // Chain alias: StoreLocal(Const) x = y → x aliases whatever y aliases.
+            // If y has no prior alias in temporaries, use y's own id (it's the root).
+            let aliased = acc
+                .temporaries
+                .get(&store_value.identifier.id)
+                .copied()
+                .unwrap_or(store_value.identifier.id);
+            acc.temporaries.insert(store_lvalue.identifier.id, aliased);
+        }
+        true
+    } else {
+        false
+    }
+}
+
+/// Returns true if all intermediate lvalues are last-used strictly before
+/// the end of `scope` (i.e., they do not escape beyond the merged boundary).
+/// Corresponds to `areLValuesLastUsedByScope` in the upstream TypeScript.
+#[expect(dead_code)] // Used by Sub-task 4b
+fn are_lvalues_last_used_by_scope(
+    scope: &ReactiveScope,
+    lvalues: &FxHashSet<IdentifierId>,
+    last_usage: &LastUsageMap,
+) -> bool {
+    let scope_end = scope.range.end.0;
+    for &id in lvalues {
+        if let Some(&last_used_at) = last_usage.get(&id)
+            && last_used_at >= scope_end
+        {
+            return false;
+        }
+        // If the id has no recorded usage, it's safe (never read = not escaped)
+    }
+    true
+}
 
 /// Merge overlapping reactive scopes in the HIR.
 ///
@@ -226,8 +598,8 @@ pub fn merge_overlapping_reactive_scopes_hir(hir: &mut HIR) {
 /// If two scopes have the same set of dependencies, they should be merged
 /// because they'll always recompute at the same time.
 pub fn merge_reactive_scopes_that_invalidate_together(reactive_fn: &mut ReactiveFunction) {
-    // Walk the reactive function tree and find scopes with identical dependency sets
-    merge_scopes_in_block(&mut reactive_fn.body);
+    let last_usage = buildlast_usage_map(reactive_fn);
+    merge_scopes_in_block(&mut reactive_fn.body, &last_usage);
 }
 
 /// Canonical dependency key for comparing scope deps by name + path,
@@ -241,7 +613,7 @@ fn dep_key_set(scope: &crate::hir::types::ReactiveScope) -> BTreeSet<DepKey> {
     scope.dependencies.iter().map(|d| (d.identifier.name.clone(), d.path.clone())).collect()
 }
 
-fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock) {
+fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock, last_usage: &LastUsageMap) {
     // Collect scope indices with their canonical dependency keys
     let mut scope_indices: Vec<(usize, BTreeSet<DepKey>)> = Vec::new();
 
@@ -314,53 +686,56 @@ fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock) {
     for instr in &mut block.instructions {
         match instr {
             crate::hir::types::ReactiveInstruction::Scope(scope_block) => {
-                merge_scopes_in_block(&mut scope_block.instructions);
+                merge_scopes_in_block(&mut scope_block.instructions, last_usage);
             }
             crate::hir::types::ReactiveInstruction::Terminal(terminal) => {
-                merge_scopes_in_terminal(terminal);
+                merge_scopes_in_terminal(terminal, last_usage);
             }
             crate::hir::types::ReactiveInstruction::Instruction(_) => {}
         }
     }
 }
 
-fn merge_scopes_in_terminal(terminal: &mut crate::hir::types::ReactiveTerminal) {
+fn merge_scopes_in_terminal(
+    terminal: &mut crate::hir::types::ReactiveTerminal,
+    last_usage: &LastUsageMap,
+) {
     use crate::hir::types::ReactiveTerminal;
     match terminal {
         ReactiveTerminal::If { consequent, alternate, .. } => {
-            merge_scopes_in_block(consequent);
-            merge_scopes_in_block(alternate);
+            merge_scopes_in_block(consequent, last_usage);
+            merge_scopes_in_block(alternate, last_usage);
         }
         ReactiveTerminal::For { init, test, update, body, .. } => {
-            merge_scopes_in_block(init);
-            merge_scopes_in_block(test);
+            merge_scopes_in_block(init, last_usage);
+            merge_scopes_in_block(test, last_usage);
             if let Some(upd) = update {
-                merge_scopes_in_block(upd);
+                merge_scopes_in_block(upd, last_usage);
             }
-            merge_scopes_in_block(body);
+            merge_scopes_in_block(body, last_usage);
         }
         ReactiveTerminal::ForOf { init, test, body, .. }
         | ReactiveTerminal::ForIn { init, test, body, .. } => {
-            merge_scopes_in_block(init);
-            merge_scopes_in_block(test);
-            merge_scopes_in_block(body);
+            merge_scopes_in_block(init, last_usage);
+            merge_scopes_in_block(test, last_usage);
+            merge_scopes_in_block(body, last_usage);
         }
         ReactiveTerminal::While { test, body, .. }
         | ReactiveTerminal::DoWhile { body, test, .. } => {
-            merge_scopes_in_block(test);
-            merge_scopes_in_block(body);
+            merge_scopes_in_block(test, last_usage);
+            merge_scopes_in_block(body, last_usage);
         }
         ReactiveTerminal::Switch { cases, .. } => {
             for (_, block) in cases {
-                merge_scopes_in_block(block);
+                merge_scopes_in_block(block, last_usage);
             }
         }
         ReactiveTerminal::Try { block, handler, .. } => {
-            merge_scopes_in_block(block);
-            merge_scopes_in_block(handler);
+            merge_scopes_in_block(block, last_usage);
+            merge_scopes_in_block(handler, last_usage);
         }
         ReactiveTerminal::Label { block, .. } => {
-            merge_scopes_in_block(block);
+            merge_scopes_in_block(block, last_usage);
         }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }
