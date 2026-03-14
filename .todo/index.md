@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (nested function validation improvements, 362/1717)
+Last updated: 2026-03-14 (param pre-freeze improvement, 368/1717)
 
-Current conformance: 362/1717 pass (21.1%), 0 panics, 0 unexpected divergences.
+Current conformance: 368/1717 pass (21.4%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -50,12 +50,22 @@ nested function ref tracking in `validate_no_ref_access_in_render.rs`. Gap 7
 in nested function expressions. Only `error.invalid-hoisting-setstate.js` remains
 (requires hoisted function declaration analysis). Net change: +8 (354 -> 362).
 
+**Fix (2026-03-14):** Frozen mutation detection -- param pre-freeze improvement.
+Function parameters are now pre-frozen using `param_names` from the pipeline,
+enabling detection of mutations to props and other frozen parameters inside
+closures and indirect references. 6 fixtures removed from known-failures.txt:
+`error.invalid-mutation-in-closure.js`, `error.invalid-prop-mutation-indirect.js`,
+`error.invalid-props-mutation-in-effect-indirect.js`,
+`fault-tolerance/error.try-finally-and-mutation-of-props.js`,
+`fault-tolerance/error.var-declaration-and-mutation-of-props.js`,
+`repro-retain-source-when-bailout.js`. Net change: +6 (362 -> 368).
+
 | Category | Count | Description |
 |----------|-------|-------------|
 | Compiled with memo | ~912 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix, -5 from free-var detection) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~42 | We compile but upstream bails (63 total - 13 invariant/todo skips - 8 newly resolved) |
+| Upstream errors | ~36 | We compile but upstream bails (63 total - 13 invariant/todo skips - 14 newly resolved) |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -103,7 +113,7 @@ chaining, nested scope flattening, and safety checks. See memoization-structure.
 We compile functions that upstream rejects with validation errors. These are
 "free" fixture gains -- emit the right error and bail, source matches.
 
-- [~] Frozen mutation detection ("This value cannot be modified", 8 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
+- [~] Frozen mutation detection ("This value cannot be modified", 2 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
 - [ ] Missing/extra deps in exhaustive-deps (2 remaining, 6 fixed) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
 - [~] Cannot reassign variables outside component (2 remaining of 8) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
 - [ ] Hooks must be same function (2 remaining, was 4) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity

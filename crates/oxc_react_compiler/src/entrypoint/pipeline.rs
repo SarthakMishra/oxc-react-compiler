@@ -106,7 +106,9 @@ pub fn run_pipeline(
 
     // Pass 16.5: validate_no_mutation_after_freeze (uses effects from Pass 16)
     crate::validation::validate_no_mutation_after_freeze::validate_no_mutation_after_freeze(
-        hir, errors,
+        hir,
+        errors,
+        param_names,
     );
 
     // Bail if frozen-mutation detected (before expensive downstream passes)

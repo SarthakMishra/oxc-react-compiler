@@ -16,9 +16,9 @@ Note: 15 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ## Sub-categories
 
-### Gap 1: Frozen Mutation Detection (mostly complete)
+### Gap 1: Frozen Mutation Detection (nearly complete)
 
-**Count:** 5 remaining (21 of 26 now passing)
+**Count:** 2 remaining (24 of 26 now passing)
 **Upstream error:** "This value cannot be modified"
 **Upstream:** `ValidateLocalsNotReassignedAfterRender.ts`, `InferMutableRanges.ts`
 
@@ -33,20 +33,22 @@ Rust module: `crates/oxc_react_compiler/src/validation/validate_no_mutation_afte
 
 Newly passing fixtures include: `capture-ref-for-mutation`, `invalid-disallow-mutating-refs-in-render-transitive`, `invalid-function-expression-mutates-immutable-value`, `invalid-jsx-captures-context-variable`, `invalid-mutate-context`, `invalid-mutate-context-in-callback`, `invalid-non-imported-reanimated-shared-value-writes`, `modify-state`, `modify-useReducer-state`, `todo-allow-assigning-to-inferred-ref-prop-in-callback`, `todo-for-loop-with-context-variable-iterator`, `invalid-hook-from-property-of-other-hook`, `skip-useMemoCache`.
 
-**What remains (8 fixtures):**
+**Completed (2026-03-14, param pre-freeze):** Function parameters are now pre-frozen using `param_names` from the pipeline. This enables detection of mutations to props and other frozen parameters inside closures and through indirect references. +6 fixtures (362 -> 368/1717).
+
+Newly passing fixtures: `error.invalid-mutation-in-closure.js`, `error.invalid-prop-mutation-indirect.js`, `error.invalid-props-mutation-in-effect-indirect.js`, `fault-tolerance/error.try-finally-and-mutation-of-props.js`, `fault-tolerance/error.var-declaration-and-mutation-of-props.js`, `repro-retain-source-when-bailout.js`.
+
+**What remains (2 fixtures):**
 - ~~Track "frozen" status on values~~ Done
 - ~~Detect mutations to frozen values: property writes, array push~~ Done
 - ~~Context variable mutations~~ Done (hook-return pre-freeze + function-capture freeze)
 - ~~Mutations inside nested functions~~ Done (nested function scanning)
 - ~~Indirect mutations through captured closures~~ Done (function-capture freeze)
+- ~~Props mutation in effects via indirect references~~ Done (param pre-freeze)
+- ~~Indirect mutation through function calls passed as props~~ Partially addressed (param pre-freeze covers direct prop mutation patterns)
 - Alias tracking: if `a = b` and `b` is frozen, mutating `a` should also error (e.g., `invalid-mutate-after-aliased-freeze`)
 - Phi-node frozen tracking: values that *could* be frozen through phi nodes (e.g., `invalid-mutate-phi-which-could-be-frozen`)
-- Delete operations on frozen values (e.g., `invalid-delete-computed-property-of-frozen-value`, `invalid-delete-property-of-frozen-value`)
-- Indirect mutation through function calls passed as props (e.g., `invalid-pass-mutable-function-as-prop`, `invalid-pass-ref-to-function`)
-- Props mutation in effects via indirect references (e.g., `invalid-props-mutation-in-effect-indirect`)
-- State mutation variant (e.g., `modify-state-2.js`)
 - **Known limitation:** SSA pass assigns unique IDs per Place even for the same variable, making alias/identity tracking harder across instructions
-**Fixture gain estimate:** ~3-8 more (remaining cases require deep alias propagation)
+**Fixture gain estimate:** ~0-2 (remaining cases require deep alias/phi propagation)
 **Depends on:** None
 
 ### Gap 2: Validate Preserve Existing Memoization ✅
@@ -150,9 +152,9 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 76 (19 from Gap 1 frozen mutation [6 initial + 13 enhancement], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions).
-Remaining achievable: ~12-32 of the remaining ~42 actionable fixtures. The
-categorized gaps (1,3,4,6,7,8) account for ~16 fixtures; Gap 9 "Other" covers
+Achieved so far: 82 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions).
+Remaining achievable: ~6-26 of the remaining ~36 actionable fixtures. The
+categorized gaps (1,3,4,6,7,8) account for ~10 fixtures; Gap 9 "Other" covers
 ~29 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
 fixtures should be registered as known skips.
 

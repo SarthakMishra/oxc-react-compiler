@@ -44,7 +44,11 @@ fn resolve_name<'a>(
 /// Since the HIR creates fresh IdentifierIds for every Place reference, we track by
 /// variable name using a lvalue-ID → source-variable-name mapping built from
 /// `LoadLocal`/`LoadContext` instructions.
-pub fn validate_no_mutation_after_freeze(hir: &HIR, errors: &mut ErrorCollector) {
+pub fn validate_no_mutation_after_freeze(
+    hir: &HIR,
+    errors: &mut ErrorCollector,
+    param_names: &[String],
+) {
     // Build lvalue_id → source variable name map (borrows from HIR, no clones).
     // When LoadLocal { place: x_ref } → lvalue_temp, this maps lvalue_temp's ID to "x".
     let mut id_to_source_name: FxHashMap<IdentifierId, &str> = FxHashMap::default();
@@ -126,7 +130,17 @@ pub fn validate_no_mutation_after_freeze(hir: &HIR, errors: &mut ErrorCollector)
     // return values and all their destructured targets at their definition site.
     // This over-freezes setters (e.g., setState from useState) but in practice
     // setters are never mutated via property stores, so no false positives arise.
+    //
+    // DIVERGENCE: We also pre-freeze function parameters (e.g., "props" in component
+    // functions, "options" in hooks). Upstream freezes params transitively through
+    // InferMutableRanges; we approximate by marking them frozen at the start.
+    // The param_names are extracted from the HIRFunction's params list by the pipeline.
     let mut pre_frozen: FxHashSet<&str> = FxHashSet::default();
+
+    // Pre-freeze function parameters: component props, hook arguments, etc.
+    for name in param_names {
+        pre_frozen.insert(name);
+    }
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {

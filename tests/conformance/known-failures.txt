@@ -301,12 +301,9 @@ error.invalid-mutate-global-in-render-helper-prop.js
 error.invalid-mutate-phi-which-could-be-frozen.js
 error.invalid-mutate-props-in-effect-fixpoint.js
 error.invalid-mutate-props-via-for-of-iterator.js
-error.invalid-mutation-in-closure.js
 error.invalid-mutation-of-possible-props-phi-indirect.js
 error.invalid-pass-mutable-function-as-prop.js
 error.invalid-pass-ref-to-function.js
-error.invalid-prop-mutation-indirect.js
-error.invalid-props-mutation-in-effect-indirect.js
 error.invalid-return-mutable-function-from-hook.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
 error.invalid-type-provider-nonhook-name-typed-as-hook.js
@@ -355,8 +352,6 @@ extend-scopes-if.js
 fast-refresh-dont-refresh-const-changes-prod.js
 fast-refresh-refresh-on-const-changes-dev.js
 fast-refresh-reloading.js
-fault-tolerance/error.try-finally-and-mutation-of-props.js
-fault-tolerance/error.var-declaration-and-mutation-of-props.js
 fbt/bug-fbt-plural-multiple-function-calls.ts
 fbt/bug-fbt-plural-multiple-mixed-call-tag.tsx
 fbt/error.todo-fbt-as-local.js
@@ -1095,7 +1090,6 @@ repro-reassign-props.js
 repro-reassign-to-variable-without-mutable-range.js
 repro-ref-mutable-range.tsx
 repro-renaming-conflicting-decls.js
-repro-retain-source-when-bailout.js
 repro-returned-inner-fn-mutates-context.js
 repro-returned-inner-fn-reassigns-context.js
 repro-scope-missing-mutable-range.js
