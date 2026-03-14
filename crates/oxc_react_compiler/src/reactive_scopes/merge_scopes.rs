@@ -378,6 +378,37 @@ fn are_lvalues_last_used_by_scope(
     true
 }
 
+/// Returns whether a reactive scope is eligible to be merged into another scope.
+///
+/// A scope is eligible when:
+/// 1. At least one of its declarations has an "always-invalidating" type
+///    (Object or Function — these always create new references, guaranteeing
+///    dependent scopes must re-execute). JSX elements are typed as Object.
+/// 2. The scope has no reassignments (no cross-scope StoreLocal mutations).
+///
+/// Matches upstream `scopeIsEligibleForMerging` in
+/// `MergeReactiveScopesThatInvalidateTogether.ts`.
+#[expect(dead_code)] // Used by Sub-task 4b
+fn scope_is_eligible_for_merging(scope_block: &crate::hir::types::ReactiveScopeBlock) -> bool {
+    use crate::hir::types::Type;
+
+    let scope = &scope_block.scope;
+
+    // A scope with reassignments is not eligible — cross-scope mutations
+    // make the merge unsafe.
+    if !scope.reassignments.is_empty() {
+        return false;
+    }
+
+    // Check if at least one declaration has an always-invalidating type.
+    // Objects (including arrays, JSX elements) and Functions always produce
+    // new references, so any scope depending on them will always re-execute.
+    scope
+        .declarations
+        .iter()
+        .any(|(_, decl)| matches!(decl.identifier.type_, Type::Object | Type::Function))
+}
+
 /// Merge overlapping reactive scopes in the HIR.
 ///
 /// Uses an active-scope-stack algorithm matching the upstream

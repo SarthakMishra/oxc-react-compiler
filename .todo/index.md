@@ -69,7 +69,7 @@ chaining, nested scope flattening, and safety checks. See memoization-structure.
 
 - [x] **4a** Active-scope-stack overlap detection (rewrite Pass 42 merge algorithm) — [memoization-structure.md](memoization-structure.md)#sub-task-4a-active-scope-stack-overlap-detection-pass-42
 - [x] **4d** Safety checks for intermediate instructions between scopes — [memoization-structure.md](memoization-structure.md)#sub-task-4d-safety-checks-for-intermediate-instructions
-- [ ] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
+- [x] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
 - [ ] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
 - [ ] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment

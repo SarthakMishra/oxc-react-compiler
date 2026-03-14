@@ -181,24 +181,14 @@ Use the existing `dep_key_set` comparison to check if inner and outer scopes hav
 - Upstream file: `src/ReactiveScopes/MergeReactiveScopesThatInvalidateTogether.ts`
 - Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
-#### Sub-task 4e: `scopeIsEligibleForMerging` predicate
+#### Sub-task 4e: `scopeIsEligibleForMerging` predicate ✅
 
-**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`
-**Current state:** Not implemented
-**What's needed:**
+~~**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`~~
+~~**Current state:** Not implemented~~
 
-Only scopes producing "always-invalidating" outputs can be merge candidates. A scope is
-eligible when:
-- Its declarations include at least one value of type: Object, Array, Function, JSX
-  (these always create new references, guaranteeing the dependent scope must re-execute)
-- It has no reassignments (the scope does not contain `StoreLocal` to an identifier that
-  was declared in a different scope)
-
-This prevents merging scopes that produce primitive values (numbers, strings, booleans),
-which might be referentially equal across renders and should remain separately cached.
-
-**Depends on:** None (but consumed by Sub-task 4b)
-**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
+**Completed**: `scope_is_eligible_for_merging()` function implemented in `merge_scopes.rs`, matching upstream `scopeIsEligibleForMerging` from `MergeReactiveScopesThatInvalidateTogether.ts`. The predicate checks two conditions: (1) at least one scope declaration has an "always-invalidating" type (Object, Array, Function, JSX -- types that always create new references), and (2) the scope contains no reassignments to identifiers declared in a different scope. Currently marked `#[expect(dead_code)]` as the merge decision logic that calls it is wired in Sub-task 4b. Conformance unchanged (342/1717).
+- Upstream file: `src/ReactiveScopes/MergeReactiveScopesThatInvalidateTogether.ts`
+- Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
 #### Sub-task 4f: DeclarationId alignment for dependency comparison
 
