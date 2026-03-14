@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Gap 9 validation fixes: known-incompatible, ESLint suppression, useMemo deps, 374/1717)
+Last updated: 2026-03-14 (Gap 9 mutation tracking: delete ops, phi freeze, alias freeze, derivation chains, outer-scope property mutation, render helper detection, 384/1717)
 
-Current conformance: 374/1717 pass (21.8%), 0 panics, 0 unexpected divergences.
+Current conformance: 384/1717 pass (22.4%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -80,12 +80,21 @@ containing incompatible libraries (`react-native-reanimated`, `react-native-gest
 (4) Capitalized call alias resolution improved in `validate_no_capitalized_calls.rs`.
 Net change: +6 (368 -> 374/1717).
 
+**Fix (2026-03-14):** Gap 9 mutation tracking improvements -- 6 sub-categories addressed:
+(1) Delete expression lowering fixed in `build.rs` -- delete expressions now correctly lowered to HIR.
+(2) Phi-node freeze propagation in `validate_no_mutation_after_freeze.rs` -- values that could be frozen through phi nodes now tracked.
+(3) Alias freeze tracking in `validate_no_mutation_after_freeze.rs` -- if `a = b` and `b` is frozen, mutating `a` now errors.
+(4) Derivation chain tracking in `validate_no_mutation_after_freeze.rs` -- derived values from frozen sources tracked through assignment chains.
+(5) Outer-scope property mutation detection in `validate_no_global_reassignment.rs` -- property mutations on outer-scope variables detected.
+(6) Render helper detection in `validate_no_global_reassignment.rs` -- functions called as render helpers properly validated.
+10 fixtures removed from known-failures.txt. Net change: +10 (374 -> 384/1717).
+
 | Category | Count | Description |
 |----------|-------|-------------|
 | Compiled with memo | ~912 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix, -5 from free-var detection) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~30 | We compile but upstream bails (63 total - 13 invariant/todo skips - 20 newly resolved) |
+| Upstream errors | ~20 | We compile but upstream bails (63 total - 13 invariant/todo skips - 30 newly resolved) |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -133,13 +142,13 @@ superseded by Sub-task 4a.
 We compile functions that upstream rejects with validation errors. These are
 "free" fixture gains -- emit the right error and bail, source matches.
 
-- [~] Frozen mutation detection ("This value cannot be modified", 2 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
+- [~] Frozen mutation detection ("This value cannot be modified", ~4 remaining: hook-arg mutation, fixpoint mutation, phi-indirect, function-property) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
 - [ ] Missing/extra deps in exhaustive-deps (2 remaining, 6 fixed) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
 - [~] Cannot reassign variables outside component (2 remaining of 8) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
 - [ ] Hooks must be same function (2 remaining, was 4) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
 - [ ] Cannot call setState during render (1 remaining: hoisting-setstate) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
 - [ ] Cannot access variable before declared (1 fixture, 2 todo-* skippable) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
-- [ ] Other upstream errors (~23 remaining: mutation tracking, ref naming, preserve-memo edge cases) — [upstream-errors.md](upstream-errors.md)#gap-9-other
+- [ ] Other upstream errors (~13 remaining: mutation tracking, ref naming, preserve-memo edge cases) — [upstream-errors.md](upstream-errors.md)#gap-9-other
 
 Note: 15 "Invariant/Todo" upstream errors are internal compiler failures in
 Babel -- these should be skipped, not matched.
@@ -181,6 +190,18 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Gap 9 Mutation Tracking Deep Session (2026-03-14)
+
+- `build.rs`: Fixed delete expression lowering -- delete expressions now correctly lowered to HIR
+- `validate_no_mutation_after_freeze.rs`: Phi-node freeze propagation -- values frozen through phi nodes now tracked across branches
+- `validate_no_mutation_after_freeze.rs`: Alias freeze tracking -- `a = b` where `b` is frozen causes mutations to `a` to error
+- `validate_no_mutation_after_freeze.rs`: Derivation chain tracking -- derived values from frozen sources tracked through assignment chains
+- `validate_no_global_reassignment.rs`: Outer-scope property mutation detection -- property stores on outer-scope variables detected
+- `validate_no_global_reassignment.rs`: Render helper detection -- functions invoked as render helpers properly validated
+- 10 fixtures removed from known-failures.txt
+- Remaining Gap 9 mutation fixtures: `error.invalid-hook-function-argument-mutates-local-variable.js`, `error.invalid-mutate-props-in-effect-fixpoint.js`, `error.invalid-mutation-of-possible-props-phi-indirect.js`, `error.mutate-function-property.js`
+- Conformance: 374 -> 384/1717 (+10)
 
 ### Free Variable Detection + Hook Call Exclusion (2026-03-14)
 

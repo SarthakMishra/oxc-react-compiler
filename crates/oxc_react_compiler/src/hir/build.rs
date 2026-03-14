@@ -1480,6 +1480,30 @@ impl HIRBuilder {
 
             // Unary
             Expression::UnaryExpression(unary) => {
+                // Special case: `delete x.y` → PropertyDelete, `delete x[i]` → ComputedDelete
+                // These are distinct HIR nodes that generate Mutate effects on the object,
+                // enabling frozen-value mutation detection.
+                if unary.operator == UnaryOperator::Delete {
+                    match unary.argument.without_parentheses() {
+                        Expression::StaticMemberExpression(member) => {
+                            let object = self.lower_expression(&member.object);
+                            return self.emit(
+                                InstructionValue::PropertyDelete {
+                                    object,
+                                    property: member.property.name.to_string(),
+                                },
+                                loc,
+                            );
+                        }
+                        Expression::ComputedMemberExpression(member) => {
+                            let object = self.lower_expression(&member.object);
+                            let property = self.lower_expression(&member.expression);
+                            return self
+                                .emit(InstructionValue::ComputedDelete { object, property }, loc);
+                        }
+                        _ => {} // fall through for `delete x` (identifier delete)
+                    }
+                }
                 let value = self.lower_expression(&unary.argument);
                 self.emit(
                     InstructionValue::UnaryExpression { op: map_unary_op(unary.operator), value },

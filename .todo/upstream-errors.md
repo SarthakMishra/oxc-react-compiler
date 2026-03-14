@@ -1,7 +1,7 @@
 # Upstream Errors -- Validation Gaps
 
-> **Priority**: P2 (~50 actionable remaining fixtures, high tractability -- each fix is "emit error + bail")
-> **Impact**: ~50 remaining actionable fixtures where we compile but Babel bails with a validation error (63 total error fixtures - 13 invariant/todo skips = 50 actionable)
+> **Priority**: P2 (~20 actionable remaining fixtures, high tractability -- each fix is "emit error + bail")
+> **Impact**: ~20 remaining actionable fixtures where we compile but Babel bails with a validation error (63 total error fixtures - 13 invariant/todo skips - 30 resolved = 20 actionable)
 > **Tractability**: HIGH -- each sub-category is a focused validation improvement
 
 ## Problem Statement
@@ -18,7 +18,7 @@ Note: 15 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ### Gap 1: Frozen Mutation Detection (nearly complete)
 
-**Count:** 2 remaining (24 of 26 now passing)
+**Count:** ~4 remaining (moved from Gap 9 overlap; alias + phi tracking now done)
 **Upstream error:** "This value cannot be modified"
 **Upstream:** `ValidateLocalsNotReassignedAfterRender.ts`, `InferMutableRanges.ts`
 
@@ -37,7 +37,14 @@ Newly passing fixtures include: `capture-ref-for-mutation`, `invalid-disallow-mu
 
 Newly passing fixtures: `error.invalid-mutation-in-closure.js`, `error.invalid-prop-mutation-indirect.js`, `error.invalid-props-mutation-in-effect-indirect.js`, `fault-tolerance/error.try-finally-and-mutation-of-props.js`, `fault-tolerance/error.var-declaration-and-mutation-of-props.js`, `repro-retain-source-when-bailout.js`.
 
-**What remains (2 fixtures):**
+**Completed (2026-03-14, mutation tracking deep session):** Three more sub-categories resolved:
+1. Alias freeze tracking: if `a = b` and `b` is frozen, mutating `a` now correctly errors.
+2. Phi-node freeze propagation: values that could be frozen through phi nodes now tracked.
+3. Derivation chain tracking: derived values from frozen sources tracked through assignment chains.
+
+Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_mutation_after_freeze.rs`, `crates/oxc_react_compiler/src/hir/build.rs` (delete expression lowering fix).
+
+**What remains (~4 fixtures):**
 - ~~Track "frozen" status on values~~ Done
 - ~~Detect mutations to frozen values: property writes, array push~~ Done
 - ~~Context variable mutations~~ Done (hook-return pre-freeze + function-capture freeze)
@@ -45,10 +52,13 @@ Newly passing fixtures: `error.invalid-mutation-in-closure.js`, `error.invalid-p
 - ~~Indirect mutations through captured closures~~ Done (function-capture freeze)
 - ~~Props mutation in effects via indirect references~~ Done (param pre-freeze)
 - ~~Indirect mutation through function calls passed as props~~ Partially addressed (param pre-freeze covers direct prop mutation patterns)
-- Alias tracking: if `a = b` and `b` is frozen, mutating `a` should also error (e.g., `invalid-mutate-after-aliased-freeze`)
-- Phi-node frozen tracking: values that *could* be frozen through phi nodes (e.g., `invalid-mutate-phi-which-could-be-frozen`)
-- **Known limitation:** SSA pass assigns unique IDs per Place even for the same variable, making alias/identity tracking harder across instructions
-**Fixture gain estimate:** ~0-2 (remaining cases require deep alias/phi propagation)
+- ~~Alias tracking~~ Done (alias freeze tracking)
+- ~~Phi-node frozen tracking~~ Done (phi-node freeze propagation)
+- `error.invalid-hook-function-argument-mutates-local-variable.js` -- mutation of local variable passed as hook function argument
+- `error.invalid-mutate-props-in-effect-fixpoint.js` -- props mutation in effect with fixpoint iteration
+- `error.invalid-mutation-of-possible-props-phi-indirect.js` -- indirect phi-based possible-props mutation
+- `error.mutate-function-property.js` -- mutation of function object property
+**Fixture gain estimate:** ~2-4 (remaining cases require deeper analysis of specific mutation patterns)
 **Depends on:** None
 
 ### Gap 2: Validate Preserve Existing Memoization ✅
@@ -135,15 +145,18 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 
 ### Gap 9: Other Validation Errors
 
-**Count:** ~23 remaining uncategorized fixtures
+**Count:** ~13 remaining uncategorized fixtures
 **What's needed:** These cover several sub-categories not yet tracked individually:
-- **Mutation tracking** (~11): `invalid-mutate-global-*`, `invalid-mutate-props-*`, `invalid-mutation-*`, `mutate-function-property`, `not-useEffect-external-mutate`, `invalid-return-mutable-function-from-hook`, `invalid-hook-function-argument-mutates-local-variable`
+- **Mutation tracking** (~4): `invalid-hook-function-argument-mutates-local-variable`, `invalid-mutate-props-in-effect-fixpoint`, `invalid-mutation-of-possible-props-phi-indirect`, `mutate-function-property` (also tracked under Gap 1 remaining)
 - **Hook-call capture freeze** (2): `hook-call-freezes-captured-identifier.tsx`, `hook-call-freezes-captured-memberexpr.jsx`
 - **Type provider** (2): `invalid-type-provider-*`
 - **Ref naming heuristic** (2): `ref-like-name-not-Ref`, `ref-like-name-not-a-ref`
 - **Preserve-memo edge cases** (2): `repro-preserve-memoization-inner-destructured-value-*`
-- **Other** (~4): `assign-ref-in-effect-hint`, `call-args-destructuring-asignment-complex`, `dont-hoist-inline-reference`, `_todo.computed-lval-in-destructure`, `todo.try-catch-with-throw`
-**Fixture gain estimate:** ~10-15 (many require focused per-fixture analysis)
+- **Other** (~3): `assign-ref-in-effect-hint`, `call-args-destructuring-asignment-complex`, `dont-hoist-inline-reference`
+- ~~`invalid-mutate-global-*`~~ Resolved (outer-scope property mutation + render helper detection)
+- ~~`not-useEffect-external-mutate`~~ Resolved
+- ~~`invalid-return-mutable-function-from-hook`~~ Resolved
+**Fixture gain estimate:** ~5-10 (remaining require focused per-fixture analysis)
 **Depends on:** Analysis of individual fixtures
 
 **Partially completed:**
@@ -154,13 +167,22 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 - `useMemo` non-literal dependency list detection added to `validate_use_memo.rs` (2026-03-14): Rejects `useMemo(fn, deps)` where deps argument is not an array literal. +1 fixture: `error.useMemo-non-literal-depslist.ts`. Rust module: `crates/oxc_react_compiler/src/validation/validate_use_memo.rs`.
 - Capitalized call alias resolution improved in `validate_no_capitalized_calls.rs` (2026-03-14): Better SSA resolution for aliased capitalized function calls. Rust module: `crates/oxc_react_compiler/src/validation/validate_no_capitalized_calls.rs`.
 - Total from Gap 9 completions in this batch: +6 fixtures (368 -> 374/1717).
+- **Mutation tracking deep session (2026-03-14):** 6 sub-categories addressed:
+  - Delete expression lowering fixed in `build.rs` -- delete expressions now correctly lowered to HIR, enabling mutation detection for delete operations.
+  - Phi-node freeze propagation in `validate_no_mutation_after_freeze.rs` -- values that could be frozen through phi nodes now tracked across branches.
+  - Alias freeze tracking in `validate_no_mutation_after_freeze.rs` -- `a = b` where `b` is frozen causes mutations to `a` to error.
+  - Derivation chain tracking in `validate_no_mutation_after_freeze.rs` -- derived values from frozen sources tracked through multi-step assignment chains.
+  - Outer-scope property mutation detection in `validate_no_global_reassignment.rs` -- property stores/mutations on variables from outer scopes now detected.
+  - Render helper detection in `validate_no_global_reassignment.rs` -- functions invoked as render helpers properly validated for global mutation.
+  - 10 fixtures removed from known-failures.txt. +10 fixtures (374 -> 384/1717).
+  - Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_mutation_after_freeze.rs`, `crates/oxc_react_compiler/src/validation/validate_no_global_reassignment.rs`, `crates/oxc_react_compiler/src/hir/build.rs`.
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 88 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions, 6 from Gap 9 known-incompatible/ESLint/useMemo/capitalized-call fixes).
-Remaining achievable: ~6-20 of the remaining ~30 actionable fixtures. The
+Achieved so far: 98 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions, 6 from Gap 9 known-incompatible/ESLint/useMemo/capitalized-call fixes, 10 from Gap 9 mutation tracking [delete ops + phi freeze + alias freeze + derivation chains + outer-scope property mutation + render helper detection]).
+Remaining achievable: ~6-15 of the remaining ~20 actionable fixtures. The
 categorized gaps (1,3,4,6,7,8) account for ~10 fixtures; Gap 9 "Other" covers
-~23 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
+~13 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
 fixtures should be registered as known skips.
 
 ## Cross-Cutting Issue: SSA Place Identity

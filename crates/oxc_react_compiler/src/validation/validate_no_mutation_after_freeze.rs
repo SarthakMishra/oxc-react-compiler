@@ -60,19 +60,57 @@ pub fn validate_no_mutation_after_freeze(
     // Map: function name → captured variable names (resolved through LoadLocal chains)
     let mut name_to_func_captures: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
 
+    // Alias tracking: maps aliased_name → source_name for StoreLocal assignments.
+    // Used to propagate freeze through aliases (e.g., `let y = x; freeze(x); mutate(y)`).
+    let mut alias_map: FxHashMap<&str, &str> = FxHashMap::default();
+
+    // Derivation chain: maps lvalue_id → source_object_id for PropertyLoad, GetIterator,
+    // IteratorNext. Used to detect mutations on values derived from frozen collections
+    // (e.g., `for (const x of props.items) { x.modified = true }`).
+    let mut load_source: FxHashMap<IdentifierId, IdentifierId> = FxHashMap::default();
+
+    // Map: function lvalue ID → reference to lowered function body
+    // Used for re-checking nested function bodies after hook calls freeze their captures.
+    let mut func_bodies: FxHashMap<IdentifierId, &HIR> = FxHashMap::default();
+
     for (_, block) in &hir.blocks {
+        // Map phi place IDs to names for freeze propagation through phi nodes
+        for phi in &block.phis {
+            if let Some(name) = &phi.place.identifier.name {
+                id_to_source_name.insert(phi.place.identifier.id, name);
+            }
+            for (_, operand) in &phi.operands {
+                if let Some(name) = &operand.identifier.name {
+                    id_to_source_name.entry(operand.identifier.id).or_insert(name);
+                }
+            }
+        }
+
         for instr in &block.instructions {
             match &instr.value {
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
                     if let Some(name) = &place.identifier.name {
                         id_to_source_name.insert(instr.lvalue.identifier.id, name);
                     }
+                    // Track derivation: LoadLocal lvalue derives from the place's ID
+                    load_source.insert(instr.lvalue.identifier.id, place.identifier.id);
                 }
-                InstructionValue::StoreLocal { lvalue, .. }
-                | InstructionValue::StoreContext { lvalue, .. } => {
+                InstructionValue::StoreLocal { lvalue, value, .. }
+                | InstructionValue::StoreContext { lvalue, value } => {
                     if let Some(name) = &lvalue.identifier.name {
                         id_to_source_name.insert(instr.lvalue.identifier.id, name);
+                        // Record alias: lname was assigned from value's source name
+                        if let Some(vname) = id_to_source_name
+                            .get(&value.identifier.id)
+                            .copied()
+                            .or(value.identifier.name.as_deref())
+                        {
+                            alias_map.insert(name, vname);
+                        }
                     }
+                    // Track derivation: StoreLocal lvalue derives from value
+                    load_source.insert(lvalue.identifier.id, value.identifier.id);
+                    load_source.insert(instr.lvalue.identifier.id, value.identifier.id);
                 }
                 InstructionValue::DeclareLocal { lvalue, .. }
                 | InstructionValue::DeclareContext { lvalue } => {
@@ -108,6 +146,19 @@ pub fn validate_no_mutation_after_freeze(
                             name_to_func_captures.insert(name, captures);
                         }
                     }
+                    // Store reference to function body for post-hook recheck
+                    func_bodies.insert(instr.lvalue.identifier.id, &lowered_func.body);
+                }
+                // Track derivation chains for frozen-value propagation
+                InstructionValue::PropertyLoad { object, .. }
+                | InstructionValue::ComputedLoad { object, .. } => {
+                    load_source.insert(instr.lvalue.identifier.id, object.identifier.id);
+                }
+                InstructionValue::GetIterator { collection } => {
+                    load_source.insert(instr.lvalue.identifier.id, collection.identifier.id);
+                }
+                InstructionValue::IteratorNext { iterator, .. } => {
+                    load_source.insert(instr.lvalue.identifier.id, iterator.identifier.id);
                 }
                 _ => {}
             }
@@ -171,7 +222,34 @@ pub fn validate_no_mutation_after_freeze(
     // Walk instructions in program order, tracking frozen variable names
     let mut frozen_names: FxHashSet<&str> = pre_frozen;
 
+    // Propagate pre-freeze through aliases: if `frozen` is pre-frozen and
+    // `x = frozen` was recorded, then `x` should also be frozen.
+    let initial_frozen: Vec<&str> = frozen_names.iter().copied().collect();
+    for name in initial_frozen {
+        propagate_freeze_through_aliases(name, &mut frozen_names, &alias_map);
+    }
+
     for (_, block) in &hir.blocks {
+        // Process phi nodes first: if any operand is frozen, the phi output is frozen.
+        // This handles cases like: `x = cond ? frozen : {}; x.property = true`
+        for phi in &block.phis {
+            let phi_is_frozen = phi.operands.iter().any(|(_, operand)| {
+                id_to_source_name
+                    .get(&operand.identifier.id)
+                    .copied()
+                    .or(operand.identifier.name.as_deref())
+                    .is_some_and(|name| frozen_names.contains(name))
+            });
+            if phi_is_frozen {
+                if let Some(name) = &phi.place.identifier.name {
+                    frozen_names.insert(name);
+                }
+                if let Some(name) = id_to_source_name.get(&phi.place.identifier.id) {
+                    frozen_names.insert(name);
+                }
+            }
+        }
+
         for instr in &block.instructions {
             // First: process freeze effects to update frozen_names
             if let Some(ref effects) = instr.effects {
@@ -181,9 +259,20 @@ pub fn validate_no_mutation_after_freeze(
                         | AliasingEffect::ImmutableCapture { from: value, .. } => {
                             if let Some(name) = id_to_source_name.get(&value.identifier.id) {
                                 frozen_names.insert(name);
+                                // Propagate freeze through aliases
+                                propagate_freeze_through_aliases(
+                                    name,
+                                    &mut frozen_names,
+                                    &alias_map,
+                                );
                             }
                             if let Some(name) = &value.identifier.name {
                                 frozen_names.insert(name);
+                                propagate_freeze_through_aliases(
+                                    name,
+                                    &mut frozen_names,
+                                    &alias_map,
+                                );
                             }
                         }
                         _ => {}
@@ -207,12 +296,31 @@ pub fn validate_no_mutation_after_freeze(
                                 frozen_names.insert(captured_name);
                             }
                         }
+
+                        // Re-check the function argument's body for mutations to
+                        // now-frozen variables (the function was defined before the
+                        // hook call froze its captures).
+                        if let Some(fn_body) = func_bodies.get(&arg.identifier.id)
+                            && check_nested_function_mutation(fn_body, &frozen_names)
+                        {
+                            errors.push(CompilerError::invalid_react_with_kind(
+                                instr.loc,
+                                FROZEN_MUTATION_ERROR,
+                                DiagnosticKind::ImmutabilityViolation,
+                            ));
+                            return;
+                        }
                     }
                 }
             }
 
             // Check instruction-level mutations (MethodCall, PropertyStore, etc.)
-            if check_instruction_mutation(instr, &id_to_source_name, &frozen_names) {
+            if check_instruction_mutation_extended(
+                instr,
+                &id_to_source_name,
+                &load_source,
+                &frozen_names,
+            ) {
                 errors.push(CompilerError::invalid_react_with_kind(
                     instr.loc,
                     FROZEN_MUTATION_ERROR,
@@ -263,6 +371,97 @@ pub fn validate_no_mutation_after_freeze(
                 }
             }
         }
+    }
+}
+
+/// Propagate freeze status through aliases: if `name` is frozen,
+/// any variable that is an alias of `name` should also be frozen.
+fn propagate_freeze_through_aliases<'a>(
+    name: &'a str,
+    frozen_names: &mut FxHashSet<&'a str>,
+    alias_map: &FxHashMap<&'a str, &'a str>,
+) {
+    // Find all names that alias `name` (reverse lookup: alias → source)
+    for (&alias_name, &source_name) in alias_map {
+        if source_name == name && !frozen_names.contains(alias_name) {
+            frozen_names.insert(alias_name);
+            // Recurse for transitive aliases
+            propagate_freeze_through_aliases(alias_name, frozen_names, alias_map);
+        }
+    }
+}
+
+/// Check if an identifier is transitively derived from a frozen source via
+/// PropertyLoad, GetIterator, IteratorNext, LoadLocal, StoreLocal chains.
+/// Used to detect mutations on values like iterator items from frozen collections.
+fn is_derived_from_frozen(
+    id: IdentifierId,
+    id_to_source_name: &FxHashMap<IdentifierId, &str>,
+    load_source: &FxHashMap<IdentifierId, IdentifierId>,
+    frozen_names: &FxHashSet<&str>,
+) -> bool {
+    let mut current = id;
+    let mut depth = 0;
+    let mut visited = FxHashSet::default();
+    loop {
+        if depth > 15 || visited.contains(&current) {
+            break false; // Prevent infinite loops
+        }
+        visited.insert(current);
+        depth += 1;
+
+        // Check if current ID's source name is frozen
+        if let Some(name) = id_to_source_name.get(&current)
+            && frozen_names.contains(name)
+        {
+            return true;
+        }
+
+        // Follow the derivation chain
+        if let Some(&parent_id) = load_source.get(&current) {
+            current = parent_id;
+        } else {
+            // Chain is broken — try name-based bridging: if current ID has a name,
+            // find any other ID with the same name that has a load_source entry.
+            // This bridges SSA gaps where the same variable has different IDs across blocks.
+            if let Some(name) = id_to_source_name.get(&current) {
+                let bridge = load_source.iter().find(|(src_id, _)| {
+                    !visited.contains(src_id)
+                        && id_to_source_name.get(src_id).copied() == Some(*name)
+                });
+                if let Some((bridged_id, _)) = bridge {
+                    let bridged_id = *bridged_id;
+                    current = bridged_id;
+                    continue;
+                }
+            }
+            break false;
+        }
+    }
+}
+
+/// Extended mutation check that also detects mutations on values derived from
+/// frozen sources (e.g., iterator items of frozen collections).
+fn check_instruction_mutation_extended(
+    instr: &crate::hir::types::Instruction,
+    id_to_source_name: &FxHashMap<IdentifierId, &str>,
+    load_source: &FxHashMap<IdentifierId, IdentifierId>,
+    frozen_names: &FxHashSet<&str>,
+) -> bool {
+    let check_frozen = |id: &IdentifierId| -> bool {
+        id_to_source_name.get(id).is_some_and(|name| frozen_names.contains(name))
+            || is_derived_from_frozen(*id, id_to_source_name, load_source, frozen_names)
+    };
+
+    match &instr.value {
+        InstructionValue::MethodCall { receiver, .. } => check_frozen(&receiver.identifier.id),
+        InstructionValue::PropertyStore { object, .. }
+        | InstructionValue::ComputedStore { object, .. } => check_frozen(&object.identifier.id),
+        InstructionValue::PropertyDelete { object, .. }
+        | InstructionValue::ComputedDelete { object, .. } => check_frozen(&object.identifier.id),
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => check_frozen(&lvalue.identifier.id),
+        _ => false,
     }
 }
 

@@ -7,8 +7,8 @@
 // declared variables and flag any StoreLocal/Reassign targeting undeclared names.
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{HIR, HIRFunction, InstructionKind, InstructionValue, Param};
-use rustc_hash::FxHashSet;
+use crate::hir::types::{HIR, HIRFunction, IdentifierId, InstructionKind, InstructionValue, Param};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 fn global_reassignment_error(name: &str) -> String {
     format!(
@@ -135,6 +135,23 @@ fn check_nested_for_outer_scope_stores(
 ) {
     let nested_locals = collect_locally_declared_func(func);
 
+    // Build: lvalue ID → variable name for LoadLocal of undeclared vars
+    // Used to detect PropertyStore/MethodCall on outer-scope variables
+    let mut undeclared_load_ids: FxHashMap<IdentifierId, String> = FxHashMap::default();
+
+    for (_, block) in &func.body.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } =
+                &instr.value
+                && let Some(name) = &place.identifier.name
+                && !nested_locals.contains(name)
+                && !all_ancestor_locals.contains(name)
+            {
+                undeclared_load_ids.insert(instr.lvalue.identifier.id, name.clone());
+            }
+        }
+    }
+
     for (_, block) in &func.body.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -152,12 +169,26 @@ fn check_nested_for_outer_scope_stores(
                     {
                         errors.push(CompilerError::invalid_react(
                             instr.loc,
-                            format!(
-                                "Cannot reassign variables declared outside of the \
-                                 component/hook. Variable `{name}` is declared outside \
-                                 of the component/hook and cannot be reassigned during \
-                                 render."
-                            ),
+                            global_reassignment_error(name),
+                        ));
+                    }
+                }
+                // PropertyStore/ComputedStore where object is an undeclared outer var
+                InstructionValue::PropertyStore { object, .. }
+                | InstructionValue::ComputedStore { object, .. } => {
+                    if let Some(name) = undeclared_load_ids.get(&object.identifier.id) {
+                        errors.push(CompilerError::invalid_react(
+                            instr.loc,
+                            global_reassignment_error(name),
+                        ));
+                    }
+                }
+                // MethodCall where receiver is an undeclared outer var
+                InstructionValue::MethodCall { receiver, .. } => {
+                    if let Some(name) = undeclared_load_ids.get(&receiver.identifier.id) {
+                        errors.push(CompilerError::invalid_react(
+                            instr.loc,
+                            global_reassignment_error(name),
                         ));
                     }
                 }
@@ -183,17 +214,75 @@ fn check_nested_for_outer_scope_stores(
                     let mut merged = all_ancestor_locals.clone();
                     merged.extend(nested_locals.iter().cloned());
                     check_nested_for_outer_scope_stores(lowered_func, &merged, errors);
+
+                    // Render helper detection: if this nested function returns JSX,
+                    // also check for PropertyStore/MethodCall on global variables
+                    if body_contains_jsx(&lowered_func.body) {
+                        check_render_helper_global_mutations(&lowered_func.body, errors);
+                    }
                 }
                 // Explicit StoreGlobal in nested context
                 InstructionValue::StoreGlobal { name, .. } => {
                     errors.push(CompilerError::invalid_react(
                         instr.loc,
-                        format!(
-                            "Cannot reassign variables declared outside of the component/hook. \
-                             Variable `{name}` is declared outside of the component/hook \
-                             and cannot be reassigned during render."
-                        ),
+                        global_reassignment_error(name),
                     ));
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Check if an HIR body contains any JSX expression (render helper detection).
+fn body_contains_jsx(hir: &HIR) -> bool {
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if matches!(
+                instr.value,
+                InstructionValue::JsxExpression { .. } | InstructionValue::JsxFragment { .. }
+            ) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check a render helper (function returning JSX) for PropertyStore/MethodCall on globals.
+/// DIVERGENCE: Upstream uses `ValidateNoSetStateInRender` with render helper detection
+/// via abstract interpretation. We approximate by scanning for LoadGlobal → PropertyStore chains.
+fn check_render_helper_global_mutations(hir: &HIR, errors: &mut ErrorCollector) {
+    // Build: lvalue ID → global name for LoadGlobal values
+    let mut global_load_ids: FxHashMap<IdentifierId, String> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::LoadGlobal { binding } = &instr.value {
+                global_load_ids.insert(instr.lvalue.identifier.id, binding.name.clone());
+            }
+        }
+    }
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::PropertyStore { object, .. }
+                | InstructionValue::ComputedStore { object, .. } => {
+                    if let Some(name) = global_load_ids.get(&object.identifier.id) {
+                        errors.push(CompilerError::invalid_react(
+                            instr.loc,
+                            global_reassignment_error(name),
+                        ));
+                    }
+                }
+                InstructionValue::MethodCall { receiver, .. } => {
+                    if let Some(name) = global_load_ids.get(&receiver.identifier.id) {
+                        errors.push(CompilerError::invalid_react(
+                            instr.loc,
+                            global_reassignment_error(name),
+                        ));
+                    }
                 }
                 _ => {}
             }
