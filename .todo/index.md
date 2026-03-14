@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Gap 3 partial: sentinel slot count fix in codegen.rs, 349/1717)
+Last updated: 2026-03-14 (free variable detection + hook call exclusion in propagate_dependencies.rs, 354/1717)
 
-Current conformance: 349/1717 pass (20.3%), 0 panics, 0 unexpected divergences.
+Current conformance: 354/1717 pass (20.6%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -31,6 +31,15 @@ sub-tasks (4b-4f) refine merge eligibility checks.
 declaration slots instead of allocating a separate sentinel slot (matching upstream
 `getScopeCount`), and reactive scopes now store declarations into cache slots after
 deps. 7 fixtures removed from known-failures.txt. Net change: +7 (342 -> 349).
+
+**Fix (2026-03-14):** Free variable detection + hook call exclusion in
+`propagate_dependencies.rs`. Identifiers loaded via LoadLocal/LoadContext that are
+never locally defined (no StoreLocal/DeclareLocal/Destructure target) are now treated
+as non-reactive free variables (module-scope imports, constants). The CallExpression
+non-reactivity rule now excludes hook calls (names matching `use[A-Z]`) since hook
+return values are reactive even when the hook itself is a non-reactive import.
+5 fixtures removed from known-failures.txt. Net change: +5 (349 -> 354).
+Gap 9 (setState false-positive) resolved -- hook exclusion is the correct narrow fix.
 
 | Category | Count | Description |
 |----------|-------|-------------|
