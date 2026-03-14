@@ -2,13 +2,13 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (hook alias detection + dynamic hook identity + validation sweep, 416/1717)
+Last updated: 2026-03-14 (hook alias detection + dynamic hook identity validation, 393/1717)
 
-Current conformance: 416/1717 pass (24.2%), 0 panics, 0 unexpected divergences.
+Current conformance: 393/1717 pass (22.9%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
-Only 2 fixtures match with actual compiled `_c()` output. The remaining 1301
+Only 2 fixtures match with actual compiled `_c()` output. The remaining 1324
 divergences break down as follows (counts are approximate and overlap):
 
 **Regression note (2026-03-13):** Sentinel scope emission (Gap 5) was activated,
@@ -118,7 +118,8 @@ through StoreLocal chains.
 nested functions, hooks-as-values, dynamic identity).
 (5) Collateral improvements: additional frozen mutation fixtures, exhaustive deps edge cases,
 ref naming heuristics, hoisting-setState, and several compilation structure fixes.
-33 fixtures removed from known-failures.txt. Net change: +25 (391 -> 416/1717).
+2 aliased hook error fixtures now pass (error.invalid-conditional-call-aliased-hook-import.js,
+error.invalid-conditional-call-aliased-react-hook.js). Net change: +2 (391 -> 393/1717).
 
 | Category | Count | Description |
 |----------|-------|-------------|
@@ -229,8 +230,8 @@ All P0-P5 items have been implemented. Detail files have been removed.
 - Gap 7 (setState during render) fully resolved -- `error.invalid-hoisting-setstate.js` now passing
 - Gap 8 (hoisting/TDZ) effectively resolved via hoisting-setState fix
 - Gap 9 Other: ref naming (`ref-like-name-not-Ref`, `ref-like-name-not-a-ref`), preserve-memo edge case, and several additional fixtures resolved
-- 33 fixtures removed from known-failures.txt, 0 regressions
-- Conformance: 391 -> 416/1717 (+25, 24.2%)
+- 2 aliased hook error fixtures now pass, 0 regressions
+- Conformance: 391 -> 393/1717 (+2, 22.9%)
 
 ### Gap 4 Destructure-to-Global + Bailout-Infer-Mode (2026-03-14)
 

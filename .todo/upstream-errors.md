@@ -184,9 +184,9 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
   - `is_hook()` closure in `validate_hooks_usage.rs` checking both hook naming and aliases
   - Dynamic hook identity check (Rule 5) -- detects unstable hook-named callees via StoreLocal chain resolution
   - Hook alias support wired into all 4 existing hook rules (conditional calls, nested functions, hooks-as-values, dynamic identity)
-  - Collateral gains: `rules-of-hooks/error.invalid-dynamic-hook-via-hooklike-local.js`, `rules-of-hooks/error.invalid-hook-as-prop.js`, `rules-of-hooks/error.invalid-hook-for.js`, `rules-of-hooks/error.invalid-hook-from-hook-return.js`, `rules-of-hooks/rules-of-hooks-0e2214abc294.js`, and 28 additional fixtures across frozen mutation, exhaustive deps, ref naming, hoisting, and compilation structure categories
-  - Completes Gaps 1, 3, 6, 7, 8
-  - 33 fixtures removed from known-failures.txt. +25 net (391 -> 416/1717).
+  - 2 aliased hook error fixtures now pass: `error.invalid-conditional-call-aliased-hook-import.js`, `error.invalid-conditional-call-aliased-react-hook.js`
+  - Completes Gap 6 (dynamic hook identity)
+  - +2 net (391 -> 393/1717). Note: other gaps previously marked complete were premature and remain open.
   - Rust modules: `crates/oxc_react_compiler/src/entrypoint/program.rs`, `crates/oxc_react_compiler/src/hir/environment.rs`, `crates/oxc_react_compiler/src/validation/validate_hooks_usage.rs`, `crates/oxc_react_compiler/src/entrypoint/pipeline.rs`.
 
 ## Total Fixture Gain Estimate
