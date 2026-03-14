@@ -15,6 +15,7 @@ use crate::reactive_scopes::codegen::{
     SourceMap, apply_compilation, codegen_function, codegen_function_with_source_map,
     has_cache_slots,
 };
+use rustc_hash::FxHashSet;
 
 /// Result of compiling a program.
 pub struct CompileResult {
@@ -92,7 +93,7 @@ fn compile_program_inner_with_config(
         };
     }
 
-    let config = config.clone();
+    let mut config = config.clone();
 
     // DIVERGENCE: Upstream emits a per-component "Use of incompatible library" error;
     // we bail the entire file silently. This is simpler but coarser — it prevents
@@ -137,6 +138,10 @@ fn compile_program_inner_with_config(
             source_map: None,
         };
     }
+
+    // Collect hook aliases: local names that alias hook imports
+    // (e.g., `import { useFragment as readFragment }` → "readFragment" is a hook alias)
+    config.hook_aliases = collect_hook_aliases(&parser_ret.program);
 
     let mut compiled_functions: Vec<(Span, String)> = Vec::new();
     let mut function_source_maps: Vec<(Span, SourceMap)> = Vec::new();
@@ -1015,6 +1020,37 @@ fn has_memo_directive(directives: Option<&[Directive<'_>]>) -> bool {
 /// Known-incompatible module sources that should cause compilation to bail.
 /// These are modules whose APIs return values that cannot be safely memoized.
 const KNOWN_INCOMPATIBLE_MODULES: &[&str] = &["ReactCompilerKnownIncompatibleTest"];
+
+/// Collect local names that alias hook imports.
+///
+/// When a module uses `import { useFragment as readFragment }`, the local name
+/// `readFragment` doesn't match `is_hook_name` (no `use` prefix), but it IS a hook
+/// because it aliases `useFragment`. This function finds such aliases so the
+/// hooks validation pass can treat them correctly.
+fn collect_hook_aliases(program: &Program<'_>) -> FxHashSet<String> {
+    let mut aliases = FxHashSet::default();
+
+    for stmt in &program.body {
+        if let Statement::ImportDeclaration(import) = stmt
+            && let Some(specifiers) = &import.specifiers
+        {
+            for spec in specifiers {
+                if let ImportDeclarationSpecifier::ImportSpecifier(named) = spec {
+                    let imported_name = named.imported.name();
+                    let local_name = named.local.name.as_str();
+
+                    // If the imported name is a hook but the local name is not,
+                    // record the local name as a hook alias.
+                    if is_hook_name(imported_name.as_str()) && !is_hook_name(local_name) {
+                        aliases.insert(local_name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    aliases
+}
 
 /// Check if the program imports from a known-incompatible module.
 fn has_known_incompatible_import(program: &Program<'_>) -> bool {

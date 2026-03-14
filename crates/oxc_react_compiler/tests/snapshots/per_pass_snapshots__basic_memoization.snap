@@ -16,9 +16,9 @@ function Doubler(t0) {
     doubled = $[1];
   }
   let t25;
-  if ($[2] !== value) {
+  if ($[2] !== doubled) {
     t25 = <span>{doubled}</span>;
-    $[2] = value;
+    $[2] = doubled;
     $[3] = t25;
   } else {
     t25 = $[3];

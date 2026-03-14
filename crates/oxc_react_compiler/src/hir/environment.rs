@@ -1,5 +1,5 @@
 use super::types::IdGenerator;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Configuration for how the compiler analyzes and transforms code.
 /// Maps to upstream `EnvironmentConfig` with ~30 flags.
@@ -60,6 +60,12 @@ pub struct EnvironmentConfig {
     // Extensibility
     pub custom_macros: Vec<String>,
     pub custom_hooks: FxHashMap<String, CustomHookConfig>,
+
+    /// Local names that alias hook imports (e.g., `import { useFragment as readFragment }`
+    /// → "readFragment"). These must be treated as hooks for Rules of Hooks validation.
+    // DIVERGENCE: Upstream resolves hook aliases inline during validation via the Environment's
+    // module resolution. We store them in config to avoid threading through all call sites.
+    pub hook_aliases: FxHashSet<String>,
 }
 
 impl Default for EnvironmentConfig {
@@ -96,6 +102,7 @@ impl Default for EnvironmentConfig {
             blocklisted_imports: Vec::new(),
             custom_macros: Vec::new(),
             custom_hooks: FxHashMap::default(),
+            hook_aliases: FxHashSet::default(),
         }
     }
 }

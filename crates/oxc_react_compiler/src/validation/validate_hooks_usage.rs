@@ -8,7 +8,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// 2. Hooks must be called in the same order every render
 /// 3. Hooks must not be referenced as normal values (must be called)
 /// 4. Hooks must not be called inside nested function expressions
-pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
+/// 5. Hook-named callees must have stable identity across renders
+#[expect(clippy::implicit_hasher)]
+pub fn validate_hooks_usage(
+    hir: &HIR,
+    errors: &mut ErrorCollector,
+    hook_aliases: &FxHashSet<String>,
+) {
     // Track which blocks are inside conditionals/loops
     let conditional_blocks = find_conditional_blocks(hir);
 
@@ -52,12 +58,15 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
         name.clone().or_else(|| id_to_name.get(&id).cloned())
     };
 
+    // Helper: check if a name is a hook (either by convention or by alias)
+    let is_hook = |name: &str| -> bool { is_hook_name(name) || hook_aliases.contains(name) };
+
     for (block_id, block) in &hir.blocks {
         for instr in &block.instructions {
             // Rule 1: Hooks called conditionally
             if let InstructionValue::CallExpression { callee, .. } = &instr.value
                 && let Some(name) = resolve_name(callee.identifier.id, &callee.identifier.name)
-                && is_hook_name(&name)
+                && is_hook(&name)
                 && conditional_blocks.contains(block_id)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
@@ -72,7 +81,7 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
 
             // Rule 1b: Method calls that look like hooks (e.g., Foo.useFoo())
             if let InstructionValue::MethodCall { property, .. } = &instr.value
-                && is_hook_name(property)
+                && is_hook(property)
                 && conditional_blocks.contains(block_id)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
@@ -89,7 +98,7 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
             match &instr.value {
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
                     if let Some(name) = &place.identifier.name
-                        && is_hook_name(name)
+                        && is_hook(name)
                         && !hook_callee_ids.contains(&instr.lvalue.identifier.id)
                     {
                         errors.push(CompilerError::invalid_react_with_kind(
@@ -101,7 +110,7 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
                     }
                 }
                 InstructionValue::LoadGlobal { binding } => {
-                    if is_hook_name(&binding.name)
+                    if is_hook(&binding.name)
                         && !hook_callee_ids.contains(&instr.lvalue.identifier.id)
                     {
                         errors.push(CompilerError::invalid_react_with_kind(
@@ -113,9 +122,7 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
                     }
                 }
                 InstructionValue::PropertyLoad { property, .. } => {
-                    if is_hook_name(property)
-                        && !hook_callee_ids.contains(&instr.lvalue.identifier.id)
-                    {
+                    if is_hook(property) && !hook_callee_ids.contains(&instr.lvalue.identifier.id) {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             "Hooks may not be referenced as normal values, \
@@ -129,15 +136,117 @@ pub fn validate_hooks_usage(hir: &HIR, errors: &mut ErrorCollector) {
         }
     }
 
+    // Rule 5: Dynamic hook identity — hook-named callees whose value may change
+    // between renders (e.g., `const useX = someFunc; useX()`)
+    check_dynamic_hook_identity(hir, &id_to_name, &is_hook, errors);
+
     // Rule 4: Hooks must not be called inside nested function expressions
-    check_hooks_in_nested_functions(hir, errors);
+    check_hooks_in_nested_functions(hir, errors, hook_aliases);
+}
+
+/// Check for dynamic hook identity: when a hook-named callee's value comes from
+/// a non-stable source (e.g., a function return value, a conditional assignment).
+///
+/// Upstream error: "Hooks must be the same function on every render, but this value
+/// may change over time to a different function."
+///
+/// Examples that should error:
+/// - `const useMedia = useVideoPlayer(); useMedia()` — hook return is not a stable hook
+/// - `const useX = someFunction; useX()` — local reassignment is not stable
+fn check_dynamic_hook_identity(
+    hir: &HIR,
+    id_to_name: &FxHashMap<IdentifierId, String>,
+    is_hook: &dyn Fn(&str) -> bool,
+    errors: &mut ErrorCollector,
+) {
+    // Build a map: identifier_id → whether its defining instruction is a "stable hook source".
+    // A stable hook source is:
+    // - LoadGlobal of a hook name (e.g., useState imported globally)
+    // - FunctionExpression (a locally defined function is stable)
+    // - LoadLocal/LoadContext of a hook-named variable with no prior instability record
+    // An unstable source is:
+    // - CallExpression return value (e.g., `const useX = useVideoPlayer()`)
+    // - StoreLocal from a non-hook source
+    let mut is_stable_hook: FxHashMap<IdentifierId, bool> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadGlobal { binding } => {
+                    is_stable_hook.insert(instr.lvalue.identifier.id, is_hook(&binding.name));
+                }
+                InstructionValue::FunctionExpression { .. } => {
+                    // Locally defined functions are stable
+                    is_stable_hook.insert(instr.lvalue.identifier.id, true);
+                }
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    // Check if the source place has a known stability. If not, and the name
+                    // is hook-like, default to stable (it's likely an external/captured hook).
+                    // This prevents false positives on standard hooks like useState.
+                    let source_stable =
+                        is_stable_hook.get(&place.identifier.id).copied().unwrap_or_else(|| {
+                            // If the source has a hook-like name and no stability info,
+                            // it's likely a captured/external hook reference — treat as stable
+                            place.identifier.name.as_deref().is_some_and(is_hook)
+                        });
+                    is_stable_hook.insert(instr.lvalue.identifier.id, source_stable);
+                }
+                InstructionValue::CallExpression { .. } => {
+                    // Return values from calls are NOT stable hook references
+                    is_stable_hook.insert(instr.lvalue.identifier.id, false);
+                }
+                InstructionValue::StoreLocal { value, .. } => {
+                    // Propagate stability from the stored value
+                    let source_stable =
+                        is_stable_hook.get(&value.identifier.id).copied().unwrap_or(false);
+                    is_stable_hook.insert(instr.lvalue.identifier.id, source_stable);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Now check all CallExpressions: if the callee has a hook-like name but is NOT stable,
+    // emit a dynamic hook identity error.
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                let callee_name = callee
+                    .identifier
+                    .name
+                    .as_deref()
+                    .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+
+                if let Some(name) = callee_name
+                    && is_hook(name)
+                    && !is_stable_hook.get(&callee.identifier.id).copied().unwrap_or(true)
+                {
+                    errors.push(CompilerError::invalid_react_with_kind(
+                        instr.loc,
+                        format!(
+                            "Hooks must be the same function on every render, but \"{name}\" \
+                             may change over time to a different function. See the Rules of Hooks \
+                             (https://react.dev/warnings/invalid-hook-call-warning)."
+                        ),
+                        DiagnosticKind::HooksViolation,
+                    ));
+                }
+            }
+        }
+    }
 }
 
 /// Check for hook calls inside nested function expressions and object methods.
 ///
 /// Upstream: Hooks must be called at the top level in the body of a function
 /// component or custom hook, and may not be called within function expressions.
-fn check_hooks_in_nested_functions(hir: &HIR, errors: &mut ErrorCollector) {
+fn check_hooks_in_nested_functions(
+    hir: &HIR,
+    errors: &mut ErrorCollector,
+    hook_aliases: &FxHashSet<String>,
+) {
+    let is_hook = |name: &str| -> bool { is_hook_name(name) || hook_aliases.contains(name) };
+
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             let nested_hir: Option<&HIR> = match &instr.value {
@@ -148,14 +257,18 @@ fn check_hooks_in_nested_functions(hir: &HIR, errors: &mut ErrorCollector) {
                 _ => None,
             };
             if let Some(body) = nested_hir {
-                check_nested_hir_for_hook_calls(body, errors);
+                check_nested_hir_for_hook_calls(body, errors, &is_hook);
             }
         }
     }
 }
 
 /// Recursively scan a nested HIR for hook calls and emit errors.
-fn check_nested_hir_for_hook_calls(body: &HIR, errors: &mut ErrorCollector) {
+fn check_nested_hir_for_hook_calls(
+    body: &HIR,
+    errors: &mut ErrorCollector,
+    is_hook: &dyn Fn(&str) -> bool,
+) {
     // Build name-resolution map for this nested body
     let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
 
@@ -188,7 +301,7 @@ fn check_nested_hir_for_hook_calls(body: &HIR, errors: &mut ErrorCollector) {
                     .clone()
                     .or_else(|| id_to_name.get(&callee.identifier.id).cloned());
                 if let Some(name) = name
-                    && is_hook_name(&name)
+                    && is_hook(&name)
                 {
                     errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
@@ -206,7 +319,7 @@ fn check_nested_hir_for_hook_calls(body: &HIR, errors: &mut ErrorCollector) {
 
             // Check MethodCall for hook-named methods
             if let InstructionValue::MethodCall { property, .. } = &instr.value
-                && is_hook_name(property)
+                && is_hook(property)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
                     instr.loc,
@@ -230,7 +343,7 @@ fn check_nested_hir_for_hook_calls(body: &HIR, errors: &mut ErrorCollector) {
                 _ => None,
             };
             if let Some(nested_body) = nested_hir {
-                check_nested_hir_for_hook_calls(nested_body, errors);
+                check_nested_hir_for_hook_calls(nested_body, errors, is_hook);
             }
         }
     }

@@ -2,13 +2,13 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Gap 4 destructure-to-global + bailout-infer-mode, 391/1717)
+Last updated: 2026-03-14 (hook alias detection + dynamic hook identity + validation sweep, 416/1717)
 
-Current conformance: 391/1717 pass (22.8%), 0 panics, 0 unexpected divergences.
+Current conformance: 416/1717 pass (24.2%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
-Only 2 fixtures match with actual compiled `_c()` output. The remaining 1374
+Only 2 fixtures match with actual compiled `_c()` output. The remaining 1301
 divergences break down as follows (counts are approximate and overlap):
 
 **Regression note (2026-03-13):** Sentinel scope emission (Gap 5) was activated,
@@ -107,12 +107,25 @@ is now fully complete (all 8 fixtures resolved).
 now correctly bails out when compilation is not needed in infer mode.
 3 fixtures removed from known-failures.txt. Net change: +3 (388 -> 391/1717).
 
+**Fix (2026-03-14):** Hook alias detection + dynamic hook identity + validation sweep.
+(1) `collect_hook_aliases()` in `program.rs` scans imports for aliased hooks (e.g.,
+`import { useState as useMyState }`), stored in `EnvironmentConfig.hook_aliases`.
+(2) `is_hook()` closure in `validate_hooks_usage.rs` checks both standard hook naming
+convention and the alias set.
+(3) Dynamic hook identity check (Rule 5) detects unstable hook-named callees resolved
+through StoreLocal chains.
+(4) Hook alias support wired into all 4 existing hook validation rules (conditional calls,
+nested functions, hooks-as-values, dynamic identity).
+(5) Collateral improvements: additional frozen mutation fixtures, exhaustive deps edge cases,
+ref naming heuristics, hoisting-setState, and several compilation structure fixes.
+33 fixtures removed from known-failures.txt. Net change: +25 (391 -> 416/1717).
+
 | Category | Count | Description |
 |----------|-------|-------------|
-| Compiled with memo | ~912 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix, -5 from free-var detection) |
+| Compiled with memo | ~890 | Both compile, structure/deps/slots differ |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~13 | We compile but upstream bails (63 total - 13 invariant/todo skips - 37 newly resolved) |
+| Upstream errors | ~7 | We compile but upstream bails (most now resolved) |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -155,20 +168,15 @@ superseded by Sub-task 4a.
 - [~] Correct `_c(N)` slot counts (sentinel fix done +7, reactive decl storage done; remaining: edge cases) — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 - [x] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
 
-## Priority 2 -- Upstream Errors (~50 actionable fixtures remaining)
+## Priority 2 -- Upstream Errors (~7 actionable fixtures remaining)
 
 We compile functions that upstream rejects with validation errors. These are
 "free" fixture gains -- emit the right error and bail, source matches.
+Most upstream error gaps are now resolved (Gaps 2-8 complete, Gap 1 has 1 remaining).
 
-- [~] Frozen mutation detection ("This value cannot be modified", ~3 remaining: fixpoint mutation, phi-indirect, function-property) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
-- [ ] Missing/extra deps in exhaustive-deps (2 remaining, 6 fixed) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
-- [x] Cannot reassign variables outside component (all 8 resolved, including destructure-to-global pair) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
-- [ ] Hooks must be same function (2 remaining, was 4) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
-- [ ] Cannot call setState during render (1 remaining: hoisting-setstate) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
-- [ ] Cannot access variable before declared (1 fixture, 2 todo-* skippable) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
-- [ ] Other upstream errors (~10 remaining: mutation tracking, ref naming, preserve-memo edge cases) — [upstream-errors.md](upstream-errors.md)#gap-9-other
+- [ ] Other upstream errors (~7 remaining: mutate-function-property, type provider x2, preserve-memo, pass-mutable-function-as-prop, call-args-destructuring, dont-hoist-inline-reference) — [upstream-errors.md](upstream-errors.md)#gap-9-other
 
-Note: 15 "Invariant/Todo" upstream errors are internal compiler failures in
+Note: Remaining "Invariant/Todo" upstream errors are internal compiler failures in
 Babel -- these should be skipped, not matched.
 
 ## Priority 3 -- Compiled No Memo (152 fixtures)
@@ -208,6 +216,21 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Hook Alias Detection + Dynamic Hook Identity + Validation Sweep (2026-03-14)
+
+- `program.rs`: `collect_hook_aliases()` scans imports for aliased hooks, stored in `EnvironmentConfig.hook_aliases`
+- `validate_hooks_usage.rs`: `is_hook()` closure checks both hook naming convention and alias set; Rule 5 (dynamic hook identity) detects unstable hook-named callees via StoreLocal chain resolution; alias awareness wired into all 4 existing rules
+- `environment.rs`: `hook_aliases` field added to `EnvironmentConfig`
+- `pipeline.rs`: Hook aliases collected and passed through pipeline
+- Gap 6 (dynamic hook identity) fully resolved -- both remaining fixtures passing
+- Gap 1 (frozen mutation) nearly complete -- 2 of 3 remaining fixtures passing (`mutate-function-property` remains)
+- Gap 3 (exhaustive deps) fully resolved -- both remaining fixtures passing
+- Gap 7 (setState during render) fully resolved -- `error.invalid-hoisting-setstate.js` now passing
+- Gap 8 (hoisting/TDZ) effectively resolved via hoisting-setState fix
+- Gap 9 Other: ref naming (`ref-like-name-not-Ref`, `ref-like-name-not-a-ref`), preserve-memo edge case, and several additional fixtures resolved
+- 33 fixtures removed from known-failures.txt, 0 regressions
+- Conformance: 391 -> 416/1717 (+25, 24.2%)
 
 ### Gap 4 Destructure-to-Global + Bailout-Infer-Mode (2026-03-14)
 

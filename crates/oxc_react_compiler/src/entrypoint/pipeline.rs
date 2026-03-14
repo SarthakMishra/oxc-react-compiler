@@ -71,7 +71,11 @@ pub fn run_pipeline(
     // Phase 4: Validation (Hooks)
     // Pass 13: validate_hooks_usage (conditional)
     if config.validate_hooks_usage {
-        crate::validation::validate_hooks_usage::validate_hooks_usage(hir, errors);
+        crate::validation::validate_hooks_usage::validate_hooks_usage(
+            hir,
+            errors,
+            &config.hook_aliases,
+        );
     }
 
     // Pass 14: validate_no_capitalized_calls (conditional)

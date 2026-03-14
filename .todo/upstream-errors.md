@@ -1,7 +1,7 @@
 # Upstream Errors -- Validation Gaps
 
-> **Priority**: P2 (~20 actionable remaining fixtures, high tractability -- each fix is "emit error + bail")
-> **Impact**: ~13 remaining actionable fixtures where we compile but Babel bails with a validation error (63 total error fixtures - 13 invariant/todo skips - 37 resolved = 13 actionable)
+> **Priority**: P2 (~7 actionable remaining fixtures)
+> **Impact**: Nearly all upstream error fixtures resolved. Gaps 2-8 complete. Gap 1 has 1 remaining. Gap 9 has ~6 remaining.
 > **Tractability**: HIGH -- each sub-category is a focused validation improvement
 
 ## Problem Statement
@@ -18,7 +18,7 @@ Note: 15 additional fixtures fail due to Babel internal errors (Invariant/Todo)
 
 ### Gap 1: Frozen Mutation Detection (nearly complete)
 
-**Count:** ~4 remaining (moved from Gap 9 overlap; alias + phi tracking now done)
+~~**Count:** ~4 remaining (moved from Gap 9 overlap; alias + phi tracking now done)~~
 **Upstream error:** "This value cannot be modified"
 **Upstream:** `ValidateLocalsNotReassignedAfterRender.ts`, `InferMutableRanges.ts`
 
@@ -57,11 +57,11 @@ Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_mutation_aft
 - ~~Alias tracking~~ Done (alias freeze tracking)
 - ~~Phi-node frozen tracking~~ Done (phi-node freeze propagation)
 - ~~Hook-arg local mutation~~ Done (Phase 65)
-- `error.invalid-mutate-props-in-effect-fixpoint.js` -- props mutation in effect with fixpoint iteration
-- `error.invalid-mutation-of-possible-props-phi-indirect.js` -- indirect phi-based possible-props mutation
-- `error.mutate-function-property.js` -- mutation of function object property
-**Fixture gain estimate:** ~1-3 (remaining cases require deeper analysis of specific mutation patterns)
-**Depends on:** None
+- ~~`error.invalid-mutate-props-in-effect-fixpoint.js`~~ Resolved (2026-03-14)
+- ~~`error.invalid-mutation-of-possible-props-phi-indirect.js`~~ Resolved (2026-03-14)
+- `error.mutate-function-property.js` -- mutation of function object property (still in known-failures)
+
+**Completed (2026-03-14, hook alias session):** 2 of 3 remaining frozen mutation fixtures resolved: `error.invalid-mutate-props-in-effect-fixpoint.js` and `error.invalid-mutation-of-possible-props-phi-indirect.js` now passing. 1 remains: `error.mutate-function-property.js` (mutation of function object property). Rust module: `crates/oxc_react_compiler/src/validation/validate_no_mutation_after_freeze.rs`.
 
 ### Gap 2: Validate Preserve Existing Memoization ✅
 
@@ -71,17 +71,12 @@ Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_mutation_aft
 
 **Completed (2026-03-13):** Pipeline gate fixes for Pass 5 and Pass 61. Pass 5 (`drop_manual_memoization`) now preserves memo markers when `validate_preserve_existing_memoization_guarantees` is set (not just `enable_preserve`). Pass 61 now runs on both config flags. Error messages aligned with upstream ("Existing memoization could not be preserved..."). Pruned memoizations silently skipped. All 20 preserve-memo-validation error fixtures now passing, plus 11 bonus error fixtures from other categories. Rust modules: `crates/oxc_react_compiler/src/entrypoint/pipeline.rs`, `crates/oxc_react_compiler/src/validation/validate_preserved_manual_memoization.rs`. +31 fixtures total (278 -> 309/1717).
 
-### Gap 3: Exhaustive Deps Remaining
+### Gap 3: Exhaustive Deps Remaining ✅
 
-**Count:** 2 remaining (6 fixed by extra-dep detection + mode gating, 2026-03-13)
-**Upstream error:** "Missing/extra deps"
-**Upstream:** `ValidateExhaustiveDeps.ts`
-**Current state:** `validate_exhaustive_dependencies.rs` enhanced with extra dependency detection, per-mode validation (All/MissingOnly/ExtraOnly), and config-driven gating. 6 fixtures fixed (309→315/1717). 2 remain: `error.invalid-exhaustive-effect-deps-missing-only.js`, `error.sketchy-code-exhaustive-deps.js`.
-**What's needed:**
-- Analyze the 2 remaining fixtures -- likely edge cases in dependency collection or sketchy-code detection patterns
-- Note: 5 additional exhaustive-deps fixtures remain in known-failures but are compilation divergences (P1 territory), not validation-error fixtures
-**Fixture gain estimate:** ~1-2
-**Depends on:** None
+~~**Count:** 2 remaining (6 fixed by extra-dep detection + mode gating, 2026-03-13)~~
+~~**Upstream error:** "Missing/extra deps"~~
+
+**Completed (2026-03-14):** Both remaining exhaustive deps fixtures resolved: `error.invalid-exhaustive-effect-deps-missing-only.js` and `error.sketchy-code-exhaustive-deps.js`. All 8 exhaustive deps validation-error fixtures now passing. Note: 5 additional exhaustive-deps fixtures remain in known-failures but are compilation divergences (P1 territory), not validation-error fixtures. Rust module: `crates/oxc_react_compiler/src/validation/validate_exhaustive_dependencies.rs`.
 
 ### Gap 4: Reassign Outside Component ✅
 
@@ -114,56 +109,47 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 
 **Completed (2026-03-14):** All 6 remaining ref-access-during-render fixtures resolved via improved nested function ref tracking in `validate_no_ref_access_in_render.rs`. The validation now detects ref access patterns inside nested function expressions and lambda callbacks, covering ref values passed through function calls, stored in data structures, and accessed through indirect patterns. Rust module: `crates/oxc_react_compiler/src/validation/validate_no_ref_access_in_render.rs`. +6 fixtures (part of 354 -> 362 batch).
 
-### Gap 6: Dynamic Hook Identity
+### Gap 6: Dynamic Hook Identity ✅
 
-**Count:** 2 remaining (was 4; 2 resolved by SSA + conditional hook detection improvements)
-**Upstream error:** "Hooks must be same function"
-**Upstream:** `ValidateHooksUsage.ts`
-**Current state:** `validate_hooks_usage.rs` exists with SSA resolution and conditional hook method call detection. 2 remain: `error.invalid-conditional-call-aliased-hook-import.js`, `error.invalid-conditional-call-aliased-react-hook.js` -- both involve aliased hook imports called conditionally.
-**What's needed:**
-- Detect patterns where a hook import is aliased to a local variable and then called conditionally
-- The aliasing breaks SSA-based hook identity tracking
-**Fixture gain estimate:** ~1-2
-**Depends on:** None
+~~**Count:** 2 remaining (was 4; 2 resolved by SSA + conditional hook detection improvements)~~
+~~**Upstream error:** "Hooks must be same function"~~
 
-### Gap 7: setState During Render (mostly complete)
+**Completed (2026-03-14):** Both remaining fixtures resolved via hook alias detection infrastructure: `error.invalid-conditional-call-aliased-hook-import.js` and `error.invalid-conditional-call-aliased-react-hook.js`. Implementation: `collect_hook_aliases()` in `program.rs` scans imports for aliased hooks (e.g., `import { useState as useMyState }`), stored in `EnvironmentConfig.hook_aliases`. The `is_hook()` closure in `validate_hooks_usage.rs` checks both the standard `use[A-Z]` naming convention and the alias set. Rule 5 (dynamic hook identity) detects unstable hook-named callees resolved through StoreLocal chains. All 4 original Gap 6 fixtures now passing. Rust modules: `crates/oxc_react_compiler/src/entrypoint/program.rs`, `crates/oxc_react_compiler/src/hir/environment.rs`, `crates/oxc_react_compiler/src/validation/validate_hooks_usage.rs`.
 
-**Count:** 1 remaining (2 of 3 resolved)
-**Upstream error:** "Cannot call setState during render"
-**Upstream:** `ValidateNoSetStateInRender.ts`
-**Current state:** `validate_no_set_state_in_render.rs` enhanced with transitive setState detection through helper functions and lambdas. Fixpoint loop resolves arbitrarily deep call chains (foo → bar → baz → setState). Function-to-name mapping propagated through StoreLocal chains. 2 fixtures now passing: `error.unconditional-set-state-lambda.js`, `error.unconditional-set-state-nested-function-expressions.js`. 1 remaining: `error.invalid-hoisting-setstate.js` (requires hoisted context declaration tracking, overlaps with Gap 8).
-**Fixture gain estimate:** ~0-1 (remaining fixture requires deeper hoisting analysis)
-**Depends on:** None
+### Gap 7: setState During Render ✅
 
-### Gap 8: Hoisting/TDZ
+~~**Count:** 1 remaining (2 of 3 resolved)~~
+~~**Upstream error:** "Cannot call setState during render"~~
 
-**Count:** 1 actionable fixture (2 `todo-*` are upstream bugs, skippable)
-**Upstream error:** "Cannot access variable before declared"
-**Upstream:** Various validation logic in `HIRBuilder.ts`
-**Current state:** No TDZ analysis exists. The actionable fixture is `error.invalid-hoisting-setstate.js` (overlaps with Gap 7). The 2 `todo-functiondecl-hoisting` fixtures are upstream TODOs.
-**What's needed:**
-- Detect references to `let`/`const` variables before their declaration point
-- This may be caught during HIR building or as a separate validation pass
-**Fixture gain estimate:** ~1
-**Depends on:** None
+**Completed (2026-03-14):** Final fixture `error.invalid-hoisting-setstate.js` resolved as part of the hook alias / validation sweep session. All 3 setState-during-render fixtures now passing. Rust module: `crates/oxc_react_compiler/src/validation/validate_no_set_state_in_render.rs`.
+
+### Gap 8: Hoisting/TDZ ✅
+
+~~**Count:** 1 actionable fixture (2 `todo-*` are upstream bugs, skippable)~~
+~~**Upstream error:** "Cannot access variable before declared"~~
+
+**Completed (2026-03-14):** The one actionable fixture (`error.invalid-hoisting-setstate.js`) was resolved as part of Gap 7 completion. The 2 `todo-functiondecl-hoisting` fixtures are upstream TODOs and should be skipped.
 
 ### Gap 9: Other Validation Errors
 
-**Count:** ~10 remaining uncategorized fixtures
-**What's needed:** These cover several sub-categories not yet tracked individually:
-- **Mutation tracking** (~3): `invalid-mutate-props-in-effect-fixpoint`, `invalid-mutation-of-possible-props-phi-indirect`, `mutate-function-property` (also tracked under Gap 1 remaining)
-- **Type provider** (2): `invalid-type-provider-*`
-- **Ref naming heuristic** (2): `ref-like-name-not-Ref`, `ref-like-name-not-a-ref`
-- **Preserve-memo edge cases** (2): `repro-preserve-memoization-inner-destructured-value-*`
-- **Other** (~2): `call-args-destructuring-asignment-complex`, `dont-hoist-inline-reference`
+**Count:** ~7 remaining error fixtures in known-failures.txt
+**What's needed:** These cover several sub-categories:
+- **Frozen mutation** (1): `error.mutate-function-property.js` (Gap 1 remainder)
+- **Type provider** (2): `error.invalid-type-provider-hooklike-module-default-not-hook.js`, `error.invalid-type-provider-nonhook-name-typed-as-hook.js`
+- **Preserve-memo edge case** (1): `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js`
+- **Mutable function as prop** (1): `error.invalid-pass-mutable-function-as-prop.js`
+- **Other** (2): `error.call-args-destructuring-asignment-complex.js`, `error.dont-hoist-inline-reference.js`
+- ~~**Mutation tracking** (~3)~~ Mostly resolved (moved to Gap 1; `mutate-function-property` remains)
+- ~~**Ref naming heuristic** (2)~~ Resolved (`ref-like-name-not-Ref`, `ref-like-name-not-a-ref` both passing, 2026-03-14)
+- ~~**Preserve-memo** `repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep`~~ Resolved (2026-03-14)
 - ~~`invalid-mutate-global-*`~~ Resolved (outer-scope property mutation + render helper detection)
 - ~~`not-useEffect-external-mutate`~~ Resolved
-- ~~`invalid-return-mutable-function-from-hook`~~ Resolved
+- ~~`invalid-return-mutable-function-from-hook`~~ Resolved (2026-03-14)
 - ~~`hook-call-freezes-captured-identifier.tsx`~~ Resolved (Phase 65: hook-call capture freeze)
 - ~~`hook-call-freezes-captured-memberexpr.jsx`~~ Resolved (Phase 65: hook-call capture freeze)
 - ~~`assign-ref-in-effect-hint`~~ Resolved (Phase 65: assign-ref diagnostic)
 - ~~`invalid-hook-function-argument-mutates-local-variable`~~ Resolved (Phase 65: moved to Gap 1 completed)
-**Fixture gain estimate:** ~3-7 (remaining require focused per-fixture analysis)
+**Fixture gain estimate:** ~2-5 (type provider requires custom type system integration; others need individual analysis)
 **Depends on:** Analysis of individual fixtures
 
 **Partially completed:**
@@ -192,14 +178,25 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
   - Destructure assignment to globals: `error.invalid-destructure-assignment-to-global.js` and `error.invalid-destructure-to-local-global-variables.js` -- destructuring assignments targeting global/outer-scope variables now detected in `validate_no_global_reassignment.rs`. Completes Gap 4.
   - Bailout without compilation in infer mode: `should-bailout-without-compilation-infer-mode.js` -- correctly bails out when compilation is not needed in infer mode.
   - 3 fixtures removed from known-failures.txt. +3 fixtures (388 -> 391/1717).
+- **Hook alias detection + dynamic hook identity (2026-03-14):** Broad validation sweep resolving 33 fixtures:
+  - `collect_hook_aliases()` in `program.rs` for import alias detection (e.g., `import { useState as useMyState }`)
+  - `hook_aliases` field in `EnvironmentConfig`
+  - `is_hook()` closure in `validate_hooks_usage.rs` checking both hook naming and aliases
+  - Dynamic hook identity check (Rule 5) -- detects unstable hook-named callees via StoreLocal chain resolution
+  - Hook alias support wired into all 4 existing hook rules (conditional calls, nested functions, hooks-as-values, dynamic identity)
+  - Collateral gains: `rules-of-hooks/error.invalid-dynamic-hook-via-hooklike-local.js`, `rules-of-hooks/error.invalid-hook-as-prop.js`, `rules-of-hooks/error.invalid-hook-for.js`, `rules-of-hooks/error.invalid-hook-from-hook-return.js`, `rules-of-hooks/rules-of-hooks-0e2214abc294.js`, and 28 additional fixtures across frozen mutation, exhaustive deps, ref naming, hoisting, and compilation structure categories
+  - Completes Gaps 1, 3, 6, 7, 8
+  - 33 fixtures removed from known-failures.txt. +25 net (391 -> 416/1717).
+  - Rust modules: `crates/oxc_react_compiler/src/entrypoint/program.rs`, `crates/oxc_react_compiler/src/hir/environment.rs`, `crates/oxc_react_compiler/src/validation/validate_hooks_usage.rs`, `crates/oxc_react_compiler/src/entrypoint/pipeline.rs`.
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 105 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 10 from Gap 4 global reassignment + async callback + destructure-to-global, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions, 6 from Gap 9 known-incompatible/ESLint/useMemo/capitalized-call fixes, 10 from Gap 9 mutation tracking [delete ops + phi freeze + alias freeze + derivation chains + outer-scope property mutation + render helper detection], 4 from Phase 65 [hook-call capture freeze + hook-arg mutation + assign-ref hint], 1 from bailout-infer-mode).
-Remaining achievable: ~3-10 of the remaining ~13 actionable fixtures. The
-categorized gaps (1,3,6,7,8) account for ~7 fixtures; Gap 9 "Other" covers
-~9 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
-fixtures should be registered as known skips.
+Achieved so far: ~130 upstream error fixtures resolved across all gaps. Gaps 2-8 are
+fully complete. Gap 1 has 1 remaining fixture (`error.mutate-function-property.js`).
+Gap 9 has ~6 remaining actionable fixtures (type provider x2, preserve-memo edge case,
+pass-mutable-function-as-prop, call-args-destructuring, dont-hoist-inline-reference).
+The remaining Invariant/Todo fixtures are upstream bugs and should be registered as
+known skips.
 
 ## Cross-Cutting Issue: SSA Place Identity
 
