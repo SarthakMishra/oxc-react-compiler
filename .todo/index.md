@@ -2,7 +2,7 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Transitive dep resolution in propagate_dependencies, 342/1717)
+Last updated: 2026-03-14 (Gap 11 resolved: derived computation codegen fix in prune_scopes.rs, 342/1717)
 
 Current conformance: 342/1717 pass (19.9%), 0 panics, 0 unexpected divergences.
 
@@ -72,7 +72,6 @@ chaining, nested scope flattening, and safety checks. See memoization-structure.
 - [x] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
 - [x] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
 - [x] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
-- [ ] Derived computation codegen: declarations emitted outside scope guards — [memoization-structure.md](memoization-structure.md)#gap-11-derived-computation-codegen-outside-scope-guards
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 - [ ] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
 - [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation
@@ -140,7 +139,7 @@ All P0-P5 items have been implemented. Detail files have been removed.
 - Codegen validation: `semantic_derived_values` snapshot reduced from 3 unresolved references to 1 (`hasItems` and `total` now resolved)
 - `component-with-derived` fixture: slot count reduced from 5 to 4, transitive `count` dep replaced with root `items.length`
 - Known limitation: name-based matching can false-positive on shadowed variables (same trade-off as dep_key_set/scope_written_names elsewhere; tracked under Sub-task 4f)
-- New gap discovered: derived computations (`const doubled = value * 2`) emitted outside scope guards -- see Gap 11
+- Gap 11 (derived computations outside scope guards) discovered and resolved -- see prune_scopes.rs `collect_used_ids` fix
 - Conformance: unchanged (342/1717) -- structural prerequisite for compound gains
 
 ### Nested Scope Flattening -- Sub-task 4c (2026-03-14)

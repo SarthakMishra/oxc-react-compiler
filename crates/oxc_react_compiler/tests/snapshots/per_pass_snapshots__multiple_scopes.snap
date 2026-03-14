@@ -5,10 +5,25 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function Summary(t0) {
-  const $ = _c(3);
+  const $ = _c(8);
   const { items, threshold } = t0;
-  const count = items.length;
-  const hasMany = count > threshold;
+  let count;
+  if ($[0] !== items.length) {
+    count = items.length;
+    $[0] = items.length;
+    $[1] = count;
+  } else {
+    count = $[1];
+  }
+  let hasMany;
+  if ($[2] !== items.length || $[3] !== threshold) {
+    hasMany = count > threshold;
+    $[2] = items.length;
+    $[3] = threshold;
+    $[4] = hasMany;
+  } else {
+    hasMany = $[4];
+  }
   if (hasMany) {
     t24 = "Many items";
   } else {
@@ -16,18 +31,18 @@ function Summary(t0) {
   }
   const label = t24;
   let t75;
-  if ($[0] !== items.length || $[1] !== label) {
+  if ($[5] !== items.length || $[6] !== label) {
     t75 = (
       <div>
         <span>{label}</span>
         <span>({count})</span>
       </div>
     );
-    $[0] = items.length;
-    $[1] = label;
-    $[2] = t75;
+    $[5] = items.length;
+    $[6] = label;
+    $[7] = t75;
   } else {
-    t75 = $[2];
+    t75 = $[7];
   }
   return t75;
 }

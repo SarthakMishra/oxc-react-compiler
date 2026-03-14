@@ -7,11 +7,18 @@ diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
 function Display(t0) {
-  const $ = _c(4);
+  const $ = _c(6);
   const { items } = t0;
-  const count = items.length;
+  let count;
   if ($[0] !== items.length) {
+    count = items.length;
     $[0] = items.length;
+    $[1] = count;
+  } else {
+    count = $[1];
+  }
+  if ($[2] !== items.length) {
+    $[2] = items.length;
   }
   if (t40) {
     t16 = "Has items";
@@ -20,7 +27,7 @@ function Display(t0) {
   }
   const label = t16;
   let t53;
-  if ($[1] !== items.length || $[2] !== label) {
+  if ($[3] !== items.length || $[4] !== label) {
     t53 = (
       <div>
         {label}
@@ -28,11 +35,11 @@ function Display(t0) {
         {count}
       </div>
     );
-    $[1] = items.length;
-    $[2] = label;
-    $[3] = t53;
+    $[3] = items.length;
+    $[4] = label;
+    $[5] = t53;
   } else {
-    t53 = $[3];
+    t53 = $[5];
   }
   return t53;
 }

@@ -8,33 +8,42 @@ use crate::hir::types::{
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Prune reactive scopes that don't escape the function.
+///
+/// A scope "escapes" if any of its declarations or reassignments are consumed
+/// by instructions anywhere in the function. Scopes whose results are never
+/// referenced can be unwrapped (their instructions inlined into the parent
+/// block).
 pub fn prune_non_escaping_scopes(rf: &mut ReactiveFunction) {
-    // Collect all identifier IDs used outside of scopes
-    let mut used_outside_scopes = FxHashSet::default();
-    collect_used_outside_scopes(&rf.body, false, &mut used_outside_scopes);
+    // Collect all identifier IDs used anywhere in the function.
+    //
+    // NOTE: Previously we only collected uses OUTSIDE scope blocks (passing
+    // `in_scope=true` when recursing into scopes). This was a bug: a variable
+    // declared in scope S1 and used inside scope S2 IS escaping S1. Both
+    // scopes are independent cache boundaries. The `in_scope` flag incorrectly
+    // treated uses inside ANY scope block as "not escaping", causing derived
+    // computations (like `const doubled = value * 2`) to be pruned and emitted
+    // outside their scope guard, defeating memoization. The fix matches
+    // upstream's `PruneNonEscapingScopes.ts` which collects all references
+    // without an in-scope gate.
+    let mut used_ids = FxHashSet::default();
+    collect_used_ids(&rf.body, &mut used_ids);
 
-    // Remove scopes whose declarations are never used outside
-    prune_scopes_in_block(&mut rf.body, &used_outside_scopes);
+    // Remove scopes whose declarations are never used anywhere
+    prune_scopes_in_block(&mut rf.body, &used_ids);
 }
 
-fn collect_used_outside_scopes(
-    block: &ReactiveBlock,
-    in_scope: bool,
-    used: &mut FxHashSet<IdentifierId>,
-) {
+/// Collect all identifier IDs referenced as operands anywhere in the tree.
+fn collect_used_ids(block: &ReactiveBlock, used: &mut FxHashSet<IdentifierId>) {
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
-                if !in_scope {
-                    // Collect all operand IDs used outside scopes
-                    collect_instruction_operand_ids(&instruction.value, used);
-                }
+                collect_instruction_operand_ids(&instruction.value, used);
             }
             ReactiveInstruction::Scope(scope_block) => {
-                collect_used_outside_scopes(&scope_block.instructions, true, used);
+                collect_used_ids(&scope_block.instructions, used);
             }
             ReactiveInstruction::Terminal(terminal) => {
-                collect_used_in_terminal(terminal, in_scope, used);
+                collect_used_in_terminal(terminal, used);
             }
         }
     }
@@ -202,62 +211,52 @@ fn collect_instruction_operand_ids(value: &InstructionValue, used: &mut FxHashSe
     }
 }
 
-fn collect_used_in_terminal(
-    terminal: &ReactiveTerminal,
-    in_scope: bool,
-    used: &mut FxHashSet<IdentifierId>,
-) {
+fn collect_used_in_terminal(terminal: &ReactiveTerminal, used: &mut FxHashSet<IdentifierId>) {
     match terminal {
         ReactiveTerminal::Return { value, .. } | ReactiveTerminal::Throw { value, .. } => {
-            if !in_scope {
-                used.insert(value.identifier.id);
-            }
+            used.insert(value.identifier.id);
         }
         ReactiveTerminal::If { test, consequent, alternate, .. } => {
-            if !in_scope {
-                used.insert(test.identifier.id);
-            }
-            collect_used_outside_scopes(consequent, in_scope, used);
-            collect_used_outside_scopes(alternate, in_scope, used);
+            used.insert(test.identifier.id);
+            collect_used_ids(consequent, used);
+            collect_used_ids(alternate, used);
         }
         ReactiveTerminal::Switch { test, cases, .. } => {
-            if !in_scope {
-                used.insert(test.identifier.id);
-            }
+            used.insert(test.identifier.id);
             for (_, block) in cases {
-                collect_used_outside_scopes(block, in_scope, used);
+                collect_used_ids(block, used);
             }
         }
         ReactiveTerminal::For { init, test, update, body, .. } => {
-            collect_used_outside_scopes(init, in_scope, used);
-            collect_used_outside_scopes(test, in_scope, used);
+            collect_used_ids(init, used);
+            collect_used_ids(test, used);
             if let Some(upd) = update {
-                collect_used_outside_scopes(upd, in_scope, used);
+                collect_used_ids(upd, used);
             }
-            collect_used_outside_scopes(body, in_scope, used);
+            collect_used_ids(body, used);
         }
         ReactiveTerminal::ForOf { init, test, body, .. }
         | ReactiveTerminal::ForIn { init, test, body, .. } => {
-            collect_used_outside_scopes(init, in_scope, used);
-            collect_used_outside_scopes(test, in_scope, used);
-            collect_used_outside_scopes(body, in_scope, used);
+            collect_used_ids(init, used);
+            collect_used_ids(test, used);
+            collect_used_ids(body, used);
         }
         ReactiveTerminal::While { test, body, .. }
         | ReactiveTerminal::DoWhile { body, test, .. } => {
-            collect_used_outside_scopes(test, in_scope, used);
-            collect_used_outside_scopes(body, in_scope, used);
+            collect_used_ids(test, used);
+            collect_used_ids(body, used);
         }
         ReactiveTerminal::Try { block, handler, .. } => {
-            collect_used_outside_scopes(block, in_scope, used);
-            collect_used_outside_scopes(handler, in_scope, used);
+            collect_used_ids(block, used);
+            collect_used_ids(handler, used);
         }
         ReactiveTerminal::Label { block, .. } => {
-            collect_used_outside_scopes(block, in_scope, used);
+            collect_used_ids(block, used);
         }
     }
 }
 
-fn prune_scopes_in_block(block: &mut ReactiveBlock, used_outside: &FxHashSet<IdentifierId>) {
+fn prune_scopes_in_block(block: &mut ReactiveBlock, used_ids: &FxHashSet<IdentifierId>) {
     let mut new_instructions = Vec::new();
 
     for instr in std::mem::take(&mut block.instructions) {
@@ -265,16 +264,16 @@ fn prune_scopes_in_block(block: &mut ReactiveBlock, used_outside: &FxHashSet<Ide
             ReactiveInstruction::Scope(mut scope_block) => {
                 // Check if any declaration of this scope is used outside
                 let any_decl_used =
-                    scope_block.scope.declarations.iter().any(|(id, _)| used_outside.contains(id));
+                    scope_block.scope.declarations.iter().any(|(id, _)| used_ids.contains(id));
                 // Also check if any reassignment target is used outside
                 // (upstream checks both declarations and reassignments)
                 let any_reassign_used = scope_block
                     .scope
                     .reassignments
                     .iter()
-                    .any(|ident| used_outside.contains(&ident.id));
+                    .any(|ident| used_ids.contains(&ident.id));
 
-                prune_scopes_in_block(&mut scope_block.instructions, used_outside);
+                prune_scopes_in_block(&mut scope_block.instructions, used_ids);
 
                 // Keep if: any declaration or reassignment escapes, OR empty declarations
                 // (handled by PropagateEarlyReturns later), OR is allocating/sentinel scope,
@@ -295,7 +294,7 @@ fn prune_scopes_in_block(block: &mut ReactiveBlock, used_outside: &FxHashSet<Ide
                 }
             }
             ReactiveInstruction::Terminal(mut terminal) => {
-                prune_scopes_in_terminal(&mut terminal, used_outside);
+                prune_scopes_in_terminal(&mut terminal, used_ids);
                 new_instructions.push(ReactiveInstruction::Terminal(terminal));
             }
             other => {
@@ -307,45 +306,42 @@ fn prune_scopes_in_block(block: &mut ReactiveBlock, used_outside: &FxHashSet<Ide
     block.instructions = new_instructions;
 }
 
-fn prune_scopes_in_terminal(
-    terminal: &mut ReactiveTerminal,
-    used_outside: &FxHashSet<IdentifierId>,
-) {
+fn prune_scopes_in_terminal(terminal: &mut ReactiveTerminal, used_ids: &FxHashSet<IdentifierId>) {
     match terminal {
         ReactiveTerminal::If { consequent, alternate, .. } => {
-            prune_scopes_in_block(consequent, used_outside);
-            prune_scopes_in_block(alternate, used_outside);
+            prune_scopes_in_block(consequent, used_ids);
+            prune_scopes_in_block(alternate, used_ids);
         }
         ReactiveTerminal::Switch { cases, .. } => {
             for (_, block) in cases {
-                prune_scopes_in_block(block, used_outside);
+                prune_scopes_in_block(block, used_ids);
             }
         }
         ReactiveTerminal::For { init, test, update, body, .. } => {
-            prune_scopes_in_block(init, used_outside);
-            prune_scopes_in_block(test, used_outside);
+            prune_scopes_in_block(init, used_ids);
+            prune_scopes_in_block(test, used_ids);
             if let Some(upd) = update {
-                prune_scopes_in_block(upd, used_outside);
+                prune_scopes_in_block(upd, used_ids);
             }
-            prune_scopes_in_block(body, used_outside);
+            prune_scopes_in_block(body, used_ids);
         }
         ReactiveTerminal::ForOf { init, test, body, .. }
         | ReactiveTerminal::ForIn { init, test, body, .. } => {
-            prune_scopes_in_block(init, used_outside);
-            prune_scopes_in_block(test, used_outside);
-            prune_scopes_in_block(body, used_outside);
+            prune_scopes_in_block(init, used_ids);
+            prune_scopes_in_block(test, used_ids);
+            prune_scopes_in_block(body, used_ids);
         }
         ReactiveTerminal::While { test, body, .. }
         | ReactiveTerminal::DoWhile { body, test, .. } => {
-            prune_scopes_in_block(test, used_outside);
-            prune_scopes_in_block(body, used_outside);
+            prune_scopes_in_block(test, used_ids);
+            prune_scopes_in_block(body, used_ids);
         }
         ReactiveTerminal::Try { block, handler, .. } => {
-            prune_scopes_in_block(block, used_outside);
-            prune_scopes_in_block(handler, used_outside);
+            prune_scopes_in_block(block, used_ids);
+            prune_scopes_in_block(handler, used_ids);
         }
         ReactiveTerminal::Label { block, .. } => {
-            prune_scopes_in_block(block, used_outside);
+            prune_scopes_in_block(block, used_ids);
         }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }
