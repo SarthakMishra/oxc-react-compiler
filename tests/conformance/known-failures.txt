@@ -283,8 +283,6 @@ error.call-args-destructuring-asignment-complex.js
 error.dont-hoist-inline-reference.js
 error.invalid-conditional-call-aliased-hook-import.js
 error.invalid-conditional-call-aliased-react-hook.js
-error.invalid-destructure-assignment-to-global.js
-error.invalid-destructure-to-local-global-variables.js
 error.invalid-hoisting-setstate.js
 error.invalid-mutate-props-in-effect-fixpoint.js
 error.invalid-mutation-of-possible-props-phi-indirect.js
@@ -1118,7 +1116,6 @@ sequential-destructuring-assignment-to-scope-declarations.js
 sequential-destructuring-both-mixed-local-and-scope-declaration.js
 sequentially-constant-progagatable-if-test-conditions.js
 shapes-object-key.ts
-should-bailout-without-compilation-infer-mode.js
 simple-alias.js
 simple-function-1.js
 simple-scope.js

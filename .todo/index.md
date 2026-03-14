@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Phase 65: hook-call capture freeze + hook-arg mutation + assign-ref hint, 388/1717)
+Last updated: 2026-03-14 (Gap 4 destructure-to-global + bailout-infer-mode, 391/1717)
 
-Current conformance: 388/1717 pass (22.6%), 0 panics, 0 unexpected divergences.
+Current conformance: 391/1717 pass (22.8%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -98,12 +98,21 @@ now detects mutation of local variables passed as hook function arguments.
 (3) Assign-ref hint: `assign-ref-in-effect-hint.js` now emits the correct diagnostic.
 4 fixtures removed from known-failures.txt. Net change: +4 (384 -> 388/1717).
 
+**Fix (2026-03-14):** Gap 4 destructure-to-global + bailout-infer-mode.
+(1) Destructure assignment to globals: `error.invalid-destructure-assignment-to-global.js` and
+`error.invalid-destructure-to-local-global-variables.js` now correctly detect destructuring
+assignments that reassign global/outer-scope variables. Gap 4 (reassign outside component)
+is now fully complete (all 8 fixtures resolved).
+(2) Bailout without compilation in infer mode: `should-bailout-without-compilation-infer-mode.js`
+now correctly bails out when compilation is not needed in infer mode.
+3 fixtures removed from known-failures.txt. Net change: +3 (388 -> 391/1717).
+
 | Category | Count | Description |
 |----------|-------|-------------|
 | Compiled with memo | ~912 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix, -5 from free-var detection) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~16 | We compile but upstream bails (63 total - 13 invariant/todo skips - 34 newly resolved) |
+| Upstream errors | ~13 | We compile but upstream bails (63 total - 13 invariant/todo skips - 37 newly resolved) |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -153,7 +162,7 @@ We compile functions that upstream rejects with validation errors. These are
 
 - [~] Frozen mutation detection ("This value cannot be modified", ~3 remaining: fixpoint mutation, phi-indirect, function-property) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
 - [ ] Missing/extra deps in exhaustive-deps (2 remaining, 6 fixed) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
-- [~] Cannot reassign variables outside component (2 remaining of 8) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
+- [x] Cannot reassign variables outside component (all 8 resolved, including destructure-to-global pair) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
 - [ ] Hooks must be same function (2 remaining, was 4) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
 - [ ] Cannot call setState during render (1 remaining: hoisting-setstate) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
 - [ ] Cannot access variable before declared (1 fixture, 2 todo-* skippable) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
@@ -199,6 +208,14 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Gap 4 Destructure-to-Global + Bailout-Infer-Mode (2026-03-14)
+
+- `validate_no_global_reassignment.rs`: Destructure assignment patterns targeting global/outer-scope variables now detected
+- `should-bailout-without-compilation-infer-mode.js`: Correctly bails out when compilation is not needed in infer mode
+- Gap 4 (reassign outside component) is now fully complete -- all 8 original fixtures resolved
+- 3 fixtures removed from known-failures.txt: `error.invalid-destructure-assignment-to-global.js`, `error.invalid-destructure-to-local-global-variables.js`, `should-bailout-without-compilation-infer-mode.js`
+- Conformance: 388 -> 391/1717 (+3)
 
 ### Phase 65: Hook-Call Capture Freeze + Hook-Arg Mutation + Assign-Ref Hint (2026-03-14)
 

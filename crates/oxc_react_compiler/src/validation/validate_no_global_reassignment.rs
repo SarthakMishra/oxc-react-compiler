@@ -92,6 +92,20 @@ fn check_blocks(hir: &HIR, component_locals: &FxHashSet<String>, errors: &mut Er
                     .push(CompilerError::invalid_react(instr.loc, global_reassignment_error(name)));
             }
 
+            // StoreLocal with Reassign on undeclared names (e.g., x = ... where x is global)
+            // This catches destructuring assignments to global variables like [x] = props
+            if let InstructionValue::StoreLocal {
+                lvalue,
+                type_: Some(InstructionKind::Reassign) | None,
+                ..
+            } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+                && !component_locals.contains(name)
+            {
+                errors
+                    .push(CompilerError::invalid_react(instr.loc, global_reassignment_error(name)));
+            }
+
             // PostfixUpdate/PrefixUpdate on undeclared names (e.g., renderCount++)
             // Upstream emits a Todo error for UpdateExpression on globals.
             match &instr.value {

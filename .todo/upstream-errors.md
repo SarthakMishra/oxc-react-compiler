@@ -1,7 +1,7 @@
 # Upstream Errors -- Validation Gaps
 
 > **Priority**: P2 (~20 actionable remaining fixtures, high tractability -- each fix is "emit error + bail")
-> **Impact**: ~16 remaining actionable fixtures where we compile but Babel bails with a validation error (63 total error fixtures - 13 invariant/todo skips - 34 resolved = 16 actionable)
+> **Impact**: ~13 remaining actionable fixtures where we compile but Babel bails with a validation error (63 total error fixtures - 13 invariant/todo skips - 37 resolved = 13 actionable)
 > **Tractability**: HIGH -- each sub-category is a focused validation improvement
 
 ## Problem Statement
@@ -83,9 +83,9 @@ Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_mutation_aft
 **Fixture gain estimate:** ~1-2
 **Depends on:** None
 
-### Gap 4: Reassign Outside Component (partially complete)
+### Gap 4: Reassign Outside Component ✅
 
-**Count:** ~2 remaining (6 of 8 now passing)
+~~**Count:** ~2 remaining (6 of 8 now passing)~~ All 8 resolved.
 **Upstream error:** "Cannot reassign variables outside component"
 **Upstream:** `ValidateLocalsNotReassignedAfterRender.ts`, `ValidateNoGlobalReassignment.ts` (split across two passes)
 
@@ -98,10 +98,12 @@ Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_global_reass
 
 Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.assign-global-in-jsx-children`, `error.reassign-global-fn-arg`, `error.mutate-global-increment-op-invalid-react`, `error.invalid-reassign-local-variable-in-async-callback`, `error.declare-reassign-variable-in-function-declaration`, `error.todo-repro-named-function-with-shadowed-local-same-name` (x2).
 
-**What remains (~2 fixtures):**
-- Edge cases likely involving indirect reassignment patterns (reassignment through destructuring, or module-scope variable mutation via object property aliasing)
-- May require deeper SSA identity tracking (see Cross-Cutting Issue above)
-**Fixture gain estimate:** ~1-2
+**Completed (2026-03-14, destructure-to-global):** Destructure assignment patterns that reassign global/outer-scope variables now correctly detected in `validate_no_global_reassignment.rs`. Both remaining fixtures resolved: `error.invalid-destructure-assignment-to-global.js` (destructuring assignment to a global variable) and `error.invalid-destructure-to-local-global-variables.js` (mixed destructuring where some targets are global). Gap 4 is now fully complete (all 8 fixtures resolved). +2 fixtures (part of 388 -> 391 batch).
+
+~~**What remains (~2 fixtures):**~~
+~~- Edge cases likely involving indirect reassignment patterns (reassignment through destructuring, or module-scope variable mutation via object property aliasing)~~
+~~- May require deeper SSA identity tracking (see Cross-Cutting Issue above)~~
+**Fixture gain estimate:** All resolved.
 **Depends on:** None
 
 ### Gap 5: Ref Access During Render ✅
@@ -186,13 +188,17 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
   - Hook-arg local mutation: `invalid-hook-function-argument-mutates-local-variable.js` -- mutation of local variables passed as hook function arguments now detected (moved from Gap 1 remaining to completed).
   - Assign-ref hint: `assign-ref-in-effect-hint.js` -- correct diagnostic now emitted for ref assignment in effects.
   - 4 fixtures removed from known-failures.txt. +4 fixtures (384 -> 388/1717).
+- **Destructure-to-global + bailout-infer-mode (2026-03-14):** 3 fixtures resolved:
+  - Destructure assignment to globals: `error.invalid-destructure-assignment-to-global.js` and `error.invalid-destructure-to-local-global-variables.js` -- destructuring assignments targeting global/outer-scope variables now detected in `validate_no_global_reassignment.rs`. Completes Gap 4.
+  - Bailout without compilation in infer mode: `should-bailout-without-compilation-infer-mode.js` -- correctly bails out when compilation is not needed in infer mode.
+  - 3 fixtures removed from known-failures.txt. +3 fixtures (388 -> 391/1717).
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 102 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions, 6 from Gap 9 known-incompatible/ESLint/useMemo/capitalized-call fixes, 10 from Gap 9 mutation tracking [delete ops + phi freeze + alias freeze + derivation chains + outer-scope property mutation + render helper detection], 4 from Phase 65 [hook-call capture freeze + hook-arg mutation + assign-ref hint]).
-Remaining achievable: ~5-12 of the remaining ~16 actionable fixtures. The
-categorized gaps (1,3,4,6,7,8) account for ~8 fixtures; Gap 9 "Other" covers
-~10 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
+Achieved so far: 105 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 10 from Gap 4 global reassignment + async callback + destructure-to-global, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions, 6 from Gap 9 known-incompatible/ESLint/useMemo/capitalized-call fixes, 10 from Gap 9 mutation tracking [delete ops + phi freeze + alias freeze + derivation chains + outer-scope property mutation + render helper detection], 4 from Phase 65 [hook-call capture freeze + hook-arg mutation + assign-ref hint], 1 from bailout-infer-mode).
+Remaining achievable: ~3-10 of the remaining ~13 actionable fixtures. The
+categorized gaps (1,3,6,7,8) account for ~7 fixtures; Gap 9 "Other" covers
+~9 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
 fixtures should be registered as known skips.
 
 ## Cross-Cutting Issue: SSA Place Identity

@@ -1891,15 +1891,104 @@ impl HIRBuilder {
                 );
                 value
             }
-            AssignmentTarget::ArrayAssignmentTarget(_)
-            | AssignmentTarget::ObjectAssignmentTarget(_) => {
-                // Destructuring assignment
-                self.emit(
-                    InstructionValue::UnsupportedNode {
-                        node: "DestructuringAssignment".to_string(),
-                    },
-                    loc,
-                )
+            AssignmentTarget::ArrayAssignmentTarget(array_target) => {
+                // Destructuring array assignment: [a, b] = value
+                // Lower each element by extracting via ComputedLoad and storing
+                for (i, element) in array_target.elements.iter().enumerate() {
+                    let Some(element) = element else { continue };
+                    #[expect(clippy::cast_precision_loss)]
+                    let idx = self.emit(
+                        InstructionValue::Primitive { value: Primitive::Number(i as f64) },
+                        loc,
+                    );
+                    let item = self.emit(
+                        InstructionValue::ComputedLoad { object: value.clone(), property: idx },
+                        loc,
+                    );
+                    // ast::AssignmentTargetMaybeDefault → extract the inner AssignmentTarget
+                    let inner_target = match element {
+                        ast::AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(with_default) => {
+                            &with_default.binding
+                        }
+                        _ => element.as_assignment_target().unwrap_or_else(|| {
+                            // Fallback: treat as simple target
+                            unreachable!("ast::AssignmentTargetMaybeDefault should be AssignmentTarget or WithDefault")
+                        }),
+                    };
+                    self.lower_assignment_target_store(inner_target, item, loc);
+                }
+                // Handle rest element
+                if let Some(rest) = &array_target.rest {
+                    self.lower_assignment_target_store(&rest.target, value.clone(), loc);
+                }
+                value
+            }
+            AssignmentTarget::ObjectAssignmentTarget(obj_target) => {
+                // Destructuring object assignment: {a, b} = value
+                for prop in &obj_target.properties {
+                    match prop {
+                        ast::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(
+                            id_prop,
+                        ) => {
+                            // { foo } = obj → PropertyLoad(obj, "foo") + StoreLocal(foo)
+                            let key_name = id_prop.binding.name.to_string();
+                            let item = self.emit(
+                                InstructionValue::PropertyLoad {
+                                    object: value.clone(),
+                                    property: key_name.clone(),
+                                },
+                                loc,
+                            );
+                            let lvalue = self.make_named_place(&key_name, id_prop.span);
+                            if is_global_name(&key_name) {
+                                self.emit(
+                                    InstructionValue::StoreGlobal { name: key_name, value: item },
+                                    loc,
+                                );
+                            } else {
+                                self.emit(
+                                    InstructionValue::StoreLocal {
+                                        lvalue,
+                                        value: item,
+                                        type_: Some(InstructionKind::Reassign),
+                                    },
+                                    loc,
+                                );
+                            }
+                        }
+                        ast::AssignmentTargetProperty::AssignmentTargetPropertyProperty(
+                            prop_prop,
+                        ) => {
+                            // { foo: bar } = obj → PropertyLoad(obj, "foo") + store(bar)
+                            let key_name = match &prop_prop.name {
+                                PropertyKey::StaticIdentifier(id) => id.name.to_string(),
+                                PropertyKey::StringLiteral(s) => s.value.to_string(),
+                                PropertyKey::NumericLiteral(n) => n.value.to_string(),
+                                _ => continue,
+                            };
+                            let item = self.emit(
+                                InstructionValue::PropertyLoad {
+                                    object: value.clone(),
+                                    property: key_name,
+                                },
+                                loc,
+                            );
+                            let inner_target = match &prop_prop.binding {
+                                ast::AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(
+                                    with_default,
+                                ) => &with_default.binding,
+                                other => other
+                                    .as_assignment_target()
+                                    .unwrap_or_else(|| unreachable!("expected AssignmentTarget")),
+                            };
+                            self.lower_assignment_target_store(inner_target, item, loc);
+                        }
+                    }
+                }
+                if let Some(rest) = &obj_target.rest {
+                    self.lower_assignment_target_store(&rest.target, value.clone(), loc);
+                }
+                value
             }
             _ => self.emit(
                 InstructionValue::UnsupportedNode { node: "AssignmentTargetStore".to_string() },
