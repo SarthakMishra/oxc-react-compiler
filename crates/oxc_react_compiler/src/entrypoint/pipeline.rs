@@ -1,6 +1,6 @@
 use crate::error::{ErrorCollector, PanicThreshold};
 use crate::hir::environment::EnvironmentConfig;
-use crate::hir::types::{HIR, HIRFunction, ReactiveFunction};
+use crate::hir::types::{HIR, HIRFunction, Param, ReactiveFunction};
 
 /// Default bail-out threshold used throughout the pipeline.
 ///
@@ -17,6 +17,7 @@ pub fn run_pipeline(
     hir: &mut HIR,
     config: &EnvironmentConfig,
     errors: &mut ErrorCollector,
+    param_names: &[String],
 ) -> Result<(), ()> {
     // Phase 1: Early cleanup
     // Pass 2: prune_maybe_throws
@@ -277,7 +278,10 @@ pub fn run_pipeline(
     crate::reactive_scopes::prune_scopes::flatten_scopes_with_hooks_or_use_hir(hir);
 
     // Pass 46: propagate_scope_dependencies_hir
-    crate::reactive_scopes::propagate_dependencies::propagate_scope_dependencies_hir(hir);
+    crate::reactive_scopes::propagate_dependencies::propagate_scope_dependencies_hir(
+        hir,
+        param_names,
+    );
 
     // Pass 46.5: derive_minimal_dependencies_hir (dependency tree minimization)
     crate::reactive_scopes::derive_minimal_dependencies::derive_minimal_dependencies_hir(hir);
@@ -299,8 +303,11 @@ pub fn run_full_pipeline(
     config: &EnvironmentConfig,
     errors: &mut ErrorCollector,
 ) -> Result<ReactiveFunction, ()> {
+    // Extract function parameter names for free variable detection in Pass 46.
+    let param_names: Vec<String> = extract_param_names(&hir_func.params);
+
     // Run HIR passes (2–46)
-    run_pipeline(&mut hir_func.body, config, errors)?;
+    run_pipeline(&mut hir_func.body, config, errors, &param_names)?;
 
     // Pass 47: Build reactive function (CFG → tree IR)
     let mut rf = crate::reactive_scopes::build_reactive_function::build_reactive_function(
@@ -353,6 +360,27 @@ pub fn run_lint_pipeline(
     config: &EnvironmentConfig,
     errors: &mut ErrorCollector,
 ) -> Result<(), ()> {
-    run_pipeline(hir, config, errors)?;
+    // Lint mode doesn't have function params available, pass empty slice.
+    // Free variable detection in Pass 46 may be less accurate but lint mode
+    // doesn't produce output code, so this doesn't affect correctness.
+    run_pipeline(hir, config, errors, &[])?;
     Ok(())
+}
+
+/// Extract named parameter names from function params.
+///
+/// These names are locally-defined reactive inputs — they must not be
+/// treated as free variables by the dependency propagation pass.
+fn extract_param_names(params: &[Param]) -> Vec<String> {
+    let mut names = Vec::new();
+    for param in params {
+        match param {
+            Param::Identifier(place) | Param::Spread(place) => {
+                if let Some(name) = &place.identifier.name {
+                    names.push(name.clone());
+                }
+            }
+        }
+    }
+    names
 }

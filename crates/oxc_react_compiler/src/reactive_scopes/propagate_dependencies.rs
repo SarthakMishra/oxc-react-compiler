@@ -9,16 +9,43 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// For each reactive scope, determine which external values it depends on.
 /// These become the "deps" that are checked at runtime to decide whether
 /// to recompute the scope's output.
-pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
+pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
     // Phase 0: Collect identifiers that should NOT be scope dependencies:
     // - Global values (from LoadGlobal) — never change between renders
     // - Primitive constants (from Primitive/JSXText) — immutable by definition
+    // - Free variables (not defined in the function) — module-scope imports/constants
     let mut non_reactive_ids: FxHashSet<IdentifierId> = FxHashSet::default();
     // Map from identifier name to whether it's known to be non-reactive.
     // Used to propagate non-reactivity through StoreLocal/LoadLocal chains.
     let mut non_reactive_names: FxHashSet<String> = FxHashSet::default();
 
-    // First pass: seed non-reactive IDs from globals, primitives, and stable types
+    // Collect all names that are locally defined in the function body.
+    // A name is "locally defined" if it appears as the target of a StoreLocal,
+    // DeclareLocal, or Destructure instruction, or is a function parameter.
+    // Names NOT in this set are free variables (module-scope imports, globals
+    // not in is_global_name) that never change between renders → non-reactive.
+    let mut locally_defined_names: FxHashSet<String> = param_names.iter().cloned().collect();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::StoreLocal { lvalue, .. }
+                | InstructionValue::StoreContext { lvalue, .. }
+                | InstructionValue::DeclareLocal { lvalue, .. }
+                | InstructionValue::DeclareContext { lvalue, .. } => {
+                    if let Some(name) = &lvalue.identifier.name {
+                        locally_defined_names.insert(name.clone());
+                    }
+                }
+                InstructionValue::Destructure { lvalue_pattern, .. } => {
+                    collect_destructure_names(lvalue_pattern, &mut locally_defined_names);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // First pass: seed non-reactive IDs from globals, primitives, stable types,
+    // and free variables (names loaded but never locally defined).
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -35,6 +62,28 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                 InstructionValue::Primitive { .. } | InstructionValue::JSXText { .. } => {
                     non_reactive_ids.insert(instr.lvalue.identifier.id);
                 }
+                // Free variable detection: LoadLocal/LoadContext for a name that is
+                // never written to (not in locally_defined_names) is a free variable —
+                // a module-scope import or constant that never changes between renders.
+                // DIVERGENCE: Upstream doesn't need this because its scope chain
+                // correctly identifies free variables during BuildHIR. Our HIR builder
+                // emits LoadLocal for all non-global identifier references, including
+                // imports and module-scope values, since it lacks OXC scoping data.
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name
+                        && !locally_defined_names.contains(name)
+                    {
+                        non_reactive_ids.insert(instr.lvalue.identifier.id);
+                        non_reactive_names.insert(name.clone());
+                    }
+                    // Still check for stable types
+                    if matches!(instr.lvalue.identifier.type_, Type::SetState | Type::Ref) {
+                        non_reactive_ids.insert(instr.lvalue.identifier.id);
+                        if let Some(name) = &instr.lvalue.identifier.name {
+                            non_reactive_names.insert(name.clone());
+                        }
+                    }
+                }
                 _ => {
                     // Stable hook returns (setState, dispatch, ref) are never reactive deps
                     if matches!(instr.lvalue.identifier.type_, Type::SetState | Type::Ref) {
@@ -44,6 +93,27 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Build a map from identifier ID to name for hook detection in CallExpression.
+    // When a LoadLocal loads a named variable (like `useState`), the result goes
+    // to an unnamed temp. We need to trace back from the callee's ID to the
+    // original variable name to check if it's a hook call.
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name {
+                        id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                    }
+                }
+                InstructionValue::LoadGlobal { binding } => {
+                    id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                }
+                _ => {}
             }
         }
     }
@@ -89,12 +159,20 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                         non_reactive_ids.contains(&value.identifier.id)
                     }
                     // DIVERGENCE: Upstream doesn't have this rule. We treat CallExpression
-                    // results as non-reactive when callee and all args are non-reactive.
+                    // results as non-reactive when callee and all args are non-reactive,
+                    // BUT only if the callee is not a hook (name starting with "use").
                     // This primarily handles `require('shared-runtime')` returning a
-                    // stable module object. Safe because truly reactive calls (hooks)
-                    // have their return types set separately (Type::SetState, Type::Ref).
+                    // stable module object. Hook calls are excluded because their return
+                    // values (state, refs, etc.) are reactive even when the hook itself
+                    // is a non-reactive import — e.g., useState(0) returns reactive state.
                     InstructionValue::CallExpression { callee, args } => {
-                        non_reactive_ids.contains(&callee.identifier.id)
+                        let is_hook = id_to_name.get(&callee.identifier.id).is_some_and(|n| {
+                            n.starts_with("use")
+                                && n.len() > 3
+                                && n.as_bytes()[3].is_ascii_uppercase()
+                        });
+                        !is_hook
+                            && non_reactive_ids.contains(&callee.identifier.id)
                             && args.iter().all(|a| non_reactive_ids.contains(&a.identifier.id))
                     }
                     _ => false,
@@ -1017,4 +1095,62 @@ fn collect_operand_places(value: &InstructionValue) -> Vec<&crate::hir::types::P
     }
 
     places
+}
+
+/// Collect all named targets from a destructure pattern into a set of names.
+///
+/// Used for free variable detection: names defined by destructuring are
+/// locally-defined and should not be treated as non-reactive free variables.
+fn collect_destructure_names(
+    pattern: &crate::hir::types::DestructurePattern,
+    names: &mut FxHashSet<String>,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        if let Some(name) = &place.identifier.name {
+                            names.insert(name.clone());
+                        }
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        collect_destructure_names(nested, names);
+                    }
+                }
+            }
+            if let Some(rest_place) = rest
+                && let Some(name) = &rest_place.identifier.name
+            {
+                names.insert(name.clone());
+            }
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(DestructureTarget::Place(place)) => {
+                        if let Some(name) = &place.identifier.name {
+                            names.insert(name.clone());
+                        }
+                    }
+                    DestructureArrayItem::Value(DestructureTarget::Pattern(nested)) => {
+                        collect_destructure_names(nested, names);
+                    }
+                    DestructureArrayItem::Spread(place) => {
+                        if let Some(name) = &place.identifier.name {
+                            names.insert(name.clone());
+                        }
+                    }
+                    DestructureArrayItem::Hole => {}
+                }
+            }
+            if let Some(rest_place) = rest
+                && let Some(name) = &rest_place.identifier.name
+            {
+                names.insert(name.clone());
+            }
+        }
+    }
 }

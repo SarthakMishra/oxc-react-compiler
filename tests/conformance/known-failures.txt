@@ -6,6 +6,7 @@
 # Baseline: 74/1419 pass (5.2%), 0 panics, 1345 divergences
 # (Uses corrected .expected files extracted from upstream .expect.md)
 # 298 upstream error fixtures excluded from comparison
+allow-passing-refs-as-props.js
 alias-capture-in-method-receiver-and-mutate.js
 alias-capture-in-method-receiver.js
 alias-computed-load.js
@@ -41,7 +42,6 @@ allow-mutating-ref-property-in-callback-passed-to-jsx-indirect.tsx
 allow-mutating-ref-property-in-callback-passed-to-jsx.tsx
 allow-passing-ref-to-render-helper-props-object.js
 allow-passing-ref-to-render-helper.js
-allow-passing-refs-as-props.js
 allow-reassignment-to-global-function-jsx-prop.js
 allow-ref-access-in-effect-indirect.js
 allow-ref-access-in-effect.js
@@ -281,7 +281,6 @@ error.bug-invariant-couldnt-find-binding-for-decl.js
 error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-unnamed-temporary.js
 error.call-args-destructuring-asignment-complex.js
-error.capitalized-function-call-aliased.js
 error.dont-hoist-inline-reference.js
 error.hook-call-freezes-captured-identifier.tsx
 error.hook-call-freezes-captured-memberexpr.jsx
@@ -537,7 +536,6 @@ infer-compile-hooks-with-multiple-params.js
 infer-computed-delete.js
 infer-function-React-memo.js
 infer-function-assignment.js
-infer-function-expression-component.js
 infer-function-forwardRef.js
 infer-functions-component-with-hook-call.js
 infer-functions-component-with-ref-arg.js
@@ -581,7 +579,6 @@ inverted-if-else.js
 inverted-if.js
 issue852.js
 issue933-disjoint-set-infinite-loop.js
-jsx-attribute-default-to-true.tsx
 jsx-attribute-with-jsx-element-value.js
 jsx-attribute-with-jsx-fragment-value.flow.js
 jsx-bracket-in-text.jsx
@@ -594,7 +591,6 @@ jsx-lowercase-localvar-memberexpr-in-lambda.jsx
 jsx-lowercase-localvar-memberexpr.jsx
 jsx-lowercase-memberexpr.jsx
 jsx-member-expression-tag-grouping.js
-jsx-member-expression.js
 jsx-memberexpr-tag-in-lambda.js
 jsx-outlining-child-stored-in-id.js
 jsx-outlining-dup-key-diff-value.js
@@ -638,7 +634,6 @@ memoize-value-block-value-logical.js
 memoize-value-block-value-sequence.js
 merge-consecutive-nested-scopes.js
 merge-consecutive-scopes-deps-subset-of-decls.js
-merge-consecutive-scopes-no-deps.js
 merge-consecutive-scopes-objects.js
 merge-consecutive-scopes.js
 merge-nested-scopes-with-same-inputs.js

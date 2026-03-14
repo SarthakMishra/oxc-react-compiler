@@ -195,7 +195,7 @@ fn test_propagate_scope_dependencies_empty() {
 
     let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
-    propagate_scope_dependencies_hir(&mut hir);
+    propagate_scope_dependencies_hir(&mut hir, &[]);
     assert_eq!(hir.blocks.len(), 1);
 }
 
