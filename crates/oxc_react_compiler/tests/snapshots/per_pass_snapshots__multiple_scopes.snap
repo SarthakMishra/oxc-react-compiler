@@ -5,37 +5,36 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function Summary(t0) {
-  const $ = _c(5);
+  const $ = _c(6);
   const { items, threshold } = t0;
-  let count;
-  let hasMany;
-  let label;
-  let t24;
-  if ($[0] !== items.length || $[1] !== threshold) {
-    count = items.length;
-    hasMany = count > threshold;
+  if ($[0] !== items.length) {
+    const count = items.length;
     $[0] = items.length;
-    $[1] = threshold;
   }
-  if (t57) {
+  if ($[1] !== count || $[2] !== threshold) {
+    const hasMany = count > threshold;
+    $[1] = count;
+    $[2] = threshold;
+  }
+  if (hasMany) {
     t24 = "Many items";
   } else {
     t24 = "Few items";
   }
-  label = t24;
+  const label = t24;
   let t75;
-  if ($[2] !== count || $[3] !== label) {
+  if ($[3] !== count || $[4] !== label) {
     t75 = (
       <div>
         <span>{label}</span>
         <span>({count})</span>
       </div>
     );
-    $[2] = count;
-    $[3] = label;
-    $[4] = t75;
+    $[3] = count;
+    $[4] = label;
+    $[5] = t75;
   } else {
-    t75 = $[4];
+    t75 = $[5];
   }
   return t75;
 }

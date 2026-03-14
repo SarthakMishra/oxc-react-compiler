@@ -1380,3 +1380,4 @@ weakmap-constructor.js
 weakset-constructor.js
 while-conditional-continue.js
 while-with-assignment-in-test.js
+error.invalid-prop-mutation-indirect.js
