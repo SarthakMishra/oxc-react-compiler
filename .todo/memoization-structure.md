@@ -73,14 +73,14 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 Conformance: 342 -> 349/1717 (+7 from sentinel slot fix)
 
 **What remains:**
-- Remaining slot count divergences likely stem from scope merging differences (Sub-task 4f) and missing scopes for some expression types
+- Remaining slot count divergences likely stem from scope merging differences and missing scopes for some expression types
 - Edge cases where scope declaration sets differ from upstream (e.g., when a scope should declare a value but doesn't, or declares extra values)
 **Fixture gain estimate:** Compound effect with other gaps
-**Depends on:** Sub-task 4f (DeclarationId alignment, for shadowed variable edge cases)
+**Depends on:** None (Sub-task 4f DeclarationId alignment now complete)
 
 ### Gap 4: Scope Merging Architecture Rewrite
 
-**Status:** IN PROGRESS (Sub-tasks 4a, 4b, 4c, 4d, 4e completed; 4f remaining)
+**Status:** COMPLETE (all 6 sub-tasks 4a through 4f done) ✅
 
 This gap supersedes the previous "Scope Merging/Splitting Heuristic Review" and Gap 10
 ("Overlap Merge Regression"). Deep research into the upstream algorithm revealed that the
@@ -167,29 +167,22 @@ by dependency.
 - Upstream file: `src/ReactiveScopes/MergeReactiveScopesThatInvalidateTogether.ts`
 - Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
-#### Sub-task 4f: DeclarationId alignment for dependency comparison
+#### Sub-task 4f: DeclarationId alignment for dependency comparison ✅
 
-**Upstream:** Uses `DeclarationId` (stable across SSA renaming) for dependency identity
-**Current state:** Name-based `DepKey = (Option<String>, Vec<DependencyPathEntry>)` workaround
-**What's needed:**
+~~**Upstream:** Uses `DeclarationId` (stable across SSA renaming) for dependency identity~~
+~~**Current state:** Name-based `DepKey = (Option<String>, Vec<DependencyPathEntry>)` workaround~~
 
-The name-based workaround works for most cases but fails when:
-- Two different variables have the same name in nested scopes (shadowing)
-- A variable is destructured and re-bound (same name, different declaration)
-- The "intermediate lvalue last-used before boundary" check (Sub-task 4d) needs stable identity
-
-Options:
-1. **Add DeclarationId to Identifier** -- a stable ID assigned during declaration that persists
-   through SSA renaming. This is the upstream approach and the most correct solution.
-2. **Enhance DepKey with scope/block context** -- add the declaring block ID or scope depth to
-   disambiguate same-named variables. Less invasive but less robust.
-
-Option 1 is recommended but has high impact (touches HIR types, SSA pass, and all consumers).
-Option 2 is a pragmatic interim step.
-
-**Depends on:** None (improves correctness of all other sub-tasks)
-**Risk:** HIGH -- changes to Identifier type ripple through the entire compiler
-**Implementation files:** `crates/oxc_react_compiler/src/hir/types.rs`, `crates/oxc_react_compiler/src/hir/build.rs`, `crates/oxc_react_compiler/src/ssa/enter_ssa.rs`
+**Completed**: DeclarationId-based dependency comparison replaces the name-based workaround throughout `propagate_dependencies.rs` and `merge_scopes.rs`. Key changes:
+- `TemporaryInfo` now carries `root_declaration_id: Option<DeclarationId>` alongside the root identifier, propagated through temp chains
+- `scope_written_names` (name-based) replaced with `scope_written_decl_ids: FxHashMap<DeclarationId, ScopeId>` for tracking which scope declares each variable
+- `name_consumers` (name-based) replaced with `decl_id_consumers: FxHashMap<DeclarationId, Vec<ScopeId>>` for tracking which scopes consume each declaration
+- `decl_deps_map` now keyed by `DeclarationId` instead of `String` for transitive dependency resolution
+- `DepKey` in `merge_scopes.rs` changed from `(Option<String>, Vec<DependencyPathEntry>)` to `(Option<DeclarationId>, IdentifierId, Vec<DependencyPathEntry>)`, using DeclarationId for stable identity and IdentifierId as fallback
+- `can_merge_scopes` uses DeclarationId for the output-to-input chain check (scope A's declarations consumed by scope B)
+- All `TODO(4f)` comments removed
+- Conformance unchanged at 368/1717 -- this is a correctness improvement that eliminates false matches from shadowed variables sharing the same name
+- Upstream file: `src/ReactiveScopes/PropagateScopeDependenciesHIR.ts`, `src/ReactiveScopes/MergeReactiveScopesThatInvalidateTogether.ts`
+- Implementation files: `crates/oxc_react_compiler/src/reactive_scopes/propagate_dependencies.rs`, `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
 ### Gap 5: Sentinel Scope Emission ✅
 
@@ -268,12 +261,12 @@ Expected progression (gaps are interdependent, so gains compound):
 - After Gap 3 sentinel slot fix ✅: sentinel scopes use `max(decls, 1)` slots, reactive scopes use `deps + decls` (+7 fixtures, 342 -> 349)
 - After free variable detection + hook call exclusion ✅: non-reactive free variables (module imports) excluded from deps, hook calls excluded from CallExpression non-reactivity (+5 fixtures, 349 -> 354)
 - After Gap 3 remaining work: edge-case slot divergences from scope declaration set differences
-- Sub-task 4f (DeclarationId): correctness improvement, may unlock edge-case fixtures
+- After Sub-task 4f (DeclarationId alignment) ✅: name-based lookups replaced with DeclarationId-based throughout propagate_dependencies and merge_scopes (correctness improvement, 368/1717 unchanged)
 - Total potential from this category: ~400-600 new passes
 
 ## Risks and Notes
 
-- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), sentinel codegen (Gap 8), transitive dep resolution, Gap 11 (derived computation codegen), Gap 3 sentinel slot counting, Gap 9 (setState false-positive, resolved via hook call exclusion), and free variable detection are all complete. Scope merge sub-tasks 4a through 4e are done. The remaining blockers are: Gap 3 residual edge cases (scope declaration set differences), Sub-task 4f (DeclarationId alignment for shadowed variable correctness).
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), sentinel codegen (Gap 8), transitive dep resolution, Gap 11 (derived computation codegen), Gap 3 sentinel slot counting, Gap 9 (setState false-positive, resolved via hook call exclusion), free variable detection, and all scope merge sub-tasks (4a through 4f) are complete. The remaining blocker is Gap 3 residual edge cases (scope declaration set differences).
 - **Scope merging is a 2-pass problem**: The overlap detection (Pass 42, Sub-task 4a) runs on the HIR BEFORE block structure is created. The invalidate-together merge (post-conversion, Sub-tasks 4b-4e) runs on the ReactiveFunction tree AFTER conversion. These are separate algorithms operating on different data structures at different pipeline stages. The reverted DSU attempt conflated them.
 - **The const-scoping problem is a non-issue for Pass 42** ✅ CONFIRMED: The reverted DSU attempt failed because it was tested after block structure existed. But Pass 42 runs before `build_reactive_scope_terminals_hir` (Pass 43), so scopes are just annotations at that point. The Sub-task 4a rewrite confirmed this -- no const-scoping issues encountered.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.

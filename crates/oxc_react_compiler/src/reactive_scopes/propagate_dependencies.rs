@@ -1,6 +1,6 @@
 use crate::hir::types::{
-    HIR, IdentifierId, InstructionValue, ReactiveScopeDeclaration, ReactiveScopeDependency,
-    ScopeId, Type,
+    DeclarationId, HIR, IdentifierId, InstructionValue, ReactiveScopeDeclaration,
+    ReactiveScopeDependency, ScopeId, Type,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -212,7 +212,8 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
     // of `x` within the scope are NOT treated as external dependencies, even though the read may
     // use a different SSA IdentifierId than the write.
     let mut scope_ids: FxHashMap<ScopeId, FxHashSet<IdentifierId>> = FxHashMap::default();
-    let mut scope_written_names: FxHashMap<ScopeId, FxHashSet<String>> = FxHashMap::default();
+    let mut scope_written_decl_ids: FxHashMap<ScopeId, FxHashSet<DeclarationId>> =
+        FxHashMap::default();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -223,8 +224,8 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                     InstructionValue::StoreLocal { lvalue, .. }
                     | InstructionValue::StoreContext { lvalue, .. } => {
                         scope_ids.entry(scope.id).or_default().insert(lvalue.identifier.id);
-                        if let Some(name) = &lvalue.identifier.name {
-                            scope_written_names.entry(scope.id).or_default().insert(name.clone());
+                        if let Some(decl_id) = lvalue.identifier.declaration_id {
+                            scope_written_decl_ids.entry(scope.id).or_default().insert(decl_id);
                         }
                     }
                     _ => {}
@@ -253,6 +254,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
     /// Option<Box<ReactiveScope>>, MutableRange, Type, etc.).
     struct TemporaryInfo {
         root_id: IdentifierId,
+        root_declaration_id: Option<DeclarationId>,
         root_name: Option<String>,
         root_reactive: bool,
         root_loc: oxc_span::Span,
@@ -264,7 +266,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
         fn to_identifier(&self) -> crate::hir::types::Identifier {
             crate::hir::types::Identifier {
                 id: self.root_id,
-                declaration_id: None,
+                declaration_id: self.root_declaration_id,
                 name: self.root_name.clone(),
                 mutable_range: crate::hir::types::MutableRange {
                     start: crate::hir::types::InstructionId(0),
@@ -291,6 +293,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             instr.lvalue.identifier.id,
                             TemporaryInfo {
                                 root_id: resolved.root_id,
+                                root_declaration_id: resolved.root_declaration_id,
                                 root_name: resolved.root_name.clone(),
                                 root_reactive: resolved.root_reactive,
                                 root_loc: resolved.root_loc,
@@ -303,6 +306,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             instr.lvalue.identifier.id,
                             TemporaryInfo {
                                 root_id: place.identifier.id,
+                                root_declaration_id: place.identifier.declaration_id,
                                 root_name: place.identifier.name.clone(),
                                 root_reactive: place.reactive,
                                 root_loc: place.identifier.loc,
@@ -324,6 +328,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             instr.lvalue.identifier.id,
                             TemporaryInfo {
                                 root_id: resolved.root_id,
+                                root_declaration_id: resolved.root_declaration_id,
                                 root_name: resolved.root_name.clone(),
                                 root_reactive: resolved.root_reactive,
                                 root_loc: resolved.root_loc,
@@ -336,6 +341,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             instr.lvalue.identifier.id,
                             TemporaryInfo {
                                 root_id: object.identifier.id,
+                                root_declaration_id: object.identifier.declaration_id,
                                 root_name: object.identifier.name.clone(),
                                 root_reactive: object.reactive,
                                 root_loc: object.identifier.loc,
@@ -358,6 +364,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                                 instr.lvalue.identifier.id,
                                 TemporaryInfo {
                                     root_id: resolved.root_id,
+                                    root_declaration_id: resolved.root_declaration_id,
                                     root_name: resolved.root_name.clone(),
                                     root_reactive: resolved.root_reactive,
                                     root_loc: resolved.root_loc,
@@ -384,31 +391,32 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
             };
 
             let declared_ids = scope_ids.get(&scope_id);
-            let written_names = scope_written_names.get(&scope_id);
+            let written_decl_ids = scope_written_decl_ids.get(&scope_id);
 
             // Check if an operand belongs to this scope by:
             // 1. Exact SSA IdentifierId match (instruction lvalues + StoreLocal targets), or
-            // 2. Name match against variables written to inside the scope (handles SSA versioning
-            //    where the LoadLocal of `x` has a different ID than the StoreLocal that wrote `x`)
+            // 2. DeclarationId match against variables written inside the scope (handles SSA
+            //    versioning where LoadLocal and StoreLocal have different IdentifierIds but
+            //    share the same DeclarationId for the same source variable)
             let is_scope_internal = |place: &crate::hir::types::Place| -> bool {
                 if declared_ids.is_some_and(|s| s.contains(&place.identifier.id)) {
                     return true;
                 }
-                if let Some(name) = &place.identifier.name
-                    && written_names.is_some_and(|s| s.contains(name))
+                if let Some(decl_id) = place.identifier.declaration_id
+                    && written_decl_ids.is_some_and(|s| s.contains(&decl_id))
                 {
                     return true;
                 }
                 false
             };
 
-            // Check if a resolved root identifier is scope-internal by name
+            // Check if a resolved root identifier is scope-internal by DeclarationId
             let is_root_scope_internal = |identifier: &crate::hir::types::Identifier| -> bool {
                 if declared_ids.is_some_and(|s| s.contains(&identifier.id)) {
                     return true;
                 }
-                if let Some(name) = &identifier.name
-                    && written_names.is_some_and(|s| s.contains(name))
+                if let Some(decl_id) = identifier.declaration_id
+                    && written_decl_ids.is_some_and(|s| s.contains(&decl_id))
                 {
                     return true;
                 }
@@ -434,10 +442,15 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                         && !root.name.as_deref().is_some_and(|n| non_reactive_names.contains(n))
                     {
                         let deps = scope_deps.entry(scope_id).or_default();
-                        // Check if already have a dep for this root+path
-                        let already = deps
-                            .iter()
-                            .any(|d| d.identifier.id == root.id && d.path == resolved.path);
+                        // Dedup by DeclarationId+path (or IdentifierId fallback for unnamed temps)
+                        let already = deps.iter().any(|d| {
+                            d.path == resolved.path
+                                && match (d.identifier.declaration_id, resolved.root_declaration_id)
+                                {
+                                    (Some(a), Some(b)) => a == b,
+                                    _ => d.identifier.id == root.id,
+                                }
+                        });
                         if !already {
                             deps.push(ReactiveScopeDependency {
                                 identifier: root,
@@ -458,8 +471,16 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             .is_some_and(|n| non_reactive_names.contains(n))
                     {
                         let deps = scope_deps.entry(scope_id).or_default();
-                        let already_added =
-                            deps.iter().any(|d| d.identifier.id == op_id && d.path.is_empty());
+                        let already_added = deps.iter().any(|d| {
+                            d.path.is_empty()
+                                && match (
+                                    d.identifier.declaration_id,
+                                    place.identifier.declaration_id,
+                                ) {
+                                    (Some(a), Some(b)) => a == b,
+                                    _ => d.identifier.id == op_id,
+                                }
+                        });
                         if !already_added {
                             deps.push(ReactiveScopeDependency {
                                 identifier: place.identifier.clone(),
@@ -475,14 +496,13 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
 
     // Phase 3: Determine declarations (identifiers defined in scope, used outside)
     // Build reverse-use maps:
-    //   operand_id → consumer scope IDs (or None if outside scope)
-    //   operand_name → consumer scope IDs (for cross-SSA-ID matching)
-    // DIVERGENCE: Upstream uses DeclarationId to match across SSA versions. We use
-    // both IdentifierId and name-based matching because our HIR creates fresh IDs
-    // per Place, so `doubled` in StoreLocal and `doubled` in LoadLocal have
-    // different IDs but the same name.
+    //   operand IdentifierId → consumer scope IDs (or None if outside scope)
+    //   operand DeclarationId → consumer scope IDs (for cross-SSA-ID matching)
+    // Match across SSA versions using both IdentifierId (for exact SSA match) and
+    // DeclarationId (for cross-SSA-ID matching of the same source variable).
     let mut operand_consumers: FxHashMap<IdentifierId, Vec<Option<ScopeId>>> = FxHashMap::default();
-    let mut name_consumers: FxHashMap<String, Vec<Option<ScopeId>>> = FxHashMap::default();
+    let mut decl_id_consumers: FxHashMap<DeclarationId, Vec<Option<ScopeId>>> =
+        FxHashMap::default();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -490,8 +510,8 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
             let operands = collect_operand_places(&instr.value);
             for place in operands {
                 operand_consumers.entry(place.identifier.id).or_default().push(consumer_scope);
-                if let Some(name) = &place.identifier.name {
-                    name_consumers.entry(name.clone()).or_default().push(consumer_scope);
+                if let Some(decl_id) = place.identifier.declaration_id {
+                    decl_id_consumers.entry(decl_id).or_default().push(consumer_scope);
                 }
             }
         }
@@ -500,15 +520,15 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
             crate::hir::types::Terminal::Return { value }
             | crate::hir::types::Terminal::Throw { value } => {
                 operand_consumers.entry(value.identifier.id).or_default().push(None);
-                if let Some(name) = &value.identifier.name {
-                    name_consumers.entry(name.clone()).or_default().push(None);
+                if let Some(decl_id) = value.identifier.declaration_id {
+                    decl_id_consumers.entry(decl_id).or_default().push(None);
                 }
             }
             crate::hir::types::Terminal::If { test, .. }
             | crate::hir::types::Terminal::Branch { test, .. } => {
                 operand_consumers.entry(test.identifier.id).or_default().push(None);
-                if let Some(name) = &test.identifier.name {
-                    name_consumers.entry(name.clone()).or_default().push(None);
+                if let Some(decl_id) = test.identifier.declaration_id {
+                    decl_id_consumers.entry(decl_id).or_default().push(None);
                 }
             }
             _ => {}
@@ -551,20 +571,16 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                     InstructionValue::StoreLocal { lvalue, .. }
                     | InstructionValue::StoreContext { lvalue, .. } => {
                         let target_id = lvalue.identifier.id;
-                        // Check by ID first, then fall back to name-based matching
-                        // (needed because StoreLocal target and LoadLocal source
-                        // may have different SSA IDs for the same variable).
-                        // TODO(4f): Name-based matching can false-positive on
-                        // shadowed/reused variable names. DeclarationId alignment
-                        // will fix this — same limitation as scope_written_names
-                        // and dep_key_set throughout the codebase.
+                        // Check by ID first, then fall back to DeclarationId-based
+                        // matching (needed because StoreLocal target and LoadLocal
+                        // source may have different SSA IDs for the same variable).
                         let target_used_outside =
                             operand_consumers.get(&target_id).is_some_and(|consumers| {
                                 consumers
                                     .iter()
                                     .any(|consumer_scope| *consumer_scope != Some(scope.id))
-                            }) || lvalue.identifier.name.as_ref().is_some_and(|name| {
-                                name_consumers.get(name).is_some_and(|consumers| {
+                            }) || lvalue.identifier.declaration_id.is_some_and(|decl_id| {
+                                decl_id_consumers.get(&decl_id).is_some_and(|consumers| {
                                     consumers
                                         .iter()
                                         .any(|consumer_scope| *consumer_scope != Some(scope.id))
@@ -607,8 +623,8 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
     //   scope C: deps=[tripled]
     // After pass 1: C's deps become [doubled], after pass 2: C's deps become [value].
     {
-        // Map: declared_variable_name → (declaring_scope_id, that scope's deps)
-        let mut decl_deps_map: FxHashMap<String, (ScopeId, Vec<ReactiveScopeDependency>)> =
+        // Map: DeclarationId → (declaring_scope_id, that scope's deps)
+        let mut decl_deps_map: FxHashMap<DeclarationId, (ScopeId, Vec<ReactiveScopeDependency>)> =
             FxHashMap::default();
 
         let max_iterations = 10;
@@ -620,8 +636,8 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                     && !deps.is_empty()
                 {
                     for (_, decl) in decl_vec {
-                        if let Some(name) = &decl.identifier.name {
-                            decl_deps_map.insert(name.clone(), (*scope_id, deps.clone()));
+                        if let Some(decl_id) = decl.identifier.declaration_id {
+                            decl_deps_map.insert(decl_id, (*scope_id, deps.clone()));
                         }
                     }
                 }
@@ -638,19 +654,22 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                 let mut new_deps: Vec<ReactiveScopeDependency> = Vec::with_capacity(deps.len());
                 let mut substituted = false;
 
-                // Helper: check if a dep with the same name+path is already in new_deps
+                // Helper: check if a dep with the same identity+path is already in new_deps
                 let has_dep = |new_deps: &[ReactiveScopeDependency],
                                dep: &ReactiveScopeDependency| {
                     new_deps.iter().any(|d| {
-                        d.identifier.name.as_ref() == dep.identifier.name.as_ref()
-                            && d.path == dep.path
+                        d.path == dep.path
+                            && match (d.identifier.declaration_id, dep.identifier.declaration_id) {
+                                (Some(a), Some(b)) => a == b,
+                                _ => d.identifier.name.as_ref() == dep.identifier.name.as_ref(),
+                            }
                     })
                 };
 
                 for dep in &deps {
                     if dep.path.is_empty()
-                        && let Some(name) = &dep.identifier.name
-                        && let Some((declaring_scope, root_deps)) = decl_deps_map.get(name)
+                        && let Some(dep_decl_id) = dep.identifier.declaration_id
+                        && let Some((declaring_scope, root_deps)) = decl_deps_map.get(&dep_decl_id)
                         && *declaring_scope != sid
                     {
                         // Transitive: replace with root deps
@@ -687,7 +706,9 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
         deps.sort_by(|a, b| {
             let a_name = a.identifier.name.as_deref().unwrap_or("");
             let b_name = b.identifier.name.as_deref().unwrap_or("");
-            a_name.cmp(b_name)
+            a_name
+                .cmp(b_name)
+                .then_with(|| a.identifier.declaration_id.cmp(&b.identifier.declaration_id))
         });
     }
 

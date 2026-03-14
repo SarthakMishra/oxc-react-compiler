@@ -2,7 +2,7 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (param pre-freeze improvement, 368/1717)
+Last updated: 2026-03-14 (Sub-task 4f DeclarationId alignment, Gap 4 complete, 368/1717)
 
 Current conformance: 368/1717 pass (21.4%), 0 panics, 0 unexpected divergences.
 
@@ -60,6 +60,15 @@ closures and indirect references. 6 fixtures removed from known-failures.txt:
 `fault-tolerance/error.var-declaration-and-mutation-of-props.js`,
 `repro-retain-source-when-bailout.js`. Net change: +6 (362 -> 368).
 
+**Fix (2026-03-14):** Sub-task 4f -- DeclarationId alignment for dependency comparison.
+`TemporaryInfo` now carries `root_declaration_id`. Name-based lookups replaced with
+DeclarationId-based lookups: `scope_written_names` -> `scope_written_decl_ids`,
+`name_consumers` -> `decl_id_consumers`, `decl_deps_map` keyed by DeclarationId.
+`DepKey` in merge_scopes.rs now uses `(Option<DeclarationId>, IdentifierId, Vec<DependencyPathEntry>)`.
+`can_merge_scopes` uses DeclarationId for output-to-input chain check. All TODO(4f) comments
+removed. Conformance unchanged at 368/1717 (correctness improvement, no new fixture gains).
+Gap 4 scope merging architecture rewrite is now fully complete (all 6 sub-tasks done).
+
 | Category | Count | Description |
 |----------|-------|-------------|
 | Compiled with memo | ~912 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix, -5 from free-var detection) |
@@ -94,11 +103,11 @@ regressions are expected and will resolve with scope merging fixes and
 slot count alignment. Gap 6 (over-scoped deps), Gap 7 (property-path deps), and Gap 8 (sentinel
 codegen) are now resolved. Property-path deps yielded +3 fixtures (315 -> 318).
 
-**Scope merging architecture rewrite (Gap 4):** Deep research revealed that both
-merge passes are fundamentally wrong. Pass 42 (overlap detection) needs an active-scope-stack
-algorithm with cross-scope mutation tracking. The post-conversion merge needs output-to-input
-chaining, nested scope flattening, and safety checks. See memoization-structure.md for the
-6-sub-task plan (4a through 4f). Gap 10 is superseded by Sub-task 4a. Sub-tasks 4a-4e are complete; only 4f remains.
+**Scope merging architecture rewrite (Gap 4):** All 6 sub-tasks (4a through 4f) are now
+complete. Pass 42 (overlap detection) uses the active-scope-stack algorithm with cross-scope
+mutation tracking. The post-conversion merge handles output-to-input chaining, nested scope
+flattening, safety checks, and DeclarationId-based dependency comparison. Gap 10 was
+superseded by Sub-task 4a.
 
 - [x] **4a** Active-scope-stack overlap detection (rewrite Pass 42 merge algorithm) — [memoization-structure.md](memoization-structure.md)#sub-task-4a-active-scope-stack-overlap-detection-pass-42
 - [x] **4d** Safety checks for intermediate instructions between scopes — [memoization-structure.md](memoization-structure.md)#sub-task-4d-safety-checks-for-intermediate-instructions
@@ -106,7 +115,7 @@ chaining, nested scope flattening, and safety checks. See memoization-structure.
 - [x] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
 - [x] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
 - [~] Correct `_c(N)` slot counts (sentinel fix done +7, reactive decl storage done; remaining: edge cases) — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
-- [ ] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
+- [x] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
 
 ## Priority 2 -- Upstream Errors (~50 actionable fixtures remaining)
 

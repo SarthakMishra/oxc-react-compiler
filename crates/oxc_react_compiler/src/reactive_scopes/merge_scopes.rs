@@ -1,7 +1,8 @@
 use crate::hir::types::{
-    AliasingEffect, ArrayElement, DependencyPathEntry, DestructurePattern, DestructureTarget, HIR,
-    IdentifierId, Instruction, InstructionId, InstructionKind, InstructionValue, ObjectPropertyKey,
-    Place, ReactiveBlock, ReactiveFunction, ReactiveScope, ReactiveTerminal, ScopeId,
+    AliasingEffect, ArrayElement, DeclarationId, DependencyPathEntry, DestructurePattern,
+    DestructureTarget, HIR, IdentifierId, Instruction, InstructionId, InstructionKind,
+    InstructionValue, ObjectPropertyKey, Place, ReactiveBlock, ReactiveFunction, ReactiveScope,
+    ReactiveTerminal, ScopeId,
 };
 use crate::utils::disjoint_set::DisjointSet;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -629,15 +630,18 @@ pub fn merge_reactive_scopes_that_invalidate_together(reactive_fn: &mut Reactive
     merge_scopes_in_block(&mut reactive_fn.body, &last_usage);
 }
 
-/// Canonical dependency key for comparing scope deps by name + path,
-/// not by IdentifierId (which is SSA-unique per Place reference).
-/// DIVERGENCE: Upstream uses identifier name + property path for dep comparison.
-/// Our HIR creates fresh IdentifierIds per Place, so ID comparison would
-/// make almost all scopes appear to have different deps.
-type DepKey = (Option<String>, Vec<DependencyPathEntry>);
+/// Canonical dependency key for comparing scope deps by DeclarationId + property path.
+/// Uses DeclarationId (stable across SSA renaming) instead of name (which can
+/// false-match on shadowed variables). Falls back to IdentifierId when
+/// DeclarationId is None (unnamed temporaries) to avoid collision.
+type DepKey = (Option<DeclarationId>, IdentifierId, Vec<DependencyPathEntry>);
 
 fn dep_key_set(scope: &crate::hir::types::ReactiveScope) -> BTreeSet<DepKey> {
-    scope.dependencies.iter().map(|d| (d.identifier.name.clone(), d.path.clone())).collect()
+    scope
+        .dependencies
+        .iter()
+        .map(|d| (d.identifier.declaration_id, d.identifier.id, d.path.clone()))
+        .collect()
 }
 
 /// Check if two scopes can be merged. Returns true under two conditions:
@@ -668,19 +672,24 @@ fn can_merge_scopes(prev: &ReactiveScope, next: &ReactiveScope) -> bool {
     }
 
     // Every dep of next must match a declaration of prev with an always-invalidating type
-    // DIVERGENCE: Upstream uses DeclarationId for matching; we use name-based matching
-    // as a workaround until Sub-task 4f aligns DeclarationIds.
-    // TODO(4f): use declarationId via temporaries for precise alias resolution
     if next.dependencies.is_empty() {
         return false;
     }
 
     for dep in &next.dependencies {
-        let dep_name = &dep.identifier.name;
-        let matched = prev.declarations.iter().any(|(_, decl)| {
-            &decl.identifier.name == dep_name
-                && matches!(decl.identifier.type_, Type::Object | Type::Function)
-        });
+        let matched = if let Some(dep_decl_id) = dep.identifier.declaration_id {
+            prev.declarations.iter().any(|(_, decl)| {
+                decl.identifier.declaration_id == Some(dep_decl_id)
+                    && matches!(decl.identifier.type_, Type::Object | Type::Function)
+            })
+        } else {
+            // Fallback for unnamed temporaries (shouldn't happen for direct-variable deps)
+            let dep_name = &dep.identifier.name;
+            prev.declarations.iter().any(|(_, decl)| {
+                &decl.identifier.name == dep_name
+                    && matches!(decl.identifier.type_, Type::Object | Type::Function)
+            })
+        };
         if !matched {
             return false;
         }
@@ -689,11 +698,11 @@ fn can_merge_scopes(prev: &ReactiveScope, next: &ReactiveScope) -> bool {
     true
 }
 
-/// Merge dependencies from absorbee into winner, deduplicating by name+path.
+/// Merge dependencies from absorbee into winner, deduplicating by DeclarationId+path.
 fn merge_scope_deps(winner: &mut ReactiveScope, absorbee: &ReactiveScope) {
     let existing_keys = dep_key_set(winner);
     for dep in &absorbee.dependencies {
-        let key = (dep.identifier.name.clone(), dep.path.clone());
+        let key = (dep.identifier.declaration_id, dep.identifier.id, dep.path.clone());
         if !existing_keys.contains(&key) {
             winner.dependencies.push(dep.clone());
         }
