@@ -22,9 +22,17 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
-                InstructionValue::LoadGlobal { .. }
-                | InstructionValue::Primitive { .. }
-                | InstructionValue::JSXText { .. } => {
+                InstructionValue::LoadGlobal { binding } => {
+                    non_reactive_ids.insert(instr.lvalue.identifier.id);
+                    // Also register the global binding name so that downstream
+                    // LoadLocal instructions referencing the same global (with a
+                    // different SSA Place ID from make_named_place) are caught by
+                    // the name-based fallback in the fixpoint propagation loop.
+                    // TODO(4f): Theoretical shadowing risk if a local variable
+                    // has the same name as a global. Same trade-off as SetState/Ref.
+                    non_reactive_names.insert(binding.name.clone());
+                }
+                InstructionValue::Primitive { .. } | InstructionValue::JSXText { .. } => {
                     non_reactive_ids.insert(instr.lvalue.identifier.id);
                 }
                 _ => {
