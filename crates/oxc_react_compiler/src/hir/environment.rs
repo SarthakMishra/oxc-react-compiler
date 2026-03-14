@@ -81,7 +81,10 @@ impl Default for EnvironmentConfig {
             validate_no_set_state_in_effects: false,
             validate_no_derived_computations_in_effects: false,
             validate_no_jsx_in_try_statements: false,
-            validate_no_capitalized_calls: true,
+            // DIVERGENCE: Upstream defaults this to `null` (disabled). We previously
+            // had it enabled, causing false bail-outs on capitalized helper functions
+            // like `Stringify()`. Fixtures that need validation use @validateNoCapitalizedCalls.
+            validate_no_capitalized_calls: false,
             validate_exhaustive_memo_dependencies: false,
             validate_exhaustive_effect_dependencies: false,
             assert_valid_mutable_ranges: false,
