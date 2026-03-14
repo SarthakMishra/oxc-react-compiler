@@ -2,14 +2,15 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (hook alias detection + dynamic hook identity validation, 393/1717)
+Last updated: 2026-03-14 (switch to All compilation mode, 370/1717)
 
-Current conformance: 393/1717 pass (22.9%), 0 panics, 0 unexpected divergences.
+Current conformance: 370/1717 pass (21.5%), 0 panics, 0 unexpected divergences.
 
-Note: Most passing fixtures match by both compilers returning source unchanged
-(trivial match via lint mode, validation bail-out, or non-component detection).
-Only 2 fixtures match with actual compiled `_c()` output. The remaining 1324
-divergences break down as follows (counts are approximate and overlap):
+Note: Conformance tests now use `CompilationMode::All` (matching upstream Babel's
+default) instead of `Infer`. This honestly attempts compilation of ALL functions,
+not just those with component/hook names. The score drop from 393→370 reflects
+23 fixtures that were trivially "passing" because Infer mode skipped them.
+The remaining 1347 divergences break down as follows (counts are approximate):
 
 **Regression note (2026-03-13):** Sentinel scope emission (Gap 5) was activated,
 correctly adding reactive scopes for allocating expressions. This introduced 35

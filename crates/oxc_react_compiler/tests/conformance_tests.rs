@@ -517,11 +517,9 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
     }
 
     let mut opts = PluginOptions {
-        // Default to Infer mode. Babel's test harness uses "all" by default, but
-        // our compiled output for non-component/hook functions still diverges.
-        // Using Infer avoids false regressions from compiling functions where
-        // our output isn't yet correct.
-        compilation_mode: CompilationMode::Infer,
+        // Match upstream Babel's default: compile all top-level functions,
+        // not just those with component/hook names.
+        compilation_mode: CompilationMode::All,
         ..PluginOptions::default()
     };
     let mut env = EnvironmentConfig::default();
