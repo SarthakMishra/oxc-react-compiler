@@ -1,7 +1,7 @@
 # Upstream Errors -- Validation Gaps
 
 > **Priority**: P2 (~20 actionable remaining fixtures, high tractability -- each fix is "emit error + bail")
-> **Impact**: ~20 remaining actionable fixtures where we compile but Babel bails with a validation error (63 total error fixtures - 13 invariant/todo skips - 30 resolved = 20 actionable)
+> **Impact**: ~16 remaining actionable fixtures where we compile but Babel bails with a validation error (63 total error fixtures - 13 invariant/todo skips - 34 resolved = 16 actionable)
 > **Tractability**: HIGH -- each sub-category is a focused validation improvement
 
 ## Problem Statement
@@ -44,7 +44,9 @@ Newly passing fixtures: `error.invalid-mutation-in-closure.js`, `error.invalid-p
 
 Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_mutation_after_freeze.rs`, `crates/oxc_react_compiler/src/hir/build.rs` (delete expression lowering fix).
 
-**What remains (~4 fixtures):**
+**Completed (2026-03-14, Phase 65):** Hook-arg local mutation -- `error.invalid-hook-function-argument-mutates-local-variable.js` now detects mutation of local variables passed as hook function arguments. +1 fixture (part of 384 -> 388 batch).
+
+**What remains (~3 fixtures):**
 - ~~Track "frozen" status on values~~ Done
 - ~~Detect mutations to frozen values: property writes, array push~~ Done
 - ~~Context variable mutations~~ Done (hook-return pre-freeze + function-capture freeze)
@@ -54,11 +56,11 @@ Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_mutation_aft
 - ~~Indirect mutation through function calls passed as props~~ Partially addressed (param pre-freeze covers direct prop mutation patterns)
 - ~~Alias tracking~~ Done (alias freeze tracking)
 - ~~Phi-node frozen tracking~~ Done (phi-node freeze propagation)
-- `error.invalid-hook-function-argument-mutates-local-variable.js` -- mutation of local variable passed as hook function argument
+- ~~Hook-arg local mutation~~ Done (Phase 65)
 - `error.invalid-mutate-props-in-effect-fixpoint.js` -- props mutation in effect with fixpoint iteration
 - `error.invalid-mutation-of-possible-props-phi-indirect.js` -- indirect phi-based possible-props mutation
 - `error.mutate-function-property.js` -- mutation of function object property
-**Fixture gain estimate:** ~2-4 (remaining cases require deeper analysis of specific mutation patterns)
+**Fixture gain estimate:** ~1-3 (remaining cases require deeper analysis of specific mutation patterns)
 **Depends on:** None
 
 ### Gap 2: Validate Preserve Existing Memoization ✅
@@ -145,18 +147,21 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 
 ### Gap 9: Other Validation Errors
 
-**Count:** ~13 remaining uncategorized fixtures
+**Count:** ~10 remaining uncategorized fixtures
 **What's needed:** These cover several sub-categories not yet tracked individually:
-- **Mutation tracking** (~4): `invalid-hook-function-argument-mutates-local-variable`, `invalid-mutate-props-in-effect-fixpoint`, `invalid-mutation-of-possible-props-phi-indirect`, `mutate-function-property` (also tracked under Gap 1 remaining)
-- **Hook-call capture freeze** (2): `hook-call-freezes-captured-identifier.tsx`, `hook-call-freezes-captured-memberexpr.jsx`
+- **Mutation tracking** (~3): `invalid-mutate-props-in-effect-fixpoint`, `invalid-mutation-of-possible-props-phi-indirect`, `mutate-function-property` (also tracked under Gap 1 remaining)
 - **Type provider** (2): `invalid-type-provider-*`
 - **Ref naming heuristic** (2): `ref-like-name-not-Ref`, `ref-like-name-not-a-ref`
 - **Preserve-memo edge cases** (2): `repro-preserve-memoization-inner-destructured-value-*`
-- **Other** (~3): `assign-ref-in-effect-hint`, `call-args-destructuring-asignment-complex`, `dont-hoist-inline-reference`
+- **Other** (~2): `call-args-destructuring-asignment-complex`, `dont-hoist-inline-reference`
 - ~~`invalid-mutate-global-*`~~ Resolved (outer-scope property mutation + render helper detection)
 - ~~`not-useEffect-external-mutate`~~ Resolved
 - ~~`invalid-return-mutable-function-from-hook`~~ Resolved
-**Fixture gain estimate:** ~5-10 (remaining require focused per-fixture analysis)
+- ~~`hook-call-freezes-captured-identifier.tsx`~~ Resolved (Phase 65: hook-call capture freeze)
+- ~~`hook-call-freezes-captured-memberexpr.jsx`~~ Resolved (Phase 65: hook-call capture freeze)
+- ~~`assign-ref-in-effect-hint`~~ Resolved (Phase 65: assign-ref diagnostic)
+- ~~`invalid-hook-function-argument-mutates-local-variable`~~ Resolved (Phase 65: moved to Gap 1 completed)
+**Fixture gain estimate:** ~3-7 (remaining require focused per-fixture analysis)
 **Depends on:** Analysis of individual fixtures
 
 **Partially completed:**
@@ -176,13 +181,18 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
   - Render helper detection in `validate_no_global_reassignment.rs` -- functions invoked as render helpers properly validated for global mutation.
   - 10 fixtures removed from known-failures.txt. +10 fixtures (374 -> 384/1717).
   - Rust modules: `crates/oxc_react_compiler/src/validation/validate_no_mutation_after_freeze.rs`, `crates/oxc_react_compiler/src/validation/validate_no_global_reassignment.rs`, `crates/oxc_react_compiler/src/hir/build.rs`.
+- **Phase 65 (2026-03-14):** 3 sub-categories addressed:
+  - Hook-call capture freeze: `hook-call-freezes-captured-identifier.tsx` and `hook-call-freezes-captured-memberexpr.jsx` -- hook calls that freeze captured identifiers and member expressions now properly detected in `validate_no_mutation_after_freeze.rs`.
+  - Hook-arg local mutation: `invalid-hook-function-argument-mutates-local-variable.js` -- mutation of local variables passed as hook function arguments now detected (moved from Gap 1 remaining to completed).
+  - Assign-ref hint: `assign-ref-in-effect-hint.js` -- correct diagnostic now emitted for ref assignment in effects.
+  - 4 fixtures removed from known-failures.txt. +4 fixtures (384 -> 388/1717).
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 98 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions, 6 from Gap 9 known-incompatible/ESLint/useMemo/capitalized-call fixes, 10 from Gap 9 mutation tracking [delete ops + phi freeze + alias freeze + derivation chains + outer-scope property mutation + render helper detection]).
-Remaining achievable: ~6-15 of the remaining ~20 actionable fixtures. The
-categorized gaps (1,3,4,6,7,8) account for ~10 fixtures; Gap 9 "Other" covers
-~13 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
+Achieved so far: 102 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions, 6 from Gap 9 known-incompatible/ESLint/useMemo/capitalized-call fixes, 10 from Gap 9 mutation tracking [delete ops + phi freeze + alias freeze + derivation chains + outer-scope property mutation + render helper detection], 4 from Phase 65 [hook-call capture freeze + hook-arg mutation + assign-ref hint]).
+Remaining achievable: ~5-12 of the remaining ~16 actionable fixtures. The
+categorized gaps (1,3,4,6,7,8) account for ~8 fixtures; Gap 9 "Other" covers
+~10 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
 fixtures should be registered as known skips.
 
 ## Cross-Cutting Issue: SSA Place Identity

@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Gap 9 mutation tracking: delete ops, phi freeze, alias freeze, derivation chains, outer-scope property mutation, render helper detection, 384/1717)
+Last updated: 2026-03-14 (Phase 65: hook-call capture freeze + hook-arg mutation + assign-ref hint, 388/1717)
 
-Current conformance: 384/1717 pass (22.4%), 0 panics, 0 unexpected divergences.
+Current conformance: 388/1717 pass (22.6%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -89,12 +89,21 @@ Net change: +6 (368 -> 374/1717).
 (6) Render helper detection in `validate_no_global_reassignment.rs` -- functions called as render helpers properly validated.
 10 fixtures removed from known-failures.txt. Net change: +10 (374 -> 384/1717).
 
+**Fix (2026-03-14):** Phase 65 -- hook-call capture freeze + hook-arg mutation + assign-ref hint.
+(1) Hook-call capture freeze: `hook-call-freezes-captured-identifier.tsx` and
+`hook-call-freezes-captured-memberexpr.jsx` now correctly detect when hook calls
+freeze captured variables/member expressions.
+(2) Hook-arg local mutation: `invalid-hook-function-argument-mutates-local-variable.js`
+now detects mutation of local variables passed as hook function arguments.
+(3) Assign-ref hint: `assign-ref-in-effect-hint.js` now emits the correct diagnostic.
+4 fixtures removed from known-failures.txt. Net change: +4 (384 -> 388/1717).
+
 | Category | Count | Description |
 |----------|-------|-------------|
 | Compiled with memo | ~912 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix, -5 from free-var detection) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~20 | We compile but upstream bails (63 total - 13 invariant/todo skips - 30 newly resolved) |
+| Upstream errors | ~16 | We compile but upstream bails (63 total - 13 invariant/todo skips - 34 newly resolved) |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -142,13 +151,13 @@ superseded by Sub-task 4a.
 We compile functions that upstream rejects with validation errors. These are
 "free" fixture gains -- emit the right error and bail, source matches.
 
-- [~] Frozen mutation detection ("This value cannot be modified", ~4 remaining: hook-arg mutation, fixpoint mutation, phi-indirect, function-property) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
+- [~] Frozen mutation detection ("This value cannot be modified", ~3 remaining: fixpoint mutation, phi-indirect, function-property) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
 - [ ] Missing/extra deps in exhaustive-deps (2 remaining, 6 fixed) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
 - [~] Cannot reassign variables outside component (2 remaining of 8) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
 - [ ] Hooks must be same function (2 remaining, was 4) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
 - [ ] Cannot call setState during render (1 remaining: hoisting-setstate) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
 - [ ] Cannot access variable before declared (1 fixture, 2 todo-* skippable) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
-- [ ] Other upstream errors (~13 remaining: mutation tracking, ref naming, preserve-memo edge cases) — [upstream-errors.md](upstream-errors.md)#gap-9-other
+- [ ] Other upstream errors (~10 remaining: mutation tracking, ref naming, preserve-memo edge cases) — [upstream-errors.md](upstream-errors.md)#gap-9-other
 
 Note: 15 "Invariant/Todo" upstream errors are internal compiler failures in
 Babel -- these should be skipped, not matched.
@@ -190,6 +199,16 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Phase 65: Hook-Call Capture Freeze + Hook-Arg Mutation + Assign-Ref Hint (2026-03-14)
+
+- `validate_no_mutation_after_freeze.rs`: Hook-call capture freeze -- hook calls that freeze captured identifiers and member expressions now properly detected
+- `validate_no_mutation_after_freeze.rs`: Hook-arg local mutation -- mutations to local variables passed as hook function arguments now detected
+- Assign-ref-in-effect hint diagnostic now emitted correctly
+- 4 fixtures removed from known-failures.txt: `hook-call-freezes-captured-identifier.tsx`, `hook-call-freezes-captured-memberexpr.jsx`, `invalid-hook-function-argument-mutates-local-variable.js`, `assign-ref-in-effect-hint.js`
+- Remaining Gap 1 mutation fixtures: `error.invalid-mutate-props-in-effect-fixpoint.js`, `error.invalid-mutation-of-possible-props-phi-indirect.js`, `error.mutate-function-property.js`
+- Remaining Gap 9 Other fixtures: ~10 (type provider, ref naming, preserve-memo edge cases, call-args-destructuring, dont-hoist-inline-reference)
+- Conformance: 384 -> 388/1717 (+4)
 
 ### Gap 9 Mutation Tracking Deep Session (2026-03-14)
 

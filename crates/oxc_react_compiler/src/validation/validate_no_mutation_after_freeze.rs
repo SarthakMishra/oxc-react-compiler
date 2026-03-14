@@ -129,8 +129,13 @@ pub fn validate_no_mutation_after_freeze(
                     }
                 }
                 InstructionValue::FunctionExpression { lowered_func, .. } => {
-                    // Collect captured variable names from function context
-                    let captures: Vec<&str> = lowered_func
+                    // Collect captured variable names from function context and body.
+                    // DIVERGENCE: Upstream populates HIRFunction.context during building.
+                    // Our builder leaves context empty for nested arrows/functions, so
+                    // we also scan the inner body for LoadLocal/LoadContext references
+                    // to names that exist in the outer scope's id_to_source_name map
+                    // but are not declared inside the inner function.
+                    let mut captures: Vec<&str> = lowered_func
                         .context
                         .iter()
                         .filter_map(|p| {
@@ -140,6 +145,20 @@ pub fn validate_no_mutation_after_freeze(
                                 .or(p.identifier.name.as_deref())
                         })
                         .collect();
+                    // Scan inner body for outer-scope references
+                    let inner_locals = collect_inner_declared_names(&lowered_func.body);
+                    for (_, inner_block) in &lowered_func.body.blocks {
+                        for inner_instr in &inner_block.instructions {
+                            if let InstructionValue::LoadLocal { place }
+                            | InstructionValue::LoadContext { place } = &inner_instr.value
+                                && let Some(name) = &place.identifier.name
+                                && !inner_locals.contains(name.as_str())
+                                && !captures.contains(&name.as_str())
+                            {
+                                captures.push(name);
+                            }
+                        }
+                    }
                     if !captures.is_empty() {
                         func_captures.insert(instr.lvalue.identifier.id, captures.clone());
                         if let Some(name) = &instr.lvalue.identifier.name {
@@ -438,6 +457,40 @@ fn is_derived_from_frozen(
             break false;
         }
     }
+}
+
+/// Collect all variable names declared within an inner function body.
+/// Used to distinguish local declarations from outer-scope captures.
+fn collect_inner_declared_names(hir: &HIR) -> FxHashSet<&str> {
+    let mut names = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::DeclareLocal { lvalue, .. }
+                | InstructionValue::DeclareContext { lvalue } => {
+                    if let Some(name) = &lvalue.identifier.name {
+                        names.insert(name.as_str());
+                    }
+                }
+                InstructionValue::StoreLocal {
+                    lvalue,
+                    type_:
+                        Some(
+                            crate::hir::types::InstructionKind::Let
+                            | crate::hir::types::InstructionKind::Const
+                            | crate::hir::types::InstructionKind::Var,
+                        ),
+                    ..
+                } => {
+                    if let Some(name) = &lvalue.identifier.name {
+                        names.insert(name.as_str());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    names
 }
 
 /// Extended mutation check that also detects mutations on values derived from
