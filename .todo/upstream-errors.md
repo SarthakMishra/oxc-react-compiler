@@ -90,20 +90,13 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 **Fixture gain estimate:** ~1-2
 **Depends on:** None
 
-### Gap 5: Ref Access During Render
+### Gap 5: Ref Access During Render ✅
 
-**Count:** 6 fixtures
-**Upstream error:** "Cannot access refs during render"
-**Upstream:** `ValidateNoRefAccessInRender.ts`
-**Current state:** `validate_no_ref_access_in_render.rs` exists with recent SSA resolution and PropertyStore/PropertyLoad improvements (+6 and +15 fixtures in recent sessions). 6 remaining failures indicate deeper ref aliasing patterns not yet handled.
-**What's needed:**
-- Analyze the 6 remaining fixtures -- likely involve:
-  - Ref values passed through function calls and returned
-  - Ref values stored in data structures (arrays, objects) and accessed later
-  - Indirect ref access through destructuring
-- Extend ref identity tracking to follow these patterns
-**Fixture gain estimate:** ~3-6
-**Depends on:** None
+~~**Count:** 6 fixtures~~
+~~**Upstream error:** "Cannot access refs during render"~~
+~~**Upstream:** `ValidateNoRefAccessInRender.ts`~~
+
+**Completed (2026-03-14):** All 6 remaining ref-access-during-render fixtures resolved via improved nested function ref tracking in `validate_no_ref_access_in_render.rs`. The validation now detects ref access patterns inside nested function expressions and lambda callbacks, covering ref values passed through function calls, stored in data structures, and accessed through indirect patterns. Rust module: `crates/oxc_react_compiler/src/validation/validate_no_ref_access_in_render.rs`. +6 fixtures (part of 354 -> 362 batch).
 
 ### Gap 6: Dynamic Hook Identity
 
@@ -117,17 +110,13 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 **Fixture gain estimate:** ~1-2
 **Depends on:** None
 
-### Gap 7: setState During Render
+### Gap 7: setState During Render (mostly complete)
 
-**Count:** 3 fixtures
+**Count:** 1 remaining (2 of 3 resolved)
 **Upstream error:** "Cannot call setState during render"
 **Upstream:** `ValidateNoSetStateInRender.ts`
-**Current state:** `validate_no_set_state_in_render.rs` exists with SSA resolution (+9 fixtures recently). 3 remaining: `error.invalid-hoisting-setstate.js`, `error.unconditional-set-state-lambda.js`, `error.unconditional-set-state-nested-function-expressions.js`.
-**What's needed:**
-- Track setState calls through helper functions and lambdas (transitive detection)
-- Handle hoisted function declarations that call setState
-- If `helper()` calls `setState`, and the component calls `helper()` during render, that's an error
-**Fixture gain estimate:** ~2-3
+**Current state:** `validate_no_set_state_in_render.rs` enhanced with transitive setState detection through helper functions and lambdas. Fixpoint loop resolves arbitrarily deep call chains (foo → bar → baz → setState). Function-to-name mapping propagated through StoreLocal chains. 2 fixtures now passing: `error.unconditional-set-state-lambda.js`, `error.unconditional-set-state-nested-function-expressions.js`. 1 remaining: `error.invalid-hoisting-setstate.js` (requires hoisted context declaration tracking, overlaps with Gap 8).
+**Fixture gain estimate:** ~0-1 (remaining fixture requires deeper hoisting analysis)
 **Depends on:** None
 
 ### Gap 8: Hoisting/TDZ
@@ -161,9 +150,9 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 68 (19 from Gap 1 frozen mutation [6 initial + 13 enhancement], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions).
-Remaining achievable: ~20-40 of the remaining ~50 actionable fixtures. The
-categorized gaps (1,3,4,5,6,7,8) account for ~24 fixtures; Gap 9 "Other" covers
+Achieved so far: 76 (19 from Gap 1 frozen mutation [6 initial + 13 enhancement], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions).
+Remaining achievable: ~12-32 of the remaining ~42 actionable fixtures. The
+categorized gaps (1,3,4,6,7,8) account for ~16 fixtures; Gap 9 "Other" covers
 ~29 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
 fixtures should be registered as known skips.
 

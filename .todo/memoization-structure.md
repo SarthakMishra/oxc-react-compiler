@@ -104,7 +104,7 @@ by dependency.
 **Reverted attempts (context for new plan):**
 - Flat-range overlap merge: merged semantically separate scopes
 - DSU rewrite: produced invalid JS (const scoping across blocks)
-- setState non-reactive heuristic: false positives (see Gap 9)
+- setState non-reactive heuristic: false positives (resolved in Gap 9 via hook call exclusion)
 
 #### Sub-task 4a: Active-scope-stack overlap detection (Pass 42) ✅
 
@@ -219,16 +219,14 @@ Option 2 is a pragmatic interim step.
 
 **Completed**: Fixed in `codegen.rs`. When `deps.is_empty()` (sentinel scope), the codegen now stores the first declaration value (`$[slot_start] = declName`) after the if-block body. This matches upstream behavior where sentinel scopes mark themselves as "computed" by writing a value to the sentinel slot. Part of the Gap 7 changeset.
 
-### Gap 9: setState False Positive in Non-Reactive Propagation
+### Gap 9: setState False Positive in Non-Reactive Propagation ✅
 
-**Upstream:** N/A (this is a divergence-specific issue in our non-reactive propagation logic)
-**Current state:** An attempt was made to treat `setState` calls as non-reactive (since setState itself is a stable function). This was reverted because it caused false positives: some code patterns use the return value of setState or have setState in dependency arrays, and marking the call result as non-reactive incorrectly excluded downstream values from dependency tracking.
-**What's needed:**
-- Investigate which specific patterns caused regressions when setState was marked non-reactive
-- Determine if a narrower heuristic is possible (e.g., only mark non-reactive when the call result is unused)
-- Alternatively, this may not be needed if the current CallExpression heuristic (callee + all args non-reactive) already handles the important cases without false positives
-**Depends on:** None
-**Risk:** Low priority -- the current behavior (treating setState calls as reactive) is conservative and correct, just potentially over-scoped
+~~**Upstream:** N/A (this is a divergence-specific issue in our non-reactive propagation logic)~~
+~~**Current state:** An attempt was made to treat `setState` calls as non-reactive (since setState itself is a stable function). This was reverted because it caused false positives.~~
+
+**Completed**: Resolved by the hook call exclusion in the CallExpression non-reactivity rule. Instead of broadly treating setState calls as non-reactive, the fix narrows the rule: CallExpression results are only marked non-reactive when the callee is NOT a hook (name does not match `use[A-Z]`). This correctly handles `require('shared-runtime')` (non-reactive import, non-hook) while keeping `useState(0)`, `useContext(ctx)`, etc. as reactive (their return values are reactive state/context even though the hook function itself is a non-reactive import). The `id_to_name` map traces callee IDs back to their original variable names via LoadLocal/LoadGlobal instructions.
+- Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/propagate_dependencies.rs`
+- Part of the free variable detection changeset (349 -> 354/1717)
 
 ### Gap 10: Overlap Merge Regression -- SUPERSEDED by Gap 4
 
@@ -268,13 +266,14 @@ Expected progression (gaps are interdependent, so gains compound):
 - After transitive dep resolution ✅: Phase 3 StoreLocal declaration tracking + Phase 3.5 fixpoint substitution (slot counts closer, `component-with-derived` 5→4 slots)
 - After Gap 11 (derived computation codegen) ✅: `collect_used_ids` fix in `prune_scopes.rs` -- declarations now kept inside scope guards
 - After Gap 3 sentinel slot fix ✅: sentinel scopes use `max(decls, 1)` slots, reactive scopes use `deps + decls` (+7 fixtures, 342 -> 349)
+- After free variable detection + hook call exclusion ✅: non-reactive free variables (module imports) excluded from deps, hook calls excluded from CallExpression non-reactivity (+5 fixtures, 349 -> 354)
 - After Gap 3 remaining work: edge-case slot divergences from scope declaration set differences
 - Sub-task 4f (DeclarationId): correctness improvement, may unlock edge-case fixtures
 - Total potential from this category: ~400-600 new passes
 
 ## Risks and Notes
 
-- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), sentinel codegen (Gap 8), transitive dep resolution, Gap 11 (derived computation codegen), and Gap 3 sentinel slot counting are all complete. Scope merge sub-tasks 4a through 4e are done. The remaining blockers are: Gap 3 residual edge cases (scope declaration set differences), Sub-task 4f (DeclarationId alignment for shadowed variable correctness).
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), sentinel codegen (Gap 8), transitive dep resolution, Gap 11 (derived computation codegen), Gap 3 sentinel slot counting, Gap 9 (setState false-positive, resolved via hook call exclusion), and free variable detection are all complete. Scope merge sub-tasks 4a through 4e are done. The remaining blockers are: Gap 3 residual edge cases (scope declaration set differences), Sub-task 4f (DeclarationId alignment for shadowed variable correctness).
 - **Scope merging is a 2-pass problem**: The overlap detection (Pass 42, Sub-task 4a) runs on the HIR BEFORE block structure is created. The invalidate-together merge (post-conversion, Sub-tasks 4b-4e) runs on the ReactiveFunction tree AFTER conversion. These are separate algorithms operating on different data structures at different pipeline stages. The reverted DSU attempt conflated them.
 - **The const-scoping problem is a non-issue for Pass 42** ✅ CONFIRMED: The reverted DSU attempt failed because it was tested after block structure existed. But Pass 42 runs before `build_reactive_scope_terminals_hir` (Pass 43), so scopes are just annotations at that point. The Sub-task 4a rewrite confirmed this -- no const-scoping issues encountered.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.

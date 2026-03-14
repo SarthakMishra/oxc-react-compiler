@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (free variable detection + hook call exclusion in propagate_dependencies.rs, 354/1717)
+Last updated: 2026-03-14 (nested function validation improvements, 362/1717)
 
-Current conformance: 354/1717 pass (20.6%), 0 panics, 0 unexpected divergences.
+Current conformance: 362/1717 pass (21.1%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -41,12 +41,21 @@ return values are reactive even when the hook itself is a non-reactive import.
 5 fixtures removed from known-failures.txt. Net change: +5 (349 -> 354).
 Gap 9 (setState false-positive) resolved -- hook exclusion is the correct narrow fix.
 
+**Fix (2026-03-14):** Nested function validation improvements. Gap 5 (ref access
+during render) fully resolved -- all 6 remaining fixtures now passing via improved
+nested function ref tracking in `validate_no_ref_access_in_render.rs`. Gap 7
+(setState during render) partially resolved -- 2 of 3 remaining fixtures now passing
+(`error.unconditional-set-state-lambda.js` and
+`error.unconditional-set-state-nested-function-expressions.js`) via setState detection
+in nested function expressions. Only `error.invalid-hoisting-setstate.js` remains
+(requires hoisted function declaration analysis). Net change: +8 (354 -> 362).
+
 | Category | Count | Description |
 |----------|-------|-------------|
-| Compiled with memo | ~917 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix) |
+| Compiled with memo | ~912 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix, -5 from free-var detection) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~50 | We compile but upstream bails (63 total - 13 invariant/todo skips) |
+| Upstream errors | ~42 | We compile but upstream bails (63 total - 13 invariant/todo skips - 8 newly resolved) |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -88,7 +97,6 @@ chaining, nested scope flattening, and safety checks. See memoization-structure.
 - [x] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
 - [~] Correct `_c(N)` slot counts (sentinel fix done +7, reactive decl storage done; remaining: edge cases) — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 - [ ] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
-- [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation
 
 ## Priority 2 -- Upstream Errors (~50 actionable fixtures remaining)
 
@@ -98,9 +106,8 @@ We compile functions that upstream rejects with validation errors. These are
 - [~] Frozen mutation detection ("This value cannot be modified", 8 remaining of 26) — [upstream-errors.md](upstream-errors.md)#gap-1-frozen-mutation-detection
 - [ ] Missing/extra deps in exhaustive-deps (2 remaining, 6 fixed) — [upstream-errors.md](upstream-errors.md)#gap-3-exhaustive-deps-remaining
 - [~] Cannot reassign variables outside component (2 remaining of 8) — [upstream-errors.md](upstream-errors.md)#gap-4-reassign-outside-component
-- [ ] Cannot access refs during render (6 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-5-ref-access-during-render
 - [ ] Hooks must be same function (2 remaining, was 4) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
-- [ ] Cannot call setState during render (3 fixtures) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
+- [ ] Cannot call setState during render (1 remaining: hoisting-setstate) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
 - [ ] Cannot access variable before declared (1 fixture, 2 todo-* skippable) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
 - [ ] Other upstream errors (~29 remaining: mutation tracking, type providers, ref naming, preserve-memo edge cases) — [upstream-errors.md](upstream-errors.md)#gap-9-other
 
@@ -144,6 +151,16 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Free Variable Detection + Hook Call Exclusion (2026-03-14)
+
+- `propagate_dependencies.rs`: Free variable detection -- collects all locally-defined names (StoreLocal/DeclareLocal/StoreContext/DeclareContext/Destructure targets + function params), then marks LoadLocal/LoadContext of names NOT in that set as non-reactive free variables
+- `propagate_dependencies.rs`: Hook call exclusion -- CallExpression non-reactivity rule now checks callee name via `id_to_name` map; calls to hooks (`use[A-Z]...`) are excluded since hook return values are reactive
+- `pipeline.rs`: `extract_param_names()` helper passes function parameter names to `propagate_scope_dependencies_hir()` so params are correctly treated as locally-defined reactive inputs
+- 5 fixtures removed from known-failures.txt: `error.capitalized-function-call-aliased.js`, `infer-function-expression-component.js`, `jsx-attribute-default-to-true.tsx`, `jsx-member-expression.js`, `merge-consecutive-scopes-no-deps.js`
+- 1 fixture re-sorted in known-failures.txt: `allow-passing-refs-as-props.js` (alphabetical fix)
+- Gap 9 (setState false-positive) resolved: hook exclusion is the correct narrow fix for the reverted setState heuristic
+- Conformance: 349 -> 354/1717 (+5)
 
 ### Sentinel Slot Count Fix -- Gap 3 Partial (2026-03-14)
 
@@ -222,10 +239,10 @@ All P0-P5 items have been implemented. Detail files have been removed.
 - `merge_scopes.rs`: Double-merge prevention via `merged_indices` set -- prevents a scope from being merged into multiple targets
 - `merge_scopes.rs`: Dependency union and declaration merge when combining scopes
 - `propagate_dependencies.rs`: Non-reactive propagation through `Destructure` instructions (all targets of a non-reactive destructure are non-reactive)
-- `propagate_dependencies.rs`: Non-reactive propagation through `CallExpression` when callee + all args are non-reactive (handles `require('shared-runtime')`)
+- `propagate_dependencies.rs`: Non-reactive propagation through `CallExpression` when callee + all args are non-reactive (handles `require('shared-runtime')`); later enhanced with hook call exclusion (see "Free Variable Detection" entry)
 - `propagate_dependencies.rs`: Recursive `collect_destructure_target_ids` for nested object/array destructure patterns
 - REVERTED: Overlap merge change (caused regressions in scope boundary detection)
-- REVERTED: setState heuristic change (caused false positives in non-reactive propagation)
+- REVERTED: setState heuristic change (resolved via hook call exclusion in "Free Variable Detection" entry)
 - Conformance: 318/1717 (unchanged -- structural improvements, no net fixture movement)
 
 ### Property-Path Dependency Resolution + Sentinel Codegen Fix (2026-03-13)

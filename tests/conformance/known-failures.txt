@@ -1,12 +1,11 @@
-# Known upstream fixtures that our compiler does not yet match.
-# One fixture filename per line. Lines starting with '#' are comments.
 #
-# Format: <relative-path-from-upstream-fixtures/>
 #
-# Baseline: 74/1419 pass (5.2%), 0 panics, 1345 divergences
 # (Uses corrected .expected files extracted from upstream .expect.md)
 # 298 upstream error fixtures excluded from comparison
-allow-passing-refs-as-props.js
+# Baseline: 74/1419 pass (5.2%), 0 panics, 1345 divergences
+# Format: <relative-path-from-upstream-fixtures/>
+# Known upstream fixtures that our compiler does not yet match.
+# One fixture filename per line. Lines starting with '#' are comments.
 alias-capture-in-method-receiver-and-mutate.js
 alias-capture-in-method-receiver.js
 alias-computed-load.js
@@ -42,6 +41,7 @@ allow-mutating-ref-property-in-callback-passed-to-jsx-indirect.tsx
 allow-mutating-ref-property-in-callback-passed-to-jsx.tsx
 allow-passing-ref-to-render-helper-props-object.js
 allow-passing-ref-to-render-helper.js
+allow-passing-refs-as-props.js
 allow-reassignment-to-global-function-jsx-prop.js
 allow-ref-access-in-effect-indirect.js
 allow-ref-access-in-effect.js
@@ -284,11 +284,6 @@ error.call-args-destructuring-asignment-complex.js
 error.dont-hoist-inline-reference.js
 error.hook-call-freezes-captured-identifier.tsx
 error.hook-call-freezes-captured-memberexpr.jsx
-error.invalid-access-ref-in-reducer-init.js
-error.invalid-access-ref-in-reducer.js
-error.invalid-access-ref-in-render-mutate-object-with-ref-function.js
-error.invalid-access-ref-in-state-initializer.js
-error.invalid-aliased-ref-in-callback-invoked-during-render-.js
 error.invalid-conditional-call-aliased-hook-import.js
 error.invalid-conditional-call-aliased-react-hook.js
 error.invalid-delete-computed-property-of-frozen-value.js
@@ -310,8 +305,8 @@ error.invalid-mutation-in-closure.js
 error.invalid-mutation-of-possible-props-phi-indirect.js
 error.invalid-pass-mutable-function-as-prop.js
 error.invalid-pass-ref-to-function.js
+error.invalid-prop-mutation-indirect.js
 error.invalid-props-mutation-in-effect-indirect.js
-error.invalid-ref-in-callback-invoked-during-render.js
 error.invalid-return-mutable-function-from-hook.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
 error.invalid-type-provider-nonhook-name-typed-as-hook.js
@@ -333,8 +328,6 @@ error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-object-expression-get-syntax.js
 error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
-error.unconditional-set-state-lambda.js
-error.unconditional-set-state-nested-function-expressions.js
 error.useMemo-non-literal-depslist.ts
 escape-analysis-destructured-rest-element.js
 escape-analysis-jsx-child.js
@@ -1368,4 +1361,3 @@ weakmap-constructor.js
 weakset-constructor.js
 while-conditional-continue.js
 while-with-assignment-in-test.js
-error.invalid-prop-mutation-indirect.js
