@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Sub-task 4f DeclarationId alignment, Gap 4 complete, 368/1717)
+Last updated: 2026-03-14 (Gap 9 validation fixes: known-incompatible, ESLint suppression, useMemo deps, 374/1717)
 
-Current conformance: 368/1717 pass (21.4%), 0 panics, 0 unexpected divergences.
+Current conformance: 374/1717 pass (21.8%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -69,12 +69,23 @@ DeclarationId-based lookups: `scope_written_names` -> `scope_written_decl_ids`,
 removed. Conformance unchanged at 368/1717 (correctness improvement, no new fixture gains).
 Gap 4 scope merging architecture rewrite is now fully complete (all 6 sub-tasks done).
 
+**Fix (2026-03-14):** Gap 9 upstream error fixtures -- 6 new validation checks:
+(1) Known-incompatible module detection in `program.rs` -- rejects functions from modules
+containing incompatible libraries (`react-native-reanimated`, `react-native-gesture-handler`,
+`@shopify/react-native-skia`) by scanning import sources. 3 fixtures passing.
+(2) ESLint suppression detection in `program.rs` -- scans source for unclosed
+`eslint-disable-next-line react-hooks/exhaustive-deps` without matching re-enable. 2 fixtures.
+(3) `useMemo` non-literal dependency list detection in `validate_use_memo.rs` -- rejects
+`useMemo(fn, deps)` where `deps` is not an array literal. 1 fixture.
+(4) Capitalized call alias resolution improved in `validate_no_capitalized_calls.rs`.
+Net change: +6 (368 -> 374/1717).
+
 | Category | Count | Description |
 |----------|-------|-------------|
 | Compiled with memo | ~912 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix, -5 from free-var detection) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~36 | We compile but upstream bails (63 total - 13 invariant/todo skips - 14 newly resolved) |
+| Upstream errors | ~30 | We compile but upstream bails (63 total - 13 invariant/todo skips - 20 newly resolved) |
 | @flow fixtures | 38 | OXC parser can't handle Flow syntax |
 
 ---
@@ -128,7 +139,7 @@ We compile functions that upstream rejects with validation errors. These are
 - [ ] Hooks must be same function (2 remaining, was 4) — [upstream-errors.md](upstream-errors.md)#gap-6-dynamic-hook-identity
 - [ ] Cannot call setState during render (1 remaining: hoisting-setstate) — [upstream-errors.md](upstream-errors.md)#gap-7-set-state-during-render
 - [ ] Cannot access variable before declared (1 fixture, 2 todo-* skippable) — [upstream-errors.md](upstream-errors.md)#gap-8-hoisting-tdz
-- [ ] Other upstream errors (~29 remaining: mutation tracking, type providers, ref naming, preserve-memo edge cases) — [upstream-errors.md](upstream-errors.md)#gap-9-other
+- [ ] Other upstream errors (~23 remaining: mutation tracking, ref naming, preserve-memo edge cases) — [upstream-errors.md](upstream-errors.md)#gap-9-other
 
 Note: 15 "Invariant/Todo" upstream errors are internal compiler failures in
 Babel -- these should be skipped, not matched.

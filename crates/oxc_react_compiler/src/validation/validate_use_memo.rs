@@ -42,6 +42,11 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
                     ));
                 }
 
+                // Check that the deps argument is an array literal, not a computed value
+                if args.len() == 2 {
+                    check_deps_is_array_literal(hir, &args[1], name, instr.loc, errors);
+                }
+
                 if name == "useMemo" && !args.is_empty() {
                     let callback_id = args[0].identifier.id;
                     // Check if the callback is async
@@ -202,6 +207,62 @@ fn collect_set_state_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
 /// Check if a name looks like a setState function (setX where X is uppercase).
 fn is_set_state_name(name: &str) -> bool {
     name.starts_with("set") && name.len() > 3 && name.as_bytes()[3].is_ascii_uppercase()
+}
+
+/// Check that the dependency list argument is an array literal, not a computed value.
+///
+/// Upstream rejects patterns like `useMemo(fn, hasDeps ? null : [text])` because
+/// the compiler needs to statically analyze the dependency list.
+fn check_deps_is_array_literal(
+    hir: &HIR,
+    deps_place: &crate::hir::types::Place,
+    hook_name: &str,
+    call_loc: crate::hir::types::SourceLocation,
+    errors: &mut ErrorCollector,
+) {
+    // Resolve the deps argument through the HIR to find its defining instruction.
+    // If the defining instruction is an ArrayExpression or Primitive, it's valid.
+    // If we find a different instruction type, or no instruction at all (e.g., phi
+    // result from a conditional), it means the deps are computed — reject.
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if instr.lvalue.identifier.id != deps_place.identifier.id {
+                continue;
+            }
+            // Valid: array literal or undefined (no deps)
+            if matches!(instr.value, InstructionValue::ArrayExpression { .. })
+                || matches!(
+                    &instr.value,
+                    InstructionValue::Primitive { value }
+                        if matches!(
+                            value,
+                            crate::hir::types::Primitive::Undefined
+                        )
+                )
+            {
+                return;
+            }
+            // Invalid: any other instruction type
+            errors.push(CompilerError::invalid_react_with_kind(
+                call_loc,
+                format!(
+                    "Expected the dependency list for {hook_name} to be an array literal. \
+                     The React Compiler does not support computed or dynamic dependency arrays."
+                ),
+                DiagnosticKind::UseMemoValidation,
+            ));
+            return;
+        }
+    }
+    // No defining instruction found (phi result, etc.) — deps are computed
+    errors.push(CompilerError::invalid_react_with_kind(
+        call_loc,
+        format!(
+            "Expected the dependency list for {hook_name} to be an array literal. \
+             The React Compiler does not support computed or dynamic dependency arrays."
+        ),
+        DiagnosticKind::UseMemoValidation,
+    ));
 }
 
 /// Check if the function expression producing the given identifier is async.

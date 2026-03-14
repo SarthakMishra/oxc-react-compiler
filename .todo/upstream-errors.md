@@ -135,27 +135,32 @@ Newly passing fixtures: `error.assign-global-in-component-tag-function`, `error.
 
 ### Gap 9: Other Validation Errors
 
-**Count:** ~29 remaining uncategorized fixtures
+**Count:** ~23 remaining uncategorized fixtures
 **What's needed:** These cover several sub-categories not yet tracked individually:
 - **Mutation tracking** (~11): `invalid-mutate-global-*`, `invalid-mutate-props-*`, `invalid-mutation-*`, `mutate-function-property`, `not-useEffect-external-mutate`, `invalid-return-mutable-function-from-hook`, `invalid-hook-function-argument-mutates-local-variable`
 - **Hook-call capture freeze** (2): `hook-call-freezes-captured-identifier.tsx`, `hook-call-freezes-captured-memberexpr.jsx`
-- **Type provider / incompatible module** (5): `invalid-known-incompatible-*`, `invalid-type-provider-*`
+- **Type provider** (2): `invalid-type-provider-*`
 - **Ref naming heuristic** (2): `ref-like-name-not-Ref`, `ref-like-name-not-a-ref`
 - **Preserve-memo edge cases** (2): `repro-preserve-memoization-inner-destructured-value-*`
-- **Other** (~7): `assign-ref-in-effect-hint`, `capitalized-function-call-aliased`, `call-args-destructuring-asignment-complex`, `dont-hoist-inline-reference`, `invalid-unclosed-eslint-suppression`, `useMemo-non-literal-depslist`, `_todo.computed-lval-in-destructure`, `todo.try-catch-with-throw`
-**Fixture gain estimate:** ~10-20 (many require focused per-fixture analysis)
+- **Other** (~4): `assign-ref-in-effect-hint`, `call-args-destructuring-asignment-complex`, `dont-hoist-inline-reference`, `_todo.computed-lval-in-destructure`, `todo.try-catch-with-throw`
+**Fixture gain estimate:** ~10-15 (many require focused per-fixture analysis)
 **Depends on:** Analysis of individual fixtures
 
 **Partially completed:**
 - `validate_no_eval` pass added (Pass 14.6): detects `eval()` calls and bails out with `EvalUnsupported` diagnostic. Upstream: `ValidateNoJSXInTryStatements.ts` (eval check). Rust module: `crates/oxc_react_compiler/src/validation/validate_no_eval.rs`. Also added `"eval"` to `is_global_name`.
 - Hooks-in-nested-functions (Rule 4) added to `validate_hooks_usage.rs` (2026-03-13): `check_hooks_in_nested_functions` detects hook calls inside FunctionExpression and ObjectMethod bodies. Emits bail diagnostic. +4 fixtures: `error.bail.rules-of-hooks-3d692676194b`, `error.bail.rules-of-hooks-8503ca76d6f8`, `error.invalid-hook-in-nested-object-method`, `error.invalid.invalid-rules-of-hooks-d952b82c2597`. Rust module: `crates/oxc_react_compiler/src/validation/validate_hooks_usage.rs`. Conformance: 339 -> 343/1717.
+- Known-incompatible module detection added to `program.rs` (2026-03-14): Scans import sources for incompatible libraries (`react-native-reanimated`, `react-native-gesture-handler`, `@shopify/react-native-skia`) and rejects the entire file with a bail diagnostic. +3 fixtures: `error.invalid-known-incompatible-hook.js`, `error.invalid-known-incompatible-hook-return-property.js`, `error.invalid-known-incompatible-function.js`. Rust module: `crates/oxc_react_compiler/src/entrypoint/program.rs`.
+- ESLint suppression detection added to `program.rs` (2026-03-14): Scans source text for unclosed `eslint-disable-next-line react-hooks/exhaustive-deps` comments (suppression without matching re-enable). +2 fixtures: `error.invalid-unclosed-eslint-suppression.js`, `unclosed-eslint-suppression-skips-all-components.js`. Rust module: `crates/oxc_react_compiler/src/entrypoint/program.rs`.
+- `useMemo` non-literal dependency list detection added to `validate_use_memo.rs` (2026-03-14): Rejects `useMemo(fn, deps)` where deps argument is not an array literal. +1 fixture: `error.useMemo-non-literal-depslist.ts`. Rust module: `crates/oxc_react_compiler/src/validation/validate_use_memo.rs`.
+- Capitalized call alias resolution improved in `validate_no_capitalized_calls.rs` (2026-03-14): Better SSA resolution for aliased capitalized function calls. Rust module: `crates/oxc_react_compiler/src/validation/validate_no_capitalized_calls.rs`.
+- Total from Gap 9 completions in this batch: +6 fixtures (368 -> 374/1717).
 
 ## Total Fixture Gain Estimate
 
-Achieved so far: 82 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions).
-Remaining achievable: ~6-26 of the remaining ~36 actionable fixtures. The
+Achieved so far: 88 (25 from Gap 1 frozen mutation [6 initial + 13 enhancement + 6 param pre-freeze], 31 from Gap 2 preserve-memo pipeline gate fixes, 6 from exhaustive deps improvements, 8 from Gap 4 global reassignment + async callback, 4 from Gap 9 hooks-in-nested-functions, 6 from Gap 5 ref access during render, 2 from Gap 7 setState in nested functions, 6 from Gap 9 known-incompatible/ESLint/useMemo/capitalized-call fixes).
+Remaining achievable: ~6-20 of the remaining ~30 actionable fixtures. The
 categorized gaps (1,3,4,6,7,8) account for ~10 fixtures; Gap 9 "Other" covers
-~29 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
+~23 uncategorized fixtures requiring individual triage. The 15 Invariant/Todo
 fixtures should be registered as known skips.
 
 ## Cross-Cutting Issue: SSA Place Identity

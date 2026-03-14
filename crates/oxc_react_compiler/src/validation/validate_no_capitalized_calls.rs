@@ -23,6 +23,19 @@ pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
                     if let Some(name) = &place.identifier.name {
                         id_to_name.insert(instr.lvalue.identifier.id, name.clone());
                     }
+                    // Propagate resolved capitalized names through LoadLocal chains:
+                    // if the source place resolves to a capitalized name, map the lvalue too
+                    if let Some(resolved) = id_to_name.get(&place.identifier.id).cloned() {
+                        id_to_name.insert(instr.lvalue.identifier.id, resolved);
+                    }
+                }
+                // Propagate capitalized names through StoreLocal: let x = Bar
+                InstructionValue::StoreLocal { lvalue, value, .. }
+                | InstructionValue::StoreContext { lvalue, value } => {
+                    if let Some(resolved) = id_to_name.get(&value.identifier.id).cloned() {
+                        id_to_name.insert(lvalue.identifier.id, resolved.clone());
+                        id_to_name.insert(instr.lvalue.identifier.id, resolved);
+                    }
                 }
                 _ => {}
             }

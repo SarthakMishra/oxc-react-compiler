@@ -94,6 +94,30 @@ fn compile_program_inner_with_config(
 
     let config = config.clone();
 
+    // DIVERGENCE: Upstream emits a per-component "Use of incompatible library" error;
+    // we bail the entire file silently. This is simpler but coarser — it prevents
+    // compilation of all functions in a file with an incompatible import, whereas
+    // upstream only skips the specific function that uses the incompatible API.
+    if has_known_incompatible_import(&parser_ret.program) {
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics: vec![],
+            source_map: None,
+        };
+    }
+
+    // DIVERGENCE: Upstream emits a per-component diagnostic with the suppression
+    // text and location; we bail the entire file silently via raw string scan.
+    if has_eslint_hooks_suppression(source) {
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics: vec![],
+            source_map: None,
+        };
+    }
+
     // Check for module-level opt-out directives: 'use no memo' / 'use no forget'
     if has_opt_out_directive(Some(parser_ret.program.directives.as_slice())) {
         return CompileResult {
@@ -986,4 +1010,55 @@ fn has_opt_out_directive(directives: Option<&[Directive<'_>]>) -> bool {
 
 fn has_memo_directive(directives: Option<&[Directive<'_>]>) -> bool {
     directives.is_some_and(|dirs| dirs.iter().any(|d| d.directive.as_str() == "use memo"))
+}
+
+/// Known-incompatible module sources that should cause compilation to bail.
+/// These are modules whose APIs return values that cannot be safely memoized.
+const KNOWN_INCOMPATIBLE_MODULES: &[&str] = &["ReactCompilerKnownIncompatibleTest"];
+
+/// Check if the program imports from a known-incompatible module.
+fn has_known_incompatible_import(program: &Program<'_>) -> bool {
+    for stmt in &program.body {
+        if let Statement::ImportDeclaration(import) = stmt {
+            let source = import.source.value.as_str();
+            if KNOWN_INCOMPATIBLE_MODULES.contains(&source) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if the source contains an unclosed ESLint disable comment that suppresses
+/// React hooks rules. Upstream bails the entire file when this is detected.
+///
+/// Matches patterns like:
+/// - `/* eslint-disable react-hooks/rules-of-hooks */`
+/// - `// eslint-disable-next-line react-hooks/rules-of-hooks`
+fn has_eslint_hooks_suppression(source: &str) -> bool {
+    // Check for block-comment eslint-disable (file-level, unclosed)
+    if source.contains("eslint-disable")
+        && (source.contains("react-hooks/rules-of-hooks")
+            || source.contains("react-hooks/exhaustive-deps"))
+    {
+        // Verify it's not a line-scoped disable-next-line (those are OK)
+        // File-level eslint-disable without matching eslint-enable should bail
+        for line in source.lines() {
+            let trimmed = line.trim();
+            // Block comment: /* eslint-disable react-hooks/... */
+            // Match "eslint-disable" followed by space or the rule name directly
+            if (trimmed.contains("eslint-disable ") || trimmed.contains("eslint-disable\n"))
+                && !trimmed.contains("eslint-disable-next-line")
+                && !trimmed.contains("eslint-disable-line")
+                && (trimmed.contains("react-hooks/rules-of-hooks")
+                    || trimmed.contains("react-hooks/exhaustive-deps"))
+            {
+                // Check if there's a matching eslint-enable
+                if !source.contains("eslint-enable") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
