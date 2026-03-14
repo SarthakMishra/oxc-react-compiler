@@ -119,6 +119,20 @@ fn compile_program_inner_with_config(
         };
     }
 
+    // Check for custom ESLint suppression rules (from @eslintSuppressionRules config)
+    if !config.eslint_suppression_rules.is_empty() {
+        let custom_rules: Vec<&str> =
+            config.eslint_suppression_rules.iter().map(String::as_str).collect();
+        if has_eslint_suppression_for_rules(source, &custom_rules) {
+            return CompileResult {
+                code: source.to_string(),
+                transformed: false,
+                diagnostics: vec![],
+                source_map: None,
+            };
+        }
+    }
+
     // Check for module-level opt-out directives: 'use no memo' / 'use no forget'
     if has_opt_out_directive(Some(parser_ret.program.directives.as_slice())) {
         return CompileResult {
@@ -1065,32 +1079,35 @@ fn has_known_incompatible_import(program: &Program<'_>) -> bool {
     false
 }
 
-/// Check if the source contains an unclosed ESLint disable comment that suppresses
-/// React hooks rules. Upstream bails the entire file when this is detected.
+/// Check if the source contains any ESLint disable comment that suppresses
+/// React hooks rules. Upstream bails per-component when this is detected,
+/// regardless of whether there's a matching eslint-enable.
+///
+/// Also checks custom suppression rules when provided.
 ///
 /// Matches patterns like:
 /// - `/* eslint-disable react-hooks/rules-of-hooks */`
 /// - `// eslint-disable-next-line react-hooks/rules-of-hooks`
+/// - `/* eslint-disable react-hooks/exhaustive-deps */`
 fn has_eslint_hooks_suppression(source: &str) -> bool {
-    // Check for block-comment eslint-disable (file-level, unclosed)
-    if source.contains("eslint-disable")
-        && (source.contains("react-hooks/rules-of-hooks")
-            || source.contains("react-hooks/exhaustive-deps"))
-    {
-        // Verify it's not a line-scoped disable-next-line (those are OK)
-        // File-level eslint-disable without matching eslint-enable should bail
-        for line in source.lines() {
-            let trimmed = line.trim();
-            // Block comment: /* eslint-disable react-hooks/... */
-            // Match "eslint-disable" followed by space or the rule name directly
-            if (trimmed.contains("eslint-disable ") || trimmed.contains("eslint-disable\n"))
-                && !trimmed.contains("eslint-disable-next-line")
-                && !trimmed.contains("eslint-disable-line")
-                && (trimmed.contains("react-hooks/rules-of-hooks")
-                    || trimmed.contains("react-hooks/exhaustive-deps"))
-            {
-                // Check if there's a matching eslint-enable
-                if !source.contains("eslint-enable") {
+    has_eslint_suppression_for_rules(
+        source,
+        &["react-hooks/rules-of-hooks", "react-hooks/exhaustive-deps"],
+    )
+}
+
+/// Check if the source contains any ESLint disable comment for the given rules.
+fn has_eslint_suppression_for_rules(source: &str, rules: &[&str]) -> bool {
+    if !source.contains("eslint-disable") {
+        return false;
+    }
+    // Check if any of the target rules are mentioned alongside eslint-disable
+    for rule in rules {
+        if source.contains(rule) {
+            // Verify it's actually in an eslint-disable context (not just a random mention)
+            for line in source.lines() {
+                let trimmed = line.trim();
+                if trimmed.contains("eslint-disable") && trimmed.contains(rule) {
                     return true;
                 }
             }

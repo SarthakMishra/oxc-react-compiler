@@ -15,42 +15,57 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, args } = &instr.value {
-                let name = callee
-                    .identifier
-                    .name
-                    .as_deref()
-                    .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
-
-                let Some(name) = name else { continue };
-
-                if name != "useMemo" && name != "useCallback" {
-                    continue;
+            // Extract hook name and args from either CallExpression or MethodCall.
+            // CallExpression handles `useMemo(...)`, MethodCall handles `React.useMemo(...)`.
+            let (hook_name, args) = match &instr.value {
+                InstructionValue::CallExpression { callee, args } => {
+                    let name = callee
+                        .identifier
+                        .name
+                        .as_deref()
+                        .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+                    match name {
+                        Some(n) if n == "useMemo" || n == "useCallback" => (n, args.as_slice()),
+                        _ => continue,
+                    }
                 }
-
-                // Check argument count: must be exactly 2 (callback + deps)
-                if args.len() != 2 {
-                    errors.push(CompilerError::invalid_react_with_kind(
-                        instr.loc,
-                        format!(
-                            "\"{}\" requires exactly 2 arguments (a callback and a dependency array), \
-                             but received {}.",
-                            name,
-                            args.len()
-                        ),
-                        DiagnosticKind::UseMemoValidation,
-                    ));
+                InstructionValue::MethodCall { property, args, .. } => {
+                    if property == "useMemo" || property == "useCallback" {
+                        (property.as_str(), args.as_slice())
+                    } else {
+                        continue;
+                    }
                 }
+                _ => continue,
+            };
 
-                // Check that the deps argument is an array literal, not a computed value
-                if args.len() == 2 {
-                    check_deps_is_array_literal(hir, &args[1], name, instr.loc, errors);
-                }
+            // Check argument count: must be exactly 2 (callback + deps)
+            if args.len() != 2 {
+                errors.push(CompilerError::invalid_react_with_kind(
+                    instr.loc,
+                    format!(
+                        "\"{hook_name}\" requires exactly 2 arguments (a callback and a dependency array), \
+                         but received {}.",
+                        args.len()
+                    ),
+                    DiagnosticKind::UseMemoValidation,
+                ));
+            }
 
-                if name == "useMemo" && !args.is_empty() {
-                    let callback_id = args[0].identifier.id;
-                    // Check if the callback is async
-                    check_memo_callback_async(hir, callback_id, instr.loc, errors);
+            // Check that the deps argument is an array literal, not a computed value
+            if args.len() == 2 {
+                check_deps_is_array_literal(hir, &args[1], hook_name, instr.loc, errors);
+            }
+
+            if !args.is_empty() {
+                let callback_id = args[0].identifier.id;
+                // Check if the callback has parameters (useMemo/useCallback callbacks
+                // must not accept parameters — they are called with no arguments)
+                check_memo_callback_params(hir, callback_id, hook_name, instr.loc, errors);
+                // Check if the callback is async
+                check_memo_callback_async(hir, callback_id, instr.loc, errors);
+
+                if hook_name == "useMemo" {
                     // Check if the callback returns void (useMemo must return a value)
                     check_memo_callback_void(hir, callback_id, instr.loc, errors);
                     // Check if the callback calls setState
@@ -263,6 +278,37 @@ fn check_deps_is_array_literal(
         ),
         DiagnosticKind::UseMemoValidation,
     ));
+}
+
+/// Check if the callback function has parameters. useMemo/useCallback callbacks are
+/// called by React with no arguments — accepting parameters is always a mistake.
+fn check_memo_callback_params(
+    hir: &HIR,
+    callback_id: crate::hir::types::IdentifierId,
+    hook_name: &str,
+    call_loc: crate::hir::types::SourceLocation,
+    errors: &mut ErrorCollector,
+) {
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if instr.lvalue.identifier.id != callback_id {
+                continue;
+            }
+            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
+                && !lowered_func.params.is_empty()
+            {
+                errors.push(CompilerError::invalid_react_with_kind(
+                    call_loc,
+                    format!(
+                        "{hook_name}() callbacks may not accept parameters. \
+                         {hook_name}() callbacks are called by React to cache calculations \
+                         across renders, and should not have side effects or accept inputs."
+                    ),
+                    DiagnosticKind::UseMemoValidation,
+                ));
+            }
+        }
+    }
 }
 
 /// Check if the function expression producing the given identifier is async.

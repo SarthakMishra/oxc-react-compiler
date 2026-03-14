@@ -643,6 +643,20 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
         if let Some(v) = find_directive_bool(comment, "validateNoJsxInTryStatements") {
             env.validate_no_jsx_in_try_statements = v;
         }
+
+        // @eslintSuppressionRules:["my-app","react-rule"]
+        // Parse JSON array of custom ESLint rule prefixes.
+        if let Some(val) = find_directive_value(comment, "eslintSuppressionRules") {
+            // The value is a JSON array like ["my-app","react-rule"]
+            // Simple parsing: strip brackets, split by comma, strip quotes
+            let inner = val.trim_start_matches('[').trim_end_matches(']');
+            for rule in inner.split(',') {
+                let rule = rule.trim().trim_matches('"').trim_matches('\'');
+                if !rule.is_empty() {
+                    env.eslint_suppression_rules.push(rule.to_string());
+                }
+            }
+        }
     }
 
     (opts, env)

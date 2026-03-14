@@ -159,47 +159,91 @@ fn check_dynamic_hook_identity(
     is_hook: &dyn Fn(&str) -> bool,
     errors: &mut ErrorCollector,
 ) {
-    // Build a map: identifier_id → whether its defining instruction is a "stable hook source".
+    // Build maps tracking whether each identifier/variable is a "stable hook source".
     // A stable hook source is:
     // - LoadGlobal of a hook name (e.g., useState imported globally)
     // - FunctionExpression (a locally defined function is stable)
-    // - LoadLocal/LoadContext of a hook-named variable with no prior instability record
+    // - LoadLocal/LoadContext of a variable with known stability
     // An unstable source is:
     // - CallExpression return value (e.g., `const useX = useVideoPlayer()`)
     // - StoreLocal from a non-hook source
-    let mut is_stable_hook: FxHashMap<IdentifierId, bool> = FxHashMap::default();
+    // - Function parameters (props values change between renders)
+    //
+    // We track by BOTH identifier ID and variable name, because our HIR creates
+    // fresh IdentifierIds per Place reference — tracking by ID alone would lose
+    // stability info across SSA edges (StoreLocal lvalue vs LoadLocal place).
+    let mut is_stable_hook_by_id: FxHashMap<IdentifierId, bool> = FxHashMap::default();
+    let mut is_stable_hook_by_name: FxHashMap<String, bool> = FxHashMap::default();
+
+    // Function parameters are NOT stable hook sources — they come from props
+    // and may change between renders. Mark them unstable by name.
+    // DIVERGENCE: Upstream tracks this through the type system (params have type
+    // that indicates they're props). We use the convention that any param name
+    // that looks hook-like is unstable, since it came from the caller.
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            // DeclareLocal for params happen at the start of the function
+            if let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+                && is_hook(name)
+            {
+                // Check if this is a parameter (appears in block 0 / entry)
+                // Simple heuristic: if a DeclareLocal for a hook-like name has no
+                // corresponding StoreLocal with a FunctionExpression or LoadGlobal
+                // source, treat it as potentially unstable (could be a prop destructure)
+                is_stable_hook_by_name.insert(name.clone(), false);
+                is_stable_hook_by_id.insert(lvalue.identifier.id, false);
+            }
+        }
+    }
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
                 InstructionValue::LoadGlobal { binding } => {
-                    is_stable_hook.insert(instr.lvalue.identifier.id, is_hook(&binding.name));
+                    let stable = is_hook(&binding.name);
+                    is_stable_hook_by_id.insert(instr.lvalue.identifier.id, stable);
+                    if stable {
+                        is_stable_hook_by_name.insert(binding.name.clone(), true);
+                    }
                 }
                 InstructionValue::FunctionExpression { .. } => {
                     // Locally defined functions are stable
-                    is_stable_hook.insert(instr.lvalue.identifier.id, true);
+                    is_stable_hook_by_id.insert(instr.lvalue.identifier.id, true);
                 }
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
-                    // Check if the source place has a known stability. If not, and the name
-                    // is hook-like, default to stable (it's likely an external/captured hook).
-                    // This prevents false positives on standard hooks like useState.
-                    let source_stable =
-                        is_stable_hook.get(&place.identifier.id).copied().unwrap_or_else(|| {
-                            // If the source has a hook-like name and no stability info,
-                            // it's likely a captured/external hook reference — treat as stable
+                    // Resolve stability: check by ID first, then by name
+                    let source_stable = is_stable_hook_by_id
+                        .get(&place.identifier.id)
+                        .copied()
+                        .or_else(|| {
+                            place
+                                .identifier
+                                .name
+                                .as_deref()
+                                .and_then(|n| is_stable_hook_by_name.get(n).copied())
+                        })
+                        .unwrap_or_else(|| {
+                            // If no stability info exists and the name is hook-like,
+                            // it's likely an external/captured hook reference — treat as stable.
+                            // But only if we haven't explicitly marked it unstable above.
                             place.identifier.name.as_deref().is_some_and(is_hook)
                         });
-                    is_stable_hook.insert(instr.lvalue.identifier.id, source_stable);
+                    is_stable_hook_by_id.insert(instr.lvalue.identifier.id, source_stable);
                 }
                 InstructionValue::CallExpression { .. } => {
                     // Return values from calls are NOT stable hook references
-                    is_stable_hook.insert(instr.lvalue.identifier.id, false);
+                    is_stable_hook_by_id.insert(instr.lvalue.identifier.id, false);
                 }
-                InstructionValue::StoreLocal { value, .. } => {
+                InstructionValue::StoreLocal { value, lvalue, .. } => {
                     // Propagate stability from the stored value
                     let source_stable =
-                        is_stable_hook.get(&value.identifier.id).copied().unwrap_or(false);
-                    is_stable_hook.insert(instr.lvalue.identifier.id, source_stable);
+                        is_stable_hook_by_id.get(&value.identifier.id).copied().unwrap_or(false);
+                    is_stable_hook_by_id.insert(instr.lvalue.identifier.id, source_stable);
+                    // Also track by name so LoadLocal can resolve across SSA edges
+                    if let Some(name) = &lvalue.identifier.name {
+                        is_stable_hook_by_name.insert(name.clone(), source_stable);
+                    }
                 }
                 _ => {}
             }
@@ -219,7 +263,7 @@ fn check_dynamic_hook_identity(
 
                 if let Some(name) = callee_name
                     && is_hook(name)
-                    && !is_stable_hook.get(&callee.identifier.id).copied().unwrap_or(true)
+                    && !is_stable_hook_by_id.get(&callee.identifier.id).copied().unwrap_or(true)
                 {
                     errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,

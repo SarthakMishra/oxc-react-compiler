@@ -66,6 +66,12 @@ pub struct EnvironmentConfig {
     // DIVERGENCE: Upstream resolves hook aliases inline during validation via the Environment's
     // module resolution. We store them in config to avoid threading through all call sites.
     pub hook_aliases: FxHashSet<String>,
+
+    /// Additional ESLint rule prefixes whose suppression should trigger a bail-out.
+    /// Upstream's `eslintSuppressionRules` config allows specifying custom rule names
+    /// (e.g., `["my-app", "react-rule"]`) that, when suppressed via eslint-disable
+    /// comments, cause the compiler to skip the function.
+    pub eslint_suppression_rules: Vec<String>,
 }
 
 impl Default for EnvironmentConfig {
@@ -106,6 +112,7 @@ impl Default for EnvironmentConfig {
             custom_macros: Vec::new(),
             custom_hooks: FxHashMap::default(),
             hook_aliases: FxHashSet::default(),
+            eslint_suppression_rules: Vec::new(),
         }
     }
 }
