@@ -57,15 +57,24 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 
 **Completed**: JSX syntax preservation fully implemented in `codegen.rs`. The `InstructionValue::JsxExpression` arm now emits proper JSX syntax (`<div>`, `<Component>`, `<>...</>`) instead of `_jsx()`/`_jsxs()` function calls. Self-closing vs open/close tags, spread props, string/expression children, and fragment shorthand all handled. The `react/jsx-runtime` import is removed from generated output; only `_c` from `react/compiler-runtime` remains. 23 snapshot files updated. Conformance unchanged at 304/1717 due to JSX normalization in the test harness. Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs`.
 
-### Gap 3: Cache Slot Count Alignment
+### Gap 3: Cache Slot Count Alignment [IN PROGRESS]
 
 **Upstream:** Babel counts cache slots based on reactive scope outputs + dependencies
-**Current state (updated 2026-03-14):** Transitive dependency resolution (Phase 3 + Phase 3.5 in `propagate_dependencies.rs`) now correctly resolves derived variable deps to their root reactive inputs. Phase 3 tracks StoreLocal/StoreContext targets as scope declarations when used outside the declaring scope (via name-based consumer matching to bridge SSA ID mismatches). Phase 3.5 runs a fixpoint substitution loop that replaces transitive deps with their root deps (e.g., dep on `doubled` -> dep on `value` when `doubled` is declared by a scope with dep `[value]`). This reduced the `component-with-derived` fixture from 5 slots to 4 and eliminated an unnecessary intermediate scope. Gap 11 (derived computations emitted outside scope guards) is now resolved -- `prune_scopes.rs` no longer incorrectly prunes scopes whose declarations are consumed by other scopes.
+**Current state (updated 2026-03-14):** Two major fixes applied:
+
+1. **Sentinel slot count fix (2026-03-14, +7 fixtures):** `count_cache_slots` in `codegen.rs` now correctly handles sentinel scopes (0 deps) by counting `max(declarations, 1)` instead of `1 + declarations`. Sentinel scopes reuse the sentinel check slot as the first declaration slot, matching upstream's `getScopeCount`. Reactive scopes correctly count `deps + declarations` as separate slots.
+
+2. **Declaration cache storage (2026-03-14):** `codegen_scope` now stores declarations into cache slots after deps for reactive scopes, and starting from `slot_start` for sentinel scopes. The else-branch reload uses the correct `decl_reload_start` offset. Previously, declarations were stored using a global `cache_slot` counter that could drift from the slot range used in the if-branch.
+
+3. **Transitive dependency resolution (2026-03-14):** Phase 3 + Phase 3.5 in `propagate_dependencies.rs` correctly resolves derived variable deps to their root reactive inputs. Phase 3 tracks StoreLocal/StoreContext targets as scope declarations. Phase 3.5 runs a fixpoint substitution loop replacing transitive deps with root deps.
+
+4. **Gap 11 resolved:** `prune_scopes.rs` no longer incorrectly prunes scopes whose declarations are consumed by other scopes.
+
+Conformance: 342 -> 349/1717 (+7 from sentinel slot fix)
 
 **What remains:**
-- Compare `count_cache_slots` logic with upstream's `getScopeCount` in `CodegenReactiveFunction.ts`
-- Verify that scope outputs and declarations match upstream's expectations
-- This gap may be fully resolved by Gap 1 + Gap 4 + Gap 5 + Gap 6 (all prerequisites except Sub-task 4f now complete)
+- Remaining slot count divergences likely stem from scope merging differences (Sub-task 4f) and missing scopes for some expression types
+- Edge cases where scope declaration sets differ from upstream (e.g., when a scope should declare a value but doesn't, or declares extra values)
 **Fixture gain estimate:** Compound effect with other gaps
 **Depends on:** Sub-task 4f (DeclarationId alignment, for shadowed variable edge cases)
 
@@ -258,13 +267,14 @@ Expected progression (gaps are interdependent, so gains compound):
 - After Sub-tasks 4b-4e (invalidate-together rewrite) ✅: correct scope merging in ReactiveFunction (all complete)
 - After transitive dep resolution ✅: Phase 3 StoreLocal declaration tracking + Phase 3.5 fixpoint substitution (slot counts closer, `component-with-derived` 5→4 slots)
 - After Gap 11 (derived computation codegen) ✅: `collect_used_ids` fix in `prune_scopes.rs` -- declarations now kept inside scope guards
-- After Gap 3 (slot count alignment): remaining residual (may be fully resolved by 4a-4e + Gap 11)
+- After Gap 3 sentinel slot fix ✅: sentinel scopes use `max(decls, 1)` slots, reactive scopes use `deps + decls` (+7 fixtures, 342 -> 349)
+- After Gap 3 remaining work: edge-case slot divergences from scope declaration set differences
 - Sub-task 4f (DeclarationId): correctness improvement, may unlock edge-case fixtures
 - Total potential from this category: ~400-600 new passes
 
 ## Risks and Notes
 
-- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), sentinel codegen (Gap 8), transitive dep resolution, and Gap 11 (derived computation codegen) are all complete. Scope merge sub-tasks 4a through 4e are done. The remaining blockers are: Gap 3 (slot count alignment -- may now be fully resolved, needs measurement), Sub-task 4f (DeclarationId alignment for shadowed variable correctness).
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), sentinel codegen (Gap 8), transitive dep resolution, Gap 11 (derived computation codegen), and Gap 3 sentinel slot counting are all complete. Scope merge sub-tasks 4a through 4e are done. The remaining blockers are: Gap 3 residual edge cases (scope declaration set differences), Sub-task 4f (DeclarationId alignment for shadowed variable correctness).
 - **Scope merging is a 2-pass problem**: The overlap detection (Pass 42, Sub-task 4a) runs on the HIR BEFORE block structure is created. The invalidate-together merge (post-conversion, Sub-tasks 4b-4e) runs on the ReactiveFunction tree AFTER conversion. These are separate algorithms operating on different data structures at different pipeline stages. The reverted DSU attempt conflated them.
 - **The const-scoping problem is a non-issue for Pass 42** ✅ CONFIRMED: The reverted DSU attempt failed because it was tested after block structure existed. But Pass 42 runs before `build_reactive_scope_terminals_hir` (Pass 43), so scopes are just annotations at that point. The Sub-task 4a rewrite confirmed this -- no const-scoping issues encountered.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.

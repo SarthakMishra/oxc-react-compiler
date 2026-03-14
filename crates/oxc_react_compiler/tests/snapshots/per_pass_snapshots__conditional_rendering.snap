@@ -5,42 +5,39 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function Status(t0) {
-  const $ = _c(6);
+  const $ = _c(3);
   const { isActive } = t0;
   let t17;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t17 = isActive;
     $[0] = t17;
-    $[1] = t17;
   } else {
-    t17 = $[1];
+    t17 = $[0];
   }
   if (t17) {
     let t25;
-    if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
+    if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
       t25 = (
         <div className="active">
           Active
         </div>
       );
-      $[2] = t25;
-      $[3] = t25;
+      $[1] = t25;
     } else {
-      t25 = $[3];
+      t25 = $[1];
     }
     return t25;
   }
   let t21;
-  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
     t21 = (
       <div className="inactive">
         Inactive
       </div>
     );
-    $[4] = t21;
-    $[5] = t21;
+    $[2] = t21;
   } else {
-    t21 = $[5];
+    t21 = $[2];
   }
   return t21;
 }

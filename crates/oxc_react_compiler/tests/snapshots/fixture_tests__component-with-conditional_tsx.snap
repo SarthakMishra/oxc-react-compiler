@@ -7,42 +7,39 @@ diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
 function Toggle(t0) {
-  const $ = _c(6);
+  const $ = _c(3);
   const { isOn } = t0;
   let t15;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t15 = isOn;
     $[0] = t15;
-    $[1] = t15;
   } else {
-    t15 = $[1];
+    t15 = $[0];
   }
   if (t15) {
     let t21;
-    if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
+    if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
       t21 = (
         <div>
           ON
         </div>
       );
-      $[2] = t21;
-      $[3] = t21;
+      $[1] = t21;
     } else {
-      t21 = $[3];
+      t21 = $[1];
     }
     return t21;
   }
   let t18;
-  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
     t18 = (
       <div>
         OFF
       </div>
     );
-    $[4] = t18;
-    $[5] = t18;
+    $[2] = t18;
   } else {
-    t18 = $[5];
+    t18 = $[2];
   }
   return t18;
 }

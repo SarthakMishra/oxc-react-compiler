@@ -540,10 +540,8 @@ infer-function-assignment.js
 infer-function-expression-component.js
 infer-function-forwardRef.js
 infer-functions-component-with-hook-call.js
-infer-functions-component-with-jsx.js
 infer-functions-component-with-ref-arg.js
 infer-functions-hook-with-hook-call.js
-infer-functions-hook-with-jsx.js
 infer-global-object.js
 infer-nested-object-method.jsx
 infer-no-component-annot.ts
@@ -589,7 +587,6 @@ jsx-attribute-with-jsx-fragment-value.flow.js
 jsx-bracket-in-text.jsx
 jsx-fragment.js
 jsx-freeze.js
-jsx-html-entity.js
 jsx-local-memberexpr-tag-conditional.js
 jsx-local-memberexpr-tag.js
 jsx-local-tag-in-lambda.js
@@ -608,7 +605,6 @@ jsx-outlining-jsx-stored-in-id.js
 jsx-outlining-separate-nested.js
 jsx-outlining-simple.js
 jsx-outlining-with-non-jsx-children.js
-jsx-preserve-escape-character.js
 jsx-preserve-whitespace.tsx
 jsx-reactive-local-variable-member-expr.tsx
 jsx-spread.js
@@ -1070,7 +1066,6 @@ repro-dont-memoize-array-with-capturing-map-after-hook.js
 repro-dont-memoize-array-with-mutable-map-after-hook.js
 repro-duplicate-import-specifier.ts
 repro-duplicate-instruction-from-merge-consecutive-scopes.js
-repro-duplicate-type-import.tsx
 repro-false-positive-ref-validation-in-use-effect.js
 repro-for-in-in-try.js
 repro-for-loop-in-try.js
@@ -1226,8 +1221,6 @@ switch-with-only-default.js
 switch.js
 tagged-template-in-hook.js
 tagged-template-literal.js
-target-flag-meta-internal.js
-target-flag.js
 temporary-accessed-outside-scope.js
 temporary-at-start-of-value-block.js
 temporary-property-load-accessed-outside-scope.js

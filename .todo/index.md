@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Gap 11 resolved: derived computation codegen fix in prune_scopes.rs, 342/1717)
+Last updated: 2026-03-14 (Gap 3 partial: sentinel slot count fix in codegen.rs, 349/1717)
 
-Current conformance: 342/1717 pass (19.9%), 0 panics, 0 unexpected divergences.
+Current conformance: 349/1717 pass (20.3%), 0 panics, 0 unexpected divergences.
 
 Note: Most passing fixtures match by both compilers returning source unchanged
 (trivial match via lint mode, validation bail-out, or non-component detection).
@@ -27,9 +27,14 @@ mutation to no longer be detected by the frozen-mutation validator. Net change: 
 (343 -> 342). The regression is expected to resolve as downstream scope merging
 sub-tasks (4b-4f) refine merge eligibility checks.
 
+**Fix (2026-03-14):** Gap 3 sentinel slot count fix -- sentinel scopes now reuse
+declaration slots instead of allocating a separate sentinel slot (matching upstream
+`getScopeCount`), and reactive scopes now store declarations into cache slots after
+deps. 7 fixtures removed from known-failures.txt. Net change: +7 (342 -> 349).
+
 | Category | Count | Description |
 |----------|-------|-------------|
-| Compiled with memo | ~924 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression) |
+| Compiled with memo | ~917 | Both compile, structure/deps/slots differ (+35 from sentinel regression, -3 from property-path deps, +1 from scope merge regression, -7 from slot count fix) |
 | No expected file | 261 | Can't compare (no upstream output) |
 | Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
 | Upstream errors | ~50 | We compile but upstream bails (63 total - 13 invariant/todo skips) |
@@ -72,7 +77,7 @@ chaining, nested scope flattening, and safety checks. See memoization-structure.
 - [x] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
 - [x] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
 - [x] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
-- [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
+- [~] Correct `_c(N)` slot counts (sentinel fix done +7, reactive decl storage done; remaining: edge cases) — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 - [ ] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
 - [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation
 
@@ -130,6 +135,13 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Sentinel Slot Count Fix -- Gap 3 Partial (2026-03-14)
+
+- `codegen.rs`: `count_cache_slots` fixed -- sentinel scopes now count `max(declarations, 1)` instead of `1 + declarations`, matching upstream's `getScopeCount` where the sentinel check slot doubles as the first declaration slot
+- `codegen.rs`: `codegen_scope` fixed -- sentinel scopes store declarations starting at `slot_start` (reusing sentinel slot for first decl); reactive scopes store declarations after dep slots; else-branch reload uses correct `decl_reload_start` offset
+- 7 fixtures removed from known-failures.txt: `infer-functions-component-with-jsx.js`, `infer-functions-hook-with-jsx.js`, `jsx-html-entity.js`, `jsx-preserve-escape-character.js`, `repro-duplicate-type-import.tsx`, `target-flag-meta-internal.js`, `target-flag.js`
+- Conformance: 342 -> 349/1717 (+7)
 
 ### Transitive Dependency Resolution in propagate_dependencies (2026-03-14)
 

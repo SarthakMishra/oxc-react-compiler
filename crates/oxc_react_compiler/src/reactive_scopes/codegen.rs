@@ -1585,17 +1585,33 @@ fn codegen_scope(
         &scope_decl_names,
     );
 
-    // Store dep values for next comparison (before declarations, matching upstream order)
+    // Store dep values and declarations into cache slots.
+    //
+    // For sentinel scopes (0 deps): declarations share the sentinel slot range.
+    // The sentinel check uses $[slot_start], and declarations are stored at
+    // $[slot_start], $[slot_start+1], ..., $[slot_start+N-1]. The sentinel
+    // check's slot IS the first declaration's slot — storing a declaration
+    // value there marks the sentinel as computed.
+    //
+    // For reactive scopes (>0 deps): deps occupy $[slot_start..slot_start+deps.len()],
+    // then declarations occupy $[slot_start+deps.len()..].
     let inner_indent = "  ".repeat(indent + 1);
     if deps.is_empty() {
-        // For constant scopes (sentinel check), store the first declaration value
-        // into the sentinel slot to mark it as computed. On subsequent renders,
-        // the sentinel check will fail and the else-branch will reload from cache.
-        if let Some((_, first_decl)) = scope.scope.declarations.first() {
-            let decl_name = identifier_display_name(&first_decl.identifier);
-            output.push_str(&format!("{inner_indent}$[{slot_start}] = {decl_name};\n"));
+        // Sentinel scope: store declarations starting from slot_start
+        // (reusing the sentinel slot for the first declaration)
+        for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
+            let decl_name = identifier_display_name(&decl.identifier);
+            output.push_str(&format!(
+                "{}$[{}] = {};\n",
+                inner_indent,
+                slot_start + i as u32,
+                decl_name
+            ));
         }
+        // Advance cache_slot past the declarations (sentinel slot is included)
+        *cache_slot = slot_start + (scope.scope.declarations.len() as u32).max(1);
     } else {
+        // Reactive scope: store dep values for next comparison
         for (i, dep) in deps.iter().enumerate() {
             let dep_name = dependency_display_name(dep);
             output.push_str(&format!(
@@ -1605,21 +1621,23 @@ fn codegen_scope(
                 dep_name
             ));
         }
+        // Store declarations after deps
+        let decl_slot_start = slot_start + deps.len() as u32;
+        for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
+            let decl_name = identifier_display_name(&decl.identifier);
+            output.push_str(&format!(
+                "{}$[{}] = {};\n",
+                inner_indent,
+                decl_slot_start + i as u32,
+                decl_name
+            ));
+        }
+        *cache_slot = decl_slot_start + scope.scope.declarations.len() as u32;
     }
 
-    // Store declarations into cache slots
-    let decl_slot_start = *cache_slot;
-    for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
-        let decl_name = identifier_display_name(&decl.identifier);
-        let inner_indent = "  ".repeat(indent + 1);
-        output.push_str(&format!(
-            "{}$[{}] = {};\n",
-            inner_indent,
-            decl_slot_start + i as u32,
-            decl_name
-        ));
-    }
-    *cache_slot += scope.scope.declarations.len() as u32;
+    // Compute the declaration slot start for the else-branch reload
+    let decl_reload_start =
+        if deps.is_empty() { slot_start } else { slot_start + deps.len() as u32 };
 
     // Only emit else block if there are declarations to load from cache
     if !scope.scope.declarations.is_empty() {
@@ -1633,7 +1651,7 @@ fn codegen_scope(
                 "{}{} = $[{}];\n",
                 inner_indent,
                 decl_name,
-                decl_slot_start + i as u32
+                decl_reload_start + i as u32
             ));
         }
     }
@@ -1673,10 +1691,16 @@ fn count_cache_slots(block: &ReactiveBlock) -> u32 {
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Scope(scope) => {
-                // Slots for deps + slots for declarations
-                let dep_slots = scope.scope.dependencies.len().max(1) as u32;
-                let decl_slots = scope.scope.declarations.len() as u32;
-                count += dep_slots + decl_slots;
+                let deps = &scope.scope.dependencies;
+                let decls = scope.scope.declarations.len() as u32;
+                if deps.is_empty() {
+                    // Sentinel scope: the sentinel check reuses the first
+                    // declaration's slot. Total = max(declarations, 1).
+                    count += decls.max(1);
+                } else {
+                    // Reactive scope: deps + declarations as separate slots
+                    count += deps.len() as u32 + decls;
+                }
                 count += count_cache_slots(&scope.instructions);
             }
             ReactiveInstruction::Terminal(terminal) => {
