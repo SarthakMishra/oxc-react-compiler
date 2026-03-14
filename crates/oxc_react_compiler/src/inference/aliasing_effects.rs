@@ -1,5 +1,8 @@
+use rustc_hash::FxHashMap;
+
 use crate::hir::types::{
-    AliasingEffect, ArrayElement, FreezeReason, InstructionValue, Place, ValueKind, ValueReason,
+    AliasingEffect, ArrayElement, FreezeReason, FunctionSignature, IdentifierId, InstructionValue,
+    Place, ValueKind, ValueReason,
 };
 
 /// Compute the aliasing effects for a single instruction.
@@ -7,9 +10,14 @@ use crate::hir::types::{
 /// This is the core of the effect system — it determines how each instruction
 /// affects the abstract heap model. The effects are later used by
 /// `infer_mutation_aliasing_effects` for fixpoint iteration.
+///
+/// `fn_signatures` maps callee IdentifierIds to their known function signatures,
+/// enabling precise per-parameter effects instead of conservative defaults.
+#[expect(clippy::implicit_hasher)]
 pub fn compute_instruction_effects(
     value: &InstructionValue,
     lvalue: &Place,
+    fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
 ) -> Vec<AliasingEffect> {
     let mut effects = Vec::new();
 
@@ -69,16 +77,20 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::CallExpression { callee, args } => {
+            let sig = fn_signatures.get(&callee.identifier.id).cloned();
             effects.push(AliasingEffect::Apply {
                 receiver: callee.clone(),
                 function: callee.clone(),
                 args: args.clone(),
                 into: lvalue.clone(),
-                signature: None,
+                signature: sig,
             });
         }
 
         InstructionValue::MethodCall { receiver, args, .. } => {
+            // DIVERGENCE: MethodCall signature lookup is not supported yet.
+            // The receiver is the object, not the method — looking up receiver.id
+            // would incorrectly apply the object's signature to a method call.
             effects.push(AliasingEffect::Apply {
                 receiver: receiver.clone(),
                 function: receiver.clone(),
@@ -162,12 +174,13 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::NewExpression { callee, args } => {
+            let sig = fn_signatures.get(&callee.identifier.id).cloned();
             effects.push(AliasingEffect::Apply {
                 receiver: callee.clone(),
                 function: callee.clone(),
                 args: args.clone(),
                 into: lvalue.clone(),
-                signature: None,
+                signature: sig,
             });
         }
 
@@ -222,12 +235,13 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::TaggedTemplateExpression { tag, .. } => {
+            let sig = fn_signatures.get(&tag.identifier.id).cloned();
             effects.push(AliasingEffect::Apply {
                 receiver: tag.clone(),
                 function: tag.clone(),
                 args: vec![],
                 into: lvalue.clone(),
-                signature: None,
+                signature: sig,
             });
         }
 

@@ -103,10 +103,13 @@ pub fn run_pipeline(
     crate::optimization::optimize_props_method_calls::optimize_props_method_calls(hir);
 
     // Pass 15: analyse_functions
-    crate::inference::analyse_functions::analyse_functions(hir, errors);
+    let fn_signatures = crate::inference::analyse_functions::analyse_functions(hir, errors);
 
     // Pass 16: infer_mutation_aliasing_effects
-    crate::inference::infer_mutation_aliasing_effects::infer_mutation_aliasing_effects(hir);
+    crate::inference::infer_mutation_aliasing_effects::infer_mutation_aliasing_effects(
+        hir,
+        &fn_signatures,
+    );
 
     // Pass 16.5: validate_no_mutation_after_freeze (uses effects from Pass 16)
     crate::validation::validate_no_mutation_after_freeze::validate_no_mutation_after_freeze(

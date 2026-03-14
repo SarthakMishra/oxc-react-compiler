@@ -3,7 +3,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::hir::types::{
-    AliasingEffect, Effect, FreezeReason, HIR, IdentifierId, Place, ValueKind,
+    AliasingEffect, Effect, FreezeReason, FunctionSignature, HIR, IdentifierId, Place, ValueKind,
 };
 
 use super::aliasing_effects::compute_instruction_effects;
@@ -177,11 +177,15 @@ impl AbstractHeap {
 /// 2. Build abstract heap model (pointer graph)
 /// 3. Propagate effects through the heap
 /// 4. Write resolved effects back to places
-pub fn infer_mutation_aliasing_effects(hir: &mut HIR) {
+#[expect(clippy::implicit_hasher)]
+pub fn infer_mutation_aliasing_effects(
+    hir: &mut HIR,
+    fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
+) {
     // Phase 1: Compute initial effects for each instruction.
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            let effects = compute_instruction_effects(&instr.value, &instr.lvalue);
+            let effects = compute_instruction_effects(&instr.value, &instr.lvalue, fn_signatures);
             instr.effects = Some(effects);
         }
     }
