@@ -2,7 +2,7 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (Sub-task 4d completed, 342/1717)
+Last updated: 2026-03-14 (Sub-task 4c completed, 342/1717)
 
 Current conformance: 342/1717 pass (19.9%), 0 panics, 0 unexpected divergences.
 
@@ -65,12 +65,12 @@ codegen) are now resolved. Property-path deps yielded +3 fixtures (315 -> 318).
 merge passes are fundamentally wrong. Pass 42 (overlap detection) needs an active-scope-stack
 algorithm with cross-scope mutation tracking. The post-conversion merge needs output-to-input
 chaining, nested scope flattening, and safety checks. See memoization-structure.md for the
-6-sub-task plan (4a through 4f). Gap 10 is superseded by Sub-task 4a.
+6-sub-task plan (4a through 4f). Gap 10 is superseded by Sub-task 4a. Sub-tasks 4a-4e are complete; only 4f remains.
 
 - [x] **4a** Active-scope-stack overlap detection (rewrite Pass 42 merge algorithm) — [memoization-structure.md](memoization-structure.md)#sub-task-4a-active-scope-stack-overlap-detection-pass-42
 - [x] **4d** Safety checks for intermediate instructions between scopes — [memoization-structure.md](memoization-structure.md)#sub-task-4d-safety-checks-for-intermediate-instructions
 - [x] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
-- [ ] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
+- [x] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
 - [x] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 - [ ] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
@@ -130,6 +130,14 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Nested Scope Flattening -- Sub-task 4c (2026-03-14)
+
+- `merge_scopes.rs`: Added `flatten_nested_identical_scopes()` function that absorbs inner scopes with identical dependency sets into their parent scope
+- Loop-based flattening handles multi-level nesting (outer/middle/inner with same deps collapsed in successive passes)
+- Absorbs inner scope's instructions, declarations, and merged IDs into outer scope
+- Wired as "Pass 1.5" in `merge_scopes_in_block`, after recursive descent (Pass 1) and before merge-plan walk (Pass 2)
+- Conformance: unchanged (342/1717) -- structural prerequisite for compound gains with 4b+4f
 
 ### Safety Checks for Intermediate Instructions -- Sub-task 4d (2026-03-14)
 

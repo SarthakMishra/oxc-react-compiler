@@ -700,6 +700,62 @@ fn merge_scope_deps(winner: &mut ReactiveScope, absorbee: &ReactiveScope) {
     }
 }
 
+/// Flatten nested scopes with identical dependencies.
+///
+/// When a scope block's body consists entirely of a single nested scope with
+/// the same dependency set, the inner scope is redundant — its cache check
+/// would always pass whenever the outer scope's check passes. Absorb the
+/// inner scope's instructions, declarations, and merged IDs into the outer scope.
+///
+/// This is applied recursively: if after flattening, the result is again a
+/// single nested scope with identical deps, flatten again.
+///
+/// Matches upstream nested-scope flattening in
+/// `MergeReactiveScopesThatInvalidateTogether.ts`.
+fn flatten_nested_identical_scopes(outer: &mut crate::hir::types::ReactiveScopeBlock) {
+    loop {
+        // Check if the outer scope's body is a single Scope instruction
+        // with identical deps
+        let should_flatten = if outer.instructions.instructions.len() == 1 {
+            if let Some(crate::hir::types::ReactiveInstruction::Scope(inner)) =
+                outer.instructions.instructions.first()
+            {
+                let outer_deps = dep_key_set(&outer.scope);
+                let inner_deps = dep_key_set(&inner.scope);
+                !outer_deps.is_empty() && outer_deps == inner_deps
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !should_flatten {
+            break;
+        }
+
+        // Extract the inner scope
+        let inner_instr = outer.instructions.instructions.remove(0);
+        if let crate::hir::types::ReactiveInstruction::Scope(inner_scope) = inner_instr {
+            // Absorb inner scope's instructions
+            outer.instructions = inner_scope.instructions;
+            // Merge declarations
+            outer.scope.declarations.extend(inner_scope.scope.declarations);
+            // Track merged scope ID
+            outer.scope.merged.push(inner_scope.scope.id);
+            outer.scope.merged.extend(inner_scope.scope.merged);
+            // Update range to cover both
+            if inner_scope.scope.range.start.0 < outer.scope.range.start.0 {
+                outer.scope.range.start = inner_scope.scope.range.start;
+            }
+            if inner_scope.scope.range.end.0 > outer.scope.range.end.0 {
+                outer.scope.range.end = inner_scope.scope.range.end;
+            }
+        }
+        // Loop to handle further nesting
+    }
+}
+
 fn merge_scopes_in_block(block: &mut ReactiveBlock, last_usage: &LastUsageMap) {
     // -----------------------------------------------------------------------
     // Pass 1: Recurse into nested blocks first (inner blocks must be simplified
@@ -714,6 +770,18 @@ fn merge_scopes_in_block(block: &mut ReactiveBlock, last_usage: &LastUsageMap) {
                 merge_scopes_in_terminal(terminal, last_usage);
             }
             crate::hir::types::ReactiveInstruction::Instruction(_) => {}
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 1.5: Flatten nested scopes with identical dependencies.
+    // When a Scope block contains a single inner Scope with the same deps,
+    // absorb the inner scope's instructions into the outer scope.
+    // This eliminates redundant cache checks (Sub-task 4c).
+    // -----------------------------------------------------------------------
+    for instr in &mut block.instructions {
+        if let crate::hir::types::ReactiveInstruction::Scope(outer_scope) = instr {
+            flatten_nested_identical_scopes(outer_scope);
         }
     }
 

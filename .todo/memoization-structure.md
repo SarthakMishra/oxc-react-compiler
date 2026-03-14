@@ -71,7 +71,7 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 
 ### Gap 4: Scope Merging Architecture Rewrite
 
-**Status:** IN PROGRESS (Sub-tasks 4a, 4b, 4d, 4e completed; 4c and 4f remaining)
+**Status:** IN PROGRESS (Sub-tasks 4a, 4b, 4c, 4d, 4e completed; 4f remaining)
 
 This gap supersedes the previous "Scope Merging/Splitting Heuristic Review" and Gap 10
 ("Overlap Merge Regression"). Deep research into the upstream algorithm revealed that the
@@ -122,36 +122,14 @@ by dependency.
 - Upstream file: `src/ReactiveScopes/MergeReactiveScopesThatInvalidateTogether.ts`
 - Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
-#### Sub-task 4c: Nested scope flattening
+#### Sub-task 4c: Nested scope flattening ✅
 
-**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`
-**Current state:** Not implemented
-**What's needed:**
+~~**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`~~
+~~**Current state:** Not implemented~~
 
-When an inner scope has the exact same dependencies as its parent scope, flatten it away
-(absorb its instructions into the parent). This eliminates redundant cache checks:
-
-```
-// Before flattening:
-if ($[0] !== x) {       // outer scope, deps: [x]
-  if ($[1] !== x) {     // inner scope, deps: [x]  -- redundant!
-    t0 = f(x);
-    $[1] = x; $[2] = t0;
-  } else { t0 = $[2]; }
-  $[0] = x; $[3] = t0;
-} else { t0 = $[3]; }
-
-// After flattening:
-if ($[0] !== x) {       // single scope, deps: [x]
-  t0 = f(x);
-  $[0] = x; $[1] = t0;
-} else { t0 = $[1]; }
-```
-
-Use the existing `dep_key_set` comparison to check if inner and outer scopes have identical deps.
-
-**Depends on:** None
-**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
+**Completed**: `flatten_nested_identical_scopes()` function implemented in `merge_scopes.rs`, matching upstream's nested-scope flattening in `MergeReactiveScopesThatInvalidateTogether.ts`. The algorithm detects when a `ReactiveScopeBlock`'s body consists of a single inner `ReactiveScopeBlock` with identical dependencies (compared via `dep_key_set` equality). When found, the inner scope is absorbed: its instructions, declarations, and merged IDs are transferred to the outer scope, and the inner scope wrapper is discarded. The function uses a `loop { ... if !changed { break; } }` pattern to handle multi-level nesting (e.g., outer/middle/inner all with identical deps) in successive passes. Wired as "Pass 1.5" in `merge_scopes_in_block`, after recursive descent into child terminals (Pass 1) and before the merge-plan walk (Pass 2), matching upstream ordering. Conformance unchanged (342/1717) -- this is a structural prerequisite for compound gains with Sub-tasks 4b and 4f.
+- Upstream file: `src/ReactiveScopes/MergeReactiveScopesThatInvalidateTogether.ts`
+- Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
 #### Sub-task 4d: Safety checks for intermediate instructions ✅
 
@@ -268,14 +246,14 @@ Expected progression (gaps are interdependent, so gains compound):
 - Gap 6 (over-scoped deps) ✅: globals/stable values excluded from deps
 - Gap 7 (property-path deps) ✅ + Gap 8 (sentinel codegen) ✅: deps now emit `props.x` not just `props`, sentinel scopes store values correctly (+3 fixtures)
 - After Sub-task 4a (active-scope-stack overlap) ✅: correct scope boundaries in HIR (-1 regression from indirect prop mutation)
-- After Sub-tasks 4b-4e (invalidate-together rewrite): correct scope merging in ReactiveFunction
+- After Sub-tasks 4b-4e (invalidate-together rewrite) ✅: correct scope merging in ReactiveFunction (all complete)
 - After Gap 3 (slot count alignment): remaining residual (may be fully resolved by 4a-4e)
 - Sub-task 4f (DeclarationId): correctness improvement, may unlock edge-case fixtures
 - Total potential from this category: ~400-600 new passes
 
 ## Risks and Notes
 
-- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), and sentinel codegen (Gap 8) are all complete. Scope merge heuristics (Gap 4) have been partially addressed (name-based dep comparison, non-reactive propagation). Slot count alignment (Gap 3) and the scope merging architecture rewrite (Gap 4 sub-tasks 4a-4f) are the final blockers before larger compound fixture gains materialize.
+- **Interdependency is the key risk**: Previous experience shows that fixing one structural issue in isolation gains zero fixtures because the remaining issues still cause mismatches. Temp inlining (Gap 1), JSX preservation (Gap 2), sentinel scope emission (Gap 5), over-scoped deps (Gap 6), property-path deps (Gap 7), and sentinel codegen (Gap 8) are all complete. Scope merge heuristics (Gap 4) have been partially addressed (name-based dep comparison, non-reactive propagation). Slot count alignment (Gap 3) and Sub-task 4f (DeclarationId alignment) are the final blockers before larger compound fixture gains materialize. Sub-tasks 4a through 4e are now complete.
 - **Scope merging is a 2-pass problem**: The overlap detection (Pass 42, Sub-task 4a) runs on the HIR BEFORE block structure is created. The invalidate-together merge (post-conversion, Sub-tasks 4b-4e) runs on the ReactiveFunction tree AFTER conversion. These are separate algorithms operating on different data structures at different pipeline stages. The reverted DSU attempt conflated them.
 - **The const-scoping problem is a non-issue for Pass 42** ✅ CONFIRMED: The reverted DSU attempt failed because it was tested after block structure existed. But Pass 42 runs before `build_reactive_scope_terminals_hir` (Pass 43), so scopes are just annotations at that point. The Sub-task 4a rewrite confirmed this -- no const-scoping issues encountered.
 - **Temp inlining correctness**: Must verify that inlined expressions maintain the same evaluation order. Only inline pure expressions or expressions where order doesn't matter.
