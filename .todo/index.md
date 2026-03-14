@@ -1,517 +1,73 @@
-# OXC React Compiler -- Backlog Index
+# Fixture Conformance Backlog
 
-> Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
+> Every item exists to increase the fixture pass rate. Nothing else.
 
-Last updated: 2026-03-14 (arrow function codegen fix, pre-freeze infrastructure, 389/1717)
+**Current: 397/1717 (23.1%) -- 1320 failures remaining**
 
-Current conformance: 389/1717 pass (22.7%), 0 panics, 0 unexpected divergences.
+Last updated: 2026-03-14
 
-Note: Conformance tests now use `CompilationMode::All` (matching upstream Babel's
-default) instead of `Infer`. This honestly attempts compilation of ALL functions,
-not just those with component/hook names. The score drop from 393→370 reflects
-23 fixtures that were trivially "passing" because Infer mode skipped them.
-The remaining 1347 divergences break down as follows (counts are approximate):
+## Failure Breakdown (from automated analysis)
 
-**Regression note (2026-03-13):** Sentinel scope emission (Gap 5) was activated,
-correctly adding reactive scopes for allocating expressions. This introduced 35
-regressions (added to known-failures.txt) where the new scopes are structurally
-correct but other P1 issues (over-scoped deps, wrong slot counts) cause the
-overall output to still diverge. Net change: -32 (35 regressions, 3 newly passing).
-The regressions will resolve as remaining P1 gaps (Gap 3 slot counts,
-Gap 4 scope heuristics) are fixed.
-
-**Regression note (2026-03-14):** Sub-task 4a (active-scope-stack overlap detection)
-was implemented, rewriting Pass 42 with a proper active-scope-stack algorithm and
-DisjointSet union-find. This introduced 1 regression: `error.invalid-prop-mutation-indirect.js`
-(added to known-failures.txt) where the new scope merging causes an indirect prop
-mutation to no longer be detected by the frozen-mutation validator. Net change: -1
-(343 -> 342). The regression is expected to resolve as downstream scope merging
-sub-tasks (4b-4f) refine merge eligibility checks.
-
-**Fix (2026-03-14):** Gap 3 sentinel slot count fix -- sentinel scopes now reuse
-declaration slots instead of allocating a separate sentinel slot (matching upstream
-`getScopeCount`), and reactive scopes now store declarations into cache slots after
-deps. 7 fixtures removed from known-failures.txt. Net change: +7 (342 -> 349).
-
-**Fix (2026-03-14):** Free variable detection + hook call exclusion in
-`propagate_dependencies.rs`. Identifiers loaded via LoadLocal/LoadContext that are
-never locally defined (no StoreLocal/DeclareLocal/Destructure target) are now treated
-as non-reactive free variables (module-scope imports, constants). The CallExpression
-non-reactivity rule now excludes hook calls (names matching `use[A-Z]`) since hook
-return values are reactive even when the hook itself is a non-reactive import.
-5 fixtures removed from known-failures.txt. Net change: +5 (349 -> 354).
-Gap 9 (setState false-positive) resolved -- hook exclusion is the correct narrow fix.
-
-**Fix (2026-03-14):** Nested function validation improvements. Gap 5 (ref access
-during render) fully resolved -- all 6 remaining fixtures now passing via improved
-nested function ref tracking in `validate_no_ref_access_in_render.rs`. Gap 7
-(setState during render) partially resolved -- 2 of 3 remaining fixtures now passing
-(`error.unconditional-set-state-lambda.js` and
-`error.unconditional-set-state-nested-function-expressions.js`) via setState detection
-in nested function expressions. Only `error.invalid-hoisting-setstate.js` remains
-(requires hoisted function declaration analysis). Net change: +8 (354 -> 362).
-
-**Fix (2026-03-14):** Frozen mutation detection -- param pre-freeze improvement.
-Function parameters are now pre-frozen using `param_names` from the pipeline,
-enabling detection of mutations to props and other frozen parameters inside
-closures and indirect references. 6 fixtures removed from known-failures.txt:
-`error.invalid-mutation-in-closure.js`, `error.invalid-prop-mutation-indirect.js`,
-`error.invalid-props-mutation-in-effect-indirect.js`,
-`fault-tolerance/error.try-finally-and-mutation-of-props.js`,
-`fault-tolerance/error.var-declaration-and-mutation-of-props.js`,
-`repro-retain-source-when-bailout.js`. Net change: +6 (362 -> 368).
-
-**Fix (2026-03-14):** Sub-task 4f -- DeclarationId alignment for dependency comparison.
-`TemporaryInfo` now carries `root_declaration_id`. Name-based lookups replaced with
-DeclarationId-based lookups: `scope_written_names` -> `scope_written_decl_ids`,
-`name_consumers` -> `decl_id_consumers`, `decl_deps_map` keyed by DeclarationId.
-`DepKey` in merge_scopes.rs now uses `(Option<DeclarationId>, IdentifierId, Vec<DependencyPathEntry>)`.
-`can_merge_scopes` uses DeclarationId for output-to-input chain check. All TODO(4f) comments
-removed. Conformance unchanged at 368/1717 (correctness improvement, no new fixture gains).
-Gap 4 scope merging architecture rewrite is now fully complete (all 6 sub-tasks done).
-
-**Fix (2026-03-14):** Gap 9 upstream error fixtures -- 6 new validation checks:
-(1) Known-incompatible module detection in `program.rs` -- rejects functions from modules
-containing incompatible libraries (`react-native-reanimated`, `react-native-gesture-handler`,
-`@shopify/react-native-skia`) by scanning import sources. 3 fixtures passing.
-(2) ESLint suppression detection in `program.rs` -- scans source for unclosed
-`eslint-disable-next-line react-hooks/exhaustive-deps` without matching re-enable. 2 fixtures.
-(3) `useMemo` non-literal dependency list detection in `validate_use_memo.rs` -- rejects
-`useMemo(fn, deps)` where `deps` is not an array literal. 1 fixture.
-(4) Capitalized call alias resolution improved in `validate_no_capitalized_calls.rs`.
-Net change: +6 (368 -> 374/1717).
-
-**Fix (2026-03-14):** Gap 9 mutation tracking improvements -- 6 sub-categories addressed:
-(1) Delete expression lowering fixed in `build.rs` -- delete expressions now correctly lowered to HIR.
-(2) Phi-node freeze propagation in `validate_no_mutation_after_freeze.rs` -- values that could be frozen through phi nodes now tracked.
-(3) Alias freeze tracking in `validate_no_mutation_after_freeze.rs` -- if `a = b` and `b` is frozen, mutating `a` now errors.
-(4) Derivation chain tracking in `validate_no_mutation_after_freeze.rs` -- derived values from frozen sources tracked through assignment chains.
-(5) Outer-scope property mutation detection in `validate_no_global_reassignment.rs` -- property mutations on outer-scope variables detected.
-(6) Render helper detection in `validate_no_global_reassignment.rs` -- functions called as render helpers properly validated.
-10 fixtures removed from known-failures.txt. Net change: +10 (374 -> 384/1717).
-
-**Fix (2026-03-14):** Phase 65 -- hook-call capture freeze + hook-arg mutation + assign-ref hint.
-(1) Hook-call capture freeze: `hook-call-freezes-captured-identifier.tsx` and
-`hook-call-freezes-captured-memberexpr.jsx` now correctly detect when hook calls
-freeze captured variables/member expressions.
-(2) Hook-arg local mutation: `invalid-hook-function-argument-mutates-local-variable.js`
-now detects mutation of local variables passed as hook function arguments.
-(3) Assign-ref hint: `assign-ref-in-effect-hint.js` now emits the correct diagnostic.
-4 fixtures removed from known-failures.txt. Net change: +4 (384 -> 388/1717).
-
-**Fix (2026-03-14):** Gap 4 destructure-to-global + bailout-infer-mode.
-(1) Destructure assignment to globals: `error.invalid-destructure-assignment-to-global.js` and
-`error.invalid-destructure-to-local-global-variables.js` now correctly detect destructuring
-assignments that reassign global/outer-scope variables. Gap 4 (reassign outside component)
-is now fully complete (all 8 fixtures resolved).
-(2) Bailout without compilation in infer mode: `should-bailout-without-compilation-infer-mode.js`
-now correctly bails out when compilation is not needed in infer mode.
-3 fixtures removed from known-failures.txt. Net change: +3 (388 -> 391/1717).
-
-**Fix (2026-03-14):** refine_effects() phase in `infer_mutation_aliasing_effects.rs` --
-implements upstream `applyEffect()` logic. Apply effects resolved with/without function
-signatures; CreateFrom/Capture/Assign/MutateConditionally/Mutate refined based on value
-kinds via `AbstractHeap.value_kind()`. 15 fixtures removed from known-failures.txt (now 1332).
-Net change: +15 (370 -> 385/1717).
-
-**Fix (2026-03-14):** Hook alias detection + dynamic hook identity + validation sweep.
-(1) `collect_hook_aliases()` in `program.rs` scans imports for aliased hooks (e.g.,
-`import { useState as useMyState }`), stored in `EnvironmentConfig.hook_aliases`.
-(2) `is_hook()` closure in `validate_hooks_usage.rs` checks both standard hook naming
-convention and the alias set.
-(3) Dynamic hook identity check (Rule 5) detects unstable hook-named callees resolved
-through StoreLocal chains.
-(4) Hook alias support wired into all 4 existing hook validation rules (conditional calls,
-nested functions, hooks-as-values, dynamic identity).
-(5) Collateral improvements: additional frozen mutation fixtures, exhaustive deps edge cases,
-ref naming heuristics, hoisting-setState, and several compilation structure fixes.
-2 aliased hook error fixtures now pass (error.invalid-conditional-call-aliased-hook-import.js,
-error.invalid-conditional-call-aliased-react-hook.js). Net change: +2 (391 -> 393/1717).
-
-**Fix (2026-03-14):** Arrow function preservation in codegen + pre-freeze infrastructure.
-(1) Arrow function codegen: `is_arrow` field added to `HIRFunction` and `ReactiveFunction`.
-Codegen now emits `() => { ... }` syntax for arrow functions instead of `function() { ... }`.
-4 fixtures newly passing (385 -> 389/1717).
-(2) Pre-freeze infrastructure: `pre_freeze_params()` in aliasing pass seeds component
-parameters as frozen in the abstract heap. Groundwork for future frozen-mutation accuracy
-improvements (no immediate score impact).
-
-**Analysis (2026-03-14):** Divergence deep-dive findings:
-- ~162 false-positive frozen-mutation bail-outs: validator's name-based tracking is too
-  aggressive, freezing values that upstream's alias analysis would not freeze. Fixing
-  requires coordinated changes across both refine_effects AND the validator.
-- ~63 known-failure fixtures have matching cache slot counts but differ in codegen details
-  (variable naming, scope structure within same-count slots).
-- ~40% of false bail-outs are from frozen-mutation, ~22% from locals-reassigned-after-render,
-  ~12% from capitalized-calls validation.
-
-| Category | Count | Description |
-|----------|-------|-------------|
-| Compiled with memo | ~890 | Both compile, structure/deps/slots differ |
-| No expected file | 261 | Can't compare (no upstream output) |
-| Compiled no memo | ~149 | Needs DCE/const-prop/outlining |
-| Upstream errors | ~7 | We compile but upstream bails (most now resolved) |
-| @flow fixtures | 38 | OXC parser can't handle Flow syntax |
+| Root Cause | Fixtures | Fix |
+|---|---|---|
+| Slot over-count (too many scopes/deps) | 474 | [scope-analysis.md] |
+| False-positive frozen-mutation bail-out | 162 | [false-bailouts.md] |
+| Slot under-count (missing scopes) | 162 | [scope-analysis.md] |
+| Same slots, different codegen structure | 150 | [codegen-structure.md] |
+| We memoize, upstream returns unchanged | 133 | [unnecessary-memo.md] |
+| Both no-memo, output differs | 43 | [unnecessary-memo.md] |
+| Upstream errors we should match | 39 | [upstream-errors.md] |
+| False-positive locals-reassigned bail-out | 30 | [false-bailouts.md] |
+| False-positive ref-access bail-out | 18 | [false-bailouts.md] |
+| False-positive useMemo/useCallback args | 17 | [false-bailouts.md] |
+| False-positive global-reassignment bail-out | 15 | [false-bailouts.md] |
+| False-positive setState bail-out | 14 | [false-bailouts.md] |
+| Flow syntax (parser limitation) | 38 | Skip |
 
 ---
 
-## Active Work
+## Tier 1 -- False-Positive Bail-Outs (~256 fixtures)
 
-- [~] Temp variable inlining pass (recursive cross-scope counting done; needs remaining P1 fixes to yield fixture gains) — [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
-- [~] Mutation aliasing bail-out (BFS graph rewrite + refine_effects applyEffect + pre-freeze infrastructure done; remaining: fixpoint iteration, user-defined function signature inference, return-value freezing) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
+We reject functions that upstream compiles successfully. Each fix is
+a direct 1:1 fixture gain -- bail-out removed = fixture passes.
 
----
+- [ ] Fix frozen-mutation false positives (162 fixtures) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-false-positives
+- [ ] Fix locals-reassigned-after-render false positives (30 fixtures) -- [false-bailouts.md](false-bailouts.md)#locals-reassigned-false-positives
+- [ ] Fix ref-access-during-render false positives (18 fixtures) -- [false-bailouts.md](false-bailouts.md)#ref-access-false-positives
+- [ ] Fix useMemo/useCallback argument count false positives (17 fixtures) -- [false-bailouts.md](false-bailouts.md)#usememo-usecallback-arg-count
+- [ ] Fix global-reassignment false positives (15 fixtures) -- [false-bailouts.md](false-bailouts.md)#global-reassignment-false-positives
+- [ ] Fix setState-during-render false positives (14 fixtures) -- [false-bailouts.md](false-bailouts.md)#setstate-false-positives
 
-## Priority 1 -- Memoization Structure (904 fixtures)
+## Tier 2 -- Slot Count Divergences (~636 fixtures)
 
-The largest divergence category. Both compilers produce `_c()` output but our
-structure differs. Sub-breakdown (updated post-sentinel activation):
+Both compile with `_c()` but our slot count N differs. 474 over-count,
+162 under-count. Fixing scope/dependency analysis is the highest-volume
+path but each fix requires careful upstream comparison.
 
-- ~~400 over-scoped (too many cache slots; globals/stable values as deps)~~ **RESOLVED** -- globals/stable values excluded from deps
-- ~~280 sentinel pattern never emitted~~ **RESOLVED** -- sentinel scopes now emitted
-- ~90 under-scoped (too few cache slots; missing scopes for some expressions)
-- ~37 same slots, wrong deps (dependency tracking diverges; property-path resolution now active)
-- ~94 other structural (temp variable naming, code ordering)
-- +35 regressions from sentinel activation (scopes correct, deps/slots still wrong)
+- [ ] Fix scope over-counting: extra reactive scopes (474 fixtures) -- [scope-analysis.md](scope-analysis.md)#over-counting
+- [ ] Fix scope under-counting: missing reactive scopes (162 fixtures) -- [scope-analysis.md](scope-analysis.md)#under-counting
 
-All items are interdependent -- they must be fixed together for fixtures to pass.
-Sentinel scope activation was a necessary structural prerequisite; the 35
-regressions are expected and will resolve with scope merging fixes and
-slot count alignment. Gap 6 (over-scoped deps), Gap 7 (property-path deps), and Gap 8 (sentinel
-codegen) are now resolved. Property-path deps yielded +3 fixtures (315 -> 318).
+## Tier 3 -- Same Slots, Different Structure (~150 fixtures)
 
-**Scope merging architecture rewrite (Gap 4):** All 6 sub-tasks (4a through 4f) are now
-complete. Pass 42 (overlap detection) uses the active-scope-stack algorithm with cross-scope
-mutation tracking. The post-conversion merge handles output-to-input chaining, nested scope
-flattening, safety checks, and DeclarationId-based dependency comparison. Gap 10 was
-superseded by Sub-task 4a.
+Slot count matches but generated code within scopes differs.
+These are codegen and scope-internal ordering issues.
 
-- [x] **4a** Active-scope-stack overlap detection (rewrite Pass 42 merge algorithm) — [memoization-structure.md](memoization-structure.md)#sub-task-4a-active-scope-stack-overlap-detection-pass-42
-- [x] **4d** Safety checks for intermediate instructions between scopes — [memoization-structure.md](memoization-structure.md)#sub-task-4d-safety-checks-for-intermediate-instructions
-- [x] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
-- [x] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
-- [x] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
-- [~] Correct `_c(N)` slot counts (sentinel fix done +7, reactive decl storage done; remaining: edge cases) — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
-- [x] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
+- [ ] Fix codegen structure divergences (150 fixtures) -- [codegen-structure.md](codegen-structure.md)#structure-divergences
 
-## Priority 2 -- Upstream Errors (~7 actionable fixtures remaining)
+## Tier 4 -- Unnecessary Memoization (~176 fixtures)
 
-We compile functions that upstream rejects with validation errors. These are
-"free" fixture gains -- emit the right error and bail, source matches.
-Most upstream error gaps are now resolved (Gaps 2-8 complete, Gap 1 has 1 remaining).
+We add `_c()` caching but upstream returns source unchanged.
+Root cause: missing DCE, const-prop, or incorrect scope creation
+for non-reactive functions.
 
-- [ ] Other upstream errors (~7 remaining: mutate-function-property, type provider x2, preserve-memo, pass-mutable-function-as-prop, call-args-destructuring, dont-hoist-inline-reference) — [upstream-errors.md](upstream-errors.md)#gap-9-other
+- [ ] Stop memoizing functions upstream doesn't memoize (133 + 43 fixtures) -- [unnecessary-memo.md](unnecessary-memo.md)#unnecessary-memoization
 
-Note: Remaining "Invariant/Todo" upstream errors are internal compiler failures in
-Babel -- these should be skipped, not matched.
+## Tier 5 -- Upstream Errors (~39 fixtures)
 
-## Priority 2.5 -- False-Positive Bail-Outs (~162 fixtures)
+Upstream rejects with an error, we should too.
 
-Our validators are too aggressive, causing ~162 false bail-outs where we reject
-functions that upstream compiles successfully. Breakdown: ~40% frozen-mutation,
-~22% locals-reassigned-after-render, ~12% capitalized-calls, ~26% other.
+- [ ] Match upstream validation errors (39 fixtures) -- [upstream-errors.md](upstream-errors.md)#remaining-errors
 
-- [ ] False-positive frozen-mutation bail-outs (~65 fixtures; requires wiring aliasing pass output into validator) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5b-false-positive-validation-bail-outs-162-fixtures
-- [ ] False-positive locals-reassigned-after-render (~36 fixtures) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5b-false-positive-validation-bail-outs-162-fixtures
-- [ ] False-positive capitalized-calls (~19 fixtures) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5b-false-positive-validation-bail-outs-162-fixtures
-- [ ] Codegen structure divergences with matching slot counts (~63 fixtures) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5c-codegen-structure-divergences-63-fixtures
+## Skipped
 
-## Priority 3 -- Compiled No Memo (152 fixtures)
-
-Babel transforms but emits no `_c()`. Our compiler either adds memoization
-or fails to apply the same non-memo transforms.
-
-- [ ] DCE / constant propagation (remove dead branches, fold constants) — [compiled-no-memo.md](compiled-no-memo.md)#gap-1-dce-and-constant-propagation
-- [ ] Arrow function extraction / outlining — [compiled-no-memo.md](compiled-no-memo.md)#gap-2-arrow-extraction
-- [ ] Audit validation passes for error accuracy vs upstream — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-3-ensure-validation-passes-emit-correct-errors
-- [ ] "Too simple" function detection (zero reactive scopes) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-6-too-simple-function-detection
-- [ ] Remove legacy `last_use_map`/`creation_map` after upstream pass alignment — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-7-remove-legacy-last_use_map--creation_map-after-upstream-pass-alignment
-
-## Priority 4 -- No Expected File (261 fixtures)
-
-These fixtures have no Babel expected output to compare against. Low priority
-since we cannot measure conformance without a reference.
-
-- [ ] Generate expected outputs for missing fixtures (run upstream compiler) — [no-expected-file.md](no-expected-file.md)#gap-1-generate-expected-outputs
-
-## Priority 5 -- Flow Fixtures (38 fixtures)
-
-OXC parser cannot handle Flow type annotations. These require either:
-- Flow-to-TS preprocessing, or
-- Skipping entirely (Flow is being deprecated in React ecosystem)
-
-- [ ] Decide strategy for @flow fixtures — [flow-fixtures.md](flow-fixtures.md)#gap-1-strategy
-
----
-
-## Blocked
-
-_(Nothing blocked)_
-
----
-
-## Completed Work (Archive)
-
-All P0-P5 items have been implemented. Detail files have been removed.
-
-### Arrow Function Codegen + Pre-Freeze Infrastructure (2026-03-14)
-
-- `codegen.rs`: Arrow function preservation -- `is_arrow` field on `HIRFunction` and `ReactiveFunction`, codegen emits `() => { ... }` for arrow functions
-- `infer_mutation_aliasing_effects.rs`: `pre_freeze_params()` seeds component parameters as frozen in the abstract heap (groundwork for replacing name-based freeze tracking)
-- 4 fixtures newly passing from arrow function fix
-- Key finding: ~162 false-positive bail-outs identified (40% frozen-mutation, 22% locals-reassigned, 12% capitalized-calls)
-- Key finding: ~63 fixtures match slot counts but diverge in codegen structure
-- Conformance: 385 -> 389/1717 (+4, 22.7%)
-
-### Hook Alias Detection + Dynamic Hook Identity + Validation Sweep (2026-03-14)
-
-- `program.rs`: `collect_hook_aliases()` scans imports for aliased hooks, stored in `EnvironmentConfig.hook_aliases`
-- `validate_hooks_usage.rs`: `is_hook()` closure checks both hook naming convention and alias set; Rule 5 (dynamic hook identity) detects unstable hook-named callees via StoreLocal chain resolution; alias awareness wired into all 4 existing rules
-- `environment.rs`: `hook_aliases` field added to `EnvironmentConfig`
-- `pipeline.rs`: Hook aliases collected and passed through pipeline
-- Gap 6 (dynamic hook identity) fully resolved -- both remaining fixtures passing
-- Gap 1 (frozen mutation) nearly complete -- 2 of 3 remaining fixtures passing (`mutate-function-property` remains)
-- Gap 3 (exhaustive deps) fully resolved -- both remaining fixtures passing
-- Gap 7 (setState during render) fully resolved -- `error.invalid-hoisting-setstate.js` now passing
-- Gap 8 (hoisting/TDZ) effectively resolved via hoisting-setState fix
-- Gap 9 Other: ref naming (`ref-like-name-not-Ref`, `ref-like-name-not-a-ref`), preserve-memo edge case, and several additional fixtures resolved
-- 2 aliased hook error fixtures now pass, 0 regressions
-- Conformance: 391 -> 393/1717 (+2, 22.9%)
-
-### Gap 4 Destructure-to-Global + Bailout-Infer-Mode (2026-03-14)
-
-- `validate_no_global_reassignment.rs`: Destructure assignment patterns targeting global/outer-scope variables now detected
-- `should-bailout-without-compilation-infer-mode.js`: Correctly bails out when compilation is not needed in infer mode
-- Gap 4 (reassign outside component) is now fully complete -- all 8 original fixtures resolved
-- 3 fixtures removed from known-failures.txt: `error.invalid-destructure-assignment-to-global.js`, `error.invalid-destructure-to-local-global-variables.js`, `should-bailout-without-compilation-infer-mode.js`
-- Conformance: 388 -> 391/1717 (+3)
-
-### Phase 65: Hook-Call Capture Freeze + Hook-Arg Mutation + Assign-Ref Hint (2026-03-14)
-
-- `validate_no_mutation_after_freeze.rs`: Hook-call capture freeze -- hook calls that freeze captured identifiers and member expressions now properly detected
-- `validate_no_mutation_after_freeze.rs`: Hook-arg local mutation -- mutations to local variables passed as hook function arguments now detected
-- Assign-ref-in-effect hint diagnostic now emitted correctly
-- 4 fixtures removed from known-failures.txt: `hook-call-freezes-captured-identifier.tsx`, `hook-call-freezes-captured-memberexpr.jsx`, `invalid-hook-function-argument-mutates-local-variable.js`, `assign-ref-in-effect-hint.js`
-- Remaining Gap 1 mutation fixtures: `error.invalid-mutate-props-in-effect-fixpoint.js`, `error.invalid-mutation-of-possible-props-phi-indirect.js`, `error.mutate-function-property.js`
-- Remaining Gap 9 Other fixtures: ~10 (type provider, ref naming, preserve-memo edge cases, call-args-destructuring, dont-hoist-inline-reference)
-- Conformance: 384 -> 388/1717 (+4)
-
-### Gap 9 Mutation Tracking Deep Session (2026-03-14)
-
-- `build.rs`: Fixed delete expression lowering -- delete expressions now correctly lowered to HIR
-- `validate_no_mutation_after_freeze.rs`: Phi-node freeze propagation -- values frozen through phi nodes now tracked across branches
-- `validate_no_mutation_after_freeze.rs`: Alias freeze tracking -- `a = b` where `b` is frozen causes mutations to `a` to error
-- `validate_no_mutation_after_freeze.rs`: Derivation chain tracking -- derived values from frozen sources tracked through assignment chains
-- `validate_no_global_reassignment.rs`: Outer-scope property mutation detection -- property stores on outer-scope variables detected
-- `validate_no_global_reassignment.rs`: Render helper detection -- functions invoked as render helpers properly validated
-- 10 fixtures removed from known-failures.txt
-- Remaining Gap 9 mutation fixtures: `error.invalid-hook-function-argument-mutates-local-variable.js`, `error.invalid-mutate-props-in-effect-fixpoint.js`, `error.invalid-mutation-of-possible-props-phi-indirect.js`, `error.mutate-function-property.js`
-- Conformance: 374 -> 384/1717 (+10)
-
-### Free Variable Detection + Hook Call Exclusion (2026-03-14)
-
-- `propagate_dependencies.rs`: Free variable detection -- collects all locally-defined names (StoreLocal/DeclareLocal/StoreContext/DeclareContext/Destructure targets + function params), then marks LoadLocal/LoadContext of names NOT in that set as non-reactive free variables
-- `propagate_dependencies.rs`: Hook call exclusion -- CallExpression non-reactivity rule now checks callee name via `id_to_name` map; calls to hooks (`use[A-Z]...`) are excluded since hook return values are reactive
-- `pipeline.rs`: `extract_param_names()` helper passes function parameter names to `propagate_scope_dependencies_hir()` so params are correctly treated as locally-defined reactive inputs
-- 5 fixtures removed from known-failures.txt: `error.capitalized-function-call-aliased.js`, `infer-function-expression-component.js`, `jsx-attribute-default-to-true.tsx`, `jsx-member-expression.js`, `merge-consecutive-scopes-no-deps.js`
-- 1 fixture re-sorted in known-failures.txt: `allow-passing-refs-as-props.js` (alphabetical fix)
-- Gap 9 (setState false-positive) resolved: hook exclusion is the correct narrow fix for the reverted setState heuristic
-- Conformance: 349 -> 354/1717 (+5)
-
-### Sentinel Slot Count Fix -- Gap 3 Partial (2026-03-14)
-
-- `codegen.rs`: `count_cache_slots` fixed -- sentinel scopes now count `max(declarations, 1)` instead of `1 + declarations`, matching upstream's `getScopeCount` where the sentinel check slot doubles as the first declaration slot
-- `codegen.rs`: `codegen_scope` fixed -- sentinel scopes store declarations starting at `slot_start` (reusing sentinel slot for first decl); reactive scopes store declarations after dep slots; else-branch reload uses correct `decl_reload_start` offset
-- 7 fixtures removed from known-failures.txt: `infer-functions-component-with-jsx.js`, `infer-functions-hook-with-jsx.js`, `jsx-html-entity.js`, `jsx-preserve-escape-character.js`, `repro-duplicate-type-import.tsx`, `target-flag-meta-internal.js`, `target-flag.js`
-- Conformance: 342 -> 349/1717 (+7)
-
-### Transitive Dependency Resolution in propagate_dependencies (2026-03-14)
-
-- `propagate_dependencies.rs`: Phase 3 enhanced with StoreLocal/StoreContext target declaration tracking -- named variables written in a scope and used outside are registered as scope declarations via name-based consumer matching (bridges SSA ID mismatches)
-- `propagate_dependencies.rs`: Phase 3.5 added -- fixpoint loop builds `decl_deps_map` (declared_name -> declaring_scope_deps) and substitutes transitive dependencies (e.g., scope B depends on `doubled` which is declared by scope A with dep `[value]` -> scope B's dep becomes `[value]`)
-- Handles arbitrarily deep chains via fixpoint iteration (max 10 passes)
-- Codegen validation: `semantic_derived_values` snapshot reduced from 3 unresolved references to 1 (`hasItems` and `total` now resolved)
-- `component-with-derived` fixture: slot count reduced from 5 to 4, transitive `count` dep replaced with root `items.length`
-- Known limitation: name-based matching can false-positive on shadowed variables (same trade-off as dep_key_set/scope_written_names elsewhere; tracked under Sub-task 4f)
-- Gap 11 (derived computations outside scope guards) discovered and resolved -- see prune_scopes.rs `collect_used_ids` fix
-- Conformance: unchanged (342/1717) -- structural prerequisite for compound gains
-
-### Nested Scope Flattening -- Sub-task 4c (2026-03-14)
-
-- `merge_scopes.rs`: Added `flatten_nested_identical_scopes()` function that absorbs inner scopes with identical dependency sets into their parent scope
-- Loop-based flattening handles multi-level nesting (outer/middle/inner with same deps collapsed in successive passes)
-- Absorbs inner scope's instructions, declarations, and merged IDs into outer scope
-- Wired as "Pass 1.5" in `merge_scopes_in_block`, after recursive descent (Pass 1) and before merge-plan walk (Pass 2)
-- Conformance: unchanged (342/1717) -- structural prerequisite for compound gains with 4b+4f
-
-### Safety Checks for Intermediate Instructions -- Sub-task 4d (2026-03-14)
-
-- `merge_scopes.rs`: Added complete safety-check infrastructure for `MergeReactiveScopesThatInvalidateTogether`
-- `LastUsageMap` pre-pass (`build_last_usage_map` / `collect_last_usage_in_block` / `collect_last_usage_in_terminal`) mirroring upstream's `FindLastUsageVisitor`
-- `visit_instruction_read_places`: exhaustive operand collector over all `InstructionValue` variants
-- `is_simple_instruction` allowlist predicate + `is_const_store_local` special case
-- `IntermediateAccumulator` struct for tracking lvalues/aliases in gaps between scope candidates
-- `are_lvalues_last_used_by_scope` safety invariant check against `LastUsageMap`
-- Purely additive infrastructure (no behavioral changes); merge decision logic wired in Sub-task 4b
-- Conformance: unchanged (342/1717)
-
-### Active-Scope-Stack Overlap Detection -- Sub-task 4a (2026-03-14)
-
-- `merge_scopes.rs`: Complete rewrite of `merge_overlapping_reactive_scopes_hir()` (Pass 42) with active-scope-stack algorithm matching upstream `MergeOverlappingReactiveScopesHIR.ts`
-- DisjointSet (union-find with path compression) implemented for tracking scope merge groups
-- 3-phase algorithm: (1) collect scope start/end maps + place-to-scope map, (2) walk instructions in ID order with active-scope stack detecting overlaps and cross-scope mutations, (3) rewrite scope annotations using merged representatives
-- Cross-scope mutation tracking: mutations to identifiers belonging to non-top-of-stack scopes trigger merges
-- 1 regression: `error.invalid-prop-mutation-indirect.js` added to known-failures.txt (indirect prop mutation no longer detected after scope merge changes boundary)
-- Conformance: 343 -> 342/1717 (-1)
-
-### Hooks-in-Nested-Functions Validation + MergeOverlappingReactiveScopes Investigation (2026-03-13)
-
-- `validate_hooks_usage.rs`: Rule 4 added -- `check_hooks_in_nested_functions` detects hook calls inside FunctionExpression/ObjectMethod bodies and emits bail diagnostic
-- 4 fixtures removed from known-failures.txt: `error.bail.rules-of-hooks-3d692676194b`, `error.bail.rules-of-hooks-8503ca76d6f8`, `error.invalid-hook-in-nested-object-method`, `error.invalid.invalid-rules-of-hooks-d952b82c2597`
-- `merge_scopes.rs`: 3-phase DSU algorithm for MergeOverlappingReactiveScopes attempted (union-find with scope grouping and merge). Produced invalid JS due to const scoping across blocks. Reverted to flat-range merge. Data-flow dependency analysis identified as prerequisite for correct overlap merging.
-- Conformance: 339 -> 343/1717 (+4)
-
-### Global Reassignment + Async Callback Validation (2026-03-13)
-
-- `validate_no_global_reassignment.rs`: Rewritten with nested function scope analysis -- tracks function declarations, arrow functions, and function expressions as scope boundaries, correctly distinguishing global vs local reassignment
-- `validate_locals_not_reassigned_after_render.rs`: Enhanced with async function/arrow detection -- reassignments inside async callbacks now correctly flagged
-- `build.rs`: Fixed function declaration lowering to emit StoreLocal connecting the function value to its binding identifier
-- 8 fixtures removed from known-failures.txt
-- Newly passing: error.assign-global-in-component-tag-function, error.assign-global-in-jsx-children, error.reassign-global-fn-arg, error.mutate-global-increment-op-invalid-react, error.invalid-reassign-local-variable-in-async-callback, error.declare-reassign-variable-in-function-declaration, error.todo-repro-named-function-with-shadowed-local-same-name (x2)
-- Conformance: 331 -> 339/1717 (+8)
-
-### Frozen Mutation Detection -- Enhancement (2026-03-13)
-
-- `validate_no_mutation_after_freeze.rs`: Hook-return pre-freeze -- values returned from hook calls (useContext, useState, etc.) and their destructured targets are frozen at definition site
-- `validate_no_mutation_after_freeze.rs`: Function-capture freeze -- when a function is passed to a hook call, all variables it captures are frozen after the call
-- `validate_no_mutation_after_freeze.rs`: Nested function mutation scanning -- FunctionExpression bodies are recursively scanned for mutations to outer frozen variables
-- `validate_no_mutation_after_freeze.rs`: `collect_frozen_from_destructure` handles nested array/object destructure patterns for hook returns
-- 13 fixtures removed from known-failures.txt (including capture-ref-for-mutation, modify-state, modify-useReducer-state, context mutations, skip-useMemoCache, etc.)
-- Conformance: 318 -> 331/1717 (+13)
-
-### Scope Merge Heuristic Improvements (2026-03-13)
-
-- `merge_scopes.rs`: Name-based dep comparison (`DepKey = (Option<String>, Vec<DependencyPathEntry>)`) replaces IdentifierId-based comparison, fixing false "different deps" when SSA creates unique IDs per Place
-- `merge_scopes.rs`: Double-merge prevention via `merged_indices` set -- prevents a scope from being merged into multiple targets
-- `merge_scopes.rs`: Dependency union and declaration merge when combining scopes
-- `propagate_dependencies.rs`: Non-reactive propagation through `Destructure` instructions (all targets of a non-reactive destructure are non-reactive)
-- `propagate_dependencies.rs`: Non-reactive propagation through `CallExpression` when callee + all args are non-reactive (handles `require('shared-runtime')`); later enhanced with hook call exclusion (see "Free Variable Detection" entry)
-- `propagate_dependencies.rs`: Recursive `collect_destructure_target_ids` for nested object/array destructure patterns
-- REVERTED: Overlap merge change (caused regressions in scope boundary detection)
-- REVERTED: setState heuristic change (resolved via hook call exclusion in "Free Variable Detection" entry)
-- Conformance: 318/1717 (unchanged -- structural improvements, no net fixture movement)
-
-### Property-Path Dependency Resolution + Sentinel Codegen Fix (2026-03-13)
-
-- `propagate_dependencies.rs`: temp_map built via `collectTemporaries()` equivalent -- resolves SSA temps to root named variable + property path (e.g., `props.x` instead of just `props`)
-- `propagate_dependencies.rs`: `collect_read_operand_places_for_deps` now uses temp_map to emit proper `ReactiveScopeDependency` with `DependencyPathEntry` paths
-- `codegen.rs`: `dependency_display_name()` renders deps with property paths (e.g., `props.x.y`, `obj?.field`)
-- `codegen.rs`: Sentinel scope codegen fix -- stores first declaration value into sentinel slot so subsequent renders reload from cache
-- `types.rs`: Added `PartialEq, Eq` derives to `DependencyPathEntry` for deduplication
-- `propagate_dependencies.rs`: `TemporaryInfo` struct avoids full `Identifier` clone overhead
-- 3 fixtures removed from known-failures.txt: `jsx-empty-expression.js`, `jsx-namespaced-name.js`, `multiple-components-first-is-invalid.js`
-- Conformance: 315 -> 318/1717 (+3)
-
-### Over-Scoped Dependency Fix (2026-03-13)
-
-- Globals, stable hook returns (SetState, Ref), and property accesses of globals excluded from reactive dependencies
-- Three files modified: `infer_types.rs`, `infer_reactive_places.rs`, `propagate_dependencies.rs`
-- Conformance unchanged at 272/1717 (gains expected to compound with remaining P1 fixes)
-
-### Sentinel Scope Emission (2026-03-13)
-
-- Reactive scopes now created for allocating expressions (JSX, object/array literals)
-- Sentinel pattern (`Symbol.for("react.memo_cache_sentinel")`) emitted in codegen
-- 35 known regressions added to known-failures.txt (scopes correct, deps/slots still diverge)
-- Net conformance change: 304 -> 272 (-32; 35 regressions, 3 newly passing)
-- Implementation files: `infer_reactive_scope_variables.rs`, `prune_scopes.rs`, `codegen.rs`
-
-### Conformance Quick Wins (2026-03-12)
-
-- TS type stripping via OXC parse/transform/print roundtrip (+30 fixtures)
-- JSX normalization via OXC transformer
-- Bail on all validation errors (AllErrors threshold, +24 fixtures)
-- Skip functions with zero cache slots (+90 fixtures)
-- Upstream error matching (+120 fixtures)
-- OutputMode::Lint and gating directives (+37 fixtures)
-
-### Temp Variable Inlining Foundation (2026-03-13)
-
-- Recursive cross-scope temp use-counting in codegen.rs
-- FxHash migration for all codegen collections
-
-### JSX Syntax Preservation (2026-03-13)
-
-- JSX syntax preservation fully implemented in codegen.rs
-- `_jsx()`/`_jsxs()`/`_Fragment` calls replaced with actual JSX syntax (`<div>`, `<Component>`, `<>...</>`)
-- `react/jsx-runtime` import removed from generated output
-- 23 snapshot files updated; conformance unchanged at 304/1717 (normalization masks JSX differences)
-
-### ValidatePreservedManualMemoization Pipeline Gate Fixes (2026-03-13)
-
-- Pipeline gate fixed: Pass 5 (drop_manual_memoization) now keeps memo markers when `validate_preserve_existing_memoization_guarantees` is set
-- Pass 61 now runs on both `enable` and `validate_only` config flags
-- Error messages aligned with upstream ("Existing memoization could not be preserved...")
-- Pruned memoizations now silently skipped instead of emitting false-positive errors
-- 20 preserve-memo-validation error fixtures now passing
-- 11 additional error fixtures passing (hoist-optional-member-expression, validate-object-entries/values, gating bailout, new-mutability errors)
-- Conformance: 278 -> 309/1717 (+31)
-- Implementation files: `pipeline.rs`, `validate_preserved_manual_memoization.rs`
-
-### Frozen Mutation Detection -- Initial Pass (2026-03-13)
-
-- `validate_no_mutation_after_freeze` pass added (Pass 16.5, runs after infer_mutation_aliasing_effects)
-- Detects mutations to frozen values: property stores, computed stores, array push on frozen arrays
-- Also detects for-in/for-of loops over context variables (upstream "Todo" errors)
-- 6 fixtures now passing: invalid-array-push-frozen, invalid-computed-store-to-frozen-value, invalid-mutate-after-freeze, invalid-property-store-to-frozen-value, todo-for-in-loop-with-context-variable-iterator, todo-for-of-loop-with-context-variable-iterator
-- Conformance: 272 -> 278/1717 (+6)
-- Implementation files: `validate_no_mutation_after_freeze.rs`, `pipeline.rs`
-- 20 fixtures remain (require deeper alias tracking, delete operations, indirect mutation through function calls)
-
-### Validation SSA Improvements (2026-03-13)
-
-- SSA name resolution in validate_use_memo (+3 fixtures)
-- PropertyStore/PropertyLoad ref tracking in ref-access-in-render (+6 fixtures)
-- setState detection in useMemo callbacks (+2 fixtures)
-- SSA resolution in impure function detection + performance.now() (+2 fixtures)
-- SSA resolution in derived-computation-in-effects (+1 fixture)
-- SSA resolution in exhaustive-dependency validation (correctness)
-- SSA resolution in set-state-in-render (+9 fixtures)
-- SSA resolution in ref-access-in-render (+15 fixtures)
-- SSA resolution in set-state-in-effects (correctness)
-- SSA resolution in capitalized call validation (+3 fixtures)
-- Conditional hook method calls (+3 fixtures)
-- Global hook names in SSA for conditional hook detection (+8 fixtures)
-- Hooks-as-values validation (+9 fixtures)
-- validate_no_global_reassignment pass (new)
-- validate_no_eval pass (new, Pass 14.6 -- EvalUnsupported diagnostic)
-
-### Render Equivalence (formerly render-equivalence.md)
-
-- Availability-schedule truncated output fixed
-- Phi-node / temporary variable resolution fixed
-- JSX hyphenated attribute name quoting fixed
-- Multi-step-form timeout/segfault resolved
-- Conservative memoization misses addressed
-- Render equivalence tracking added to CI
-
-### Upstream Conformance (formerly upstream-conformance.md)
-
-- Upstream fixtures downloaded with expected outputs generated
-- Baseline conformance run and triaged
-- known-failures.txt populated; conformance added to CI
-- Panics fixed; high-priority divergences resolved
-
-### Vite Caching (formerly vite-caching.md)
-
-- In-memory content-hash cache added to Vite plugin
-- Config change invalidation implemented
-- Optional disk cache for large projects added
-
-### P0-P5 Implementation
-
-- Critical bugs: destructured params, dependency filter, O(N^2) perf fix
-- Correctness: ComputeUnconditionalBlocks, CollectHoistablePropertyLoads, CollectOptionalChainDependencies, DeriveMinimalDependenciesHIR, ScopeDependencyUtils
-- Type-based ref/setState detection in validation passes
-- Config gates, validation passes, optimization passes
-- Code quality, testing/CI, polish (see git history for details)
+- Flow fixtures (38) -- OXC parser limitation, not worth fixing
