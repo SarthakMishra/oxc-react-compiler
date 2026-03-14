@@ -1289,9 +1289,332 @@ fn set_terminal_id(terminal: &mut ReactiveTerminal, new_id: crate::hir::types::B
 }
 
 /// Rename variables for clean output.
+/// Rename scope declaration outputs to temporary variable names.
+///
+/// Upstream's codegen renames variables that are scope outputs to temporary
+/// names (t0, t1, ...) and adds an assignment from the temp to the original
+/// variable after the scope block. This matches upstream's output format:
+///
+/// ```js
+/// let t0;
+/// if ($[0] !== dep) {
+///   t0 = computation();
+///   $[0] = dep; $[1] = t0;
+/// } else { t0 = $[1]; }
+/// const x = t0;  // assignment from temp to original
+/// ```
+///
+/// Without this pass, our output uses the original variable name directly
+/// in the scope block, causing token-level mismatches with upstream output.
 pub fn rename_variables(rf: &mut ReactiveFunction) {
-    // For now, this is handled by promote_used_temporaries
+    // TODO: Implement upstream-faithful variable renaming.
+    // The pass needs to match upstream's exact renaming logic — only rename
+    // scope declaration outputs that upstream would also rename to temporaries.
+    // A naive "rename everything" approach causes regressions on fixtures that
+    // expect original names preserved.
     let _ = rf;
+}
+
+/// Check if a name is already a compiler temporary (matches `tN` pattern).
+fn is_temp_var_name(name: &str) -> bool {
+    name.starts_with('t') && name.len() >= 2 && name[1..].chars().all(|c| c.is_ascii_digit())
+}
+
+fn rename_vars_in_block(block: &mut ReactiveBlock, counter: &mut u32) {
+    // Collect post-scope assignments to insert after processing
+    let mut insertions: Vec<(usize, Vec<ReactiveInstruction>)> = Vec::new();
+
+    for (idx, instr) in block.instructions.iter_mut().enumerate() {
+        match instr {
+            ReactiveInstruction::Scope(scope_block) => {
+                // First recurse into the scope body
+                rename_vars_in_block(&mut scope_block.instructions, counter);
+
+                // For each declaration with a user-meaningful name, rename to temp
+                let mut renames: Vec<(String, String)> = Vec::new();
+                for (_, decl) in &mut scope_block.scope.declarations {
+                    if let Some(ref name) = decl.identifier.name
+                        && !is_temp_var_name(name)
+                    {
+                        let temp_name = format!("t{counter}");
+                        *counter += 1;
+                        let original_name = name.clone();
+                        decl.identifier.name = Some(temp_name.clone());
+                        renames.push((original_name, temp_name));
+                    }
+                }
+
+                // Apply renames to all identifiers in the scope body
+                if !renames.is_empty() {
+                    apply_renames_in_block(&mut scope_block.instructions, &renames);
+                }
+
+                // Create post-scope assignments: `const originalName = tempName;`
+                let mut post_assignments = Vec::new();
+                for (original_name, temp_name) in &renames {
+                    // Create a StoreLocal instruction: originalName = tempName
+                    // We create a minimal instruction using fresh IDs
+                    let store_instr = create_rename_assignment(original_name, temp_name);
+                    post_assignments.push(ReactiveInstruction::Instruction(store_instr));
+                }
+                if !post_assignments.is_empty() {
+                    insertions.push((idx + 1, post_assignments));
+                }
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                for_each_block_in_terminal_mut(terminal, |b| rename_vars_in_block(b, counter));
+            }
+            ReactiveInstruction::Instruction(_) => {}
+        }
+    }
+
+    // Insert post-scope assignments (in reverse order to preserve indices)
+    for (idx, assignments) in insertions.into_iter().rev() {
+        for (i, assignment) in assignments.into_iter().enumerate() {
+            if idx + i <= block.instructions.len() {
+                block.instructions.insert(idx + i, assignment);
+            }
+        }
+    }
+}
+
+/// Apply name renames to all identifiers in a reactive block.
+fn apply_renames_in_block(block: &mut ReactiveBlock, renames: &[(String, String)]) {
+    for instr in &mut block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                apply_renames_to_identifier(&mut instruction.lvalue.identifier, renames);
+                apply_renames_to_value(&mut instruction.value, renames);
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                // Apply renames to scope dependencies and declarations
+                for dep in &mut scope_block.scope.dependencies {
+                    apply_renames_to_identifier(&mut dep.identifier, renames);
+                }
+                for (_, decl) in &mut scope_block.scope.declarations {
+                    apply_renames_to_identifier(&mut decl.identifier, renames);
+                }
+                apply_renames_in_block(&mut scope_block.instructions, renames);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                apply_renames_to_terminal(terminal, renames);
+                for_each_block_in_terminal_mut(terminal, |b| apply_renames_in_block(b, renames));
+            }
+        }
+    }
+}
+
+fn apply_renames_to_identifier(
+    identifier: &mut crate::hir::types::Identifier,
+    renames: &[(String, String)],
+) {
+    if let Some(ref name) = identifier.name {
+        for (old_name, new_name) in renames {
+            if name == old_name {
+                identifier.name = Some(new_name.clone());
+                return;
+            }
+        }
+    }
+}
+
+fn apply_renames_to_place(place: &mut Place, renames: &[(String, String)]) {
+    apply_renames_to_identifier(&mut place.identifier, renames);
+}
+
+fn apply_renames_to_terminal(terminal: &mut ReactiveTerminal, renames: &[(String, String)]) {
+    match terminal {
+        ReactiveTerminal::If { test, .. } => apply_renames_to_place(test, renames),
+        ReactiveTerminal::Switch { test, cases, .. } => {
+            apply_renames_to_place(test, renames);
+            for (test_val, _) in cases {
+                if let Some(tv) = test_val {
+                    apply_renames_to_place(tv, renames);
+                }
+            }
+        }
+        ReactiveTerminal::Return { value, .. } => apply_renames_to_place(value, renames),
+        ReactiveTerminal::Throw { value, .. } => apply_renames_to_place(value, renames),
+        _ => {}
+    }
+}
+
+fn apply_renames_to_value(value: &mut InstructionValue, renames: &[(String, String)]) {
+    // Apply renames to all Place references in the instruction value
+    match value {
+        InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+            apply_renames_to_place(place, renames);
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. }
+        | InstructionValue::StoreContext { lvalue, value } => {
+            apply_renames_to_place(lvalue, renames);
+            apply_renames_to_place(value, renames);
+        }
+        InstructionValue::DeclareLocal { lvalue, .. }
+        | InstructionValue::DeclareContext { lvalue } => {
+            apply_renames_to_place(lvalue, renames);
+        }
+        InstructionValue::Destructure { value, .. } => {
+            apply_renames_to_place(value, renames);
+        }
+        InstructionValue::CallExpression { callee, args }
+        | InstructionValue::NewExpression { callee, args } => {
+            apply_renames_to_place(callee, renames);
+            for arg in args {
+                apply_renames_to_place(arg, renames);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            apply_renames_to_place(receiver, renames);
+            for arg in args {
+                apply_renames_to_place(arg, renames);
+            }
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            apply_renames_to_place(left, renames);
+            apply_renames_to_place(right, renames);
+        }
+        InstructionValue::UnaryExpression { value, .. }
+        | InstructionValue::TypeCastExpression { value, .. } => {
+            apply_renames_to_place(value, renames);
+        }
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => {
+            apply_renames_to_place(object, renames);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            apply_renames_to_place(object, renames);
+            apply_renames_to_place(value, renames);
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            apply_renames_to_place(object, renames);
+            apply_renames_to_place(property, renames);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            apply_renames_to_place(object, renames);
+            apply_renames_to_place(property, renames);
+            apply_renames_to_place(value, renames);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            apply_renames_to_place(object, renames);
+            apply_renames_to_place(property, renames);
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            apply_renames_to_place(tag, renames);
+            for attr in props {
+                apply_renames_to_place(&mut attr.value, renames);
+            }
+            for child in children {
+                apply_renames_to_place(child, renames);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                apply_renames_to_place(child, renames);
+            }
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                apply_renames_to_place(&mut prop.value, renames);
+                if let crate::hir::types::ObjectPropertyKey::Computed(key) = &mut prop.key {
+                    apply_renames_to_place(key, renames);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    crate::hir::types::ArrayElement::Expression(p)
+                    | crate::hir::types::ArrayElement::Spread(p) => {
+                        apply_renames_to_place(p, renames);
+                    }
+                    crate::hir::types::ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                apply_renames_to_place(sub, renames);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value: tpl } => {
+            apply_renames_to_place(tag, renames);
+            for sub in &mut tpl.subexpressions {
+                apply_renames_to_place(sub, renames);
+            }
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            apply_renames_to_place(lvalue, renames);
+        }
+        InstructionValue::StoreGlobal { value, .. } => {
+            apply_renames_to_place(value, renames);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            apply_renames_to_place(decl, renames);
+            for dep in deps {
+                apply_renames_to_place(dep, renames);
+            }
+        }
+        InstructionValue::Await { value } => {
+            apply_renames_to_place(value, renames);
+        }
+        InstructionValue::GetIterator { collection } => {
+            apply_renames_to_place(collection, renames);
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            apply_renames_to_place(iterator, renames);
+        }
+        InstructionValue::NextPropertyOf { value } => {
+            apply_renames_to_place(value, renames);
+        }
+        // No places to rename
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. } => {}
+    }
+}
+
+/// Create a minimal instruction that represents `const originalName = tempName;`
+/// This emits as a StoreLocal in codegen.
+fn create_rename_assignment(
+    original_name: &str,
+    temp_name: &str,
+) -> crate::hir::types::Instruction {
+    use crate::hir::types::*;
+    let zero_loc = SourceLocation::new(0, 0);
+    let zero_range = MutableRange { start: InstructionId(0), end: InstructionId(0) };
+    let make_place = |name: &str| Place {
+        identifier: Identifier {
+            id: IdentifierId(0),
+            declaration_id: None,
+            name: Some(name.to_string()),
+            type_: Type::Poly,
+            mutable_range: zero_range,
+            scope: None,
+            loc: zero_loc,
+        },
+        effect: Effect::Unknown,
+        reactive: false,
+        loc: zero_loc,
+    };
+    // Create a minimal instruction: const originalName = tempName;
+    Instruction {
+        id: InstructionId(0),
+        loc: zero_loc,
+        lvalue: make_place(original_name),
+        value: InstructionValue::StoreLocal {
+            lvalue: make_place(original_name),
+            value: make_place(temp_name),
+            type_: Some(InstructionKind::Const),
+        },
+        effects: None,
+    }
 }
 
 /// Prune hoisted contexts.

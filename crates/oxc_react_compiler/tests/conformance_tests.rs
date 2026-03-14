@@ -475,6 +475,16 @@ struct FixtureResult {
     known_failure: bool,
     /// Number of diagnostics emitted.
     _diagnostic_count: usize,
+    /// Whether our compiler transformed the output (added memoization).
+    our_transformed: bool,
+    /// Whether expected output has memoization (_c()).
+    expected_has_memo: bool,
+    /// Our slot count (sum of all _c(N) in output).
+    our_slots: u32,
+    /// Expected slot count.
+    expected_slots: u32,
+    /// First diff context (for debugging): "our_token | expected_token @ position"
+    first_diff: String,
 }
 
 /// Parse per-fixture compiler options from `@directive` comments in the source.
@@ -564,19 +574,19 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
             };
         }
 
-        // @gating — use a stub gating config
+        // @gating — use upstream's test gating config
         if find_directive_bool(comment, "gating").unwrap_or(false) {
             opts.gating = Some(GatingConfig {
-                import_source: "shared-runtime".to_string(),
-                function_name: "__gate".to_string(),
+                import_source: "ReactForgetFeatureFlag".to_string(),
+                function_name: "isForgetEnabled_Fixtures".to_string(),
             });
         }
 
         // @dynamicGating — also activates gating behavior
         if find_directive_bool(comment, "dynamicGating").unwrap_or(false) {
             opts.gating = Some(GatingConfig {
-                import_source: "shared-runtime".to_string(),
-                function_name: "__gate".to_string(),
+                import_source: "ReactForgetFeatureFlag".to_string(),
+                function_name: "isForgetEnabled_Fixtures".to_string(),
             });
         }
 
@@ -677,6 +687,11 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
             matches_expected: None,
             known_failure: false,
             _diagnostic_count: 0,
+            our_transformed: false,
+            expected_has_memo: false,
+            our_slots: 0,
+            expected_slots: 0,
+            first_diff: String::new(),
         };
     };
 
@@ -692,12 +707,22 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
         Ok(compile_result) => {
             // Check if an .expected file exists alongside the fixture.
             let expected_path = fixture_path.with_extension("expected");
-            let matches_expected = if expected_path.exists() {
+            let our_transformed = compile_result.transformed;
+            let our_slots = count_slots(&compile_result.code);
+            let mut first_diff = String::new();
+            let (matches_expected, expected_has_memo, expected_slots) = if expected_path.exists() {
                 let expected = std::fs::read_to_string(&expected_path).unwrap_or_default();
+                let exp_has_memo = expected.contains("_c(");
+                let exp_slots = count_slots(&expected);
                 // When upstream Babel errors, the correct behavior is to also
                 // not compile. If we didn't transform, that matches Babel's behavior.
                 if expected.starts_with("// UPSTREAM ERROR:") {
-                    Some(!compile_result.transformed)
+                    first_diff = if compile_result.transformed {
+                        "we transformed, expected upstream error".to_string()
+                    } else {
+                        String::new()
+                    };
+                    (Some(!compile_result.transformed), false, 0)
                 } else {
                     // Normalize both sides: strip TS types + lower JSX to _jsx()
                     let our_stripped = normalize_via_oxc(&compile_result.code);
@@ -707,10 +732,17 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                     let expected_normalized = normalize_output(&expected_stripped);
                     let our_tokens = tokenize(&our_normalized);
                     let expected_tokens = tokenize(&expected_normalized);
-                    Some(our_tokens == expected_tokens)
+                    let matches = our_tokens == expected_tokens;
+                    let first_diff_str = if matches {
+                        String::new()
+                    } else {
+                        find_first_diff(&our_tokens, &expected_tokens)
+                    };
+                    first_diff = first_diff_str;
+                    (Some(matches), exp_has_memo, exp_slots)
                 }
             } else {
-                None
+                (None, false, 0)
             };
 
             FixtureResult {
@@ -719,16 +751,57 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                 matches_expected,
                 known_failure: false,
                 _diagnostic_count: compile_result.diagnostics.len(),
+                our_transformed,
+                expected_has_memo,
+                our_slots,
+                expected_slots,
+                first_diff,
             }
         }
         Err(_) => FixtureResult {
             relative_path,
             panicked: true,
             matches_expected: None,
+            our_transformed: false,
+            expected_has_memo: false,
+            our_slots: 0,
+            expected_slots: 0,
+            first_diff: String::new(),
             known_failure: false,
             _diagnostic_count: 0,
         },
     }
+}
+
+/// Find the first token that differs between two token lists.
+fn find_first_diff(ours: &[String], expected: &[String]) -> String {
+    for (i, (a, b)) in ours.iter().zip(expected.iter()).enumerate() {
+        if a != b {
+            // Show context: 3 tokens before + the diff
+            let ctx_start = i.saturating_sub(3);
+            let our_ctx: Vec<&str> = ours[ctx_start..=i].iter().map(String::as_str).collect();
+            let exp_ctx: Vec<&str> = expected[ctx_start..=i].iter().map(String::as_str).collect();
+            return format!("@{i}: ours=[{}] exp=[{}]", our_ctx.join(" "), exp_ctx.join(" "));
+        }
+    }
+    if ours.len() != expected.len() {
+        return format!("len: ours={} exp={}", ours.len(), expected.len());
+    }
+    String::new()
+}
+
+/// Count total memoization slots in code (sum of all _c(N) arguments).
+fn count_slots(code: &str) -> u32 {
+    let mut total = 0u32;
+    for cap in code.match_indices("_c(") {
+        let rest = &code[cap.0 + 3..];
+        if let Some(end) = rest.find(')')
+            && let Ok(n) = rest[..end].trim().parse::<u32>()
+        {
+            total += n;
+        }
+    }
+    total
 }
 
 // ---------------------------------------------------------------------------
@@ -897,6 +970,86 @@ fn upstream_conformance() {
     println!("Panicked:          {}", panicked.len());
     println!("Known failures:    {}", results.iter().filter(|r| r.known_failure).count());
     println!();
+
+    // Diagnostic categorization of known failures
+    let known_diverged: Vec<&&FixtureResult> =
+        diverged.iter().filter(|r| r.known_failure).collect();
+    let mut cat_we_bail_they_compile = 0u32;
+    let mut cat_we_compile_they_dont = 0u32;
+    let mut cat_both_compile_slots_match = 0u32;
+    let mut cat_both_compile_slots_differ = 0u32;
+    let mut cat_both_no_memo = 0u32;
+    let mut cat_other = 0u32;
+    let mut slot_diff_minus1 = 0u32;
+    let mut slot_diff_plus1 = 0u32;
+    let mut slot_diff_plus2 = 0u32;
+    let mut slot_diff_other = 0u32;
+
+    for r in &known_diverged {
+        let we_memo = r.our_transformed && r.our_slots > 0;
+        let they_memo = r.expected_has_memo;
+
+        if !we_memo && they_memo {
+            cat_we_bail_they_compile += 1;
+        } else if we_memo && !they_memo {
+            cat_we_compile_they_dont += 1;
+        } else if we_memo && they_memo {
+            if r.our_slots == r.expected_slots {
+                cat_both_compile_slots_match += 1;
+            } else {
+                cat_both_compile_slots_differ += 1;
+                let diff = r.our_slots.cast_signed() - r.expected_slots.cast_signed();
+                match diff {
+                    -1 => slot_diff_minus1 += 1,
+                    1 => slot_diff_plus1 += 1,
+                    2 => slot_diff_plus2 += 1,
+                    _ => slot_diff_other += 1,
+                }
+            }
+        } else if !we_memo && !they_memo {
+            cat_both_no_memo += 1;
+        } else {
+            cat_other += 1;
+        }
+    }
+
+    println!("--- FAILURE CATEGORIZATION ({} known divergences) ---", known_diverged.len());
+    println!("  We bail, they compile:          {cat_we_bail_they_compile}");
+    println!("  We compile, they don't:         {cat_we_compile_they_dont}");
+    println!("  Both compile, slots MATCH:      {cat_both_compile_slots_match}");
+    println!("  Both compile, slots DIFFER:     {cat_both_compile_slots_differ}");
+    println!("    our_slots - expected = -1:      {slot_diff_minus1}");
+    println!("    our_slots - expected = +1:      {slot_diff_plus1}");
+    println!("    our_slots - expected = +2:      {slot_diff_plus2}");
+    println!("    other diff:                     {slot_diff_other}");
+    println!("  Both no memo (format diff):     {cat_both_no_memo}");
+    println!("  Other:                          {cat_other}");
+    println!();
+
+    // Print specific fixtures in each actionable category
+    if cat_both_no_memo > 0 {
+        println!("--- BOTH NO MEMO (format diff, {cat_both_no_memo} fixtures) ---");
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            if !we_memo && !r.expected_has_memo {
+                println!("  {}", r.relative_path);
+            }
+        }
+        println!();
+    }
+
+    if cat_both_compile_slots_match > 0 {
+        println!(
+            "--- SAME SLOTS DIFFERENT STRUCTURE ({cat_both_compile_slots_match} fixtures) ---"
+        );
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            if we_memo && r.expected_has_memo && r.our_slots == r.expected_slots {
+                println!("  [{} slots] {} | {}", r.our_slots, r.relative_path, r.first_diff);
+            }
+        }
+        println!();
+    }
 
     // Report passing fixtures that are in known-failures (can be removed).
     let newly_passing: Vec<&&FixtureResult> = matched.iter().filter(|r| r.known_failure).collect();

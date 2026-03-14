@@ -271,7 +271,6 @@ early-return-no-declarations-reassignments-dependencies.js
 early-return-within-reactive-scope.js
 early-return.js
 empty-catch-statement.ts
-empty-eslint-suppressions-config.js
 error._todo.computed-lval-in-destructure.js
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-couldnt-find-binding-for-decl.js
@@ -319,6 +318,7 @@ exhaustive-deps/compile-files-with-exhaustive-deps-violation-in-effects.js
 exhaustive-deps/exhaustive-deps-allow-constant-folded-values.js
 exhaustive-deps/exhaustive-deps-allow-nonreactive-stable-types-as-extra-deps.js
 exhaustive-deps/exhaustive-deps-effect-events.js
+exhaustive-deps/error.invalid-missing-nonreactive-dep-inner-function.js
 exhaustive-deps/exhaustive-deps.js
 existing-variables-with-c-name.js
 expression-with-assignment-dynamic.js

@@ -754,6 +754,12 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
         output.push_str(") {\n");
     }
 
+    // Emit function body directives (e.g., "use memo", "use forget", "use foo")
+    // These must appear before any other statements.
+    for directive in &rf.directives {
+        output.push_str(&format!("  \"{directive}\";\n"));
+    }
+
     // Count total cache slots needed
     let total_slots = count_cache_slots(&rf.body);
     if total_slots > 0 {
@@ -2324,6 +2330,11 @@ pub fn codegen_function_with_source_map(
         ctx.write(") => {\n");
     } else {
         ctx.write(") {\n");
+    }
+
+    // Emit directives
+    for directive in &rf.directives {
+        ctx.write(&format!("  \"{directive}\";\n"));
     }
 
     let total_slots = count_cache_slots(&rf.body);

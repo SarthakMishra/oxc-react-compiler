@@ -39,33 +39,24 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
                 _ => continue,
             };
 
-            // Check argument count: must be exactly 2 (callback + deps)
-            if args.len() != 2 {
-                errors.push(CompilerError::invalid_react_with_kind(
-                    instr.loc,
-                    format!(
-                        "\"{hook_name}\" requires exactly 2 arguments (a callback and a dependency array), \
-                         but received {}.",
-                        args.len()
-                    ),
-                    DiagnosticKind::UseMemoValidation,
-                ));
-            }
+            // DIVERGENCE: Upstream does NOT validate argument count for useMemo/useCallback.
+            // `useMemo(fn)` without a deps array is valid React (recomputes every render).
+            // We only validate the deps array if one IS provided.
 
             // Check that the deps argument is an array literal, not a computed value
-            if args.len() == 2 {
+            if args.len() >= 2 {
                 check_deps_is_array_literal(hir, &args[1], hook_name, instr.loc, errors);
             }
 
             if !args.is_empty() {
                 let callback_id = args[0].identifier.id;
-                // Check if the callback has parameters (useMemo/useCallback callbacks
-                // must not accept parameters — they are called with no arguments)
-                check_memo_callback_params(hir, callback_id, hook_name, instr.loc, errors);
-                // Check if the callback is async
-                check_memo_callback_async(hir, callback_id, instr.loc, errors);
 
                 if hook_name == "useMemo" {
+                    // Only useMemo callbacks must not accept parameters (called with no args).
+                    // useCallback callbacks CAN and DO accept parameters — that's their purpose.
+                    check_memo_callback_params(hir, callback_id, hook_name, instr.loc, errors);
+                    // Check if the callback is async (useMemo must be sync)
+                    check_memo_callback_async(hir, callback_id, instr.loc, errors);
                     // Check if the callback returns void (useMemo must return a value)
                     check_memo_callback_void(hir, callback_id, instr.loc, errors);
                     // Check if the callback calls setState
