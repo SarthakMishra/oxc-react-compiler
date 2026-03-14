@@ -485,6 +485,8 @@ struct FixtureResult {
     expected_slots: u32,
     /// First diff context (for debugging): "our_token | expected_token @ position"
     first_diff: String,
+    /// First diagnostic/error message (for bail-out categorization).
+    first_error: String,
 }
 
 /// Parse per-fixture compiler options from `@directive` comments in the source.
@@ -692,6 +694,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
             our_slots: 0,
             expected_slots: 0,
             first_diff: String::new(),
+            first_error: String::new(),
         };
     };
 
@@ -745,6 +748,11 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                 (None, false, 0)
             };
 
+            let first_error = compile_result
+                .diagnostics
+                .first()
+                .map(std::string::ToString::to_string)
+                .unwrap_or_default();
             FixtureResult {
                 relative_path,
                 panicked: false,
@@ -756,6 +764,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                 our_slots,
                 expected_slots,
                 first_diff,
+                first_error,
             }
         }
         Err(_) => FixtureResult {
@@ -767,6 +776,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
             our_slots: 0,
             expected_slots: 0,
             first_diff: String::new(),
+            first_error: String::new(),
             known_failure: false,
             _diagnostic_count: 0,
         },
@@ -980,6 +990,7 @@ fn upstream_conformance() {
     let mut cat_both_compile_slots_differ = 0u32;
     let mut cat_both_no_memo = 0u32;
     let mut cat_other = 0u32;
+    let mut bail_errors: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     let mut slot_diff_minus1 = 0u32;
     let mut slot_diff_plus1 = 0u32;
     let mut slot_diff_plus2 = 0u32;
@@ -991,6 +1002,14 @@ fn upstream_conformance() {
 
         if !we_memo && they_memo {
             cat_we_bail_they_compile += 1;
+            // Categorize the bail-out error
+            let err_key = if r.first_error.is_empty() {
+                "(no error)".to_string()
+            } else {
+                // Truncate to first 60 chars for grouping
+                r.first_error.chars().take(60).collect::<String>()
+            };
+            *bail_errors.entry(err_key).or_insert(0) += 1;
         } else if we_memo && !they_memo {
             cat_we_compile_they_dont += 1;
         } else if we_memo && they_memo {
@@ -1025,6 +1044,17 @@ fn upstream_conformance() {
     println!("  Both no memo (format diff):     {cat_both_no_memo}");
     println!("  Other:                          {cat_other}");
     println!();
+
+    // Print bail-out error breakdown
+    if !bail_errors.is_empty() {
+        println!("--- BAIL-OUT ERROR BREAKDOWN ({cat_we_bail_they_compile} fixtures) ---");
+        let mut sorted: Vec<_> = bail_errors.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        for (err, count) in &sorted {
+            println!("  {count:>4}x  {err}");
+        }
+        println!();
+    }
 
     // Print specific fixtures in each actionable category
     if cat_both_no_memo > 0 {
