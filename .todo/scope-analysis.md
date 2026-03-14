@@ -30,8 +30,16 @@ at least 2 slots (1 dep + 1 declaration).
 **Upstream:** `InferReactivePlaces.ts` + `PruneNonReactivePlaces.ts` +
 `PruneNonEscapingScopes.ts` + `PruneAlwaysInvalidatingScopes.ts`
 
-**What to check:**
-- Are we marking too many identifiers as reactive in `infer_reactive_places.rs`?
+**Partial fix (2026-03-14):** `infer_reactive_places` parameter-only seeding.
+Previously the entry-block loop marked ALL `DeclareLocal` instructions as
+reactive, including temporaries and non-parameter locals. Fixed to accept
+`param_names: &[String]` and only seed `DeclareLocal` instructions whose
+name appears in `param_names`, matching upstream `InferReactivePlaces.ts`
+which seeds from `fn.params`. Result: +31 fixtures (399 to 430/1717).
+Files: `infer_reactive_places.rs`, `pipeline.rs`, `pass_unit_tests.rs`.
+
+**Remaining issues:**
+- Are we still marking too many identifiers as reactive through fixpoint propagation?
 - Is `prune_scopes.rs` correctly pruning non-escaping and always-invalidating scopes?
 - Are we creating scopes for values that don't escape the function?
 

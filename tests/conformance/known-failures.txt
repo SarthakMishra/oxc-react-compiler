@@ -189,7 +189,6 @@ constant-propagation-for.js
 constant-propagation-into-function-expressions.js
 constant-propagation-phi.js
 constant-propagation-string-concat.js
-constant-propagation-template-literal.js
 constant-propagation-unary-number.js
 constant-propagation-unary.js
 constant-propagation-while.js
@@ -222,7 +221,6 @@ dependencies-outputs.js
 dependencies.js
 destructure-array-assignment-to-context-var.js
 destructure-array-declaration-to-context-var.js
-destructure-capture-global.js
 destructure-default-array-with-unary.js
 destructure-direct-reassignment.js
 destructure-in-branch-ssa.ts
@@ -259,7 +257,6 @@ do-while-early-unconditional-break.js
 do-while-simple.js
 dominator.js
 dont-memoize-primitive-function-call-non-escaping-useMemo.js
-dont-memoize-primitive-function-call-non-escaping.js
 dont-merge-if-dep-is-inner-declaration-of-previous-scope.js
 dont-merge-overlapping-scopes-store-const-used-later.js
 dont-merge-overlapping-scopes-with-intermediate-reassignment.js
@@ -270,12 +267,9 @@ early-return-no-declarations-reassignments-dependencies.js
 early-return-within-reactive-scope.js
 early-return.js
 empty-catch-statement.ts
-error._todo.computed-lval-in-destructure.js
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-couldnt-find-binding-for-decl.js
 error.bug-invariant-unnamed-temporary.js
-error.call-args-destructuring-asignment-complex.js
-error.dont-hoist-inline-reference.js
 error.hoisting-simple-function-declaration.js
 error.invalid-hoisting-setstate.js
 error.invalid-mutate-props-in-effect-fixpoint.js
@@ -293,9 +287,7 @@ error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hoisting-simple-var-declaration.js
-error.todo-hook-call-spreads-mutable-iterator.js
 error.todo-kitchensink.js
-error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-new-target-meta-property.js
 error.todo-object-expression-get-syntax.js
 error.todo-valid-functiondecl-hoisting.tsx
@@ -372,7 +364,6 @@ for-in-statement-continue.js
 for-in-statement-type-inference.js
 for-in-statement.js
 for-logical.js
-for-loop-let-undefined-decl.js
 for-loop-with-value-block-initializer.js
 for-multiple-variable-declarations-in-initializer.js
 for-of-break.js
@@ -468,7 +459,6 @@ hoisting-simple-const-declaration.js
 hoisting-simple-function-expression.js
 hoisting-simple-let-declaration.js
 hoisting-within-lambda.js
-holey-array-expr.js
 holey-array-pattern-dce-2.js
 holey-array-pattern-dce.js
 hook-call-freezes-captured-memberexpr.tsx
@@ -494,14 +484,11 @@ independent-across-if.js
 independent.js
 independently-memoize-object-property.js
 infer-compile-hooks-with-multiple-params.js
-infer-computed-delete.js
 infer-functions-component-with-hook-call.js
 infer-functions-component-with-ref-arg.js
 infer-functions-hook-with-hook-call.js
 infer-global-object.js
 infer-nested-object-method.jsx
-infer-phi-primitive.js
-infer-property-delete.js
 infer-sequential-optional-chain-nonnull.ts
 infer-types-through-type-cast.flow.js
 inner-function/nullable-objects/array-map-named-callback-cross-context.js
@@ -676,7 +663,6 @@ nonmutated-spread-props-jsx.js
 nonmutated-spread-props-local-indirection.js
 nonmutated-spread-props.js
 nonmutating-capture-in-unsplittable-memo-block.ts
-nonoptional-load-from-optional-memberexpr.js
 nonreactive-noescaping-dependency-can-inline-into-consuming-scope.js
 numeric-literal-as-object-property-key.js
 obj-literal-cached-in-if-else.js
@@ -698,13 +684,11 @@ object-expression-computed-key-object-mutated-later.js
 object-expression-computed-key.js
 object-expression-computed-member.js
 object-expression-member-expr-call.js
-object-expression-string-literal-key.js
 object-keys.js
 object-literal-method-call-in-ternary-test.js
 object-literal-method-derived-in-ternary-consequent.js
 object-literal-method-in-ternary-consequent.js
 object-literal-method-in-ternary-test.js
-object-literal-spread-element.js
 object-method-maybe-alias.js
 object-method-shorthand-3.js
 object-method-shorthand-aliased-mutate-after.js
@@ -726,7 +710,6 @@ optional-call-simple.js
 optional-call-with-independently-memoizable-arg.js
 optional-call-with-optional-property-load.js
 optional-call.js
-optional-computed-load-static.js
 optional-computed-member-expression.js
 optional-member-expression-as-memo-dep.js
 optional-member-expression-call-as-property.js
@@ -1047,7 +1030,6 @@ repro-no-value-for-temporary.js
 repro-non-identifier-object-keys.ts
 repro-object-expression-computed-key-modified-during-after-construction-hoisted-sequence-expr.js
 repro-object-fromEntries-entries.js
-repro-object-pattern.js
 repro-preds-undefined-try-catch-return-primitive.js
 repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency.js
 repro-propagate-type-of-ternary-jsx.js
@@ -1076,7 +1058,6 @@ reverse-postorder.js
 rewrite-phis-in-lambda-capture-context.js
 rules-of-hooks/allow-locals-named-like-hooks.js
 rules-of-hooks/allow-props-named-like-hooks.js
-rules-of-hooks/error.invalid-hook-for.js
 rules-of-hooks/rules-of-hooks-0e2214abc294.js
 rules-of-hooks/rules-of-hooks-4f6c78a14bf7.js
 rules-of-hooks/rules-of-hooks-69521d94fa03.js
@@ -1102,7 +1083,6 @@ sequentially-constant-progagatable-if-test-conditions.js
 shapes-object-key.ts
 simple-alias.js
 simple-function-1.js
-simple-scope.js
 simple.js
 ssa-arrayexpression.js
 ssa-call-jsx-2.js
@@ -1112,15 +1092,11 @@ ssa-complex-multiple-if.js
 ssa-complex-single-if.js
 ssa-for-of.js
 ssa-for-trivial-update.js
-ssa-for.js
 ssa-if-else.js
 ssa-leave-case.js
 ssa-multiple-phis.js
 ssa-nested-loops-no-reassign.js
-ssa-nested-partial-phi.js
-ssa-nested-partial-reassignment.js
 ssa-newexpression.js
-ssa-non-empty-initializer.js
 ssa-objectexpression-phi.js
 ssa-objectexpression.js
 ssa-property-alias-alias-mutate-if.js
@@ -1155,7 +1131,6 @@ ssa-single-if.js
 ssa-switch.js
 ssa-throw.js
 ssa-while-no-reassign.js
-ssa-while.js
 ssr/optimize-ssr.js
 ssr/ssr-infer-event-handlers-from-setState.js
 ssr/ssr-infer-event-handlers-from-startTransition.js
@@ -1167,9 +1142,6 @@ switch-non-final-default.js
 switch-with-fallthrough.js
 switch-with-only-default.js
 switch.js
-tagged-template-in-hook.js
-tagged-template-literal.js
-template-literal.js
 temporary-accessed-outside-scope.js
 temporary-at-start-of-value-block.js
 temporary-property-load-accessed-outside-scope.js
@@ -1180,7 +1152,6 @@ todo-global-load-cached.tsx
 todo-global-property-load-cached.tsx
 todo-granular-iterator-semantics.js
 todo-optional-call-chain-in-optional.ts
-todo.error.object-pattern-computed-key.js
 todo.memoize-loops-that-produce-memoizeable-values.js
 todo.unnecessary-lambda-memoization.js
 transitive-alias-fields.js
@@ -1216,7 +1187,6 @@ ts-enum-inline.tsx
 ts-instantiation-default-param.tsx
 ts-instantiation-expression.tsx
 ts-non-null-expression-default-value.tsx
-type-alias-declaration.ts
 type-alias-used-as-annotation.ts
 type-alias-used-as-annotation_.flow.js
 type-alias-used-as-variable-annotation.ts
@@ -1225,7 +1195,6 @@ type-alias.flow.js
 type-args-test-binary-operator.js
 type-binary-operator.js
 type-cast-expression.flow.js
-type-field-load.js
 type-inference-array-from.js
 type-provider-log-default-import.tsx
 type-provider-log.tsx
@@ -1320,6 +1289,4 @@ value-block-mutates-outer-value.ts
 weakmap-constructor.js
 weakset-constructor.js
 while-conditional-continue.js
-while-logical.js
-while-property.js
 while-with-assignment-in-test.js

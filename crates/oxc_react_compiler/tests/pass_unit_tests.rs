@@ -81,7 +81,7 @@ fn test_infer_reactive_places_simple() {
 
     let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
-    infer_reactive_places(&mut hir);
+    infer_reactive_places(&mut hir, &[]);
 
     // The pass should run without panicking on a valid HIR.
     assert_eq!(hir.blocks.len(), 1);
@@ -103,8 +103,52 @@ fn test_infer_reactive_places_empty_hir() {
 
     let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
-    infer_reactive_places(&mut hir);
+    infer_reactive_places(&mut hir, &[]);
     assert_eq!(hir.blocks.len(), 1);
+}
+
+#[test]
+fn test_infer_reactive_places_only_seeds_params() {
+    // Entry block has two DeclareLocal: one for param "props" and one for local "x".
+    // Only "props" should be seeded as reactive since it's in param_names.
+    let mut ids = IdGenerator::new();
+    let block_id = ids.next_block_id();
+
+    let props_lvalue = make_place(&mut ids, "decl_props");
+    let props_inner = make_place(&mut ids, "props");
+    let param_instr = make_instruction(
+        &mut ids,
+        props_lvalue,
+        InstructionValue::DeclareLocal { lvalue: props_inner, type_: InstructionKind::Let },
+    );
+
+    let x_lvalue = make_place(&mut ids, "decl_x");
+    let x_inner = make_place(&mut ids, "x");
+    let local_instr = make_instruction(
+        &mut ids,
+        x_lvalue,
+        InstructionValue::DeclareLocal { lvalue: x_inner, type_: InstructionKind::Const },
+    );
+
+    let block = BasicBlock {
+        kind: BlockKind::Block,
+        id: block_id,
+        instructions: vec![param_instr, local_instr],
+        terminal: Terminal::Return { value: make_place(&mut ids, "undefined") },
+        preds: vec![],
+        phis: vec![],
+    };
+
+    let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
+
+    // Only "props" is a param — "x" should NOT be seeded as reactive
+    infer_reactive_places(&mut hir, &["props".to_string()]);
+
+    let block = &hir.blocks[0].1;
+    // First instruction (DeclareLocal for "props") should be reactive
+    assert!(block.instructions[0].lvalue.reactive, "param 'props' should be reactive");
+    // Second instruction (DeclareLocal for "x") should NOT be reactive
+    assert!(!block.instructions[1].lvalue.reactive, "local 'x' should NOT be reactive");
 }
 
 // ---------------------------------------------------------------------------

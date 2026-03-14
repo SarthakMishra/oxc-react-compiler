@@ -40,9 +40,15 @@ Common patterns:
 - Functions that only use module-level imports
 - Helper functions with no hooks/state/context
 
+**Partial fix (2026-03-14):** The `infer_reactive_places` parameter-only
+seeding fix (see [scope-analysis.md](scope-analysis.md)#over-counting)
+narrowed the reactive seed set so non-parameter locals in the entry block
+are no longer marked reactive. This reduced over-eager scope creation for
+some of these functions (+31 fixtures total).
+
 **Fix strategy:** This overlaps with scope-analysis over-counting.
-If we fix reactive place inference to be more precise, some of these
-functions will naturally produce zero scopes and bail out.
+Further improvements to reactive place inference precision and scope
+pruning will continue reducing this category.
 
 ### 3. Functions upstream doesn't compile at all
 

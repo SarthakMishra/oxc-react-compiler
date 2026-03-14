@@ -201,7 +201,7 @@ pub fn run_pipeline(
 
     // Phase 7: Reactivity Inference
     // Pass 29: infer_reactive_places
-    crate::inference::infer_reactive_places::infer_reactive_places(hir);
+    crate::inference::infer_reactive_places::infer_reactive_places(hir, param_names);
 
     // Pass 30: validate_exhaustive_dependencies (conditional)
     // Runs if either memo deps validation is on, or effect deps mode is not Off,

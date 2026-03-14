@@ -47,6 +47,38 @@ is exposing mutable range data to the validator.
 - `component.js`
 - `dependencies.js`
 
+## Frozen-Mutation False Positive on Hooks Without JSX
+
+**Diagnostic:** "This value cannot be modified. Modifying a value used
+previously in JSX is not allowed."
+
+**Root cause:** The `validate_no_mutation_after_freeze` pass pre-freezes
+component params and hook arguments at function entry (added in Phase 68).
+In hooks that do NOT contain any JSX, this causes false positives: param
+mutations that upstream considers fine are flagged because our validator
+freezes params unconditionally, whereas upstream only freezes values after
+they flow into JSX or a hook call. This surfaces as a pre-existing test
+regression in `codegen_valid_hook` (the test expects compilation to
+succeed but we bail out with a frozen-mutation error).
+
+**Upstream:** `src/Validation/ValidateNoSetStateInRender.ts` -- freeze is
+based on mutable range expiry from `InferMutableRanges.ts`, not on
+unconditional param pre-freeze. A hook param is only frozen after its
+mutable range ends, which for simple mutations before any JSX usage means
+it stays mutable.
+
+**Fix strategy:** Either:
+1. Gate param pre-freeze on whether the function contains JSX (quick fix), or
+2. Wire actual mutable range data from `infer_mutation_aliasing_ranges.rs`
+   into the validator (correct long-term fix, aligns with the main
+   frozen-mutation gap above).
+
+**Key files:**
+- `crates/oxc_react_compiler/src/validation/validate_no_mutation_after_freeze.rs`
+- `crates/oxc_react_compiler/tests/pass_unit_tests.rs` (codegen_valid_hook test)
+
+---
+
 ## Locals-Reassigned False Positives (30 fixtures)
 
 **Diagnostic:** "Local variable X is assigned during render but reassigned

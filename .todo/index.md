@@ -2,20 +2,24 @@
 
 > Every item exists to increase the fixture pass rate. Nothing else.
 
-**Current: 399/1717 (23.2%) -- 1318 failures remaining**
+**Current: 430/1717 (25.0%) -- 1287 failures remaining**
 
 Last updated: 2026-03-14
 
-## Failure Breakdown (from automated analysis)
+## Failure Breakdown (from automated analysis at 399/1717)
+
+Note: These counts are from the 399/1717 baseline. The parameter seeding
+fix (+31 fixtures) reduced over-count and unnecessary-memo categories.
+Re-run breakdown analysis to get updated numbers.
 
 | Root Cause | Fixtures | Fix |
 |---|---|---|
-| Slot over-count (too many scopes/deps) | 474 | [scope-analysis.md] |
+| Slot over-count (too many scopes/deps) | ~443 | [scope-analysis.md] |
 | False-positive frozen-mutation bail-out | 162 | [false-bailouts.md] |
-| Slot under-count (missing scopes) | 162 | [scope-analysis.md] |
-| Same slots, different codegen structure | 150 | [codegen-structure.md] |
-| We memoize, upstream returns unchanged | 133 | [unnecessary-memo.md] |
-| Both no-memo, output differs | 43 | [unnecessary-memo.md] |
+| Slot under-count (missing scopes) | ~162 | [scope-analysis.md] |
+| Same slots, different codegen structure | ~150 | [codegen-structure.md] |
+| We memoize, upstream returns unchanged | ~102 | [unnecessary-memo.md] |
+| Both no-memo, output differs | ~43 | [unnecessary-memo.md] |
 | Upstream errors we should match | 39 | [upstream-errors.md] |
 | False-positive locals-reassigned bail-out | 30 | [false-bailouts.md] |
 | False-positive ref-access bail-out | 18 | [false-bailouts.md] |
@@ -32,6 +36,7 @@ We reject functions that upstream compiles successfully. Each fix is
 a direct 1:1 fixture gain -- bail-out removed = fixture passes.
 
 - [ ] Fix frozen-mutation false positives (162 fixtures) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-false-positives
+- [ ] Fix frozen-mutation false positive on hooks without JSX (pre-existing regression) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-hooks-without-jsx
 - [ ] Fix locals-reassigned-after-render false positives (30 fixtures) -- [false-bailouts.md](false-bailouts.md)#locals-reassigned-false-positives
 - [ ] Fix ref-access-during-render false positives (18 fixtures) -- [false-bailouts.md](false-bailouts.md)#ref-access-false-positives
 - [ ] Fix useMemo/useCallback argument count false positives (17 fixtures) -- [false-bailouts.md](false-bailouts.md)#usememo-usecallback-arg-count

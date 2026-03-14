@@ -11,7 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// Uses fixpoint iteration. Since the HIR builder creates fresh IdentifierIds for every
 /// Place reference (even for the same variable), we track reactivity by variable NAME
 /// in addition to ID, so that DeclareLocal(count) → LoadLocal(count) propagation works.
-pub fn infer_reactive_places(hir: &mut HIR) {
+pub fn infer_reactive_places(hir: &mut HIR, param_names: &[String]) {
     // Build id → name map for resolving names across instruction boundaries.
     // LoadGlobal: lvalue_id → global name (e.g., "useState")
     // DeclareLocal: lvalue_id → inner lvalue name (e.g., "count")
@@ -76,14 +76,18 @@ pub fn infer_reactive_places(hir: &mut HIR) {
     }
 
     // Mark function parameters as reactive (props change between renders).
-    // The entry block's DeclareLocal instructions represent the function params.
+    // Only seed DeclareLocal instructions whose name matches a function parameter.
+    // The entry block may also contain local declarations (e.g., `const a = 1`)
+    // that are NOT parameters and must NOT be seeded as reactive.
+    // Upstream: InferReactivePlaces.ts seeds reactivity from `params` of the function.
     if let Some((_, entry_block)) = hir.blocks.first() {
         for instr in &entry_block.instructions {
-            if let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value {
+            if let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+                && param_names.iter().any(|p| p == name)
+            {
                 reactive_ids.insert(instr.lvalue.identifier.id);
-                if let Some(name) = &lvalue.identifier.name {
-                    reactive_names.insert(name.clone());
-                }
+                reactive_names.insert(name.clone());
             }
         }
     }

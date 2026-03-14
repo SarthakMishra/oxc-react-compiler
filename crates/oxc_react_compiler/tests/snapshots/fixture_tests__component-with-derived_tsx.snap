@@ -9,14 +9,15 @@ import { c as _c } from "react/compiler-runtime";
 function Display(t0) {
   const $ = _c(6);
   const { items } = t0;
-  let count;
+  let t56;
   if ($[0] !== items.length) {
-    count = items.length;
+    t56 = items.length;
     $[0] = items.length;
-    $[1] = count;
+    $[1] = t56;
   } else {
-    count = $[1];
+    t56 = $[1];
   }
+  const count = t56;
   if ($[2] !== count) {
     $[2] = count;
   }
