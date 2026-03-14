@@ -71,7 +71,7 @@ chaining, nested scope flattening, and safety checks. See memoization-structure.
 - [x] **4d** Safety checks for intermediate instructions between scopes — [memoization-structure.md](memoization-structure.md)#sub-task-4d-safety-checks-for-intermediate-instructions
 - [x] **4e** `scopeIsEligibleForMerging` predicate (always-invalidating types) — [memoization-structure.md](memoization-structure.md)#sub-task-4e-scopeiseligibleformerging-predicate
 - [ ] **4c** Nested scope flattening (identical-dep inner scopes) — [memoization-structure.md](memoization-structure.md)#sub-task-4c-nested-scope-flattening
-- [ ] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
+- [x] **4b** Output-to-input scope chaining in invalidate-together — [memoization-structure.md](memoization-structure.md)#sub-task-4b-output-to-input-scope-chaining-in-invalidate-together
 - [ ] Correct `_c(N)` slot counts — [memoization-structure.md](memoization-structure.md)#gap-3-cache-slot-count-alignment
 - [ ] **4f** DeclarationId alignment for dependency comparison — [memoization-structure.md](memoization-structure.md)#sub-task-4f-declarationid-alignment-for-dependency-comparison
 - [ ] setState false-positive in non-reactive dep propagation — [memoization-structure.md](memoization-structure.md)#gap-9-setstate-false-positive-in-non-reactive-propagation

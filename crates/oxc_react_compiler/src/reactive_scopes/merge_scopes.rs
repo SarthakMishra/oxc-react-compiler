@@ -19,7 +19,7 @@ type LastUsageMap = FxHashMap<IdentifierId, u32>;
 /// Build a map of last-usage instruction IDs for all identifiers in the
 /// reactive function tree. For each identifier, records the maximum
 /// instruction ID at which it appears as a read operand.
-fn buildlast_usage_map(reactive_fn: &ReactiveFunction) -> LastUsageMap {
+fn build_last_usage_map(reactive_fn: &ReactiveFunction) -> LastUsageMap {
     let mut map: LastUsageMap = FxHashMap::default();
     collectlast_usage_in_block(&reactive_fn.body, &mut map);
     map
@@ -310,7 +310,6 @@ struct IntermediateAccumulator {
     temporaries: FxHashMap<IdentifierId, IdentifierId>,
 }
 
-#[expect(dead_code, reason = "Infrastructure for Sub-task 4b merge loop")]
 impl IntermediateAccumulator {
     fn new() -> Self {
         Self { lvalues: FxHashSet::default(), temporaries: FxHashMap::default() }
@@ -325,7 +324,6 @@ impl IntermediateAccumulator {
 /// Attempts to absorb an intermediate instruction into the accumulator.
 /// Returns `true` if the instruction is safe (accumulator updated),
 /// `false` if it resets the merge candidate (caller must call `clear()`).
-#[expect(dead_code)] // Used by Sub-task 4b
 fn accumulate_intermediate_instruction(
     instr: &Instruction,
     acc: &mut IntermediateAccumulator,
@@ -360,7 +358,6 @@ fn accumulate_intermediate_instruction(
 /// Returns true if all intermediate lvalues are last-used strictly before
 /// the end of `scope` (i.e., they do not escape beyond the merged boundary).
 /// Corresponds to `areLValuesLastUsedByScope` in the upstream TypeScript.
-#[expect(dead_code)] // Used by Sub-task 4b
 fn are_lvalues_last_used_by_scope(
     scope: &ReactiveScope,
     lvalues: &FxHashSet<IdentifierId>,
@@ -388,7 +385,6 @@ fn are_lvalues_last_used_by_scope(
 ///
 /// Matches upstream `scopeIsEligibleForMerging` in
 /// `MergeReactiveScopesThatInvalidateTogether.ts`.
-#[expect(dead_code)] // Used by Sub-task 4b
 fn scope_is_eligible_for_merging(scope_block: &crate::hir::types::ReactiveScopeBlock) -> bool {
     use crate::hir::types::Type;
 
@@ -629,7 +625,7 @@ pub fn merge_overlapping_reactive_scopes_hir(hir: &mut HIR) {
 /// If two scopes have the same set of dependencies, they should be merged
 /// because they'll always recompute at the same time.
 pub fn merge_reactive_scopes_that_invalidate_together(reactive_fn: &mut ReactiveFunction) {
-    let last_usage = buildlast_usage_map(reactive_fn);
+    let last_usage = build_last_usage_map(reactive_fn);
     merge_scopes_in_block(&mut reactive_fn.body, &last_usage);
 }
 
@@ -644,76 +640,71 @@ fn dep_key_set(scope: &crate::hir::types::ReactiveScope) -> BTreeSet<DepKey> {
     scope.dependencies.iter().map(|d| (d.identifier.name.clone(), d.path.clone())).collect()
 }
 
-fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock, last_usage: &LastUsageMap) {
-    // Collect scope indices with their canonical dependency keys
-    let mut scope_indices: Vec<(usize, BTreeSet<DepKey>)> = Vec::new();
+/// Check if two scopes can be merged. Returns true under two conditions:
+/// 1. Identical dependencies (same dep key sets, both non-empty)
+/// 2. Output-to-input chain: prev's declarations are next's dependencies,
+///    and all matched declarations have always-invalidating types.
+///
+/// Matches upstream `canMergeScopes` in `MergeReactiveScopesThatInvalidateTogether.ts`.
+fn can_merge_scopes(prev: &ReactiveScope, next: &ReactiveScope) -> bool {
+    use crate::hir::types::Type;
 
-    for (i, instr) in block.instructions.iter().enumerate() {
-        if let crate::hir::types::ReactiveInstruction::Scope(scope_block) = instr {
-            scope_indices.push((i, dep_key_set(&scope_block.scope)));
+    // Reassignment guard — scopes with cross-scope reassignments cannot merge
+    if !prev.reassignments.is_empty() || !next.reassignments.is_empty() {
+        return false;
+    }
+
+    // Branch 1: identical deps (both non-empty)
+    let prev_deps = dep_key_set(prev);
+    let next_deps = dep_key_set(next);
+    if !prev_deps.is_empty() && prev_deps == next_deps {
+        return true;
+    }
+
+    // Branch 2: output-to-input chain
+    // All next-deps must have empty paths (direct variable references)
+    if !next.dependencies.iter().all(|d| d.path.is_empty()) {
+        return false;
+    }
+
+    // Every dep of next must match a declaration of prev with an always-invalidating type
+    // DIVERGENCE: Upstream uses DeclarationId for matching; we use name-based matching
+    // as a workaround until Sub-task 4f aligns DeclarationIds.
+    // TODO(4f): use declarationId via temporaries for precise alias resolution
+    if next.dependencies.is_empty() {
+        return false;
+    }
+
+    for dep in &next.dependencies {
+        let dep_name = &dep.identifier.name;
+        let matched = prev.declarations.iter().any(|(_, decl)| {
+            &decl.identifier.name == dep_name
+                && matches!(decl.identifier.type_, Type::Object | Type::Function)
+        });
+        if !matched {
+            return false;
         }
     }
 
-    // Find consecutive pairs with identical deps and merge them.
-    // DIVERGENCE: Upstream MergeReactiveScopesThatInvalidateTogether.ts compares
-    // scopes by named dependency path (identifier name + property path), not by
-    // IdentifierId. Our HIR creates fresh IDs per Place, so ID comparison makes
-    // almost all scopes appear to have different deps. Name-based comparison
-    // correctly identifies scopes that invalidate together.
-    //
-    // We only merge scopes with strictly identical dep sets (not subsets) to
-    // match upstream semantics: "invalidate together" means the same deps.
-    let mut merged_indices: rustc_hash::FxHashSet<usize> = rustc_hash::FxHashSet::default();
-    let mut to_merge: Vec<(usize, usize)> = Vec::new();
-    for i in 0..scope_indices.len() {
-        if merged_indices.contains(&i) {
-            continue;
-        }
-        for j in (i + 1)..scope_indices.len() {
-            if merged_indices.contains(&j) {
-                continue;
-            }
-            let (_, ref a_deps) = scope_indices[i];
-            let (_, ref b_deps) = scope_indices[j];
-            // Merge only when deps are identical and non-empty
-            if !a_deps.is_empty() && a_deps == b_deps {
-                to_merge.push((scope_indices[i].0, scope_indices[j].0));
-                merged_indices.insert(j); // Prevent double-merge of scope j
-            }
+    true
+}
+
+/// Merge dependencies from absorbee into winner, deduplicating by name+path.
+fn merge_scope_deps(winner: &mut ReactiveScope, absorbee: &ReactiveScope) {
+    let existing_keys = dep_key_set(winner);
+    for dep in &absorbee.dependencies {
+        let key = (dep.identifier.name.clone(), dep.path.clone());
+        if !existing_keys.contains(&key) {
+            winner.dependencies.push(dep.clone());
         }
     }
+}
 
-    // Merge scopes: move second scope's instructions into first.
-    // Process in reverse to preserve indices.
-    for &(first_idx, second_idx) in to_merge.iter().rev() {
-        if second_idx < block.instructions.len() && first_idx < block.instructions.len() {
-            let second = block.instructions.remove(second_idx);
-            if let crate::hir::types::ReactiveInstruction::Scope(second_scope) = second
-                && let Some(crate::hir::types::ReactiveInstruction::Scope(first_scope)) =
-                    block.instructions.get_mut(first_idx)
-            {
-                // Merge: extend first scope's instructions with second's
-                first_scope
-                    .instructions
-                    .instructions
-                    .extend(second_scope.instructions.instructions);
-                // Union the dependency sets using a set for dedup
-                let existing_keys = dep_key_set(&first_scope.scope);
-                for dep in &second_scope.scope.dependencies {
-                    let key = (dep.identifier.name.clone(), dep.path.clone());
-                    if !existing_keys.contains(&key) {
-                        first_scope.scope.dependencies.push(dep.clone());
-                    }
-                }
-                // Merge declarations
-                first_scope.scope.declarations.extend(second_scope.scope.declarations);
-                // Track merged scope ID
-                first_scope.scope.merged.push(second_scope.scope.id);
-            }
-        }
-    }
-
-    // Recurse into nested blocks
+fn merge_scopes_in_block(block: &mut ReactiveBlock, last_usage: &LastUsageMap) {
+    // -----------------------------------------------------------------------
+    // Pass 1: Recurse into nested blocks first (inner blocks must be simplified
+    // before outer merge decisions are made)
+    // -----------------------------------------------------------------------
     for instr in &mut block.instructions {
         match instr {
             crate::hir::types::ReactiveInstruction::Scope(scope_block) => {
@@ -725,6 +716,136 @@ fn merge_scopes_in_block(block: &mut crate::hir::types::ReactiveBlock, last_usag
             crate::hir::types::ReactiveInstruction::Instruction(_) => {}
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Pass 2: Build merge plan by walking instructions with a MergeCandidate
+    // state machine
+    // -----------------------------------------------------------------------
+    struct MergeRecord {
+        winner_idx: usize,
+        gap_indices: Vec<usize>,
+        absorbee_idx: usize,
+    }
+
+    let mut merge_records: Vec<MergeRecord> = Vec::new();
+    let mut candidate: Option<(usize, IntermediateAccumulator, Vec<usize>)> = None;
+    // (scope_index, accumulator, gap_indices)
+
+    for i in 0..block.instructions.len() {
+        match &block.instructions[i] {
+            crate::hir::types::ReactiveInstruction::Terminal(_) => {
+                // Terminals reset the merge candidate
+                candidate = None;
+            }
+            crate::hir::types::ReactiveInstruction::Instruction(instr) => {
+                if let Some((_, ref mut acc, ref mut gap_indices)) = candidate {
+                    if accumulate_intermediate_instruction(instr, acc) {
+                        gap_indices.push(i);
+                    } else {
+                        candidate = None;
+                    }
+                }
+                // If no candidate, plain instructions are ignored
+            }
+            crate::hir::types::ReactiveInstruction::Scope(scope_block) => {
+                let should_merge = if let Some((cand_idx, ref acc, _)) = candidate {
+                    // Get the candidate scope to compare against
+                    if let crate::hir::types::ReactiveInstruction::Scope(cand_scope) =
+                        &block.instructions[cand_idx]
+                    {
+                        can_merge_scopes(&cand_scope.scope, &scope_block.scope)
+                            && are_lvalues_last_used_by_scope(
+                                &scope_block.scope,
+                                &acc.lvalues,
+                                last_usage,
+                            )
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if should_merge {
+                    let (cand_idx, acc, gap_indices) = candidate.as_mut().unwrap();
+                    // Record the merge
+                    merge_records.push(MergeRecord {
+                        winner_idx: *cand_idx,
+                        gap_indices: std::mem::take(gap_indices),
+                        absorbee_idx: i,
+                    });
+                    // Clear accumulator for potential further consecutive merges
+                    acc.clear();
+                    // Keep the same winner as candidate if the current scope is
+                    // eligible (allows chaining A+B+C)
+                    if !scope_is_eligible_for_merging(scope_block) {
+                        candidate = None;
+                    }
+                } else {
+                    // Start a new candidate if this scope is eligible
+                    if scope_is_eligible_for_merging(scope_block) {
+                        candidate = Some((i, IntermediateAccumulator::new(), Vec::new()));
+                    } else {
+                        candidate = None;
+                    }
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Pass 3: Reconstruct block.instructions by applying merge records
+    // -----------------------------------------------------------------------
+    if merge_records.is_empty() {
+        return;
+    }
+
+    // Build set of absorbed indices (gap instructions + absorbed scopes)
+    let mut absorbed: FxHashSet<usize> = FxHashSet::default();
+    for record in &merge_records {
+        absorbed.insert(record.absorbee_idx);
+        for &gi in &record.gap_indices {
+            absorbed.insert(gi);
+        }
+    }
+
+    // Take ownership of all instructions
+    let mut indexed: Vec<Option<crate::hir::types::ReactiveInstruction>> =
+        std::mem::take(&mut block.instructions).into_iter().map(Some).collect();
+
+    // Apply merges in order
+    for record in &merge_records {
+        // Extract gap instructions
+        let gap_instrs: Vec<crate::hir::types::ReactiveInstruction> =
+            record.gap_indices.iter().filter_map(|&gi| indexed[gi].take()).collect();
+
+        // Extract absorbee scope
+        let absorbee = indexed[record.absorbee_idx].take();
+        let Some(crate::hir::types::ReactiveInstruction::Scope(absorbee_scope)) = absorbee else {
+            continue;
+        };
+
+        // Mutate winner scope to absorb gap + absorbee
+        if let Some(crate::hir::types::ReactiveInstruction::Scope(ref mut winner)) =
+            indexed[record.winner_idx]
+        {
+            // Extend winner scope range
+            winner.scope.range.end = absorbee_scope.scope.range.end;
+            // Absorb gap instructions into winner's body
+            winner.instructions.instructions.extend(gap_instrs);
+            // Absorb absorbee's instructions
+            winner.instructions.instructions.extend(absorbee_scope.instructions.instructions);
+            // Union dependencies
+            merge_scope_deps(&mut winner.scope, &absorbee_scope.scope);
+            // Union declarations
+            winner.scope.declarations.extend(absorbee_scope.scope.declarations);
+            // Track merged scope ID
+            winner.scope.merged.push(absorbee_scope.scope.id);
+        }
+    }
+
+    // Collect remaining (non-absorbed) instructions in original order
+    block.instructions = indexed.into_iter().flatten().collect();
 }
 
 fn merge_scopes_in_terminal(

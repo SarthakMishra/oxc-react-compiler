@@ -71,7 +71,7 @@ The structural issues compound: a fixture may have wrong temp variables AND wron
 
 ### Gap 4: Scope Merging Architecture Rewrite
 
-**Status:** IN PROGRESS (Sub-task 4a completed, 4b-4f remaining)
+**Status:** IN PROGRESS (Sub-tasks 4a, 4b, 4d, 4e completed; 4c and 4f remaining)
 
 This gap supersedes the previous "Scope Merging/Splitting Heuristic Review" and Gap 10
 ("Overlap Merge Regression"). Deep research into the upstream algorithm revealed that the
@@ -113,24 +113,14 @@ by dependency.
 - Upstream file: `src/HIR/MergeOverlappingReactiveScopesHIR.ts`
 - Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
-#### Sub-task 4b: Output-to-input scope chaining in invalidate-together
+#### Sub-task 4b: Output-to-input scope chaining in invalidate-together ✅
 
-**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`
-**Current state:** `merge_scopes_in_block` only merges consecutive scopes with identical dependency sets.
-**What's needed:**
+~~**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`~~
+~~**Current state:** `merge_scopes_in_block` only merges consecutive scopes with identical dependency sets.~~
 
-Upstream merges scope A into scope B when ALL of the following hold:
-1. A's declarations are B's dependencies (A produces what B consumes)
-2. A's outputs are "always-invalidating types" (objects, arrays, functions, JSX) -- meaning
-   they always create new references, so B will always re-execute when A does
-3. Only simple/pure instructions exist between A and B (see safety checks in Sub-task 4d)
-4. A is eligible for merging (`scopeIsEligibleForMerging` -- see Sub-task 4e)
-
-This is the "transitive invalidation" pattern: if scope A produces `const obj = {x: 1}` and
-scope B depends on `obj`, they should merge because `obj` is a new reference every time A runs.
-
-**Depends on:** Sub-task 4d (safety checks), Sub-task 4e (eligibility check)
-**Implementation file:** `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
+**Completed**: Output-to-input scope chaining implemented in `merge_scopes_in_block`, wiring together the safety-check infrastructure from Sub-task 4d and the eligibility predicate from Sub-task 4e. The merge logic now handles the "transitive invalidation" pattern: when scope A produces declarations that are dependencies of scope B, and A's outputs are always-invalidating types (Object, Array, Function, JSX), the scopes are merged -- provided only simple/pure instructions exist in the gap between them (validated by `IntermediateAccumulator` and `are_lvalues_last_used_by_scope`), and A passes the `scope_is_eligible_for_merging` check. This matches upstream's `MergeReactiveScopesThatInvalidateTogether.ts` algorithm.
+- Upstream file: `src/ReactiveScopes/MergeReactiveScopesThatInvalidateTogether.ts`
+- Implementation file: `crates/oxc_react_compiler/src/reactive_scopes/merge_scopes.rs`
 
 #### Sub-task 4c: Nested scope flattening
 
