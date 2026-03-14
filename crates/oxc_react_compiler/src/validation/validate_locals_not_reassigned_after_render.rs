@@ -1,5 +1,5 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{HIR, InstructionValue};
+use crate::hir::types::{HIR, InstructionKind, InstructionValue};
 use rustc_hash::FxHashSet;
 
 /// Validate that local variables assigned during render are not reassigned
@@ -93,6 +93,9 @@ fn collect_render_assigned(hir: &HIR) -> FxHashSet<String> {
 
 /// Check a nested HIR (function body) for reassignments of render-phase variables.
 /// Returns true if any reassignment is found (does NOT emit errors).
+///
+/// Only matches actual reassignments (`type_: Some(Reassign)` or `type_: None`),
+/// NOT new declarations that shadow render-phase variables.
 fn check_nested_reassignments_silent(
     nested_hir: &HIR,
     render_assigned: &FxHashSet<String>,
@@ -100,9 +103,10 @@ fn check_nested_reassignments_silent(
 ) -> bool {
     for (_, block) in &nested_hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value
+            if let InstructionValue::StoreLocal { lvalue, type_, .. } = &instr.value
                 && let Some(name) = &lvalue.identifier.name
                 && render_assigned.contains(name)
+                && is_reassignment_kind(*type_)
             {
                 return true;
             }
@@ -122,6 +126,9 @@ fn check_nested_reassignments_silent(
 
 /// Check a nested HIR (function body) for reassignments of render-phase variables.
 /// Emits errors for each reassignment found. Recurses into nested functions.
+///
+/// Only matches actual reassignments (`type_: Some(Reassign)` or `type_: None`),
+/// NOT new declarations that shadow render-phase variables.
 fn check_nested_reassignments(
     nested_hir: &HIR,
     render_assigned: &FxHashSet<String>,
@@ -129,9 +136,10 @@ fn check_nested_reassignments(
 ) {
     for (_, block) in &nested_hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value
+            if let InstructionValue::StoreLocal { lvalue, type_, .. } = &instr.value
                 && let Some(name) = &lvalue.identifier.name
                 && render_assigned.contains(name)
+                && is_reassignment_kind(*type_)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
                     instr.loc,
@@ -150,4 +158,10 @@ fn check_nested_reassignments(
             }
         }
     }
+}
+
+/// Returns true if the StoreLocal type indicates a real reassignment (not a new
+/// declaration that happens to shadow a render variable).
+fn is_reassignment_kind(type_: Option<InstructionKind>) -> bool {
+    matches!(type_, Some(InstructionKind::Reassign) | None)
 }
