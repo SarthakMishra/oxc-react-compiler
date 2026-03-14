@@ -24,11 +24,12 @@ pub fn build_reactive_function(
     id: Option<String>,
     loc: SourceLocation,
     directives: Vec<String>,
+    is_arrow: bool,
 ) -> ReactiveFunction {
     let mut visited = FxHashSet::default();
     let body = build_reactive_block_until(&hir, hir.entry, None, &mut visited);
 
-    ReactiveFunction { loc, id, params, body, directives }
+    ReactiveFunction { loc, id, params, body, directives, is_arrow }
 }
 
 /// Public entry point for converting an HIR body to a ReactiveBlock.

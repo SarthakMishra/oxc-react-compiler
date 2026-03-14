@@ -671,6 +671,8 @@ pub struct HIRFunction {
     pub is_async: bool,
     pub is_generator: bool,
     pub directives: Vec<String>,
+    /// Whether the original source was an arrow function expression.
+    pub is_arrow: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -823,6 +825,9 @@ pub struct ReactiveFunction {
     pub params: Vec<Param>,
     pub body: ReactiveBlock,
     pub directives: Vec<String>,
+    /// Whether the original source function was an arrow function expression.
+    /// Used by codegen to preserve `() => {}` vs `function() {}` syntax.
+    pub is_arrow: bool,
 }
 
 #[derive(Debug, Clone)]

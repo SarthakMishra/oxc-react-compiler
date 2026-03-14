@@ -73,7 +73,6 @@ array-spread-later-mutated.js
 array-spread-mutable-iterator.js
 arrow-expr-directive.js
 arrow-function-one-line-directive.js
-arrow-function-with-implicit-return.js
 assignment-expression-computed.js
 assignment-expression-nested-path.js
 assignment-in-nested-if.js
@@ -502,9 +501,6 @@ independent.js
 independently-memoize-object-property.js
 infer-compile-hooks-with-multiple-params.js
 infer-computed-delete.js
-infer-function-React-memo.js
-infer-function-assignment.js
-infer-function-forwardRef.js
 infer-functions-component-with-hook-call.js
 infer-functions-component-with-ref-arg.js
 infer-functions-hook-with-hook-call.js

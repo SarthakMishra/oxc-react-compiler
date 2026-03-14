@@ -724,8 +724,10 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     let mut output = String::new();
     let mut cache_slot = 0u32;
 
-    // Generate function header
-    if let Some(ref name) = rf.id {
+    // Generate function header — preserve arrow vs function syntax from source
+    if rf.is_arrow {
+        output.push('(');
+    } else if let Some(ref name) = rf.id {
         output.push_str(&format!("function {name}("));
     } else {
         output.push_str("function (");
@@ -746,7 +748,11 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
             }
         }
     }
-    output.push_str(") {\n");
+    if rf.is_arrow {
+        output.push_str(") => {\n");
+    } else {
+        output.push_str(") {\n");
+    }
 
     // Count total cache slots needed
     let total_slots = count_cache_slots(&rf.body);
@@ -2291,8 +2297,10 @@ pub fn codegen_function_with_source_map(
     // Map function start to original span.
     ctx.map_from_span(rf.loc, source_text);
 
-    // Generate function header.
-    if let Some(ref name) = rf.id {
+    // Generate function header — preserve arrow vs function syntax from source.
+    if rf.is_arrow {
+        ctx.write("(");
+    } else if let Some(ref name) = rf.id {
         ctx.write(&format!("function {name}("));
     } else {
         ctx.write("function (");
@@ -2312,7 +2320,11 @@ pub fn codegen_function_with_source_map(
             }
         }
     }
-    ctx.write(") {\n");
+    if rf.is_arrow {
+        ctx.write(") => {\n");
+    } else {
+        ctx.write(") {\n");
+    }
 
     let total_slots = count_cache_slots(&rf.body);
     if total_slots > 0 {

@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (refine_effects applyEffect phase, 385/1717)
+Last updated: 2026-03-14 (arrow function codegen fix, pre-freeze infrastructure, 389/1717)
 
-Current conformance: 385/1717 pass (22.4%), 0 panics, 0 unexpected divergences.
+Current conformance: 389/1717 pass (22.7%), 0 panics, 0 unexpected divergences.
 
 Note: Conformance tests now use `CompilationMode::All` (matching upstream Babel's
 default) instead of `Infer`. This honestly attempts compilation of ALL functions,
@@ -128,6 +128,23 @@ ref naming heuristics, hoisting-setState, and several compilation structure fixe
 2 aliased hook error fixtures now pass (error.invalid-conditional-call-aliased-hook-import.js,
 error.invalid-conditional-call-aliased-react-hook.js). Net change: +2 (391 -> 393/1717).
 
+**Fix (2026-03-14):** Arrow function preservation in codegen + pre-freeze infrastructure.
+(1) Arrow function codegen: `is_arrow` field added to `HIRFunction` and `ReactiveFunction`.
+Codegen now emits `() => { ... }` syntax for arrow functions instead of `function() { ... }`.
+4 fixtures newly passing (385 -> 389/1717).
+(2) Pre-freeze infrastructure: `pre_freeze_params()` in aliasing pass seeds component
+parameters as frozen in the abstract heap. Groundwork for future frozen-mutation accuracy
+improvements (no immediate score impact).
+
+**Analysis (2026-03-14):** Divergence deep-dive findings:
+- ~162 false-positive frozen-mutation bail-outs: validator's name-based tracking is too
+  aggressive, freezing values that upstream's alias analysis would not freeze. Fixing
+  requires coordinated changes across both refine_effects AND the validator.
+- ~63 known-failure fixtures have matching cache slot counts but differ in codegen details
+  (variable naming, scope structure within same-count slots).
+- ~40% of false bail-outs are from frozen-mutation, ~22% from locals-reassigned-after-render,
+  ~12% from capitalized-calls validation.
+
 | Category | Count | Description |
 |----------|-------|-------------|
 | Compiled with memo | ~890 | Both compile, structure/deps/slots differ |
@@ -141,7 +158,7 @@ error.invalid-conditional-call-aliased-react-hook.js). Net change: +2 (391 -> 39
 ## Active Work
 
 - [~] Temp variable inlining pass (recursive cross-scope counting done; needs remaining P1 fixes to yield fixture gains) — [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
-- [~] Mutation aliasing bail-out (BFS graph rewrite + refine_effects applyEffect done; remaining: full fixpoint abstract interpretation, function signature resolution for Apply, return-value freezing) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
+- [~] Mutation aliasing bail-out (BFS graph rewrite + refine_effects applyEffect + pre-freeze infrastructure done; remaining: fixpoint iteration, user-defined function signature inference, return-value freezing) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
 
 ---
 
@@ -188,6 +205,17 @@ Most upstream error gaps are now resolved (Gaps 2-8 complete, Gap 1 has 1 remain
 Note: Remaining "Invariant/Todo" upstream errors are internal compiler failures in
 Babel -- these should be skipped, not matched.
 
+## Priority 2.5 -- False-Positive Bail-Outs (~162 fixtures)
+
+Our validators are too aggressive, causing ~162 false bail-outs where we reject
+functions that upstream compiles successfully. Breakdown: ~40% frozen-mutation,
+~22% locals-reassigned-after-render, ~12% capitalized-calls, ~26% other.
+
+- [ ] False-positive frozen-mutation bail-outs (~65 fixtures; requires wiring aliasing pass output into validator) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5b-false-positive-validation-bail-outs-162-fixtures
+- [ ] False-positive locals-reassigned-after-render (~36 fixtures) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5b-false-positive-validation-bail-outs-162-fixtures
+- [ ] False-positive capitalized-calls (~19 fixtures) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5b-false-positive-validation-bail-outs-162-fixtures
+- [ ] Codegen structure divergences with matching slot counts (~63 fixtures) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5c-codegen-structure-divergences-63-fixtures
+
 ## Priority 3 -- Compiled No Memo (152 fixtures)
 
 Babel transforms but emits no `_c()`. Our compiler either adds memoization
@@ -225,6 +253,15 @@ _(Nothing blocked)_
 ## Completed Work (Archive)
 
 All P0-P5 items have been implemented. Detail files have been removed.
+
+### Arrow Function Codegen + Pre-Freeze Infrastructure (2026-03-14)
+
+- `codegen.rs`: Arrow function preservation -- `is_arrow` field on `HIRFunction` and `ReactiveFunction`, codegen emits `() => { ... }` for arrow functions
+- `infer_mutation_aliasing_effects.rs`: `pre_freeze_params()` seeds component parameters as frozen in the abstract heap (groundwork for replacing name-based freeze tracking)
+- 4 fixtures newly passing from arrow function fix
+- Key finding: ~162 false-positive bail-outs identified (40% frozen-mutation, 22% locals-reassigned, 12% capitalized-calls)
+- Key finding: ~63 fixtures match slot counts but diverge in codegen structure
+- Conformance: 385 -> 389/1717 (+4, 22.7%)
 
 ### Hook Alias Detection + Dynamic Hook Identity + Validation Sweep (2026-03-14)
 

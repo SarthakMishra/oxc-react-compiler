@@ -64,20 +64,43 @@ Our current flow:
 ### Gap 5: Mutation Aliasing Bail-Out [IN PROGRESS]
 
 **Upstream:** `InferMutationAliasingRanges.ts`, `InferReactivePlaces.ts` -- when values escape into unknown functions or global scope, Babel marks them as non-cacheable
-**Current state (updated 2026-03-14):** Two major milestones completed:
 
-1. **Graph-based BFS mutation propagation** (2026-03-14): `infer_mutation_aliasing_ranges.rs` rewritten from flat one-level alias traversal (~315 lines) to graph-based BFS algorithm (~715 lines) matching upstream `InferMutationAliasingRanges.ts`. Directed `AliasingGraph` with typed edges (Alias, Capture, MaybeAlias, CreatedFrom), BFS with temporal index guards, phi-node back-edge handling via `pending_phis` map.
+**Completed milestones:**
 
-2. **refine_effects() applyEffect phase** (2026-03-14): `infer_mutation_aliasing_effects.rs` now implements upstream `applyEffect()` logic. Apply effects resolved with and without function signatures. CreateFrom/Capture/Assign/MutateConditionally/Mutate effects refined based on value kinds via `AbstractHeap.value_kind()`. +15 fixtures (370 -> 385/1717).
+1. **Graph-based BFS mutation propagation** (2026-03-14) ✅: `infer_mutation_aliasing_ranges.rs` rewritten from flat one-level alias traversal (~315 lines) to graph-based BFS algorithm (~715 lines) matching upstream `InferMutationAliasingRanges.ts`. Directed `AliasingGraph` with typed edges (Alias, Capture, MaybeAlias, CreatedFrom), BFS with temporal index guards, phi-node back-edge handling via `pending_phis` map.
+
+2. **refine_effects() / applyEffect phase** (2026-03-14) ✅: `infer_mutation_aliasing_effects.rs` implements upstream `applyEffect()` logic. Apply effects resolved with and without function signatures. CreateFrom/Capture/Assign/MutateConditionally/Mutate effects refined based on value kinds via `AbstractHeap.value_kind()`. Function signature wiring complete -- effects are applied through `FunctionSignature` when available, falling back to conservative defaults. +15 fixtures (370 -> 385/1717).
+
+3. **Pre-freeze infrastructure for component params** (2026-03-14) ✅: `pre_freeze_params()` in `infer_mutation_aliasing_effects.rs` seeds component parameters as frozen values in the abstract heap at function entry. This is groundwork for replacing the validator's name-based freeze tracking with aliasing-pass-derived freeze state. No immediate fixture gains, but enables future Gap 5b work.
 
 **What remains:**
 - **Full fixpoint abstract interpretation**: Upstream runs `InferMutableRanges` as a fixpoint loop, iterating until no new mutations are discovered. Our implementation is single-pass. Some fixtures require multiple iterations to propagate mutations through deep alias chains.
-- **Function signature resolution for Apply**: When a function with a known signature is called, upstream resolves the signature's parameter effects to determine which arguments are mutated. Our implementation falls back to the conservative "mutate all arguments" path when no signature is available. Signature inference for user-defined functions is not yet implemented.
+- **Function signature inference for user-defined functions**: When a user-defined function is called, upstream infers its signature from the function body (parameter effects, return type). Our implementation falls back to the conservative "mutate all arguments" path for functions without pre-existing signatures. Built-in/hook signatures are resolved correctly.
 - **Return-value freezing**: Upstream freezes return values of certain function calls (e.g., hook returns) at the call site, preventing downstream mutations from being attributed to the caller's scope. Our freeze tracking is partial (see `validate_no_mutation_after_freeze.rs`).
-- `last_use_map` and `creation_map` from the original implementation were retained for backward compatibility -- these are load-bearing in `infer_reactive_places.rs` and codegen, but should be removed once upstream-equivalent passes (e.g., `InferReactivePlaces` rewrite) are in place (see Gap 7)
 - When aliasing analysis determines a function has no safely-cacheable values, the reactive scope construction should produce zero scopes, which triggers the zero-scope bail-out
 - Implementation files: `crates/oxc_react_compiler/src/inference/infer_mutation_aliasing_ranges.rs`, `crates/oxc_react_compiler/src/inference/infer_mutation_aliasing_effects.rs`
 **Depends on:** Gap 4 (completed)
+
+### Gap 5b: False-Positive Validation Bail-Outs (~162 fixtures)
+
+**Upstream:** Various validation passes in `babel-plugin-react-compiler/src/Validation/`
+**Current state:** Name-based freeze tracking in `validate_no_mutation_after_freeze.rs` is too aggressive -- it freezes values that upstream's alias analysis (which uses the abstract heap and mutable ranges) would not freeze. Similarly, `validate_locals_not_reassigned_after_render.rs` and `validate_no_capitalized_calls.rs` produce false positives.
+**What's needed:**
+- **Frozen-mutation (~40% of false bail-outs):** The validator uses name-based tracking to determine frozen status. Upstream uses `InferMutableRanges` output (mutable range end < scope start = frozen). Fixing requires either: (a) wire the aliasing pass output (mutable ranges) into the validator, replacing name-based heuristics, or (b) make `refine_effects` output precise enough that downstream validators can query it directly.
+- **Locals-reassigned-after-render (~22%):** Our validator flags reassignments that upstream allows because upstream's scope analysis is more precise about what constitutes "after render."
+- **Capitalized-calls (~12%):** SSA resolution of aliased capitalized function names is incomplete; some non-capitalized calls are flagged as capitalized.
+- **Other (~26%):** Various validator false positives across remaining validation passes.
+- Key architectural insight: fixing frozen-mutation false positives requires coordinated changes across both `infer_mutation_aliasing_effects.rs` (to produce mutable-range data) and the validator (to consume it instead of name-based tracking).
+**Depends on:** Gap 5 (mutation aliasing -- mutable range output needed)
+
+### Gap 5c: Codegen Structure Divergences (~63 fixtures)
+
+**Upstream:** `CodegenReactiveFunction.ts`
+**Current state:** ~63 fixtures in known-failures have matching cache slot counts (`_c(N)` where N matches upstream) but the generated code within those slots differs in variable naming, scope structure, or declaration ordering.
+**What's needed:**
+- Audit codegen output for these fixtures to identify patterns (likely temp variable naming, scope nesting, or declaration ordering)
+- May require improvements to temp inlining (Gap 1 in memoization-structure.md), scope structure in codegen, or declaration ordering logic
+**Depends on:** Gap 1 (temp variable inlining), Gap 3 (cache slot alignment)
 
 ### Gap 6: "Too Simple" Function Detection
 

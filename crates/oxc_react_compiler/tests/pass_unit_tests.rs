@@ -233,6 +233,7 @@ fn test_build_reactive_function_single_block() {
         Some("TestComponent".to_string()),
         dummy_span(),
         vec![],
+        false,
     );
 
     assert_eq!(rf.id.as_deref(), Some("TestComponent"));
@@ -272,6 +273,7 @@ fn test_build_reactive_function_with_params() {
         Some("MyHook".to_string()),
         dummy_span(),
         vec![],
+        false,
     );
 
     assert_eq!(rf.params.len(), 1);
@@ -357,8 +359,14 @@ fn test_build_reactive_function_if_terminal() {
         ],
     };
 
-    let rf =
-        build_reactive_function(hir, vec![], Some("IfComponent".to_string()), dummy_span(), vec![]);
+    let rf = build_reactive_function(
+        hir,
+        vec![],
+        Some("IfComponent".to_string()),
+        dummy_span(),
+        vec![],
+        false,
+    );
 
     assert_eq!(rf.id.as_deref(), Some("IfComponent"));
     // Should have converted the If terminal into a ReactiveTerminal::If.
@@ -382,11 +390,28 @@ fn test_codegen_empty_function() {
         params: vec![],
         body: ReactiveBlock { instructions: vec![] },
         directives: vec![],
+        is_arrow: false,
     };
 
     let code = codegen_function(&rf);
     assert!(code.contains("function Empty()"));
     assert!(code.contains('}'));
+}
+
+#[test]
+fn test_codegen_arrow_function() {
+    let rf = ReactiveFunction {
+        loc: dummy_span(),
+        id: None,
+        params: vec![],
+        body: ReactiveBlock { instructions: vec![] },
+        directives: vec![],
+        is_arrow: true,
+    };
+
+    let code = codegen_function(&rf);
+    assert!(code.contains("() => {"), "Arrow function should use => syntax: {code}");
+    assert!(!code.contains("function"), "Arrow function should not contain 'function': {code}");
 }
 
 #[test]
@@ -405,6 +430,7 @@ fn test_codegen_function_with_return() {
             })],
         },
         directives: vec![],
+        is_arrow: false,
     };
 
     let code = codegen_function(&rf);
@@ -431,6 +457,7 @@ fn test_codegen_function_with_primitive() {
         params: vec![],
         body: ReactiveBlock { instructions: vec![ReactiveInstruction::Instruction(instr)] },
         directives: vec![],
+        is_arrow: false,
     };
 
     let code = codegen_function(&rf);
@@ -450,6 +477,7 @@ fn test_codegen_function_with_params() {
         params: vec![Param::Identifier(param1), Param::Identifier(param2)],
         body: ReactiveBlock { instructions: vec![] },
         directives: vec![],
+        is_arrow: false,
     };
 
     let code = codegen_function(&rf);
@@ -497,6 +525,7 @@ fn test_codegen_scope_block() {
         params: vec![],
         body: ReactiveBlock { instructions: vec![ReactiveInstruction::Scope(scope_block)] },
         directives: vec![],
+        is_arrow: false,
     };
 
     let code = codegen_function(&rf);
@@ -532,8 +561,14 @@ fn test_hir_to_codegen_roundtrip() {
 
     let hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
-    let rf =
-        build_reactive_function(hir, vec![], Some("Greeter".to_string()), dummy_span(), vec![]);
+    let rf = build_reactive_function(
+        hir,
+        vec![],
+        Some("Greeter".to_string()),
+        dummy_span(),
+        vec![],
+        false,
+    );
 
     let code = codegen_function(&rf);
     assert!(code.contains("function Greeter()"));

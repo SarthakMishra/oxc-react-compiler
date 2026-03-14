@@ -338,6 +338,7 @@ impl HIRBuilder {
             is_async,
             is_generator,
             directives,
+            is_arrow: false,
         }
     }
 
@@ -392,6 +393,7 @@ impl HIRBuilder {
             is_async: arrow.r#async,
             is_generator: false,
             directives,
+            is_arrow: true,
         }
     }
 
@@ -445,6 +447,7 @@ impl HIRBuilder {
             is_async: arrow.r#async,
             is_generator: false,
             directives,
+            is_arrow: true,
         }
     }
 
@@ -1350,6 +1353,7 @@ impl HIRBuilder {
             is_async: func.r#async,
             is_generator: func.generator,
             directives,
+            is_arrow: false,
         }
     }
 

@@ -257,10 +257,42 @@ pub fn infer_mutation_aliasing_effects(
     hir: &mut HIR,
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
 ) {
+    infer_mutation_aliasing_effects_inner(hir, fn_signatures, &[]);
+}
+
+/// Inner implementation that accepts optional param_names for pre-freezing.
+///
+/// When compiling a component function, `param_names` contains parameter names
+/// (e.g., "props") that should be treated as frozen in the abstract heap.
+/// This prevents false-positive conditional mutation effects on parameters
+/// from causing bail-outs in the frozen-mutation validator.
+#[expect(clippy::implicit_hasher)]
+pub fn infer_mutation_aliasing_effects_with_params(
+    hir: &mut HIR,
+    fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
+    param_names: &[String],
+) {
+    infer_mutation_aliasing_effects_inner(hir, fn_signatures, param_names);
+}
+
+fn infer_mutation_aliasing_effects_inner(
+    hir: &mut HIR,
+    fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
+    param_names: &[String],
+) {
     const MAX_ITERATIONS: usize = 100;
     let mut heap = AbstractHeap::new();
     let mut iteration = 0;
     let mut global_changed = true;
+
+    // Pre-freeze function parameters in the heap. Component props and hook
+    // arguments are frozen — the function receives them immutably. This ensures
+    // that refine_effects drops MutateConditionally/MutateTransitiveConditionally
+    // effects on parameters (from conservative Apply fallback), preventing
+    // false positives in the frozen-mutation validator.
+    if !param_names.is_empty() {
+        pre_freeze_params(hir, &mut heap, param_names);
+    }
 
     // Outer fixpoint loop: re-walk all instructions until heap stabilizes.
     // On each iteration, effects are recomputed using the current heap state,
@@ -342,6 +374,165 @@ pub fn infer_mutation_aliasing_effects(
 
             // Set effects on operand places within the instruction value.
             set_operand_effects(&mut instr.value, &heap);
+        }
+    }
+}
+
+/// Pre-freeze function parameters in the abstract heap.
+///
+/// Component props and hook arguments should be treated as frozen values.
+/// This seeds the heap so that `refine_effects` can properly drop speculative
+/// mutation effects (MutateConditionally, MutateTransitiveConditionally) on
+/// parameters. Without this, the conservative Apply fallback emits conditional
+/// mutations on all args, which falsely triggers the frozen-mutation validator.
+///
+/// DIVERGENCE: Our HIR creates fresh IdentifierIds per Place reference, so we
+/// must walk ALL places in ALL instructions to find every ID that refers to a
+/// parameter by name. Upstream's pointer-identity model avoids this issue.
+fn pre_freeze_params(hir: &HIR, heap: &mut AbstractHeap, param_names: &[String]) {
+    use crate::hir::types::{ArrayElement, InstructionValue, ObjectPropertyKey};
+
+    let freeze_if_param = |place: &Place, heap: &mut AbstractHeap| {
+        if let Some(name) = &place.identifier.name
+            && param_names.iter().any(|p| p == name)
+        {
+            heap.create(place.identifier.id, ValueKind::Frozen);
+            heap.freeze(place.identifier.id, FreezeReason::FrozenByValue);
+        }
+    };
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            // Freeze lvalue if it's a param
+            freeze_if_param(&instr.lvalue, heap);
+
+            // Walk all operand places
+            match &instr.value {
+                InstructionValue::LoadLocal { place }
+                | InstructionValue::LoadContext { place }
+                | InstructionValue::TypeCastExpression { value: place, .. }
+                | InstructionValue::UnaryExpression { value: place, .. }
+                | InstructionValue::PostfixUpdate { lvalue: place, .. }
+                | InstructionValue::PrefixUpdate { lvalue: place, .. }
+                | InstructionValue::Await { value: place }
+                | InstructionValue::GetIterator { collection: place }
+                | InstructionValue::NextPropertyOf { value: place }
+                | InstructionValue::StoreGlobal { value: place, .. } => {
+                    freeze_if_param(place, heap);
+                }
+                InstructionValue::StoreLocal { lvalue, value, .. }
+                | InstructionValue::StoreContext { lvalue, value } => {
+                    freeze_if_param(lvalue, heap);
+                    freeze_if_param(value, heap);
+                }
+                InstructionValue::DeclareLocal { lvalue, .. }
+                | InstructionValue::DeclareContext { lvalue } => {
+                    freeze_if_param(lvalue, heap);
+                }
+                InstructionValue::CallExpression { callee, args }
+                | InstructionValue::NewExpression { callee, args } => {
+                    freeze_if_param(callee, heap);
+                    for arg in args {
+                        freeze_if_param(arg, heap);
+                    }
+                }
+                InstructionValue::MethodCall { receiver, args, .. } => {
+                    freeze_if_param(receiver, heap);
+                    for arg in args {
+                        freeze_if_param(arg, heap);
+                    }
+                }
+                InstructionValue::BinaryExpression { left, right, .. } => {
+                    freeze_if_param(left, heap);
+                    freeze_if_param(right, heap);
+                }
+                InstructionValue::PropertyLoad { object, .. }
+                | InstructionValue::PropertyDelete { object, .. } => {
+                    freeze_if_param(object, heap);
+                }
+                InstructionValue::PropertyStore { object, value, .. } => {
+                    freeze_if_param(object, heap);
+                    freeze_if_param(value, heap);
+                }
+                InstructionValue::ComputedLoad { object, property }
+                | InstructionValue::ComputedDelete { object, property } => {
+                    freeze_if_param(object, heap);
+                    freeze_if_param(property, heap);
+                }
+                InstructionValue::ComputedStore { object, property, value } => {
+                    freeze_if_param(object, heap);
+                    freeze_if_param(property, heap);
+                    freeze_if_param(value, heap);
+                }
+                InstructionValue::ObjectExpression { properties } => {
+                    for prop in properties {
+                        if let ObjectPropertyKey::Computed(p) = &prop.key {
+                            freeze_if_param(p, heap);
+                        }
+                        freeze_if_param(&prop.value, heap);
+                    }
+                }
+                InstructionValue::ArrayExpression { elements } => {
+                    for el in elements {
+                        match el {
+                            ArrayElement::Expression(p) | ArrayElement::Spread(p) => {
+                                freeze_if_param(p, heap);
+                            }
+                            ArrayElement::Hole => {}
+                        }
+                    }
+                }
+                InstructionValue::JsxExpression { tag, props, children } => {
+                    freeze_if_param(tag, heap);
+                    for prop in props {
+                        freeze_if_param(&prop.value, heap);
+                    }
+                    for child in children {
+                        freeze_if_param(child, heap);
+                    }
+                }
+                InstructionValue::JsxFragment { children } => {
+                    for child in children {
+                        freeze_if_param(child, heap);
+                    }
+                }
+                InstructionValue::Destructure { value, .. } => {
+                    freeze_if_param(value, heap);
+                }
+                InstructionValue::IteratorNext { iterator, .. } => {
+                    freeze_if_param(iterator, heap);
+                }
+                InstructionValue::TaggedTemplateExpression { tag, value: tagged_value, .. } => {
+                    freeze_if_param(tag, heap);
+                    for expr in &tagged_value.subexpressions {
+                        freeze_if_param(expr, heap);
+                    }
+                }
+                InstructionValue::TemplateLiteral { subexpressions, .. } => {
+                    for expr in subexpressions {
+                        freeze_if_param(expr, heap);
+                    }
+                }
+                InstructionValue::FinishMemoize { decl, deps, .. } => {
+                    freeze_if_param(decl, heap);
+                    for dep in deps {
+                        freeze_if_param(dep, heap);
+                    }
+                }
+                InstructionValue::FunctionExpression { lowered_func, .. } => {
+                    for ctx_place in &lowered_func.context {
+                        freeze_if_param(ctx_place, heap);
+                    }
+                }
+                // No operand places:
+                InstructionValue::Primitive { .. }
+                | InstructionValue::JSXText { .. }
+                | InstructionValue::LoadGlobal { .. }
+                | InstructionValue::RegExpLiteral { .. }
+                | InstructionValue::ObjectMethod { .. }
+                | InstructionValue::StartMemoize { .. }
+                | InstructionValue::UnsupportedNode { .. } => {}
+            }
         }
     }
 }

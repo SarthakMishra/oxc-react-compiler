@@ -14,7 +14,7 @@ When both our compiler and Babel memoize a function, our output differs structur
 | ~~Sentinel pattern never emitted~~ | ~~280~~ | ~~RESOLVED -- sentinel scopes now emitted~~ |
 | Under-scoped (too few cache slots) | ~90 | Missing scopes for some expressions |
 | Same slots, wrong deps | ~37 | Dependency tracking diverges (property-path resolution now active) |
-| Other structural | ~94 | Temp variable naming, code ordering |
+| Other structural | ~94 | Temp variable naming, code ordering (arrow fn codegen now fixed) |
 | Sentinel regressions (temporary) | +35 | Scopes correct, deps/slots still wrong |
 
 The structural issues compound: a fixture may have wrong temp variables AND wrong slot counts AND missing sentinel scopes. Fixing one in isolation typically gains zero fixtures because the remaining issues still cause a mismatch.
@@ -75,6 +75,8 @@ Conformance: 342 -> 349/1717 (+7 from sentinel slot fix)
 **What remains:**
 - Remaining slot count divergences likely stem from scope merging differences and missing scopes for some expression types
 - Edge cases where scope declaration sets differ from upstream (e.g., when a scope should declare a value but doesn't, or declares extra values)
+- ~63 fixtures have matching slot counts but differ in codegen details (variable naming, scope structure, declaration ordering) -- see [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5c-codegen-structure-divergences-63-fixtures
+- Arrow function codegen fixed (2026-03-14, +4 fixtures) -- `is_arrow` field on HIRFunction/ReactiveFunction, codegen emits `() => {}` syntax
 **Fixture gain estimate:** Compound effect with other gaps
 **Depends on:** None (Sub-task 4f DeclarationId alignment now complete)
 
