@@ -2,7 +2,7 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (switch to All compilation mode, 370/1717)
+Last updated: 2026-03-14 (graph-based BFS mutation propagation rewrite, 370/1717)
 
 Current conformance: 370/1717 pass (21.5%), 0 panics, 0 unexpected divergences.
 
@@ -135,6 +135,7 @@ error.invalid-conditional-call-aliased-react-hook.js). Net change: +2 (391 -> 39
 ## Active Work
 
 - [~] Temp variable inlining pass (recursive cross-scope counting done; needs remaining P1 fixes to yield fixture gains) — [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
+- [~] Mutation aliasing bail-out (BFS graph rewrite done; `infer_mutation_aliasing_effects` audit + `last_use_map` removal remaining) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
 
 ---
 
@@ -189,8 +190,8 @@ or fails to apply the same non-memo transforms.
 - [ ] DCE / constant propagation (remove dead branches, fold constants) — [compiled-no-memo.md](compiled-no-memo.md)#gap-1-dce-and-constant-propagation
 - [ ] Arrow function extraction / outlining — [compiled-no-memo.md](compiled-no-memo.md)#gap-2-arrow-extraction
 - [ ] Audit validation passes for error accuracy vs upstream — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-3-ensure-validation-passes-emit-correct-errors
-- [ ] Mutation aliasing bail-out (escaped values analysis) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
 - [ ] "Too simple" function detection (zero reactive scopes) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-6-too-simple-function-detection
+- [ ] Remove legacy `last_use_map`/`creation_map` after upstream pass alignment — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-7-remove-legacy-last_use_map--creation_map-after-upstream-pass-alignment
 
 ## Priority 4 -- No Expected File (261 fixtures)
 
