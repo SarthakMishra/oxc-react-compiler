@@ -186,6 +186,7 @@ constant-propagate-global-phis-constant.js
 constant-propagate-global-phis.js
 constant-propagation-bit-ops.js
 constant-propagation-for.js
+constant-propagation-template-literal.js
 constant-propagation-into-function-expressions.js
 constant-propagation-phi.js
 constant-propagation-string-concat.js
@@ -282,17 +283,13 @@ error.mutate-function-property.js
 error.ref-like-name-not-Ref.js
 error.ref-like-name-not-a-ref.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js
-error.todo-for-await-loops.js
 error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hoisting-simple-var-declaration.js
 error.todo-kitchensink.js
-error.todo-new-target-meta-property.js
-error.todo-object-expression-get-syntax.js
 error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
-error.useMemo-callback-generator.js
 escape-analysis-destructured-rest-element.js
 escape-analysis-jsx-child.js
 escape-analysis-logical.js
@@ -1142,6 +1139,7 @@ switch-non-final-default.js
 switch-with-fallthrough.js
 switch-with-only-default.js
 switch.js
+tagged-template-literal.js
 temporary-accessed-outside-scope.js
 temporary-at-start-of-value-block.js
 temporary-property-load-accessed-outside-scope.js

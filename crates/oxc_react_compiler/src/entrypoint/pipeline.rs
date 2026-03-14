@@ -19,6 +19,12 @@ pub fn run_pipeline(
     errors: &mut ErrorCollector,
     param_names: &[String],
 ) -> Result<(), ()> {
+    // Phase 0: Reject unsupported patterns (matches upstream BuildHIR Todo errors)
+    crate::validation::validate_no_unsupported_nodes::validate_no_unsupported_nodes(hir, errors);
+    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
+        return Err(());
+    }
+
     // Phase 1: Early cleanup
     // Pass 2: prune_maybe_throws
     crate::optimization::prune_maybe_throws::prune_maybe_throws(hir);

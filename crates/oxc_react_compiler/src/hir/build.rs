@@ -18,7 +18,7 @@ use oxc_ast::ast::{
     self as ast, Argument, ArrayExpressionElement, AssignmentTarget, BindingPattern, Expression,
     ForStatementInit, ForStatementLeft, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
     JSXChild, JSXElementName, JSXExpression, JSXMemberExpressionObject, ObjectPropertyKind,
-    PropertyKey, SimpleAssignmentTarget, Statement, VariableDeclarationKind,
+    PropertyKey, PropertyKind, SimpleAssignmentTarget, Statement, VariableDeclarationKind,
 };
 use oxc_span::Span;
 use oxc_syntax::operator::{
@@ -1021,6 +1021,15 @@ impl HIRBuilder {
     }
 
     fn lower_for_of_statement(&mut self, for_of: &ast::ForOfStatement<'_>) {
+        // Upstream: Todo: Handle for-await loops
+        if for_of.r#await {
+            self.emit(
+                InstructionValue::UnsupportedNode { node: "ForAwaitOfStatement".to_string() },
+                for_of.span,
+            );
+            return;
+        }
+
         let init_block = self.new_block(BlockKind::Block);
         let test_block = self.new_block(BlockKind::Value);
         let body_block = self.new_block(BlockKind::Loop);
@@ -1674,6 +1683,15 @@ impl HIRBuilder {
 
             // MetaProperty (import.meta, new.target)
             Expression::MetaProperty(meta) => {
+                // Upstream: Todo: Handle MetaProperty expressions other than import.meta
+                if meta.meta.name == "new" && meta.property.name == "target" {
+                    return self.emit(
+                        InstructionValue::UnsupportedNode {
+                            node: "MetaProperty_new_target".to_string(),
+                        },
+                        loc,
+                    );
+                }
                 let name = format!("{}.{}", meta.meta.name, meta.property.name);
                 self.emit(
                     InstructionValue::LoadGlobal {
@@ -2164,6 +2182,16 @@ impl HIRBuilder {
         for prop_kind in &obj.properties {
             match prop_kind {
                 ObjectPropertyKind::ObjectProperty(prop) => {
+                    // Upstream: Todo: Handle get/set functions in ObjectExpression
+                    if matches!(prop.kind, PropertyKind::Get | PropertyKind::Set) {
+                        let kind_str = if prop.kind == PropertyKind::Get { "get" } else { "set" };
+                        return self.emit(
+                            InstructionValue::UnsupportedNode {
+                                node: format!("ObjectExpression_{kind_str}_syntax"),
+                            },
+                            loc,
+                        );
+                    }
                     if prop.method {
                         // Object method shorthand
                         let value = self.lower_expression(&prop.value);

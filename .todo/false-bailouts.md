@@ -166,30 +166,24 @@ of that particular useMemo call.
 **Key files:**
 - `crates/oxc_react_compiler/src/validation/validate_use_memo.rs`
 
-## Global-Reassignment False Positives (15 fixtures)
+## Global-Reassignment False Positives (15 fixtures) -- Partially Fixed
 
 **Diagnostic:** "Cannot reassign variables declared outside of the
 component/hook"
 
-**Root cause:** `validate_no_global_reassignment.rs` flags reassignments
-to outer-scope variables inside effect callbacks and event handlers. Upstream
-allows global mutation in effects (e.g., `useEffect(() => { global = 1 })`)
-and in JSX callbacks (e.g., `onClick={() => { global = 1 }}`).
+**Improvements made:** Added JSX event handler filtering, effect hook
+callback detection (useEffect/useLayoutEffect/useInsertionEffect first arg),
+and useCallback body detection to `validate_no_global_reassignment.rs`.
+Eliminated unnecessary clones and fixed dead allocation. The validator now
+builds a set of "safe callback" function IDs and skips global reassignment
+errors inside those functions.
 
-**Upstream file:** `src/Validation/ValidateNoGlobalReassignment.ts` -- checks
-that global reassignment only occurs inside "allowable" contexts (effects,
-event handlers, callbacks).
+**Upstream file:** `src/Validation/ValidateNoGlobalReassignment.ts`
 
-**Fix strategy:** Add effect/callback context detection to the global
-reassignment validator. If the reassignment is inside a function that
-gets passed to `useEffect`, `useCallback`, or a JSX event handler prop,
-it should be allowed.
-
-**Sample fixtures:**
-- `allow-global-mutation-in-effect-indirect.js`
-- `allow-global-reassignment-in-effect.js`
-- `allow-modify-global-in-callback-jsx.js`
-- `update-global-in-callback.tsx`
+**Remaining work:** Some fixtures may still fail due to indirect callback
+patterns (e.g., callback stored in a variable before being passed to
+an effect hook). Need to verify how many of the 15 now pass and update
+the count.
 
 **Key files:**
 - `crates/oxc_react_compiler/src/validation/validate_no_global_reassignment.rs`

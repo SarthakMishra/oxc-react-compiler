@@ -4,23 +4,32 @@ Upstream rejects with an error, we either compile or produce the wrong error.
 
 ## Error Categories
 
-### Upstream Internal Errors (Invariant/Todo) -- 16 fixtures, SKIP
+### Upstream Internal Errors (Invariant/Todo) -- 16 fixtures
 
-These are upstream compiler bugs/limitations, not validation errors:
+These are upstream compiler bugs/limitations, not validation errors.
+
+**Now matched (via `validate_no_unsupported_nodes`):**
+- ~~"Todo: (BuildHIR::lowerExpression) Handle YieldExpression..." (1)~~ -- `error.useMemo-callback-generator.js` now passes
+- ~~"Todo: (BuildHIR::lowerStatement) Handle for-await..." (1)~~ -- `error.todo-for-await-loops.js` now passes
+- ~~"Todo: (BuildHIR::lowerExpression) Handle MetaProperty..." (1)~~ -- `error.todo-new-target-meta-property.js` now passes
+- ~~"Todo: (BuildHIR::lowerExpression) Handle get function..." (1)~~ -- `error.todo-object-expression-get-syntax.js` now passes
+
+**Completed**: Created `validate_no_unsupported_nodes.rs` pass that detects YieldExpression, ClassExpression, getter/setter syntax, new.target, and for-await-of in HIR `UnsupportedNode` instructions and emits upstream-matching Todo errors. Also added getter/setter, new.target, and for-await detection in `hir/build.rs`. Registered in pipeline as pass 7.5 (after HIR build, before other validations).
+- `crates/oxc_react_compiler/src/validation/validate_no_unsupported_nodes.rs`
+- `crates/oxc_react_compiler/src/hir/build.rs`
+- `crates/oxc_react_compiler/src/entrypoint/pipeline.rs`
+
+**Still unmatched (not yet implemented):**
 - "Invariant: [InferMutationAliasingEffects] Expected..." (3)
 - "Invariant: [Codegen] Internal error..." (2)
 - "Todo: [PruneHoistedContexts]..." (2)
 - "Todo: Support duplicate fbt tags..." (2)
-- "Todo: (BuildHIR::lowerExpression) Handle YieldExpression..." (1)
 - "Invariant: Expected temporaries to be promoted..." (1)
-- "Todo: (BuildHIR::lowerStatement) Handle for-await..." (1)
 - "Todo: (BuildHIR::lowerExpression) Handle UpdateExpression..." (1)
 - "Todo: (BuildHIR::lowerStatement) Handle var kinds..." (1)
-- "Todo: (BuildHIR::lowerExpression) Handle MetaProperty..." (1)
-- "Todo: (BuildHIR::lowerExpression) Handle get function..." (1)
 
-**Action:** Mark these 16 as known-skips. They represent upstream
-limitations that we should NOT match.
+**Action:** The remaining 12 are known-skips representing upstream
+limitations that we should NOT try to reproduce exactly.
 
 ### Validation Errors We Should Match -- 23 fixtures
 

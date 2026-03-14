@@ -2,7 +2,7 @@
 
 > Every item exists to increase the fixture pass rate. Nothing else.
 
-**Current: 430/1717 (25.0%) -- 1287 failures remaining**
+**Current: 434/1717 (25.3%) -- 1283 failures remaining**
 
 Last updated: 2026-03-14
 
@@ -20,7 +20,7 @@ Re-run breakdown analysis to get updated numbers.
 | Same slots, different codegen structure | ~150 | [codegen-structure.md] |
 | We memoize, upstream returns unchanged | ~102 | [unnecessary-memo.md] |
 | Both no-memo, output differs | ~43 | [unnecessary-memo.md] |
-| Upstream errors we should match | 39 | [upstream-errors.md] |
+| Upstream errors we should match | 35 | [upstream-errors.md] |
 | False-positive locals-reassigned bail-out | 30 | [false-bailouts.md] |
 | False-positive ref-access bail-out | 18 | [false-bailouts.md] |
 | False-positive useMemo/useCallback args | 17 | [false-bailouts.md] |
@@ -40,7 +40,7 @@ a direct 1:1 fixture gain -- bail-out removed = fixture passes.
 - [ ] Fix locals-reassigned-after-render false positives (30 fixtures) -- [false-bailouts.md](false-bailouts.md)#locals-reassigned-false-positives
 - [ ] Fix ref-access-during-render false positives (18 fixtures) -- [false-bailouts.md](false-bailouts.md)#ref-access-false-positives
 - [ ] Fix useMemo/useCallback argument count false positives (17 fixtures) -- [false-bailouts.md](false-bailouts.md)#usememo-usecallback-arg-count
-- [ ] Fix global-reassignment false positives (15 fixtures) -- [false-bailouts.md](false-bailouts.md)#global-reassignment-false-positives
+- [~] Fix global-reassignment false positives (15 fixtures, partially fixed) -- [false-bailouts.md](false-bailouts.md)#global-reassignment-false-positives
 - [ ] Fix setState-during-render false positives (14 fixtures) -- [false-bailouts.md](false-bailouts.md)#setstate-false-positives
 
 ## Tier 2 -- Slot Count Divergences (~636 fixtures)
@@ -67,11 +67,11 @@ for non-reactive functions.
 
 - [ ] Stop memoizing functions upstream doesn't memoize (133 + 43 fixtures) -- [unnecessary-memo.md](unnecessary-memo.md)#unnecessary-memoization
 
-## Tier 5 -- Upstream Errors (~39 fixtures)
+## Tier 5 -- Upstream Errors (~35 fixtures)
 
 Upstream rejects with an error, we should too.
 
-- [ ] Match upstream validation errors (39 fixtures) -- [upstream-errors.md](upstream-errors.md)#remaining-errors
+- [~] Match upstream validation errors (39 fixtures, 4 done via validate_no_unsupported_nodes) -- [upstream-errors.md](upstream-errors.md)#remaining-errors
 
 ## Skipped
 
