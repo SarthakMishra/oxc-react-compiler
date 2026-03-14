@@ -63,6 +63,11 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                     InstructionValue::StoreLocal { value, .. }
                     | InstructionValue::StoreContext { value, .. } => {
                         non_reactive_ids.contains(&value.identifier.id)
+                            || value
+                                .identifier
+                                .name
+                                .as_deref()
+                                .is_some_and(|n| non_reactive_names.contains(n))
                     }
                     InstructionValue::LoadLocal { place }
                     | InstructionValue::LoadContext { place } => {
@@ -346,7 +351,10 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                 if let Some(resolved) = temp_map.get(&place.identifier.id) {
                     // Resolved to a root named variable with property path
                     let root = resolved.to_identifier();
-                    if !is_root_scope_internal(&root) && !non_reactive_ids.contains(&root.id) {
+                    if !is_root_scope_internal(&root)
+                        && !non_reactive_ids.contains(&root.id)
+                        && !root.name.as_deref().is_some_and(|n| non_reactive_names.contains(n))
+                    {
                         let deps = scope_deps.entry(scope_id).or_default();
                         // Check if already have a dep for this root+path
                         let already = deps
@@ -363,7 +371,13 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR) {
                 } else {
                     // No resolution — use as-is (named variable or unresolved temp)
                     let op_id = place.identifier.id;
-                    if !is_scope_internal(place) && !non_reactive_ids.contains(&place.identifier.id)
+                    if !is_scope_internal(place)
+                        && !non_reactive_ids.contains(&place.identifier.id)
+                        && !place
+                            .identifier
+                            .name
+                            .as_deref()
+                            .is_some_and(|n| non_reactive_names.contains(n))
                     {
                         let deps = scope_deps.entry(scope_id).or_default();
                         let already_added =
