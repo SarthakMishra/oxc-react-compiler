@@ -277,7 +277,6 @@ error._todo.computed-lval-in-destructure.js
 error.bailout-on-suppression-of-custom-rule.js
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-couldnt-find-binding-for-decl.js
-error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-unnamed-temporary.js
 error.call-args-destructuring-asignment-complex.js
 error.dont-hoist-inline-reference.js
@@ -287,7 +286,6 @@ error.invalid-hoisting-setstate.js
 error.invalid-mutate-props-in-effect-fixpoint.js
 error.invalid-mutation-of-possible-props-phi-indirect.js
 error.invalid-pass-mutable-function-as-prop.js
-error.invalid-pass-ref-to-function.js
 error.invalid-return-mutable-function-from-hook.js
 error.invalid-sketchy-code-use-forget.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
@@ -296,7 +294,6 @@ error.invalid-useMemo-callback-args.js
 error.mutate-function-property.js
 error.ref-like-name-not-Ref.js
 error.ref-like-name-not-a-ref.js
-error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js
 error.sketchy-code-rules-of-hooks.js
 error.todo-for-await-loops.js
@@ -306,7 +303,6 @@ error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hoisting-simple-var-declaration.js
 error.todo-hook-call-spreads-mutable-iterator.js
 error.todo-kitchensink.js
-error.todo-missing-source-locations.js
 error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-new-target-meta-property.js
 error.todo-object-expression-get-syntax.js
@@ -326,8 +322,6 @@ escape-analysis-not-switch-test.js
 evaluation-order-mutate-call-after-dependency-load.ts
 evaluation-order-mutate-store-after-dependency-load.ts
 exhaustive-deps/compile-files-with-exhaustive-deps-violation-in-effects.js
-exhaustive-deps/error.invalid-exhaustive-effect-deps-missing-only.js
-exhaustive-deps/error.sketchy-code-exhaustive-deps.js
 exhaustive-deps/exhaustive-deps-allow-constant-folded-values.js
 exhaustive-deps/exhaustive-deps-allow-nonreactive-stable-types-as-extra-deps.js
 exhaustive-deps/exhaustive-deps-effect-events.js
@@ -501,7 +495,6 @@ iife-return-modified-later-phi.js
 iife-return-modified-later.js
 immutable-hooks.js
 import-as-local.tsx
-inadvertent-mutability-readonly-class.js
 inadvertent-mutability-readonly-lambda.js
 incompatible-destructuring-kinds.js
 independent-across-if.js
@@ -517,9 +510,6 @@ infer-functions-component-with-ref-arg.js
 infer-functions-hook-with-hook-call.js
 infer-global-object.js
 infer-nested-object-method.jsx
-infer-no-component-annot.ts
-infer-no-component-nested-jsx.js
-infer-no-component-obj-return.js
 infer-phi-primitive.js
 infer-property-delete.js
 infer-sequential-optional-chain-nonnull.ts
@@ -765,11 +755,7 @@ outlined-destructured-params.js
 outlined-helper.js
 outlining-in-func-expr.js
 outlining-in-react-memo.js
-overlapping-scopes-interleaved-by-terminal.js
-overlapping-scopes-interleaved.js
-overlapping-scopes-shadowed.js
 overlapping-scopes-shadowing-within-block.js
-overlapping-scopes-while.js
 overlapping-scopes-within-block.js
 panresponder-ref-in-callback.js
 partial-early-return-within-reactive-scope.js
@@ -1268,7 +1254,6 @@ type-test-return-type-inference.js
 unary-expr.js
 unconditional-break-label.js
 uninitialized-declaration-in-reactive-scope.js
-unknown-hooks-do-not-assert.js
 unlabeled-break-within-label-loop.ts
 unlabeled-break-within-label-switch.ts
 unmemoized-nonreactive-dependency-is-pruned-as-dependency.js

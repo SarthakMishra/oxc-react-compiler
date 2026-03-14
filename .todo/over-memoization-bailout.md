@@ -64,16 +64,19 @@ Our current flow:
 ### Gap 5: Mutation Aliasing Bail-Out [IN PROGRESS]
 
 **Upstream:** `InferMutationAliasingRanges.ts`, `InferReactivePlaces.ts` -- when values escape into unknown functions or global scope, Babel marks them as non-cacheable
-**Current state (updated 2026-03-14):** `infer_mutation_aliasing_ranges.rs` has been rewritten from a flat one-level alias traversal (~315 lines) to a graph-based BFS mutation propagation algorithm (~715 lines) matching the upstream `InferMutationAliasingRanges.ts` architecture. The new implementation builds a directed `AliasingGraph` with typed edges (Alias, Capture, MaybeAlias, CreatedFrom) and processes mutations via BFS with temporal index guards -- only edges created before a mutation's instruction index are followed, matching upstream's rule that aliasing created after a mutation cannot retroactively extend the mutable range. Phi-node back-edges are handled via a `pending_phis` map with deferred replay after block completion. Conformance unchanged at 370/1717 (structural prerequisite for scope over-splitting fixes).
+**Current state (updated 2026-03-14):** Two major milestones completed:
+
+1. **Graph-based BFS mutation propagation** (2026-03-14): `infer_mutation_aliasing_ranges.rs` rewritten from flat one-level alias traversal (~315 lines) to graph-based BFS algorithm (~715 lines) matching upstream `InferMutationAliasingRanges.ts`. Directed `AliasingGraph` with typed edges (Alias, Capture, MaybeAlias, CreatedFrom), BFS with temporal index guards, phi-node back-edge handling via `pending_phis` map.
+
+2. **refine_effects() applyEffect phase** (2026-03-14): `infer_mutation_aliasing_effects.rs` now implements upstream `applyEffect()` logic. Apply effects resolved with and without function signatures. CreateFrom/Capture/Assign/MutateConditionally/Mutate effects refined based on value kinds via `AbstractHeap.value_kind()`. +15 fixtures (370 -> 385/1717).
 
 **What remains:**
+- **Full fixpoint abstract interpretation**: Upstream runs `InferMutableRanges` as a fixpoint loop, iterating until no new mutations are discovered. Our implementation is single-pass. Some fixtures require multiple iterations to propagate mutations through deep alias chains.
+- **Function signature resolution for Apply**: When a function with a known signature is called, upstream resolves the signature's parameter effects to determine which arguments are mutated. Our implementation falls back to the conservative "mutate all arguments" path when no signature is available. Signature inference for user-defined functions is not yet implemented.
+- **Return-value freezing**: Upstream freezes return values of certain function calls (e.g., hook returns) at the call site, preventing downstream mutations from being attributed to the caller's scope. Our freeze tracking is partial (see `validate_no_mutation_after_freeze.rs`).
 - `last_use_map` and `creation_map` from the original implementation were retained for backward compatibility -- these are load-bearing in `infer_reactive_places.rs` and codegen, but should be removed once upstream-equivalent passes (e.g., `InferReactivePlaces` rewrite) are in place (see Gap 7)
-- Audit `infer_mutation_aliasing_effects.rs` against upstream `InferMutableRanges.ts`:
-  - Verify that function calls with mutable arguments mark the arguments as potentially mutated
-  - Verify that assignments to module-level variables are detected
-  - Verify that values passed to non-local functions are marked as escaped
 - When aliasing analysis determines a function has no safely-cacheable values, the reactive scope construction should produce zero scopes, which triggers the zero-scope bail-out
-- Implementation file: `crates/oxc_react_compiler/src/inference/infer_mutation_aliasing_ranges.rs`
+- Implementation files: `crates/oxc_react_compiler/src/inference/infer_mutation_aliasing_ranges.rs`, `crates/oxc_react_compiler/src/inference/infer_mutation_aliasing_effects.rs`
 **Depends on:** Gap 4 (completed)
 
 ### Gap 6: "Too Simple" Function Detection

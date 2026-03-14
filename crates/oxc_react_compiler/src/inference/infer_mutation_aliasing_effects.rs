@@ -136,6 +136,16 @@ impl AbstractHeap {
         self.id_to_value.get(&id).and_then(|&idx| self.values.get(idx)).is_some_and(|v| v.frozen)
     }
 
+    /// Get the value kind for an identifier, defaulting to Mutable if unknown.
+    fn value_kind(&self, id: IdentifierId) -> ValueKind {
+        self.id_to_value.get(&id).and_then(|&idx| self.values.get(idx)).map_or(
+            ValueKind::Mutable,
+            |v| {
+                if v.frozen { ValueKind::Frozen } else { v.kind }
+            },
+        )
+    }
+
     /// Compute the effect for a place based on heap state.
     fn compute_effect(&self, id: IdentifierId) -> Effect {
         let Some(&idx) = self.id_to_value.get(&id) else {
@@ -225,6 +235,19 @@ pub fn infer_mutation_aliasing_effects(hir: &mut HIR) {
             if !heap.values[idx].mutated {
                 heap.values[idx].mutated = true;
                 changed = true;
+            }
+        }
+    }
+
+    // Phase 3.5: Refine effects based on value kinds from the heap.
+    // Upstream: applyEffect() in InferMutationAliasingEffects.ts
+    // This resolves Apply effects into concrete effects and refines
+    // CreateFrom/Capture/Assign/Mutate based on source value kinds.
+    for (_, block) in &mut hir.blocks {
+        for instr in &mut block.instructions {
+            if let Some(ref effects) = instr.effects {
+                let refined = refine_effects(effects, &heap);
+                instr.effects = Some(refined);
             }
         }
     }
@@ -330,6 +353,247 @@ fn process_effect_for_heap(heap: &mut AbstractHeap, effect: &AliasingEffect) {
             // These are diagnostic effects -- they don't modify the heap model.
         }
     }
+}
+
+/// Refine raw effects based on the abstract heap's value kind analysis.
+///
+/// Upstream: `applyEffect()` in `InferMutationAliasingEffects.ts`
+///
+/// Key refinements:
+/// - `Apply` → resolved into `Create` for return + `MutateTransitiveConditionally` for each arg
+/// - `CreateFrom` where source is Primitive/Global → `Create(Primitive)` (no alias edge)
+/// - `Capture` where source is Primitive/Global → dropped (no capture edge)
+/// - `Assign` where source is Primitive/Global → `Create(Primitive)` (no alias edge)
+/// - `MutateConditionally` where target is Primitive/Global/Frozen → dropped
+/// - `Mutate` where target is Primitive/Global → dropped
+fn refine_effects(effects: &[AliasingEffect], heap: &AbstractHeap) -> Vec<AliasingEffect> {
+    let mut refined = Vec::with_capacity(effects.len());
+
+    for effect in effects {
+        match effect {
+            AliasingEffect::Apply { args, into, signature, .. } => {
+                // Resolve Apply into concrete effects
+                if let Some(sig) = signature {
+                    // Signature-aware resolution: use per-parameter effects
+                    refined.push(AliasingEffect::Create {
+                        into: into.clone(),
+                        value: ValueKind::Mutable,
+                        reason: crate::hir::types::ValueReason::Other,
+                    });
+                    for (arg, param_effect) in args.iter().zip(sig.params.iter()) {
+                        let kind = heap.value_kind(arg.identifier.id);
+                        if matches!(kind, ValueKind::Primitive | ValueKind::Global) {
+                            continue; // Skip effects on known primitives/globals
+                        }
+                        match param_effect.effect {
+                            Effect::Mutate => {
+                                refined.push(AliasingEffect::Mutate { value: arg.clone() });
+                            }
+                            Effect::ConditionallyMutate => {
+                                refined.push(AliasingEffect::MutateConditionally {
+                                    value: arg.clone(),
+                                });
+                            }
+                            Effect::Capture => {
+                                refined.push(AliasingEffect::Capture {
+                                    from: arg.clone(),
+                                    into: into.clone(),
+                                });
+                            }
+                            Effect::Freeze => {
+                                refined.push(AliasingEffect::Freeze {
+                                    value: arg.clone(),
+                                    reason: FreezeReason::FrozenByValue,
+                                });
+                            }
+                            _ => {} // Read, Store, Unknown → no effect on arg
+                        }
+                        if param_effect.alias_to_return {
+                            refined.push(AliasingEffect::Alias {
+                                from: arg.clone(),
+                                into: into.clone(),
+                            });
+                        }
+                    }
+                } else {
+                    // No signature: conservative fallback
+                    // Create a mutable value for the return
+                    // MutateTransitiveConditionally each arg
+                    refined.push(AliasingEffect::Create {
+                        into: into.clone(),
+                        value: ValueKind::Mutable,
+                        reason: crate::hir::types::ValueReason::Other,
+                    });
+                    for arg in args {
+                        let kind = heap.value_kind(arg.identifier.id);
+                        if !matches!(kind, ValueKind::Primitive | ValueKind::Global) {
+                            refined.push(AliasingEffect::MutateTransitiveConditionally {
+                                value: arg.clone(),
+                            });
+                        }
+                    }
+                }
+            }
+
+            AliasingEffect::CreateFrom { from, into } => {
+                let kind = heap.value_kind(from.identifier.id);
+                match kind {
+                    ValueKind::Primitive | ValueKind::Global => {
+                        // Source is primitive/global → create a primitive, no alias
+                        refined.push(AliasingEffect::Create {
+                            into: into.clone(),
+                            value: ValueKind::Primitive,
+                            reason: crate::hir::types::ValueReason::KnownValue,
+                        });
+                    }
+                    ValueKind::Frozen | ValueKind::MaybeFrozen => {
+                        // Source is frozen → create frozen + immutable capture
+                        refined.push(AliasingEffect::Create {
+                            into: into.clone(),
+                            value: ValueKind::Frozen,
+                            reason: crate::hir::types::ValueReason::KnownValue,
+                        });
+                        refined.push(AliasingEffect::ImmutableCapture {
+                            from: from.clone(),
+                            into: into.clone(),
+                        });
+                    }
+                    ValueKind::Mutable | ValueKind::Context => {
+                        // Keep as-is
+                        refined.push(effect.clone());
+                    }
+                }
+            }
+
+            AliasingEffect::Assign { from, into } => {
+                let kind = heap.value_kind(from.identifier.id);
+                match kind {
+                    ValueKind::Primitive | ValueKind::Global => {
+                        // Assigning from primitive → target gets a primitive, no alias edge
+                        refined.push(AliasingEffect::Create {
+                            into: into.clone(),
+                            value: ValueKind::Primitive,
+                            reason: crate::hir::types::ValueReason::KnownValue,
+                        });
+                    }
+                    ValueKind::Frozen | ValueKind::MaybeFrozen => {
+                        // Assigning from frozen → create frozen target + immutable capture
+                        refined.push(AliasingEffect::Create {
+                            into: into.clone(),
+                            value: ValueKind::Frozen,
+                            reason: crate::hir::types::ValueReason::KnownValue,
+                        });
+                        refined.push(AliasingEffect::ImmutableCapture {
+                            from: from.clone(),
+                            into: into.clone(),
+                        });
+                    }
+                    ValueKind::Mutable | ValueKind::Context => {
+                        refined.push(effect.clone());
+                    }
+                }
+            }
+
+            AliasingEffect::Capture { from, into } => {
+                let kind = heap.value_kind(from.identifier.id);
+                match kind {
+                    ValueKind::Primitive | ValueKind::Global => {
+                        // Capturing a primitive/global is a no-op
+                    }
+                    ValueKind::Frozen | ValueKind::MaybeFrozen => {
+                        // Capturing a frozen value → immutable capture
+                        refined.push(AliasingEffect::ImmutableCapture {
+                            from: from.clone(),
+                            into: into.clone(),
+                        });
+                    }
+                    ValueKind::Mutable | ValueKind::Context => {
+                        refined.push(effect.clone());
+                    }
+                }
+            }
+
+            AliasingEffect::ImmutableCapture { from, .. } => {
+                let kind = heap.value_kind(from.identifier.id);
+                if matches!(kind, ValueKind::Primitive | ValueKind::Global) {
+                    // Immutable capture of primitive/global is a no-op
+                } else {
+                    refined.push(effect.clone());
+                }
+            }
+
+            AliasingEffect::MutateConditionally { value } => {
+                let kind = heap.value_kind(value.identifier.id);
+                match kind {
+                    ValueKind::Primitive | ValueKind::Global | ValueKind::Frozen => {
+                        // Conditionally mutating a known-immutable → drop
+                    }
+                    ValueKind::MaybeFrozen => {
+                        // MaybeFrozen being conditionally mutated → MutateFrozen error
+                        refined.push(AliasingEffect::MutateFrozen {
+                            place: value.clone(),
+                            error: "Cannot mutate a value that may be frozen".to_string(),
+                        });
+                    }
+                    ValueKind::Mutable | ValueKind::Context => {
+                        refined.push(effect.clone());
+                    }
+                }
+            }
+
+            AliasingEffect::MutateTransitiveConditionally { value } => {
+                let kind = heap.value_kind(value.identifier.id);
+                match kind {
+                    ValueKind::Primitive | ValueKind::Global | ValueKind::Frozen => {
+                        // Drop
+                    }
+                    ValueKind::MaybeFrozen => {
+                        refined.push(AliasingEffect::MutateFrozen {
+                            place: value.clone(),
+                            error: "Cannot mutate a value that may be frozen".to_string(),
+                        });
+                    }
+                    ValueKind::Mutable | ValueKind::Context => {
+                        refined.push(effect.clone());
+                    }
+                }
+            }
+
+            AliasingEffect::Mutate { value } | AliasingEffect::MutateTransitive { value } => {
+                let kind = heap.value_kind(value.identifier.id);
+                match kind {
+                    ValueKind::Primitive | ValueKind::Global => {
+                        // Mutating a primitive/global → drop
+                    }
+                    ValueKind::Frozen | ValueKind::MaybeFrozen => {
+                        // Mutating a frozen value → MutateFrozen error
+                        refined.push(AliasingEffect::MutateFrozen {
+                            place: value.clone(),
+                            error: "Cannot mutate a frozen value".to_string(),
+                        });
+                    }
+                    ValueKind::Mutable | ValueKind::Context => {
+                        refined.push(effect.clone());
+                    }
+                }
+            }
+
+            // Pass through all other effects unchanged
+            AliasingEffect::Create { .. }
+            | AliasingEffect::CreateFunction { .. }
+            | AliasingEffect::Alias { .. }
+            | AliasingEffect::MaybeAlias { .. }
+            | AliasingEffect::Freeze { .. }
+            | AliasingEffect::MutateFrozen { .. }
+            | AliasingEffect::MutateGlobal { .. }
+            | AliasingEffect::Impure { .. }
+            | AliasingEffect::Render { .. } => {
+                refined.push(effect.clone());
+            }
+        }
+    }
+
+    refined
 }
 
 /// Set effects on operand places within an instruction value.

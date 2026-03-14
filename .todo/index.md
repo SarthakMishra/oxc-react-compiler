@@ -2,9 +2,9 @@
 
 > Comprehensive backlog for porting babel-plugin-react-compiler to Rust/OXC.
 
-Last updated: 2026-03-14 (graph-based BFS mutation propagation rewrite, 370/1717)
+Last updated: 2026-03-14 (refine_effects applyEffect phase, 385/1717)
 
-Current conformance: 370/1717 pass (21.5%), 0 panics, 0 unexpected divergences.
+Current conformance: 385/1717 pass (22.4%), 0 panics, 0 unexpected divergences.
 
 Note: Conformance tests now use `CompilationMode::All` (matching upstream Babel's
 default) instead of `Infer`. This honestly attempts compilation of ALL functions,
@@ -108,6 +108,12 @@ is now fully complete (all 8 fixtures resolved).
 now correctly bails out when compilation is not needed in infer mode.
 3 fixtures removed from known-failures.txt. Net change: +3 (388 -> 391/1717).
 
+**Fix (2026-03-14):** refine_effects() phase in `infer_mutation_aliasing_effects.rs` --
+implements upstream `applyEffect()` logic. Apply effects resolved with/without function
+signatures; CreateFrom/Capture/Assign/MutateConditionally/Mutate refined based on value
+kinds via `AbstractHeap.value_kind()`. 15 fixtures removed from known-failures.txt (now 1332).
+Net change: +15 (370 -> 385/1717).
+
 **Fix (2026-03-14):** Hook alias detection + dynamic hook identity + validation sweep.
 (1) `collect_hook_aliases()` in `program.rs` scans imports for aliased hooks (e.g.,
 `import { useState as useMyState }`), stored in `EnvironmentConfig.hook_aliases`.
@@ -135,7 +141,7 @@ error.invalid-conditional-call-aliased-react-hook.js). Net change: +2 (391 -> 39
 ## Active Work
 
 - [~] Temp variable inlining pass (recursive cross-scope counting done; needs remaining P1 fixes to yield fixture gains) — [memoization-structure.md](memoization-structure.md)#gap-1-temp-variable-inlining-pass
-- [~] Mutation aliasing bail-out (BFS graph rewrite done; `infer_mutation_aliasing_effects` audit + `last_use_map` removal remaining) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
+- [~] Mutation aliasing bail-out (BFS graph rewrite + refine_effects applyEffect done; remaining: full fixpoint abstract interpretation, function signature resolution for Apply, return-value freezing) — [over-memoization-bailout.md](over-memoization-bailout.md)#gap-5-mutation-aliasing-bail-out
 
 ---
 
