@@ -9,7 +9,14 @@ scopes differs. These are the closest-to-passing fixtures.
 
 **Likely root causes (in order of impact):**
 
-### 1. Temp variable inlining differences
+### 1. Scope output variable renaming (rename_variables) ✅
+
+~~Our codegen did not rename reactive scope declaration outputs to sequential
+temp names (t0, t1, ...) matching upstream behavior.~~
+
+**Completed**: Implemented `rename_variables` pass in `prune_scopes.rs`. The pass assigns sequential temp names (`t0`, `t1`, ...) to reactive scope declaration outputs and emits `const originalName = tN` alias assignments after the scope block. Includes collision avoidance by scanning existing temp indices, eligibility checks (skips already-temp-named, reassignment targets, and in-scope reads), and exhaustive value/terminal read counting. +2 fixtures (`array-pattern-params.js`, `object-pattern-params.js`). Upstream: `CodegenReactiveFunction.ts`. Rust: `crates/oxc_react_compiler/src/reactive_scopes/prune_scopes.rs`.
+
+### 2. Temp variable inlining differences
 
 Our codegen emits intermediate SSA temporaries that upstream inlines.
 For example, we emit `const t0 = props.x; return t0;` where upstream
@@ -29,18 +36,18 @@ IR-to-source translation.
 **Key files:**
 - `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs` (temp use counting, inlining)
 
-### 2. Scope declaration ordering
+### 3. Scope declaration ordering
 
 Our codegen may emit scope declarations in a different order than upstream.
 Within a scope guard's if-block, the order of `$[N] = value` assignments
 matters for comparison.
 
-### 3. Dependency ordering within scope guards
+### 4. Dependency ordering within scope guards
 
 The order of dependency checks in the if-condition (`$[0] !== deps0 ||
 $[1] !== deps1`) may differ from upstream.
 
-### 4. Scope nesting structure
+### 5. Scope nesting structure
 
 When scopes are nested (scope A contains scope B), the nesting structure
 may differ even when total slot counts match.

@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
 use crate::hir::types::{
-    ArrayElement, BasicBlock, BlockId, BlockKind, HIR, IdentifierId, InstructionValue,
-    ObjectPropertyKey, Place, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
-    ReactiveTerminal, ScopeId, Terminal,
+    ArrayElement, BasicBlock, BlockId, BlockKind, HIR, IdentifierId, InstructionKind,
+    InstructionValue, ObjectPropertyKey, Param, Place, ReactiveBlock, ReactiveFunction,
+    ReactiveInstruction, ReactiveTerminal, ScopeId, Terminal,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -1307,17 +1307,390 @@ fn set_terminal_id(terminal: &mut ReactiveTerminal, new_id: crate::hir::types::B
 /// Without this pass, our output uses the original variable name directly
 /// in the scope block, causing token-level mismatches with upstream output.
 pub fn rename_variables(rf: &mut ReactiveFunction) {
-    // TODO: Implement upstream-faithful variable renaming.
-    // The pass needs to match upstream's exact renaming logic — only rename
-    // scope declaration outputs that upstream would also rename to temporaries.
-    // A naive "rename everything" approach causes regressions on fixtures that
-    // expect original names preserved.
-    let _ = rf;
+    // Upstream CodegenReactiveFunction.ts renames scope declaration outputs to
+    // sequential temp names (t0, t1, ...) and emits `const originalName = tN`
+    // after the scope block. We skip renaming declarations that:
+    //   - already have a temp name (tN)
+    //   - are reassigned (lvalue appears multiple times in scope body)
+    //   - have property/computed mutations (PropertyStore, ComputedStore, etc.)
+    let mut counter = scan_max_temp_counter(rf);
+    rename_vars_in_block(&mut rf.body, &mut counter);
 }
 
 /// Check if a name is already a compiler temporary (matches `tN` pattern).
 fn is_temp_var_name(name: &str) -> bool {
     name.starts_with('t') && name.len() >= 2 && name[1..].chars().all(|c| c.is_ascii_digit())
+}
+
+/// Extract the numeric suffix from a temp name like "t42" → Some(42).
+fn temp_name_index(name: &str) -> Option<u32> {
+    if is_temp_var_name(name) { name[1..].parse::<u32>().ok() } else { None }
+}
+
+/// Update `max` if `name` is a temp name with index >= current max.
+fn update_max_temp(name: &str, max: &mut u32) {
+    if let Some(n) = temp_name_index(name) {
+        *max = (*max).max(n + 1);
+    }
+}
+
+/// Scan all identifiers in the ReactiveFunction to find the highest `N` in any
+/// existing `t{N}` name. The rename counter starts from `max_N + 1` to avoid
+/// collisions with names assigned by `promote_used_temporaries`.
+fn scan_max_temp_counter(rf: &ReactiveFunction) -> u32 {
+    let mut max = 0u32;
+    for param in &rf.params {
+        let place = match param {
+            Param::Identifier(p) | Param::Spread(p) => p,
+        };
+        if let Some(ref name) = place.identifier.name {
+            update_max_temp(name, &mut max);
+        }
+    }
+    scan_max_in_block(&rf.body, &mut max);
+    max
+}
+
+fn scan_max_in_block(block: &ReactiveBlock, max: &mut u32) {
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(i) => {
+                if let Some(ref name) = i.lvalue.identifier.name {
+                    update_max_temp(name, max);
+                }
+            }
+            ReactiveInstruction::Scope(sb) => {
+                for (_, decl) in &sb.scope.declarations {
+                    if let Some(ref name) = decl.identifier.name {
+                        update_max_temp(name, max);
+                    }
+                }
+                scan_max_in_block(&sb.instructions, max);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                for_each_block_in_terminal(terminal, |b| scan_max_in_block(b, max));
+            }
+        }
+    }
+}
+
+/// Returns true if a scope declaration with the given name should be renamed
+/// to a temp variable. A declaration is NOT renamed if:
+/// - It already has a temp name (`t{digits}`) — checked by caller
+/// - It appears as an instruction lvalue more than once in the scope body
+///   (reassignment, e.g., variables mutated in a while loop)
+/// - It is referenced (read or mutated) anywhere in the scope body beyond
+///   its initial assignment — e.g., used as a method receiver, property
+///   store target, function argument, or any other operand
+fn can_rename_scope_decl(name: &str, scope_body: &ReactiveBlock) -> bool {
+    let mut lvalue_count = 0u32;
+    let mut read_count = 0u32;
+    let mut is_reassign = false;
+    check_rename_eligibility(
+        scope_body,
+        name,
+        &mut lvalue_count,
+        &mut read_count,
+        &mut is_reassign,
+    );
+    // Only rename if:
+    // 1. Not a reassignment of an outer-scope variable, AND
+    // 2. Assigned at most once (no multiple writes), AND
+    // 3. Never read within the scope body after assignment
+    !is_reassign && lvalue_count <= 1 && read_count == 0
+}
+
+fn check_rename_eligibility(
+    block: &ReactiveBlock,
+    name: &str,
+    lvalue_count: &mut u32,
+    read_count: &mut u32,
+    is_reassign: &mut bool,
+) {
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(i) => {
+                // Check if this instruction's lvalue uses the name
+                if i.lvalue.identifier.name.as_deref() == Some(name) {
+                    *lvalue_count += 1;
+                }
+                // Check for StoreLocal with Reassign kind — means the binding
+                // was declared outside this scope and is being reassigned here.
+                if let InstructionValue::StoreLocal {
+                    lvalue,
+                    type_: Some(InstructionKind::Reassign),
+                    ..
+                } = &i.value
+                    && lvalue.identifier.name.as_deref() == Some(name)
+                {
+                    *is_reassign = true;
+                }
+                // Count all reads of the name in the instruction value
+                count_reads_in_value(&i.value, name, lvalue_count, read_count);
+            }
+            ReactiveInstruction::Scope(sb) => {
+                check_rename_eligibility(
+                    &sb.instructions,
+                    name,
+                    lvalue_count,
+                    read_count,
+                    is_reassign,
+                );
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                count_reads_in_terminal(terminal, name, read_count);
+                for_each_block_in_terminal(terminal, |b| {
+                    check_rename_eligibility(b, name, lvalue_count, read_count, is_reassign);
+                });
+            }
+        }
+    }
+}
+
+/// Count references to `name` in a terminal's operands (test conditions, etc.)
+fn count_reads_in_terminal(terminal: &ReactiveTerminal, name: &str, read_count: &mut u32) {
+    match terminal {
+        ReactiveTerminal::If { test, .. } => {
+            if test.identifier.name.as_deref() == Some(name) {
+                *read_count += 1;
+            }
+        }
+        ReactiveTerminal::Switch { test, cases, .. } => {
+            if test.identifier.name.as_deref() == Some(name) {
+                *read_count += 1;
+            }
+            for (case_test, _) in cases {
+                if let Some(tv) = case_test
+                    && tv.identifier.name.as_deref() == Some(name)
+                {
+                    *read_count += 1;
+                }
+            }
+        }
+        ReactiveTerminal::Return { value, .. } | ReactiveTerminal::Throw { value, .. } => {
+            if value.identifier.name.as_deref() == Some(name) {
+                *read_count += 1;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Count all reads of `name` within an instruction value's operand places.
+/// Also counts StoreLocal/StoreContext/DeclareLocal lvalue uses as additional writes.
+fn count_reads_in_value(
+    value: &InstructionValue,
+    name: &str,
+    lvalue_count: &mut u32,
+    read_count: &mut u32,
+) {
+    let is_name = |place: &Place| place.identifier.name.as_deref() == Some(name);
+
+    match value {
+        InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+            if is_name(place) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. }
+        | InstructionValue::StoreContext { lvalue, value } => {
+            if is_name(lvalue) {
+                *lvalue_count += 1;
+            }
+            if is_name(value) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::DeclareLocal { lvalue, .. }
+        | InstructionValue::DeclareContext { lvalue, .. } => {
+            if is_name(lvalue) {
+                *lvalue_count += 1;
+            }
+        }
+        InstructionValue::CallExpression { callee, args }
+        | InstructionValue::NewExpression { callee, args } => {
+            if is_name(callee) {
+                *read_count += 1;
+            }
+            for arg in args {
+                if is_name(arg) {
+                    *read_count += 1;
+                }
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            if is_name(receiver) {
+                *read_count += 1;
+            }
+            for arg in args {
+                if is_name(arg) {
+                    *read_count += 1;
+                }
+            }
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            if is_name(object) {
+                *read_count += 1;
+            }
+            if is_name(value) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            if is_name(object) {
+                *read_count += 1;
+            }
+            if is_name(property) {
+                *read_count += 1;
+            }
+            if is_name(value) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::PropertyDelete { object, .. } => {
+            if is_name(object) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            if is_name(object) {
+                *read_count += 1;
+            }
+            if is_name(property) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. } => {
+            if is_name(object) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::ComputedLoad { object, property } => {
+            if is_name(object) {
+                *read_count += 1;
+            }
+            if is_name(property) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            if is_name(left) {
+                *read_count += 1;
+            }
+            if is_name(right) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::UnaryExpression { value, .. }
+        | InstructionValue::Await { value }
+        | InstructionValue::GetIterator { collection: value }
+        | InstructionValue::NextPropertyOf { value }
+        | InstructionValue::TypeCastExpression { value, .. }
+        | InstructionValue::StoreGlobal { value, .. } => {
+            if is_name(value) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            if is_name(lvalue) {
+                *lvalue_count += 1;
+                *read_count += 1; // updates both read and write
+            }
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            if is_name(iterator) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::Destructure { value, .. } => {
+            if is_name(value) {
+                *read_count += 1;
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for el in elements {
+                match el {
+                    ArrayElement::Expression(p) | ArrayElement::Spread(p) => {
+                        if is_name(p) {
+                            *read_count += 1;
+                        }
+                    }
+                    ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                if is_name(&prop.value) {
+                    *read_count += 1;
+                }
+                if let ObjectPropertyKey::Computed(ref key) = prop.key
+                    && is_name(key)
+                {
+                    *read_count += 1;
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            if is_name(tag) {
+                *read_count += 1;
+            }
+            for attr in props {
+                if is_name(&attr.value) {
+                    *read_count += 1;
+                }
+            }
+            for child in children {
+                if is_name(child) {
+                    *read_count += 1;
+                }
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                if is_name(child) {
+                    *read_count += 1;
+                }
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                if is_name(sub) {
+                    *read_count += 1;
+                }
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            if is_name(tag) {
+                *read_count += 1;
+            }
+            for sub in &value.subexpressions {
+                if is_name(sub) {
+                    *read_count += 1;
+                }
+            }
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            if is_name(decl) {
+                *read_count += 1;
+            }
+            for dep in deps {
+                if is_name(dep) {
+                    *read_count += 1;
+                }
+            }
+        }
+        // No places to check
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
+    }
 }
 
 fn rename_vars_in_block(block: &mut ReactiveBlock, counter: &mut u32) {
@@ -1331,10 +1704,18 @@ fn rename_vars_in_block(block: &mut ReactiveBlock, counter: &mut u32) {
                 rename_vars_in_block(&mut scope_block.instructions, counter);
 
                 // For each declaration with a user-meaningful name, rename to temp
+                // if the declaration qualifies (no reassignment, no property mutation).
+                // Skip declarations that also appear in reassignments (declared outside scope).
                 let mut renames: Vec<(String, String)> = Vec::new();
                 for (_, decl) in &mut scope_block.scope.declarations {
                     if let Some(ref name) = decl.identifier.name
                         && !is_temp_var_name(name)
+                        && !scope_block
+                            .scope
+                            .reassignments
+                            .iter()
+                            .any(|id| id.name.as_deref() == Some(name))
+                        && can_rename_scope_decl(name, &scope_block.instructions)
                     {
                         let temp_name = format!("t{counter}");
                         *counter += 1;

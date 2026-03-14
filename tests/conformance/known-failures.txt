@@ -64,7 +64,6 @@ array-map-mutable-array-mutating-lambda-noAlias.js
 array-map-mutable-array-mutating-lambda.js
 array-map-mutable-array-non-mutating-lambda-mutated-result.js
 array-map-noAlias-escaping-function.js
-array-pattern-params.js
 array-pattern-spread-creates-array.js
 array-properties.js
 array-property-call.js
@@ -714,7 +713,6 @@ object-method-shorthand-hook-dep.js
 object-method-shorthand-mutated-after.js
 object-method-shorthand.js
 object-mutated-in-consequent-alternate-both-return.js
-object-pattern-params.js
 object-properties.js
 object-shorthand-method-1.js
 object-shorthand-method-2.js

@@ -2,7 +2,7 @@
 
 > Every item exists to increase the fixture pass rate. Nothing else.
 
-**Current: 397/1717 (23.1%) -- 1320 failures remaining**
+**Current: 399/1717 (23.2%) -- 1318 failures remaining**
 
 Last updated: 2026-03-14
 
