@@ -25,7 +25,7 @@ Re-run breakdown analysis to get updated numbers.
 | False-positive ref-access bail-out | 11 | [false-bailouts.md] |
 | False-positive useMemo/useCallback args | 17 | [false-bailouts.md] |
 | False-positive global-reassignment bail-out | 11 | [false-bailouts.md] |
-| False-positive setState bail-out | 14 | [false-bailouts.md] |
+| False-positive setState bail-out | 3 | [false-bailouts.md] |
 | Flow syntax (parser limitation) | 38 | Skip |
 
 ---
