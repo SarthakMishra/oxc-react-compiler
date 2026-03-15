@@ -40,7 +40,6 @@ allow-mutating-ref-property-in-callback-passed-to-jsx-indirect.tsx
 allow-mutating-ref-property-in-callback-passed-to-jsx.tsx
 allow-passing-ref-to-render-helper-props-object.js
 allow-passing-ref-to-render-helper.js
-allow-passing-refs-as-props.js
 allow-reassignment-to-global-function-jsx-prop.js
 allow-ref-access-in-effect-indirect.js
 allow-ref-access-in-effect.js
