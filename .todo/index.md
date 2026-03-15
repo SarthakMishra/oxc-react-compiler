@@ -2,9 +2,9 @@
 
 > Every item exists to increase the fixture pass rate. Nothing else.
 
-**Current: 434/1717 (25.3%) -- 1283 failures remaining**
+**Current: 435/1717 (25.3%) -- 1282 failures remaining**
 
-Last updated: 2026-03-14
+Last updated: 2026-03-15
 
 ## Failure Breakdown (from automated analysis at 399/1717)
 
@@ -21,10 +21,10 @@ Re-run breakdown analysis to get updated numbers.
 | We memoize, upstream returns unchanged | ~102 | [unnecessary-memo.md] |
 | Both no-memo, output differs | ~43 | [unnecessary-memo.md] |
 | Upstream errors we should match | 35 | [upstream-errors.md] |
-| False-positive locals-reassigned bail-out | 30 | [false-bailouts.md] |
-| False-positive ref-access bail-out | 18 | [false-bailouts.md] |
+| False-positive locals-reassigned bail-out | 11 | [false-bailouts.md] |
+| False-positive ref-access bail-out | 11 | [false-bailouts.md] |
 | False-positive useMemo/useCallback args | 17 | [false-bailouts.md] |
-| False-positive global-reassignment bail-out | 15 | [false-bailouts.md] |
+| False-positive global-reassignment bail-out | 11 | [false-bailouts.md] |
 | False-positive setState bail-out | 14 | [false-bailouts.md] |
 | Flow syntax (parser limitation) | 38 | Skip |
 
@@ -37,8 +37,8 @@ a direct 1:1 fixture gain -- bail-out removed = fixture passes.
 
 - [ ] Fix frozen-mutation false positives (162 fixtures) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-false-positives
 - [ ] Fix frozen-mutation false positive on hooks without JSX (pre-existing regression) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-hooks-without-jsx
-- [ ] Fix locals-reassigned-after-render false positives (30 fixtures) -- [false-bailouts.md](false-bailouts.md)#locals-reassigned-false-positives
-- [ ] Fix ref-access-during-render false positives (18 fixtures) -- [false-bailouts.md](false-bailouts.md)#ref-access-false-positives
+- [~] Fix locals-reassigned-after-render false positives (11 remaining, 15 fixed via render-only detection) -- [false-bailouts.md](false-bailouts.md)#locals-reassigned-false-positives
+- [~] Fix ref-access-during-render false positives (11 remaining, 9 fixed via non-render callback detection) -- [false-bailouts.md](false-bailouts.md)#ref-access-false-positives
 - [ ] Fix useMemo/useCallback argument count false positives (17 fixtures) -- [false-bailouts.md](false-bailouts.md)#usememo-usecallback-arg-count
 - [~] Fix global-reassignment false positives (15 fixtures, partially fixed) -- [false-bailouts.md](false-bailouts.md)#global-reassignment-false-positives
 - [ ] Fix setState-during-render false positives (14 fixtures) -- [false-bailouts.md](false-bailouts.md)#setstate-false-positives
