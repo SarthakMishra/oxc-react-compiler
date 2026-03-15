@@ -24,10 +24,18 @@ fn global_reassignment_error(name: &str) -> String {
 /// Reassigning variables declared outside of the component or hook can cause
 /// inconsistent behavior between renders, since React may re-render components
 /// in any order and at any time.
-pub fn validate_no_global_reassignment(hir: &HIR, errors: &mut ErrorCollector) {
+pub fn validate_no_global_reassignment(
+    hir: &HIR,
+    errors: &mut ErrorCollector,
+    param_names: &[String],
+) {
     // Collect names declared at the component's top-level scope.
-    // This includes function parameters (emitted as DeclareLocal by the builder).
-    let component_locals = collect_locally_declared_hir(hir);
+    let mut component_locals = collect_locally_declared_hir(hir);
+    // Also include function parameter names — these are local to the component
+    // but not present in the HIR body instructions (they're in HIRFunction.params).
+    for name in param_names {
+        component_locals.insert(name.clone());
+    }
 
     check_blocks(hir, &component_locals, errors);
 }

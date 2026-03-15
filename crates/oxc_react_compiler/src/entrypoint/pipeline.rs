@@ -93,7 +93,9 @@ pub fn run_pipeline(
 
     // Pass 14.5: validate_no_global_reassignment
     crate::validation::validate_no_global_reassignment::validate_no_global_reassignment(
-        hir, errors,
+        hir,
+        errors,
+        param_names,
     );
 
     // Pass 14.6: validate_no_eval
