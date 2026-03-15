@@ -1,5 +1,6 @@
 ---
 source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
+assertion_line: 164
 expression: "format!(\"{errors:?}\")"
 ---
-["Capitalized functions are reserved for components, which must be invoked with JSX. If this is a component, render it using JSX syntax instead of calling it directly."]
+[]

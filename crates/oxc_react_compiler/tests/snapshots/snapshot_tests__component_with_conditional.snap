@@ -1,43 +1,37 @@
 ---
 source: crates/oxc_react_compiler/tests/snapshot_tests.rs
+assertion_line: 113
 expression: result.code
 ---
 import { c as _c } from "react/compiler-runtime";
 
 function Toggle(t0) {
-  const $ = _c(3);
+  const $ = _c(2);
   const { isOn } = t0;
-  let t15;
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t15 = isOn;
-    $[0] = t15;
-  } else {
-    t15 = $[0];
-  }
-  if (t15) {
+  if (isOn) {
     let t21;
-    if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+    if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
       t21 = (
         <div>
           ON
         </div>
       );
-      $[1] = t21;
+      $[0] = t21;
     } else {
-      t21 = $[1];
+      t21 = $[0];
     }
     return t21;
   }
   let t18;
-  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     t18 = (
       <div>
         OFF
       </div>
     );
-    $[2] = t18;
+    $[1] = t18;
   } else {
-    t18 = $[2];
+    t18 = $[1];
   }
   return t18;
 }
