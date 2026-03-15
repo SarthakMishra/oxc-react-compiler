@@ -7,7 +7,7 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{
     AliasingEffect, ArrayElement, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR,
-    IdentifierId, InstructionValue, ObjectPropertyKey, Place,
+    IdentifierId, InstructionId, InstructionValue, ObjectPropertyKey, Place,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -238,6 +238,59 @@ pub fn validate_no_mutation_after_freeze(
         }
     }
 
+    // Build a name → last mutation instruction ID map from aliasing effects.
+    // This runs at Pass 16.5 (before infer_mutation_aliasing_ranges), so we
+    // derive range information from the effects computed by Pass 16.
+    // For each variable name, find the last instruction that has a Mutate-like
+    // effect on it. This tells us the extent of valid mutations.
+    let mut name_to_last_mutate: FxHashMap<&str, InstructionId> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let Some(ref effects) = instr.effects {
+                for effect in effects {
+                    let mutated_id = match effect {
+                        AliasingEffect::Mutate { value }
+                        | AliasingEffect::MutateConditionally { value }
+                        | AliasingEffect::MutateTransitive { value }
+                        | AliasingEffect::MutateTransitiveConditionally { value } => {
+                            Some(&value.identifier.id)
+                        }
+                        _ => None,
+                    };
+                    if let Some(id) = mutated_id
+                        && let Some(name) = id_to_source_name.get(id).copied()
+                    {
+                        let entry = name_to_last_mutate.entry(name).or_insert(instr.id);
+                        if instr.id > *entry {
+                            *entry = instr.id;
+                        }
+                    }
+                }
+            }
+            // Also track MethodCall, PropertyStore as mutations
+            match &instr.value {
+                InstructionValue::MethodCall { receiver, .. } => {
+                    if let Some(name) = id_to_source_name.get(&receiver.identifier.id).copied() {
+                        let entry = name_to_last_mutate.entry(name).or_insert(instr.id);
+                        if instr.id > *entry {
+                            *entry = instr.id;
+                        }
+                    }
+                }
+                InstructionValue::PropertyStore { object, .. }
+                | InstructionValue::ComputedStore { object, .. } => {
+                    if let Some(name) = id_to_source_name.get(&object.identifier.id).copied() {
+                        let entry = name_to_last_mutate.entry(name).or_insert(instr.id);
+                        if instr.id > *entry {
+                            *entry = instr.id;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Walk instructions in program order, tracking frozen variable names
     let mut frozen_names: FxHashSet<&str> = pre_frozen;
 
@@ -270,22 +323,45 @@ pub fn validate_no_mutation_after_freeze(
         }
 
         for instr in &block.instructions {
-            // First: process freeze effects to update frozen_names
+            // First: process freeze effects to update frozen_names.
+            //
+            // RANGE GUARD (hook calls only): For Freeze effects from hook calls
+            // (CallExpression/MethodCall), only freeze if the value's mutable range
+            // has ended. Hook calls may or may not actually freeze their arguments
+            // — the range data tells us whether later valid mutations exist.
+            //
+            // For JSX expressions, freezes are ALWAYS applied: a value used in JSX
+            // is immutable — any subsequent mutation is the error we're detecting.
+            // Applying the range guard to JSX would suppress detection of the very
+            // mutations we're looking for (the range extends past JSX precisely
+            // because of the invalid mutation).
+            let is_jsx_instruction = matches!(
+                instr.value,
+                InstructionValue::JsxExpression { .. } | InstructionValue::JsxFragment { .. }
+            );
+
             if let Some(ref effects) = instr.effects {
                 for effect in effects {
                     match effect {
                         AliasingEffect::Freeze { value, .. }
                         | AliasingEffect::ImmutableCapture { from: value, .. } => {
-                            if let Some(name) = id_to_source_name.get(&value.identifier.id) {
-                                frozen_names.insert(name);
-                                // Propagate freeze through aliases
-                                propagate_freeze_through_aliases(
-                                    name,
-                                    &mut frozen_names,
-                                    &alias_map,
-                                );
-                            }
-                            if let Some(name) = &value.identifier.name {
+                            let name = id_to_source_name
+                                .get(&value.identifier.id)
+                                .copied()
+                                .or(value.identifier.name.as_deref());
+
+                            if let Some(name) = name {
+                                // For non-JSX freezes (hook calls), apply mutation range guard:
+                                // only freeze if there are no mutations to this value after
+                                // this instruction. If the value is mutated after the hook call,
+                                // the hook didn't actually freeze it — the mutation is still valid.
+                                if !is_jsx_instruction {
+                                    let last_mutate = name_to_last_mutate.get(name).copied();
+                                    if last_mutate.is_some_and(|m| m > instr.id) {
+                                        continue;
+                                    }
+                                }
+
                                 frozen_names.insert(name);
                                 propagate_freeze_through_aliases(
                                     name,
@@ -507,7 +583,28 @@ fn check_instruction_mutation_extended(
     };
 
     match &instr.value {
-        InstructionValue::MethodCall { receiver, .. } => check_frozen(&receiver.identifier.id),
+        // MethodCall: only flag if the instruction has Mutate-like effects.
+        // Read-only methods (`.at()`, `.map()`, `.filter()`) on frozen values
+        // are fine. Only mutating methods (`.push()`, `.splice()`, `.sort()`)
+        // should be flagged.
+        InstructionValue::MethodCall { receiver, .. } => {
+            if !check_frozen(&receiver.identifier.id) {
+                return false;
+            }
+            // Check if this instruction has any Mutate-like effect
+            instr.effects.as_ref().is_some_and(|effects| {
+                effects.iter().any(|e| {
+                    matches!(
+                        e,
+                        AliasingEffect::Mutate { .. }
+                            | AliasingEffect::MutateConditionally { .. }
+                            | AliasingEffect::MutateTransitive { .. }
+                            | AliasingEffect::MutateTransitiveConditionally { .. }
+                            | AliasingEffect::MutateFrozen { .. }
+                    )
+                })
+            })
+        }
         InstructionValue::PropertyStore { object, .. }
         | InstructionValue::ComputedStore { object, .. } => check_frozen(&object.identifier.id),
         InstructionValue::PropertyDelete { object, .. }

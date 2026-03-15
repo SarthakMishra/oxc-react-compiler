@@ -120,6 +120,9 @@ pub fn run_pipeline(
     );
 
     // Pass 16.5: validate_no_mutation_after_freeze (uses effects from Pass 16)
+    // Must run BEFORE DCE (Pass 18) because DCE may remove standalone JSX
+    // expressions whose Freeze effects are needed for detecting mutations.
+    // Uses effect-derived mutation ranges to avoid over-freezing hook call arguments.
     crate::validation::validate_no_mutation_after_freeze::validate_no_mutation_after_freeze(
         hir,
         errors,
