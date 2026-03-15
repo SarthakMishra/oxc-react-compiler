@@ -1,5 +1,8 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{HIR, IdentifierId, InstructionValue, Type};
+use crate::hir::types::{
+    DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId,
+    InstructionValue, Type,
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Validate that setState is not called unconditionally during render.
@@ -12,13 +15,17 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// Also detects transitive setState calls through helper functions:
 /// if `foo` calls `setState`, and the component calls `foo()` during render,
 /// that is also an error. Handles arbitrarily deep call chains.
-pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
+pub fn validate_no_set_state_in_render(
+    hir: &HIR,
+    errors: &mut ErrorCollector,
+    enable_name_heuristic: bool,
+) {
     // Collect all identifier IDs that are setState-like (by type or name)
     let mut set_state_ids: FxHashSet<IdentifierId> = FxHashSet::default();
     // Also collect setState variable names for cross-scope tracking
     let mut set_state_names: FxHashSet<String> = FxHashSet::default();
 
-    // Collect names loaded from LoadGlobal — these are imports/globals, not
+    // Collect names loaded from LoadGlobal -- these are imports/globals, not
     // React setState functions. Used to exclude false positives from the name
     // heuristic (e.g., `setPropertyByKey` from shared-runtime).
     let mut global_names: FxHashSet<String> = FxHashSet::default();
@@ -26,6 +33,73 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
         for instr in &block.instructions {
             if let InstructionValue::LoadGlobal { binding } = &instr.value {
                 global_names.insert(binding.name.clone());
+            }
+        }
+    }
+
+    // Pre-pass: Detect useState/useReducer destructure patterns to seed
+    // set_state_ids/set_state_names. This is necessary because infer_types
+    // sets Type::SetState on destructure pattern Places whose IDs don't
+    // match any instruction lvalue after SSA renaming.
+    let mut state_hook_returns: FxHashSet<IdentifierId> = FxHashSet::default();
+    {
+        // Build callee name map
+        let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                match &instr.value {
+                    InstructionValue::LoadGlobal { binding } => {
+                        id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                    }
+                    InstructionValue::LoadLocal { place }
+                    | InstructionValue::LoadContext { place } => {
+                        if let Some(name) = &place.identifier.name {
+                            id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // Find CallExpression for useState/useReducer and track their return IDs
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                    let callee_name = callee
+                        .identifier
+                        .name
+                        .as_deref()
+                        .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+                    if matches!(
+                        callee_name,
+                        Some(
+                            "useState"
+                                | "useReducer"
+                                | "useTransition"
+                                | "useOptimistic"
+                                | "useActionState"
+                        )
+                    ) {
+                        state_hook_returns.insert(instr.lvalue.identifier.id);
+                    }
+                }
+            }
+        }
+        // Find Destructure instructions that destructure state hook returns
+        // and extract the setter (second element)
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                if let InstructionValue::Destructure { value, lvalue_pattern } = &instr.value
+                    && state_hook_returns.contains(&value.identifier.id)
+                    && let DestructurePattern::Array { items, .. } = lvalue_pattern
+                    && let Some(DestructureArrayItem::Value(DestructureTarget::Place(p))) =
+                        items.get(1)
+                {
+                    set_state_ids.insert(p.identifier.id);
+                    if let Some(name) = &p.identifier.name {
+                        set_state_names.insert(name.clone());
+                    }
+                }
             }
         }
     }
@@ -43,8 +117,9 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
 
             // Name heuristic: setX where X is uppercase, but only for local
             // variables (not globals/imports which may be utility functions
-            // like setPropertyByKey).
-            if let Some(name) = &instr.lvalue.identifier.name
+            // like setPropertyByKey). Gated behind enableTreatSetIdentifiersAsStateSetters.
+            if enable_name_heuristic
+                && let Some(name) = &instr.lvalue.identifier.name
                 && is_set_state_name(name)
                 && !global_names.contains(name)
             {
@@ -56,15 +131,28 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
             // the result is also setState
             match &instr.value {
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
-                    if place.identifier.type_ == Type::SetState
+                    // Match by Type::SetState, ID, or confirmed setState name
+                    // (from destructure analysis or prior propagation).
+                    let is_known_set_state = place.identifier.type_ == Type::SetState
                         || set_state_ids.contains(&place.identifier.id)
-                    {
+                        || place
+                            .identifier
+                            .name
+                            .as_deref()
+                            .is_some_and(|n| set_state_names.contains(n));
+                    if is_known_set_state {
                         set_state_ids.insert(instr.lvalue.identifier.id);
+                        if let Some(name) = &place.identifier.name {
+                            set_state_names.insert(name.clone());
+                        }
                     }
-                    // Name-based tracking for cross-scope resolution
-                    if let Some(name) = &place.identifier.name
-                        && (set_state_names.contains(name)
-                            || (is_set_state_name(name) && !global_names.contains(name)))
+                    // Name-based heuristic tracking (only when
+                    // enableTreatSetIdentifiersAsStateSetters is active)
+                    if enable_name_heuristic
+                        && let Some(name) = &place.identifier.name
+                        && !set_state_names.contains(name)
+                        && is_set_state_name(name)
+                        && !global_names.contains(name)
                     {
                         set_state_ids.insert(instr.lvalue.identifier.id);
                         set_state_names.insert(name.clone());
@@ -89,8 +177,11 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
             match &instr.value {
                 InstructionValue::FunctionExpression { lowered_func, .. }
                 | InstructionValue::ObjectMethod { lowered_func } => {
-                    let (calls_set_state, called_funcs) =
-                        check_nested_set_state_call(&lowered_func.body, &set_state_names);
+                    let (calls_set_state, called_funcs) = check_nested_set_state_call(
+                        &lowered_func.body,
+                        &set_state_names,
+                        enable_name_heuristic,
+                    );
                     if calls_set_state {
                         functions_calling_set_state.insert(instr.lvalue.identifier.id);
                         if let Some(name) = &instr.lvalue.identifier.name {
@@ -225,6 +316,7 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
 fn check_nested_set_state_call(
     hir: &HIR,
     outer_set_state_names: &FxHashSet<String>,
+    enable_name_heuristic: bool,
 ) -> (bool, Vec<String>) {
     let mut local_set_state_ids: FxHashSet<IdentifierId> = FxHashSet::default();
     let mut called_funcs: Vec<String> = Vec::new();
@@ -235,7 +327,8 @@ fn check_nested_set_state_call(
             if instr.lvalue.identifier.type_ == Type::SetState {
                 local_set_state_ids.insert(instr.lvalue.identifier.id);
             }
-            if let Some(name) = &instr.lvalue.identifier.name
+            if enable_name_heuristic
+                && let Some(name) = &instr.lvalue.identifier.name
                 && is_set_state_name(name)
             {
                 local_set_state_ids.insert(instr.lvalue.identifier.id);
@@ -247,8 +340,12 @@ fn check_nested_set_state_call(
                     {
                         local_set_state_ids.insert(instr.lvalue.identifier.id);
                     }
+                    // Always check outer_set_state_names: these are names
+                    // confirmed as setState via Type::SetState in the outer scope.
+                    // The is_set_state_name heuristic is gated behind the flag.
                     if let Some(name) = &place.identifier.name
-                        && (outer_set_state_names.contains(name) || is_set_state_name(name))
+                        && (outer_set_state_names.contains(name)
+                            || (enable_name_heuristic && is_set_state_name(name)))
                     {
                         local_set_state_ids.insert(instr.lvalue.identifier.id);
                     }

@@ -99,7 +99,9 @@ impl Default for EnvironmentConfig {
             enable_transitively_freeze_function_expressions: true,
             enable_optional_dependencies: true,
             enable_treat_ref_like_identifiers_as_refs: false,
-            enable_treat_set_identifiers_as_state_setters: true,
+            // DIVERGENCE: Upstream defaults to false. Previously we defaulted to true,
+            // causing false positives on utility functions like `setProperty` from imports.
+            enable_treat_set_identifiers_as_state_setters: false,
             enable_allow_set_state_from_refs_in_effects: false,
             enable_verbose_no_set_state_in_effect: false,
             enable_ssr: false,

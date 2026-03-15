@@ -41,7 +41,7 @@ a direct 1:1 fixture gain -- bail-out removed = fixture passes.
 - [~] Fix ref-access-during-render false positives (11 remaining, 9 fixed via non-render callback detection) -- [false-bailouts.md](false-bailouts.md)#ref-access-false-positives
 - [ ] Fix useMemo/useCallback argument count false positives (17 fixtures) -- [false-bailouts.md](false-bailouts.md)#usememo-usecallback-arg-count
 - [~] Fix global-reassignment false positives (15 fixtures, partially fixed) -- [false-bailouts.md](false-bailouts.md)#global-reassignment-false-positives
-- [ ] Fix setState-during-render false positives (14 fixtures) -- [false-bailouts.md](false-bailouts.md)#setstate-false-positives
+- [~] Fix setState-during-render false positives (3 remaining, 11 fixed via name heuristic gating) -- [false-bailouts.md](false-bailouts.md)#setstate-false-positives
 
 ## Tier 2 -- Slot Count Divergences (~636 fixtures)
 

@@ -626,6 +626,9 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
         if let Some(v) = find_directive_bool(comment, "enableTreatRefLikeIdentifiersAsRefs") {
             env.enable_treat_ref_like_identifiers_as_refs = v;
         }
+        if let Some(v) = find_directive_bool(comment, "enableTreatSetIdentifiersAsStateSetters") {
+            env.enable_treat_set_identifiers_as_state_setters = v;
+        }
         if let Some(v) = find_directive_bool(comment, "enableJsxOutlining") {
             env.enable_jsx_outlining = v;
         }

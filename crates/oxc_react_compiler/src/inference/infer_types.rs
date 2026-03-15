@@ -103,7 +103,11 @@ pub fn infer_types(hir: &mut HIR) {
         }
     }
 
-    // Pass 3: Apply SetState type to destructured setter identifiers
+    // Pass 3: Apply SetState type to destructured setter identifiers.
+    // NOTE: After SSA renaming, the destructure pattern Place IDs don't match
+    // instruction lvalue IDs. This pass applies types where it can, but the
+    // validator (validate_no_set_state_in_render) does its own destructure
+    // detection as a more reliable fallback.
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if state_tuple_ids.contains(&instr.lvalue.identifier.id) {

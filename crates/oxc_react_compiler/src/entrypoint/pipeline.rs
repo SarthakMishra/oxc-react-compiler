@@ -162,7 +162,9 @@ pub fn run_pipeline(
     // Pass 24: validate_no_set_state_in_render (conditional)
     if config.validate_no_set_state_in_render {
         crate::validation::validate_no_set_state_in_render::validate_no_set_state_in_render(
-            hir, errors,
+            hir,
+            errors,
+            config.enable_treat_set_identifiers_as_state_setters,
         );
     }
 

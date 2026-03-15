@@ -188,26 +188,32 @@ the count.
 **Key files:**
 - `crates/oxc_react_compiler/src/validation/validate_no_global_reassignment.rs`
 
-## setState False Positives (14 fixtures)
+## setState False Positives (3 remaining, 11 fixed) -- Partially Fixed
 
 **Diagnostic:** "Cannot call setState during render"
 
-**Root cause:** `validate_no_set_state_in_render.rs` flags setState calls
-in contexts where upstream allows them. Upstream distinguishes between
-direct render-time setState (illegal) and setState inside effects/callbacks
-(legal). Our implementation may not correctly identify all callback contexts.
+**Root cause:** Two distinct issues. (1) The `is_set_state_name()` heuristic
+matched imported utility functions like `setProperty`/`setPropertyByKey` from
+shared-runtime. Fixed by gating behind `enableTreatSetIdentifiersAsStateSetters`
+(defaults to false, matching upstream). (2) Conditional setState calls through
+lambda chains are flagged as unconditional (3 remaining fixtures).
 
 **Upstream file:** `src/Validation/ValidateNoSetStateInRender.ts`
 
-**Fix strategy:** The 14 fixtures suggest our setState detection fires
-inside nested scopes, callbacks, or object methods where it shouldn't.
-Need to trace whether the setState call is reachable during render vs
-only reachable from effect callbacks.
+**Improvements made:** Added useState destructure pre-pass for reliable type-based
+detection without relying on SSA-broken `Type::SetState`. Gated name heuristic
+behind config flag. Added `@enableTreatSetIdentifiersAsStateSetters` directive
+parsing. Fixed 11 false positives from name heuristic matching utility imports.
 
-**Sample fixtures:**
-- `aliased-nested-scope-fn-expr.tsx`
-- `object-method-maybe-alias.js`
-- `try-catch-in-nested-scope.ts`
+**Remaining work (3 fixtures):** Conditional setState detection -- when setState
+is called inside a conditionally-invoked lambda, it should not be flagged.
+Requires tracking whether the call path from component render to setState
+has any conditional branch (if/else, try/catch).
+
+**Remaining fixtures:**
+- `inner-function/nullable-objects/assume-invoked/conditional-call.ts`
+- `inner-function/nullable-objects/assume-invoked/direct-call.ts`
+- `validate-no-set-state-in-render-unconditional-lambda-which-conditionally-sets-state-ok.js`
 
 **Key files:**
 - `crates/oxc_react_compiler/src/validation/validate_no_set_state_in_render.rs`
