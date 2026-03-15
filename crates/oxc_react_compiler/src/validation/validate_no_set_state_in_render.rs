@@ -18,6 +18,18 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
     // Also collect setState variable names for cross-scope tracking
     let mut set_state_names: FxHashSet<String> = FxHashSet::default();
 
+    // Collect names loaded from LoadGlobal — these are imports/globals, not
+    // React setState functions. Used to exclude false positives from the name
+    // heuristic (e.g., `setPropertyByKey` from shared-runtime).
+    let mut global_names: FxHashSet<String> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::LoadGlobal { binding } = &instr.value {
+                global_names.insert(binding.name.clone());
+            }
+        }
+    }
+
     // Pass 1: Identify setState identifiers from their definition sites
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -29,9 +41,12 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
                 }
             }
 
-            // Check name on the lvalue
+            // Name heuristic: setX where X is uppercase, but only for local
+            // variables (not globals/imports which may be utility functions
+            // like setPropertyByKey).
             if let Some(name) = &instr.lvalue.identifier.name
                 && is_set_state_name(name)
+                && !global_names.contains(name)
             {
                 set_state_ids.insert(instr.lvalue.identifier.id);
                 set_state_names.insert(name.clone());
@@ -46,8 +61,10 @@ pub fn validate_no_set_state_in_render(hir: &HIR, errors: &mut ErrorCollector) {
                     {
                         set_state_ids.insert(instr.lvalue.identifier.id);
                     }
+                    // Name-based tracking for cross-scope resolution
                     if let Some(name) = &place.identifier.name
-                        && (is_set_state_name(name) || set_state_names.contains(name))
+                        && (set_state_names.contains(name)
+                            || (is_set_state_name(name) && !global_names.contains(name)))
                     {
                         set_state_ids.insert(instr.lvalue.identifier.id);
                         set_state_names.insert(name.clone());
@@ -231,7 +248,7 @@ fn check_nested_set_state_call(
                         local_set_state_ids.insert(instr.lvalue.identifier.id);
                     }
                     if let Some(name) = &place.identifier.name
-                        && (is_set_state_name(name) || outer_set_state_names.contains(name))
+                        && (outer_set_state_names.contains(name) || is_set_state_name(name))
                     {
                         local_set_state_ids.insert(instr.lvalue.identifier.id);
                     }

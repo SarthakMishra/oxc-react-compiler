@@ -1,4 +1,4 @@
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::hir::types::{
     BinaryOp, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId,
@@ -20,30 +20,56 @@ pub fn infer_types(hir: &mut HIR) {
     let mut ref_ids: FxHashSet<IdentifierId> = FxHashSet::default();
     let mut state_tuple_ids: FxHashSet<IdentifierId> = FxHashSet::default();
 
+    // Build id-to-name map to resolve callee names through LoadGlobal/LoadLocal.
+    // After SSA, CallExpression callees are temporaries with no name — we need
+    // to trace back through the load instruction to find the original name.
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadGlobal { binding } => {
+                    id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                }
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name {
+                        id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Pass 1: Infer instruction types and identify hook call returns
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             let inferred = infer_instruction_type(&instr.value);
             instr.lvalue.identifier.type_ = inferred;
 
-            // Track hook return value identifiers
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value
-                && let Some(name) = callee.identifier.name.as_deref()
-            {
-                if name == "useRef" {
-                    instr.lvalue.identifier.type_ = Type::Ref;
-                    ref_ids.insert(instr.lvalue.identifier.id);
-                } else if matches!(
-                    name,
-                    "useState"
-                        | "useReducer"
-                        | "useTransition"
-                        | "useOptimistic"
-                        | "useActionState"
-                ) {
-                    // The return value is [state, stableDispatch]. Track the tuple ID
-                    // so we can propagate SetState to the second destructured element.
-                    state_tuple_ids.insert(instr.lvalue.identifier.id);
+            // Track hook return value identifiers.
+            // Resolve callee name through LoadGlobal/LoadLocal for cases where
+            // the callee place is a nameless temporary.
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                let callee_name = callee
+                    .identifier
+                    .name
+                    .as_deref()
+                    .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+
+                if let Some(name) = callee_name {
+                    if name == "useRef" {
+                        instr.lvalue.identifier.type_ = Type::Ref;
+                        ref_ids.insert(instr.lvalue.identifier.id);
+                    } else if matches!(
+                        name,
+                        "useState"
+                            | "useReducer"
+                            | "useTransition"
+                            | "useOptimistic"
+                            | "useActionState"
+                    ) {
+                        state_tuple_ids.insert(instr.lvalue.identifier.id);
+                    }
                 }
             }
         }
