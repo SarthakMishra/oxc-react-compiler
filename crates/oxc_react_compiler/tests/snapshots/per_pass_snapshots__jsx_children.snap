@@ -7,9 +7,9 @@ import { c as _c } from "react/compiler-runtime";
 function Card(t0) {
   const $ = _c(3);
   const { title, children } = t0;
-  let t31;
+  let t15;
   if ($[0] !== children || $[1] !== title) {
-    t31 = (
+    t15 = (
       <div className="card">
         <h3>{title}</h3>
         <div className="body">{children}</div>
@@ -17,9 +17,9 @@ function Card(t0) {
     );
     $[0] = children;
     $[1] = title;
-    $[2] = t31;
+    $[2] = t15;
   } else {
-    t31 = $[2];
+    t15 = $[2];
   }
-  return t31;
+  return t15;
 }

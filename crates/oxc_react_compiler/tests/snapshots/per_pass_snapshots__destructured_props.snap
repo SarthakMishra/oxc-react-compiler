@@ -7,9 +7,9 @@ import { c as _c } from "react/compiler-runtime";
 function UserCard(t0) {
   const $ = _c(4);
   const { name, age, role } = t0;
-  let t41;
+  let t20;
   if ($[0] !== age || $[1] !== name || $[2] !== role) {
-    t41 = (
+    t20 = (
       <div>
         <h2>{name}</h2>
         <p>Age: {age}</p>
@@ -19,9 +19,9 @@ function UserCard(t0) {
     $[0] = age;
     $[1] = name;
     $[2] = role;
-    $[3] = t41;
+    $[3] = t20;
   } else {
-    t41 = $[3];
+    t20 = $[3];
   }
-  return t41;
+  return t20;
 }

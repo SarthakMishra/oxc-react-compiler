@@ -22,6 +22,7 @@ fn dummy_span() -> Span {
 fn make_identifier(ids: &mut IdGenerator, name: &str) -> Identifier {
     Identifier {
         id: ids.next_identifier_id(),
+        ssa_version: 0,
         declaration_id: Some(ids.next_declaration_id()),
         name: Some(name.to_string()),
         mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },

@@ -7,13 +7,13 @@ import { c as _c } from "react/compiler-runtime";
 export function App(t0) {
   const $ = _c(2);
   const { title } = t0;
-  let t13;
+  let t6;
   if ($[0] !== title) {
-    t13 = <h1>{title}</h1>;
+    t6 = <h1>{title}</h1>;
     $[0] = title;
-    $[1] = t13;
+    $[1] = t6;
   } else {
-    t13 = $[1];
+    t6 = $[1];
   }
-  return t13;
+  return t6;
 }

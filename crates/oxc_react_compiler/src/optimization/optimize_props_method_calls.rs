@@ -57,6 +57,7 @@ pub fn optimize_props_method_calls(hir: &mut HIR) {
 
                 let temp_ident = Identifier {
                     id: temp_id,
+                    ssa_version: 0,
                     declaration_id: None,
                     name: None,
                     mutable_range: MutableRange {

@@ -1,6 +1,5 @@
 ---
 source: crates/oxc_react_compiler/tests/fixture_tests.rs
-assertion_line: 35
 expression: snapshot
 ---
 transformed: true
@@ -12,14 +11,14 @@ function Display(t0) {
   const { items } = t0;
   const count = items.length;
   if (count > 0) {
-    t16 = "Has items";
+    t14 = "Has items";
   } else {
-    t16 = "Empty";
+    t14 = "Empty";
   }
-  const label = t16;
-  let t53;
+  const label = t14;
+  let t25;
   if ($[0] !== count || $[1] !== label) {
-    t53 = (
+    t25 = (
       <div>
         {label}
         : 
@@ -28,9 +27,9 @@ function Display(t0) {
     );
     $[0] = count;
     $[1] = label;
-    $[2] = t53;
+    $[2] = t25;
   } else {
-    t53 = $[2];
+    t25 = $[2];
   }
-  return t53;
+  return t25;
 }

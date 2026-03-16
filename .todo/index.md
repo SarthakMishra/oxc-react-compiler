@@ -4,7 +4,20 @@
 
 **Current: 435/1717 (25.3%) -- 1282 failures remaining**
 
-Last updated: 2026-03-15
+Last updated: 2026-03-16
+
+---
+
+## Priority 0 -- Architectural (root-cause fix for multiple tiers)
+
+- [ ] Stable IdentifierId refactor: reuse declaration IDs for all references to the same binding -- [stable-identifier-ids.md](stable-identifier-ids.md)
+
+> This is the single most impactful change. Fresh-ID-per-reference is the root
+> cause of broken value flow in the abstract heap, which cascades into
+> frozen-mutation false positives (158), scope over/under-counting (636), and
+> incorrect alias tracking. Fixes here propagate across Tiers 1-4.
+
+---
 
 ## Failure Breakdown (from automated analysis at 399/1717)
 

@@ -213,6 +213,9 @@ pub enum InstructionKind {
 #[derive(Debug, Clone)]
 pub struct Identifier {
     pub id: IdentifierId,
+    /// SSA version number. All references to the same binding share the same
+    /// `id`; the SSA pass distinguishes them via this version counter.
+    pub ssa_version: u32,
     pub declaration_id: Option<DeclarationId>,
     pub name: Option<String>,
     pub mutable_range: MutableRange,
@@ -1027,7 +1030,7 @@ impl Default for IdGenerator {
 // If a variant is added that pushes the size past the limit, this will fail
 // at compile time, signalling that the change should be reviewed for impact.
 // ---------------------------------------------------------------------------
-const _: () = assert!(std::mem::size_of::<InstructionValue>() <= 256);
+const _: () = assert!(std::mem::size_of::<InstructionValue>() <= 264);
 const _: () = assert!(std::mem::size_of::<Terminal>() <= 192);
 const _: () = assert!(std::mem::size_of::<Place>() <= 128);
 const _: () = assert!(std::mem::size_of::<Instruction>() <= 512);

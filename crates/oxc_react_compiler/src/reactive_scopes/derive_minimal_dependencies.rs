@@ -46,6 +46,7 @@ mod tests {
         ReactiveScopeDependency {
             identifier: Identifier {
                 id: IdentifierId(id),
+                ssa_version: 0,
                 declaration_id: None,
                 name: Some(format!("v{id}")),
                 mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
@@ -67,6 +68,7 @@ mod tests {
             lvalue: Place {
                 identifier: Identifier {
                     id: IdentifierId(99),
+                    ssa_version: 0,
                     declaration_id: None,
                     name: None,
                     mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
@@ -112,6 +114,7 @@ mod tests {
                         value: Place {
                             identifier: Identifier {
                                 id: IdentifierId(0),
+                                ssa_version: 0,
                                 declaration_id: None,
                                 name: None,
                                 mutable_range: MutableRange {
@@ -159,6 +162,7 @@ mod tests {
                         value: Place {
                             identifier: Identifier {
                                 id: IdentifierId(0),
+                                ssa_version: 0,
                                 declaration_id: None,
                                 name: None,
                                 mutable_range: MutableRange {

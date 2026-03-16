@@ -6,13 +6,13 @@ import { c as _c } from "react/compiler-runtime";
 
 function Counter() {
   const $ = _c(2);
-  let t22;
+  let t11;
   if ($[0] !== count) {
-    t22 = <div>{count}</div>;
+    t11 = <div>{count}</div>;
     $[0] = count;
-    $[1] = t22;
+    $[1] = t11;
   } else {
-    t22 = $[1];
+    t11 = $[1];
   }
-  return t22;
+  return t11;
 }

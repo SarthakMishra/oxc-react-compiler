@@ -7,16 +7,16 @@ import { c as _c } from "react/compiler-runtime";
 function Counter() {
   const $ = _c(2);
   const next = count + 1;
-  let t36;
+  let t18;
   if ($[0] !== count) {
-    const t34 = () => {
+    const t16 = () => {
       return setCount(next);
     };
-    t36 = <button onClick={t34}>{count}</button>;
+    t18 = <button onClick={t16}>{count}</button>;
     $[0] = count;
-    $[1] = t36;
+    $[1] = t18;
   } else {
-    t36 = $[1];
+    t18 = $[1];
   }
-  return t36;
+  return t18;
 }
