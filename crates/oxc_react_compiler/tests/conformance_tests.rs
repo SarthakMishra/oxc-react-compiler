@@ -1059,6 +1059,28 @@ fn upstream_conformance() {
         println!();
     }
 
+    // Print silent bail-out fixtures (we produce 0 scopes, upstream memoizes, no error)
+    {
+        let mut silent_bailouts: Vec<&str> = Vec::new();
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            if !we_memo && r.expected_has_memo && r.first_error.is_empty() {
+                silent_bailouts.push(&r.relative_path);
+            }
+        }
+        if !silent_bailouts.is_empty() {
+            silent_bailouts.sort_unstable();
+            println!(
+                "--- SILENT BAIL-OUTS ({} fixtures, no error, 0 scopes) ---",
+                silent_bailouts.len()
+            );
+            for name in &silent_bailouts {
+                println!("  {name}");
+            }
+            println!();
+        }
+    }
+
     // Print specific fixtures in each actionable category
     if cat_both_no_memo > 0 {
         println!("--- BOTH NO MEMO (format diff, {cat_both_no_memo} fixtures) ---");
