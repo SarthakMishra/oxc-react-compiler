@@ -11,7 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// Uses fixpoint iteration. Since the HIR builder creates fresh IdentifierIds for every
 /// Place reference (even for the same variable), we track reactivity by variable NAME
 /// in addition to ID, so that DeclareLocal(count) → LoadLocal(count) propagation works.
-pub fn infer_reactive_places(hir: &mut HIR, param_names: &[String]) {
+pub fn infer_reactive_places(hir: &mut HIR, param_names: &[String], _param_ids: &[IdentifierId]) {
     // Build id → name map for resolving names across instruction boundaries.
     // LoadGlobal: lvalue_id → global name (e.g., "useState")
     // DeclareLocal: lvalue_id → inner lvalue name (e.g., "count")

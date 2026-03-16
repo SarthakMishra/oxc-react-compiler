@@ -82,7 +82,7 @@ fn test_infer_reactive_places_simple() {
 
     let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
-    infer_reactive_places(&mut hir, &[]);
+    infer_reactive_places(&mut hir, &[], &[]);
 
     // The pass should run without panicking on a valid HIR.
     assert_eq!(hir.blocks.len(), 1);
@@ -104,7 +104,7 @@ fn test_infer_reactive_places_empty_hir() {
 
     let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
-    infer_reactive_places(&mut hir, &[]);
+    infer_reactive_places(&mut hir, &[], &[]);
     assert_eq!(hir.blocks.len(), 1);
 }
 
@@ -143,7 +143,7 @@ fn test_infer_reactive_places_only_seeds_params() {
     let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
     // Only "props" is a param — "x" should NOT be seeded as reactive
-    infer_reactive_places(&mut hir, &["props".to_string()]);
+    infer_reactive_places(&mut hir, &["props".to_string()], &[]);
 
     let block = &hir.blocks[0].1;
     // First instruction (DeclareLocal for "props") should be reactive
