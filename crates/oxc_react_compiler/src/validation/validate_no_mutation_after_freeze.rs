@@ -583,15 +583,29 @@ fn check_instruction_mutation_extended(
     };
 
     match &instr.value {
-        // MethodCall: only flag if the instruction has Mutate-like effects.
-        // Read-only methods (`.at()`, `.map()`, `.filter()`) on frozen values
-        // are fine. Only mutating methods (`.push()`, `.splice()`, `.sort()`)
-        // should be flagged.
+        // MethodCall: only flag if (a) receiver is DIRECTLY frozen (not just
+        // derived from frozen — PropertyLoad creates new values, not aliases),
+        // and (b) there's a Mutate-like effect that targets the RECEIVER
+        // specifically (not just any operand). Read-only methods like .at()
+        // have conditional mutation effects on their arguments but NOT on
+        // the receiver. Mutating methods like .push() have effects on the
+        // receiver.
         InstructionValue::MethodCall { receiver, .. } => {
-            if !check_frozen(&receiver.identifier.id) {
+            // Direct-only frozen check: don't use is_derived_from_frozen.
+            // PropertyLoad from a frozen source creates a new value; method
+            // calls on derived values (items.at(i)) are NOT mutations of the
+            // frozen source. Only flag when the receiver itself is directly
+            // in frozen_names (e.g., x.push() where x was used in JSX).
+            let is_directly_frozen = id_to_source_name
+                .get(&receiver.identifier.id)
+                .is_some_and(|name| frozen_names.contains(name));
+            if !is_directly_frozen {
                 return false;
             }
-            // Check if this instruction has any Mutate-like effect
+            // Check if this instruction has any Mutate-like effect (on any operand).
+            // Method calls on frozen receivers with ANY mutation effect are
+            // considered mutations of the receiver, since we lack method
+            // signatures to know which operand is actually mutated.
             instr.effects.as_ref().is_some_and(|effects| {
                 effects.iter().any(|e| {
                     matches!(

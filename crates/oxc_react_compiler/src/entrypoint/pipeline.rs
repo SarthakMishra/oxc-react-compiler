@@ -113,10 +113,14 @@ pub fn run_pipeline(
     // Pass 15: analyse_functions
     let fn_signatures = crate::inference::analyse_functions::analyse_functions(hir, errors);
 
-    // Pass 16: infer_mutation_aliasing_effects
-    crate::inference::infer_mutation_aliasing_effects::infer_mutation_aliasing_effects(
+    // Pass 16: infer_mutation_aliasing_effects (with param pre-freezing)
+    // Threading param_names enables the abstract interpreter to pre-freeze
+    // component params in the heap, producing MutateFrozen effects for actual
+    // frozen-value mutations instead of relying on name-based tracking.
+    crate::inference::infer_mutation_aliasing_effects::infer_mutation_aliasing_effects_with_params(
         hir,
         &fn_signatures,
+        param_names,
     );
 
     // Pass 16.5: validate_no_mutation_after_freeze (uses effects from Pass 16)
