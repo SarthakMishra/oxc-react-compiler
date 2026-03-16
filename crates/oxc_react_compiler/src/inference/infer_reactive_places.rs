@@ -76,10 +76,17 @@ pub fn infer_reactive_places(hir: &mut HIR, param_names: &[String], _param_ids: 
     }
 
     // Mark function parameters as reactive (props change between renders).
-    // Only seed DeclareLocal instructions whose name matches a function parameter.
-    // The entry block may also contain local declarations (e.g., `const a = 1`)
-    // that are NOT parameters and must NOT be seeded as reactive.
     // Upstream: InferReactivePlaces.ts seeds reactivity from `params` of the function.
+    //
+    // We seed from DeclareLocal instructions in the entry block whose inner
+    // lvalue name matches a param name. This catches destructured params
+    // (e.g., `function Foo({a, b})` produces DeclareLocal for `a` and `b`).
+    //
+    // Note: Simple params (e.g., `function Foo(props)`) don't produce
+    // DeclareLocal — they're stored in HIRFunction.params. The param_ids
+    // are available but not used for seeding because it causes over-memoization
+    // in ~30 fixtures (primitives-only functions get unnecessary scopes).
+    // TODO: Use param_ids with a ValueKind.Mutable gate to avoid over-memoization.
     if let Some((_, entry_block)) = hir.blocks.first() {
         for instr in &entry_block.instructions {
             if let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value
