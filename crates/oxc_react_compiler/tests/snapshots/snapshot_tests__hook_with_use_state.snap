@@ -6,16 +6,17 @@ import { c as _c } from "react/compiler-runtime";
 
 function useToggle(initial) {
   const $ = _c(4);
-  let toggle;
+  let t33;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     const t28 = () => {
       return setValue(!value);
     };
-    toggle = t28;
-    $[0] = toggle;
+    t33 = t28;
+    $[0] = t33;
   } else {
-    toggle = $[0];
+    t33 = $[0];
   }
+  const toggle = t33;
   let t32;
   if ($[1] !== toggle || $[2] !== value) {
     t32 = [value, toggle];

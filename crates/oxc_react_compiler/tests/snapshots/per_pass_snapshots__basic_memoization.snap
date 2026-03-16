@@ -5,23 +5,16 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function Doubler(t0) {
-  const $ = _c(4);
+  const $ = _c(2);
   const { value } = t0;
-  let doubled;
-  if ($[0] !== value) {
-    doubled = value * 2;
-    $[0] = value;
-    $[1] = doubled;
-  } else {
-    doubled = $[1];
-  }
+  const doubled = value * 2;
   let t25;
-  if ($[2] !== doubled) {
+  if ($[0] !== doubled) {
     t25 = <span>{doubled}</span>;
-    $[2] = doubled;
-    $[3] = t25;
+    $[0] = doubled;
+    $[1] = t25;
   } else {
-    t25 = $[3];
+    t25 = $[1];
   }
   return t25;
 }

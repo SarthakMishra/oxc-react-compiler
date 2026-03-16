@@ -112,6 +112,8 @@ impl AbstractHeap {
 
     /// Make `into` an alias of `from` (they share the same abstract value).
     /// Returns `true` if the heap changed.
+    /// Make `into` an alias of `from` (they share the same abstract value).
+    /// Returns `true` if the heap changed.
     fn alias(&mut self, from: IdentifierId, into: IdentifierId) -> bool {
         if let Some(&from_idx) = self.id_to_value.get(&from) {
             if let Some(&existing_idx) = self.id_to_value.get(&into)
