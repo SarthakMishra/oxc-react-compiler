@@ -63,6 +63,7 @@ array-map-mutable-array-mutating-lambda-noAlias.js
 array-map-mutable-array-mutating-lambda.js
 array-map-mutable-array-non-mutating-lambda-mutated-result.js
 array-map-noAlias-escaping-function.js
+array-pattern-params.js
 array-pattern-spread-creates-array.js
 array-properties.js
 array-property-call.js
@@ -275,7 +276,6 @@ error.invalid-hoisting-setstate.js
 error.invalid-mutate-after-aliased-freeze.js
 error.invalid-mutate-phi-which-could-be-frozen.js
 error.invalid-mutate-props-in-effect-fixpoint.js
-error.invalid-mutate-props-via-for-of-iterator.js
 error.invalid-mutation-of-possible-props-phi-indirect.js
 error.invalid-pass-mutable-function-as-prop.js
 error.invalid-return-mutable-function-from-hook.js
@@ -290,7 +290,6 @@ error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hoisting-simple-var-declaration.js
-error.todo-kitchensink.js
 error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
 escape-analysis-destructured-rest-element.js
@@ -561,6 +560,7 @@ lambda-array-access-member-expr-captured.ts
 lambda-array-access-member-expr-param.ts
 lambda-capture-returned-alias.js
 lambda-mutate-shadowed-object.js
+lambda-mutated-non-reactive-to-reactive.js
 lambda-mutated-ref-non-reactive.js
 lambda-reassign-primitive.js
 lambda-reassign-shadowed-primitive.js
@@ -623,6 +623,7 @@ new-mutability/capturing-function-alias-computed-load-2-iife.js
 new-mutability/capturing-function-alias-computed-load-3-iife.js
 new-mutability/capturing-function-alias-computed-load-4-iife.js
 new-mutability/capturing-function-alias-computed-load-iife.js
+new-mutability/error.invalid-useCallback-captures-reassigned-context.js
 new-mutability/error.mutate-frozen-value.js
 new-mutability/iife-return-modified-later-phi.js
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections-2.js
@@ -700,6 +701,7 @@ object-method-shorthand-hook-dep.js
 object-method-shorthand-mutated-after.js
 object-method-shorthand.js
 object-mutated-in-consequent-alternate-both-return.js
+object-pattern-params.js
 object-properties.js
 object-shorthand-method-1.js
 object-shorthand-method-2.js
@@ -747,6 +749,10 @@ preserve-jsxtext-stringliteral-distinction.js
 preserve-memo-deps-conditional-property-chain-less-precise-deps.js
 preserve-memo-deps-conditional-property-chain.js
 preserve-memo-deps-optional-property-chain.js
+preserve-memo-validation/error.false-positive-useMemo-dropped-infer-always-invalidating.ts
+preserve-memo-validation/error.invalid-useCallback-captures-reassigned-context.ts
+preserve-memo-validation/error.todo-useCallback-captures-invalidating-value.ts
+preserve-memo-validation/error.useMemo-unrelated-mutation-in-depslist.ts
 preserve-memo-validation/maybe-invalid-useMemo-no-memoblock-sideeffect.ts
 preserve-memo-validation/preserve-use-callback-stable-built-ins.ts
 preserve-memo-validation/preserve-use-memo-ref-missing-ok.ts

@@ -154,11 +154,12 @@ pub struct HIRBuilder {
     /// Monotonically increasing ID for manual memoization markers (useMemo/useCallback).
     next_memo_id: u32,
 
-    /// Registry mapping binding names to their stable (IdentifierId, DeclarationId).
-    /// All references to the same variable reuse the same IDs instead of
-    /// creating fresh ones, enabling correct value-flow tracking through the
-    /// compiler pipeline.
-    binding_ids: FxHashMap<String, (IdentifierId, DeclarationId)>,
+    /// Scope-aware binding registry. Each frame maps variable names to their
+    /// stable (IdentifierId, DeclarationId). New frames are pushed for block
+    /// statements (JS lexical scope boundaries) and popped on exit. Lookups
+    /// walk from innermost to outermost, matching JS scoping rules.
+    /// This ensures shadowed variables get distinct IDs.
+    binding_scopes: Vec<FxHashMap<String, (IdentifierId, DeclarationId)>>,
 }
 
 impl HIRBuilder {
@@ -189,7 +190,7 @@ impl HIRBuilder {
             next_label: 0,
             context_vars: FxHashSet::default(),
             next_memo_id: 0,
-            binding_ids: FxHashMap::default(),
+            binding_scopes: vec![FxHashMap::default()],
         }
     }
 
@@ -197,6 +198,30 @@ impl HIRBuilder {
     /// Call this when building a nested function to set up context tracking.
     fn setup_context_variables(&mut self, outer_scope_vars: &[String]) {
         self.context_vars = outer_scope_vars.iter().cloned().collect();
+    }
+
+    /// Push a new scope frame (entering a block statement or other lexical scope).
+    fn push_scope(&mut self) {
+        self.binding_scopes.push(FxHashMap::default());
+    }
+
+    /// Pop the current scope frame (leaving a block statement).
+    fn pop_scope(&mut self) {
+        if self.binding_scopes.len() > 1 {
+            self.binding_scopes.pop();
+        }
+    }
+
+    /// Declare a new binding in the current (innermost) scope frame.
+    /// This creates a FRESH IdentifierId even if the name exists in an outer scope,
+    /// correctly handling shadowing (`let x = 1; { let x = 2; }`).
+    fn declare_binding(&mut self, name: &str) -> (IdentifierId, DeclarationId) {
+        let new_id = self.env.id_generator.next_identifier_id();
+        let new_decl = self.env.id_generator.next_declaration_id();
+        if let Some(frame) = self.binding_scopes.last_mut() {
+            frame.insert(name.to_string(), (new_id, new_decl));
+        }
+        (new_id, new_decl)
     }
 
     // ------------------------------------------------------------------
@@ -256,17 +281,46 @@ impl HIRBuilder {
         }
     }
 
-    /// Create a named place for a local binding.
+    /// Create a named place for a new declaration (let/const/var/param).
     ///
-    /// All references to the same binding name reuse the same IdentifierId
-    /// and DeclarationId, enabling correct value-flow tracking through the
-    /// compiler pipeline. The SSA pass later distinguishes versions via the
-    /// `ssa_version` field.
+    /// Always creates a fresh binding in the current scope frame, even if
+    /// the name exists in an outer scope. This handles shadowing correctly:
+    /// `let x = 1; { let x = 2; }` creates two distinct IdentifierIds.
+    fn make_declared_place(&mut self, name: &str, loc: Span) -> Place {
+        let (id, decl_id) = self.declare_binding(name);
+        Place {
+            identifier: Identifier {
+                id,
+                ssa_version: 0,
+                declaration_id: Some(decl_id),
+                name: Some(name.to_string()),
+                mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
+                scope: None,
+                type_: Type::default(),
+                loc,
+            },
+            effect: Effect::Unknown,
+            reactive: false,
+            loc,
+        }
+    }
+
+    /// Create a named place for a variable reference.
+    ///
+    /// Looks up the binding in the scope stack (innermost first). If found,
+    /// reuses the same IdentifierId and DeclarationId. If not found, creates
+    /// new IDs and registers them in the current (innermost) scope frame.
+    /// The SSA pass later distinguishes versions via the `ssa_version` field.
     fn make_named_place(&mut self, name: &str, loc: Span) -> Place {
-        let (id, decl_id) = self.binding_ids.get(name).copied().unwrap_or_else(|| {
+        // Look up existing binding from innermost scope outward
+        let existing = self.binding_scopes.iter().rev().find_map(|frame| frame.get(name).copied());
+        let (id, decl_id) = existing.unwrap_or_else(|| {
             let new_id = self.env.id_generator.next_identifier_id();
             let new_decl = self.env.id_generator.next_declaration_id();
-            self.binding_ids.insert(name.to_string(), (new_id, new_decl));
+            // Register in the current (innermost) scope frame
+            if let Some(frame) = self.binding_scopes.last_mut() {
+                frame.insert(name.to_string(), (new_id, new_decl));
+            }
             (new_id, new_decl)
         });
         Place {
@@ -481,7 +535,7 @@ impl HIRBuilder {
         for param in &params.items {
             match &param.pattern {
                 BindingPattern::BindingIdentifier(id) => {
-                    let place = self.make_named_place(&id.name, id.span);
+                    let place = self.make_declared_place(&id.name, id.span);
                     result.push(Param::Identifier(place));
                 }
                 BindingPattern::ObjectPattern(_)
@@ -495,7 +549,7 @@ impl HIRBuilder {
         }
         if let Some(rest) = &params.rest {
             if let BindingPattern::BindingIdentifier(id) = &rest.rest.argument {
-                let place = self.make_named_place(&id.name, id.span);
+                let place = self.make_declared_place(&id.name, id.span);
                 result.push(Param::Spread(place));
             } else {
                 let place = self.make_temp(rest.span);
@@ -551,9 +605,11 @@ impl HIRBuilder {
     fn lower_statement(&mut self, stmt: &Statement<'_>) {
         match stmt {
             Statement::BlockStatement(block) => {
+                self.push_scope();
                 for s in &block.body {
                     self.lower_statement(s);
                 }
+                self.pop_scope();
             }
 
             Statement::EmptyStatement(_) => {
@@ -673,7 +729,8 @@ impl HIRBuilder {
     ) {
         match &decl.id {
             BindingPattern::BindingIdentifier(id) => {
-                let lvalue = self.make_named_place(&id.name, id.span);
+                // Declare a new binding in the current scope (handles shadowing)
+                let lvalue = self.make_declared_place(&id.name, id.span);
                 // Emit DeclareLocal
                 self.emit(
                     InstructionValue::DeclareLocal { lvalue: lvalue.clone(), type_: kind },
@@ -753,7 +810,7 @@ impl HIRBuilder {
         }
         let rest = pat.rest.as_ref().map(|r| match &r.argument {
             BindingPattern::BindingIdentifier(id) => {
-                let place = self.make_named_place(&id.name, id.span);
+                let place = self.make_declared_place(&id.name, id.span);
                 self.emit(
                     InstructionValue::DeclareLocal { lvalue: place.clone(), type_: kind },
                     id.span,
@@ -784,7 +841,7 @@ impl HIRBuilder {
         }
         let rest = pat.rest.as_ref().map(|r| match &r.argument {
             BindingPattern::BindingIdentifier(id) => {
-                let place = self.make_named_place(&id.name, id.span);
+                let place = self.make_declared_place(&id.name, id.span);
                 self.emit(
                     InstructionValue::DeclareLocal { lvalue: place.clone(), type_: kind },
                     id.span,
@@ -803,7 +860,7 @@ impl HIRBuilder {
     ) -> DestructureTarget {
         match pat {
             BindingPattern::BindingIdentifier(id) => {
-                let place = self.make_named_place(&id.name, id.span);
+                let place = self.make_declared_place(&id.name, id.span);
                 self.emit(
                     InstructionValue::DeclareLocal { lvalue: place.clone(), type_: kind },
                     id.span,
@@ -835,7 +892,7 @@ impl HIRBuilder {
     ) {
         match pat {
             BindingPattern::BindingIdentifier(id) => {
-                let lvalue = self.make_named_place(&id.name, id.span);
+                let lvalue = self.make_declared_place(&id.name, id.span);
                 self.emit(
                     InstructionValue::DeclareLocal { lvalue: lvalue.clone(), type_: kind },
                     id.span,
@@ -939,6 +996,7 @@ impl HIRBuilder {
     }
 
     fn lower_for_statement(&mut self, for_stmt: &ast::ForStatement<'_>) {
+        self.push_scope(); // for-loop creates a lexical scope for `let i = 0`
         let init_block = self.new_block(BlockKind::Block);
         let test_block = self.new_block(BlockKind::Value);
         let body_block = self.new_block(BlockKind::Loop);
@@ -999,9 +1057,11 @@ impl HIRBuilder {
         self.emit_terminal(Terminal::Goto { block: test_block });
 
         self.switch_block(fallthrough);
+        self.pop_scope();
     }
 
     fn lower_for_in_statement(&mut self, for_in: &ast::ForInStatement<'_>) {
+        self.push_scope();
         let init_block = self.new_block(BlockKind::Block);
         let test_block = self.new_block(BlockKind::Value);
         let body_block = self.new_block(BlockKind::Loop);
@@ -1036,9 +1096,11 @@ impl HIRBuilder {
         self.break_targets.pop();
 
         self.switch_block(fallthrough);
+        self.pop_scope();
     }
 
     fn lower_for_of_statement(&mut self, for_of: &ast::ForOfStatement<'_>) {
+        self.push_scope();
         // Upstream: Todo: Handle for-await loops
         if for_of.r#await {
             self.emit(
@@ -1083,6 +1145,7 @@ impl HIRBuilder {
         self.break_targets.pop();
 
         self.switch_block(fallthrough);
+        self.pop_scope();
     }
 
     /// Lower the `left` part of a for-in/for-of into appropriate declarations or stores.
@@ -1094,7 +1157,7 @@ impl HIRBuilder {
                     let kind = map_var_kind(decl.kind);
                     match &declarator.id {
                         BindingPattern::BindingIdentifier(id) => {
-                            let lvalue = self.make_named_place(&id.name, id.span);
+                            let lvalue = self.make_declared_place(&id.name, id.span);
                             self.emit(
                                 InstructionValue::DeclareLocal {
                                     lvalue: lvalue.clone(),
@@ -1218,7 +1281,7 @@ impl HIRBuilder {
             if let Some(param) = &handler.param
                 && let BindingPattern::BindingIdentifier(id) = &param.pattern
             {
-                let lvalue = self.make_named_place(&id.name, id.span);
+                let lvalue = self.make_declared_place(&id.name, id.span);
                 self.emit(
                     InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::Let },
                     id.span,
