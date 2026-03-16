@@ -20,7 +20,7 @@ function Summary(t0) {
     t25 = $[0];
   }
   let t13;
-  if (t12) {
+  if (hasMany) {
     t13 = "Many items";
   } else {
     t13 = "Few items";

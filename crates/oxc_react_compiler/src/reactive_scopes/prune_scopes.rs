@@ -664,18 +664,36 @@ pub fn inline_load_locals(rf: &mut ReactiveFunction) {
 
 fn inline_loads_in_block(block: &mut ReactiveBlock) {
     // Phase 1: Build substitution map — for each LoadLocal(source) where lvalue
-    // is an unnamed temp, map lvalue.id → source place
+    // is an unnamed temp, map lvalue.id → source place.
+    // Also collect from inside scope blocks: LoadLocal temps inside scopes that
+    // are used at the parent level (e.g., Return terminal) need cross-scope inlining.
     let mut substitutions: FxHashMap<IdentifierId, Place> = FxHashMap::default();
 
     for instr in &block.instructions {
-        if let ReactiveInstruction::Instruction(instruction) = instr
-            && let InstructionValue::LoadLocal { place: source } = &instruction.value
-        {
-            let lvalue = &instruction.lvalue;
-            // Only inline unnamed temporaries (not user-declared variables)
-            if lvalue.identifier.name.is_none() {
-                substitutions.insert(lvalue.identifier.id, source.clone());
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                if let InstructionValue::LoadLocal { place: source } = &instruction.value {
+                    let lvalue = &instruction.lvalue;
+                    if lvalue.identifier.name.is_none() {
+                        substitutions.insert(lvalue.identifier.id, source.clone());
+                    }
+                }
             }
+            ReactiveInstruction::Scope(scope_block) => {
+                // Collect LoadLocal subs from inside the scope that reference
+                // named variables (scope outputs). These need to be visible
+                // at the parent level for terminal operand substitution.
+                for inner in &scope_block.instructions.instructions {
+                    if let ReactiveInstruction::Instruction(instruction) = inner
+                        && let InstructionValue::LoadLocal { place: source } = &instruction.value
+                        && source.identifier.name.is_some()
+                        && instruction.lvalue.identifier.name.is_none()
+                    {
+                        substitutions.insert(instruction.lvalue.identifier.id, source.clone());
+                    }
+                }
+            }
+            _ => {}
         }
     }
 

@@ -74,10 +74,8 @@ array-spread-mutable-iterator.js
 arrow-expr-directive.js
 arrow-function-one-line-directive.js
 assignment-expression-computed.js
-assignment-expression-nested-path.js
 assignment-in-nested-if.js
 assignment-variations-complex-lvalue-array.js
-assignment-variations-complex-lvalue.js
 assignment-variations.js
 await-side-effecting-promise.js
 await.js
@@ -223,7 +221,6 @@ dependencies-outputs.js
 dependencies.js
 destructure-array-assignment-to-context-var.js
 destructure-array-declaration-to-context-var.js
-destructure-capture-global.js
 destructure-default-array-with-unary.js
 destructure-direct-reassignment.js
 destructure-in-branch-ssa.ts
@@ -469,7 +466,6 @@ hoisting-simple-const-declaration.js
 hoisting-simple-function-expression.js
 hoisting-simple-let-declaration.js
 hoisting-within-lambda.js
-holey-array-expr.js
 holey-array-pattern-dce-2.js
 holey-array-pattern-dce.js
 hook-call-freezes-captured-memberexpr.tsx
@@ -700,13 +696,11 @@ object-expression-computed-key-object-mutated-later.js
 object-expression-computed-key.js
 object-expression-computed-member.js
 object-expression-member-expr-call.js
-object-expression-string-literal-key.js
 object-keys.js
 object-literal-method-call-in-ternary-test.js
 object-literal-method-derived-in-ternary-consequent.js
 object-literal-method-in-ternary-consequent.js
 object-literal-method-in-ternary-test.js
-object-literal-spread-element.js
 object-method-maybe-alias.js
 object-method-shorthand-3.js
 object-method-shorthand-aliased-mutate-after.js
@@ -995,12 +989,6 @@ reduce-reactive-deps/todo-infer-function-uncond-optionals-hoisted.tsx
 reduce-reactive-deps/todo-merge-ssa-phi-access-nodes.ts
 reduce-reactive-deps/uncond-access-in-mutable-range.js
 reduce-reactive-deps/uncond-nonoverlap-descendant.js
-reduce-reactive-deps/uncond-nonoverlap-direct.js
-reduce-reactive-deps/uncond-overlap-descendant.js
-reduce-reactive-deps/uncond-overlap-direct.js
-reduce-reactive-deps/uncond-subpath-order1.js
-reduce-reactive-deps/uncond-subpath-order2.js
-reduce-reactive-deps/uncond-subpath-order3.js
 ref-current-aliased-no-added-to-dep.js
 ref-current-aliased-not-added-to-dep-2.js
 ref-current-field-not-added-to-dep.js
@@ -1133,6 +1121,7 @@ ssa-leave-case.js
 ssa-multiple-phis.js
 ssa-nested-loops-no-reassign.js
 ssa-newexpression.js
+ssa-non-empty-initializer.js
 ssa-objectexpression-phi.js
 ssa-objectexpression.js
 ssa-property-alias-alias-mutate-if.js
@@ -1234,6 +1223,7 @@ type-alias.flow.js
 type-args-test-binary-operator.js
 type-binary-operator.js
 type-cast-expression.flow.js
+type-field-load.js
 type-inference-array-from.js
 type-provider-log-default-import.tsx
 type-provider-log.tsx
