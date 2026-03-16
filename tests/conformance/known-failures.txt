@@ -1169,7 +1169,6 @@ switch-with-only-default.js
 switch.js
 tagged-template-in-hook.js
 tagged-template-literal.js
-template-literal.js
 temporary-accessed-outside-scope.js
 temporary-at-start-of-value-block.js
 temporary-property-load-accessed-outside-scope.js
