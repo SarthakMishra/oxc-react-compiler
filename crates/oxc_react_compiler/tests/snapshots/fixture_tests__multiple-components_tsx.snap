@@ -9,28 +9,28 @@ import { c as _c } from "react/compiler-runtime";
 function Header(t0) {
   const $ = _c(2);
   const { title } = t0;
-  let t6;
+  let t13;
   if ($[0] !== title) {
-    t6 = <h1>{title}</h1>;
+    t13 = <h1>{title}</h1>;
     $[0] = title;
-    $[1] = t6;
+    $[1] = t13;
   } else {
-    t6 = $[1];
+    t13 = $[1];
   }
-  return t6;
+  return t13;
 }
 
 
 function Footer(t0) {
   const $ = _c(2);
   const { text } = t0;
-  let t6;
+  let t13;
   if ($[0] !== text) {
-    t6 = <footer>{text}</footer>;
+    t13 = <footer>{text}</footer>;
     $[0] = text;
-    $[1] = t6;
+    $[1] = t13;
   } else {
-    t6 = $[1];
+    t13 = $[1];
   }
-  return t6;
+  return t13;
 }

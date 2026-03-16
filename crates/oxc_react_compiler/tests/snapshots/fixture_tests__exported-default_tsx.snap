@@ -9,13 +9,13 @@ import { c as _c } from "react/compiler-runtime";
 export default function Page(t0) {
   const $ = _c(2);
   const { content } = t0;
-  let t6;
+  let t13;
   if ($[0] !== content) {
-    t6 = <main>{content}</main>;
+    t13 = <main>{content}</main>;
     $[0] = content;
-    $[1] = t6;
+    $[1] = t13;
   } else {
-    t6 = $[1];
+    t13 = $[1];
   }
-  return t6;
+  return t13;
 }

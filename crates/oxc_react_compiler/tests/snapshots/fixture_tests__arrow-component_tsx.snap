@@ -9,15 +9,15 @@ import { c as _c } from "react/compiler-runtime";
 const Button = (t0) => {
   const $ = _c(3);
   const { onClick, label } = t0;
-  let t9;
+  let t19;
   if ($[0] !== label || $[1] !== onClick) {
-    t9 = <button onClick={onClick}>{label}</button>;
+    t19 = <button onClick={onClick}>{label}</button>;
     $[0] = label;
     $[1] = onClick;
-    $[2] = t9;
+    $[2] = t19;
   } else {
-    t9 = $[2];
+    t19 = $[2];
   }
-  return t9;
+  return t19;
 }
 ;

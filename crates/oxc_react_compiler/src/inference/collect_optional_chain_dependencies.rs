@@ -122,7 +122,6 @@ mod tests {
         Place {
             identifier: Identifier {
                 id: IdentifierId(id),
-                ssa_version: 0,
                 declaration_id: None,
                 name: Some(name.to_string()),
                 mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },

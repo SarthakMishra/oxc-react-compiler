@@ -140,7 +140,6 @@ mod tests {
         ReactiveScopeDependency {
             identifier: Identifier {
                 id: IdentifierId(id),
-                ssa_version: 0,
                 declaration_id: None,
                 name: Some(format!("v{id}")),
                 mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },

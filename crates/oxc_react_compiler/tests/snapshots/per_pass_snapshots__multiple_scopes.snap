@@ -10,14 +10,14 @@ function Summary(t0) {
   const count = items.length;
   const hasMany = count > threshold;
   if (hasMany) {
-    t20 = "Many items";
+    t24 = "Many items";
   } else {
-    t20 = "Few items";
+    t24 = "Few items";
   }
-  const label = t20;
-  let t36;
+  const label = t24;
+  let t75;
   if ($[0] !== count || $[1] !== label) {
-    t36 = (
+    t75 = (
       <div>
         <span>{label}</span>
         <span>({count})</span>
@@ -25,9 +25,9 @@ function Summary(t0) {
     );
     $[0] = count;
     $[1] = label;
-    $[2] = t36;
+    $[2] = t75;
   } else {
-    t36 = $[2];
+    t75 = $[2];
   }
-  return t36;
+  return t75;
 }

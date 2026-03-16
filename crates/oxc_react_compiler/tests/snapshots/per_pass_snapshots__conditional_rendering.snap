@@ -8,29 +8,29 @@ function Status(t0) {
   const $ = _c(2);
   const { isActive } = t0;
   if (isActive) {
-    let t8;
+    let t25;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-      t8 = (
+      t25 = (
         <div className="active">
           Active
         </div>
       );
-      $[0] = t8;
+      $[0] = t25;
     } else {
-      t8 = $[0];
+      t25 = $[0];
     }
-    return t8;
+    return t25;
   }
-  let t12;
+  let t21;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t12 = (
+    t21 = (
       <div className="inactive">
         Inactive
       </div>
     );
-    $[1] = t12;
+    $[1] = t21;
   } else {
-    t12 = $[1];
+    t21 = $[1];
   }
-  return t12;
+  return t21;
 }

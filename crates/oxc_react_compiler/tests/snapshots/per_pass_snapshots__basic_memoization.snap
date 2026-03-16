@@ -8,13 +8,13 @@ function Doubler(t0) {
   const $ = _c(2);
   const { value } = t0;
   const doubled = value * 2;
-  let t12;
+  let t25;
   if ($[0] !== doubled) {
-    t12 = <span>{doubled}</span>;
+    t25 = <span>{doubled}</span>;
     $[0] = doubled;
-    $[1] = t12;
+    $[1] = t25;
   } else {
-    t12 = $[1];
+    t25 = $[1];
   }
-  return t12;
+  return t25;
 }

@@ -1,5 +1,6 @@
 ---
 source: crates/oxc_react_compiler/tests/snapshot_tests.rs
+assertion_line: 113
 expression: result.code
 ---
 import { c as _c } from "react/compiler-runtime";
@@ -8,29 +9,29 @@ function Toggle(t0) {
   const $ = _c(2);
   const { isOn } = t0;
   if (isOn) {
-    let t7;
+    let t21;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-      t7 = (
+      t21 = (
         <div>
           ON
         </div>
       );
-      $[0] = t7;
+      $[0] = t21;
     } else {
-      t7 = $[0];
+      t21 = $[0];
     }
-    return t7;
+    return t21;
   }
-  let t10;
+  let t18;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t10 = (
+    t18 = (
       <div>
         OFF
       </div>
     );
-    $[1] = t10;
+    $[1] = t18;
   } else {
-    t10 = $[1];
+    t18 = $[1];
   }
-  return t10;
+  return t18;
 }

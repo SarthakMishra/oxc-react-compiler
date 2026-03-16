@@ -1973,7 +1973,6 @@ fn create_rename_assignment(
     let make_place = |name: &str| Place {
         identifier: Identifier {
             id: IdentifierId(0),
-            ssa_version: 0,
             declaration_id: None,
             name: Some(name.to_string()),
             type_: Type::Poly,

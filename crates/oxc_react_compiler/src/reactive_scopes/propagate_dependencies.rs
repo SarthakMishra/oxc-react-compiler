@@ -266,7 +266,6 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
         fn to_identifier(&self) -> crate::hir::types::Identifier {
             crate::hir::types::Identifier {
                 id: self.root_id,
-                ssa_version: 0,
                 declaration_id: self.root_declaration_id,
                 name: self.root_name.clone(),
                 mutable_range: crate::hir::types::MutableRange {

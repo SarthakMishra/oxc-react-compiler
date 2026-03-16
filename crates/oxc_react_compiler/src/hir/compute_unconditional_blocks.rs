@@ -341,7 +341,6 @@ mod tests {
                         value: crate::hir::types::Place {
                             identifier: crate::hir::types::Identifier {
                                 id: crate::hir::types::IdentifierId(0),
-                                ssa_version: 0,
                                 declaration_id: None,
                                 name: None,
                                 mutable_range: crate::hir::types::MutableRange {
@@ -380,7 +379,6 @@ mod tests {
                         test: crate::hir::types::Place {
                             identifier: crate::hir::types::Identifier {
                                 id: crate::hir::types::IdentifierId(0),
-                                ssa_version: 0,
                                 declaration_id: None,
                                 name: None,
                                 mutable_range: crate::hir::types::MutableRange {
@@ -407,7 +405,6 @@ mod tests {
                         value: crate::hir::types::Place {
                             identifier: crate::hir::types::Identifier {
                                 id: crate::hir::types::IdentifierId(0),
-                                ssa_version: 0,
                                 declaration_id: None,
                                 name: None,
                                 mutable_range: crate::hir::types::MutableRange {
