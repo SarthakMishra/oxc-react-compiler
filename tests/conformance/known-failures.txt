@@ -1119,7 +1119,6 @@ sequentially-constant-progagatable-if-test-conditions.js
 shapes-object-key.ts
 simple-alias.js
 simple-function-1.js
-simple-scope.js
 simple.js
 ssa-arrayexpression.js
 ssa-call-jsx-2.js
@@ -1134,7 +1133,6 @@ ssa-leave-case.js
 ssa-multiple-phis.js
 ssa-nested-loops-no-reassign.js
 ssa-newexpression.js
-ssa-non-empty-initializer.js
 ssa-objectexpression-phi.js
 ssa-objectexpression.js
 ssa-property-alias-alias-mutate-if.js
@@ -1228,7 +1226,6 @@ ts-enum-inline.tsx
 ts-instantiation-default-param.tsx
 ts-instantiation-expression.tsx
 ts-non-null-expression-default-value.tsx
-type-alias-declaration.ts
 type-alias-used-as-annotation.ts
 type-alias-used-as-annotation_.flow.js
 type-alias-used-as-variable-annotation.ts
@@ -1237,7 +1234,6 @@ type-alias.flow.js
 type-args-test-binary-operator.js
 type-binary-operator.js
 type-cast-expression.flow.js
-type-field-load.js
 type-inference-array-from.js
 type-provider-log-default-import.tsx
 type-provider-log.tsx

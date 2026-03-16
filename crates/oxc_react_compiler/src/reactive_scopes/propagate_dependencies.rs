@@ -572,9 +572,6 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                     InstructionValue::StoreLocal { lvalue, .. }
                     | InstructionValue::StoreContext { lvalue, .. } => {
                         let target_id = lvalue.identifier.id;
-                        // Check by ID first, then fall back to DeclarationId-based
-                        // matching (needed because StoreLocal target and LoadLocal
-                        // source may have different SSA IDs for the same variable).
                         let target_used_outside =
                             operand_consumers.get(&target_id).is_some_and(|consumers| {
                                 consumers

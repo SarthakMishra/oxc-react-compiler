@@ -352,7 +352,9 @@ impl HIRBuilder {
     /// scopes) track the variable directly, enabling correct scope boundaries.
     fn emit(&mut self, value: InstructionValue, loc: Span) -> Place {
         let instr_id = self.env.id_generator.next_instruction_id();
-        // For Store/Declare instructions, use the named target as the lvalue
+        // For Store/Declare instructions, use the named target as the lvalue.
+        // This ensures downstream passes (mutable ranges, reactive scopes)
+        // track the variable directly, enabling correct scope boundaries.
         let lvalue = match &value {
             InstructionValue::StoreLocal { lvalue, .. }
             | InstructionValue::StoreContext { lvalue, .. }
