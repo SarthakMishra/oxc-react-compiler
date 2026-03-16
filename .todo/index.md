@@ -15,7 +15,7 @@ Re-run breakdown analysis to get updated numbers.
 | Root Cause | Fixtures | Fix |
 |---|---|---|
 | Slot over-count (too many scopes/deps) | ~443 | [scope-analysis.md] |
-| False-positive frozen-mutation bail-out | 173 | [false-bailouts.md] |
+| False-positive frozen-mutation bail-out | 158 | [false-bailouts.md] |
 | Slot under-count (missing scopes) | ~162 | [scope-analysis.md] |
 | Same slots, different codegen structure | ~150 | [codegen-structure.md] |
 | We memoize, upstream returns unchanged | ~102 | [unnecessary-memo.md] |
@@ -35,7 +35,7 @@ Re-run breakdown analysis to get updated numbers.
 We reject functions that upstream compiles successfully. Each fix is
 a direct 1:1 fixture gain -- bail-out removed = fixture passes.
 
-- [~] Fix frozen-mutation false positives (173 remaining, 4 fixed via effects-gated MethodCall) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-false-positives
+- [~] Fix frozen-mutation false positives (158 remaining, 19 fixed via direct-only frozen check + param pre-freezing) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-false-positives
 - [ ] Fix frozen-mutation false positive on hooks without JSX (pre-existing regression) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-hooks-without-jsx
 - [~] Fix locals-reassigned-after-render false positives (11 remaining, 15 fixed via render-only detection) -- [false-bailouts.md](false-bailouts.md)#locals-reassigned-false-positives
 - [~] Fix ref-access-during-render false positives (11 remaining, 9 fixed via non-render callback detection) -- [false-bailouts.md](false-bailouts.md)#ref-access-false-positives
