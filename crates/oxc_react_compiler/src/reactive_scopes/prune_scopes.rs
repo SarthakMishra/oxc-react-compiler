@@ -1410,8 +1410,17 @@ fn check_rename_eligibility(
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(i) => {
-                // Check if this instruction's lvalue uses the name
-                if i.lvalue.identifier.name.as_deref() == Some(name) {
+                // Check if this instruction's lvalue uses the name.
+                // DeclareLocal doesn't count as a "write" — it's a declaration
+                // without assignment. Only StoreLocal/StoreContext and other
+                // value-producing instructions count.
+                if i.lvalue.identifier.name.as_deref() == Some(name)
+                    && !matches!(
+                        i.value,
+                        InstructionValue::DeclareLocal { .. }
+                            | InstructionValue::DeclareContext { .. }
+                    )
+                {
                     *lvalue_count += 1;
                 }
                 // Check for StoreLocal with Reassign kind — means the binding
@@ -1488,24 +1497,26 @@ fn count_reads_in_value(
 
     match value {
         InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
-            if is_name(place) {
-                *read_count += 1;
-            }
+            // With named lvalues, LoadLocal for a scope-declared variable is just
+            // "loading the scope's output". This shouldn't prevent renaming.
+            // Only count reads from OTHER instruction types (PropertyLoad, Call args, etc.)
+            let _ = place;
         }
         InstructionValue::StoreLocal { lvalue, value, .. }
         | InstructionValue::StoreContext { lvalue, value } => {
-            if is_name(lvalue) {
-                *lvalue_count += 1;
-            }
+            // Note: with named lvalues, instr.lvalue and the inner StoreLocal
+            // lvalue are the same place. The outer check_rename_eligibility
+            // already counts instr.lvalue, so we skip counting the inner lvalue
+            // to avoid double-counting. Only count reads (the value operand).
+            let _ = lvalue; // acknowledged but not counted
             if is_name(value) {
                 *read_count += 1;
             }
         }
         InstructionValue::DeclareLocal { lvalue, .. }
         | InstructionValue::DeclareContext { lvalue, .. } => {
-            if is_name(lvalue) {
-                *lvalue_count += 1;
-            }
+            // Same as StoreLocal: inner lvalue is the same as instr.lvalue
+            let _ = lvalue;
         }
         InstructionValue::CallExpression { callee, args }
         | InstructionValue::NewExpression { callee, args } => {
