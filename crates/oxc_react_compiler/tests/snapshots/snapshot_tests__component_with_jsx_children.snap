@@ -7,13 +7,13 @@ import { c as _c } from "react/compiler-runtime";
 function Layout(t0) {
   const $ = _c(2);
   const { children } = t0;
-  let t15;
+  let t7;
   if ($[0] !== children) {
-    t15 = <div className="container">{children}</div>;
+    t7 = <div className="container">{children}</div>;
     $[0] = children;
-    $[1] = t15;
+    $[1] = t7;
   } else {
-    t15 = $[1];
+    t7 = $[1];
   }
-  return t15;
+  return t7;
 }

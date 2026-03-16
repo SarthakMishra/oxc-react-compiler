@@ -1,6 +1,15 @@
 use crate::hir::types::{HIR, IdentifierId, Phi, Place};
 use rustc_hash::FxHashMap;
 
+/// An SSA identity: the combination of base IdentifierId and ssa_version.
+/// With stable IDs, all references to the same variable share the same
+/// IdentifierId; the version distinguishes SSA definitions.
+type SsaId = (IdentifierId, u32);
+
+fn ssa_id_of(place: &Place) -> SsaId {
+    (place.identifier.id, place.identifier.ssa_version)
+}
+
 // DIVERGENCE: Upstream does not have a separate redundant-phi elimination pass;
 // its SSA construction avoids trivial phis at insertion time. Our EnterSSA
 // uses the standard Cytron-et-al algorithm which may insert more phis than
@@ -17,13 +26,13 @@ pub fn eliminate_redundant_phi(hir: &mut HIR) {
     let mut changed = true;
     while changed {
         changed = false;
-        let mut replacements: FxHashMap<IdentifierId, IdentifierId> = FxHashMap::default();
+        let mut replacements: FxHashMap<SsaId, SsaId> = FxHashMap::default();
 
         // Find redundant phis
         for (_, block) in &hir.blocks {
             for phi in &block.phis {
                 if let Some(replacement) = is_redundant_phi(phi) {
-                    replacements.insert(phi.place.identifier.id, replacement);
+                    replacements.insert(ssa_id_of(&phi.place), replacement);
                     changed = true;
                 }
             }
@@ -38,26 +47,26 @@ pub fn eliminate_redundant_phi(hir: &mut HIR) {
 
         // Remove the redundant phi nodes
         for (_, block) in &mut hir.blocks {
-            block.phis.retain(|phi| !replacements.contains_key(&phi.place.identifier.id));
+            block.phis.retain(|phi| !replacements.contains_key(&ssa_id_of(&phi.place)));
         }
     }
 }
 
-/// Check if a phi node is redundant. Returns the replacement IdentifierId if so.
-fn is_redundant_phi(phi: &Phi) -> Option<IdentifierId> {
-    let phi_id = phi.place.identifier.id;
-    let mut unique_operand: Option<IdentifierId> = None;
+/// Check if a phi node is redundant. Returns the replacement SsaId if so.
+fn is_redundant_phi(phi: &Phi) -> Option<SsaId> {
+    let phi_ssa = ssa_id_of(&phi.place);
+    let mut unique_operand: Option<SsaId> = None;
 
     for (_, operand_place) in &phi.operands {
-        let op_id = operand_place.identifier.id;
+        let op_ssa = ssa_id_of(operand_place);
         // Skip self-references
-        if op_id == phi_id {
+        if op_ssa == phi_ssa {
             continue;
         }
         match unique_operand {
-            None => unique_operand = Some(op_id),
+            None => unique_operand = Some(op_ssa),
             Some(existing) => {
-                if existing != op_id {
+                if existing != op_ssa {
                     // Multiple distinct operands - not redundant
                     return None;
                 }
@@ -70,7 +79,7 @@ fn is_redundant_phi(phi: &Phi) -> Option<IdentifierId> {
 }
 
 /// Apply identifier replacements throughout the HIR
-fn apply_replacements(hir: &mut HIR, replacements: &FxHashMap<IdentifierId, IdentifierId>) {
+fn apply_replacements(hir: &mut HIR, replacements: &FxHashMap<SsaId, SsaId>) {
     if replacements.is_empty() {
         return;
     }
@@ -96,15 +105,12 @@ fn apply_replacements(hir: &mut HIR, replacements: &FxHashMap<IdentifierId, Iden
 }
 
 /// Resolve transitive replacements: if a -> b -> c, then a -> c
-fn resolve_transitive(
-    replacements: &FxHashMap<IdentifierId, IdentifierId>,
-) -> FxHashMap<IdentifierId, IdentifierId> {
+fn resolve_transitive(replacements: &FxHashMap<SsaId, SsaId>) -> FxHashMap<SsaId, SsaId> {
     let mut resolved = replacements.clone();
     let mut changed = true;
     while changed {
         changed = false;
-        let snapshot: Vec<(IdentifierId, IdentifierId)> =
-            resolved.iter().map(|(&k, &v)| (k, v)).collect();
+        let snapshot: Vec<(SsaId, SsaId)> = resolved.iter().map(|(&k, &v)| (k, v)).collect();
         for (key, value) in snapshot {
             if let Some(&further) = resolved.get(&value)
                 && further != value
@@ -117,15 +123,17 @@ fn resolve_transitive(
     resolved
 }
 
-fn replace_in_place(place: &mut Place, replacements: &FxHashMap<IdentifierId, IdentifierId>) {
-    if let Some(&replacement) = replacements.get(&place.identifier.id) {
-        place.identifier.id = replacement;
+fn replace_in_place(place: &mut Place, replacements: &FxHashMap<SsaId, SsaId>) {
+    let ssa = ssa_id_of(place);
+    if let Some(&(new_id, new_version)) = replacements.get(&ssa) {
+        place.identifier.id = new_id;
+        place.identifier.ssa_version = new_version;
     }
 }
 
 fn replace_in_instruction_value(
     value: &mut crate::hir::types::InstructionValue,
-    replacements: &FxHashMap<IdentifierId, IdentifierId>,
+    replacements: &FxHashMap<SsaId, SsaId>,
 ) {
     use crate::hir::types::InstructionValue;
     match value {
@@ -289,7 +297,7 @@ fn replace_in_instruction_value(
 
 fn replace_in_destructure_pattern(
     pattern: &mut crate::hir::types::DestructurePattern,
-    replacements: &FxHashMap<IdentifierId, IdentifierId>,
+    replacements: &FxHashMap<SsaId, SsaId>,
 ) {
     use crate::hir::types::{DestructureArrayItem, DestructurePattern};
     match pattern {
@@ -322,7 +330,7 @@ fn replace_in_destructure_pattern(
 
 fn replace_in_destructure_target(
     target: &mut crate::hir::types::DestructureTarget,
-    replacements: &FxHashMap<IdentifierId, IdentifierId>,
+    replacements: &FxHashMap<SsaId, SsaId>,
 ) {
     use crate::hir::types::DestructureTarget;
     match target {
@@ -337,7 +345,7 @@ fn replace_in_destructure_target(
 
 fn replace_in_hir_function(
     func: &mut crate::hir::types::HIRFunction,
-    replacements: &FxHashMap<IdentifierId, IdentifierId>,
+    replacements: &FxHashMap<SsaId, SsaId>,
 ) {
     // Replace in params
     for param in &mut func.params {
@@ -372,7 +380,7 @@ fn replace_in_hir_function(
 
 fn replace_in_terminal(
     terminal: &mut crate::hir::types::Terminal,
-    replacements: &FxHashMap<IdentifierId, IdentifierId>,
+    replacements: &FxHashMap<SsaId, SsaId>,
 ) {
     use crate::hir::types::Terminal;
     match terminal {

@@ -7,9 +7,9 @@ import { c as _c } from "react/compiler-runtime";
 function Greeting(t0) {
   const $ = _c(3);
   const { name, age } = t0;
-  let t23;
+  let t11;
   if ($[0] !== age || $[1] !== name) {
-    t23 = (
+    t11 = (
       <div>
         Hello 
         {name}
@@ -19,9 +19,9 @@ function Greeting(t0) {
     );
     $[0] = age;
     $[1] = name;
-    $[2] = t23;
+    $[2] = t11;
   } else {
-    t23 = $[2];
+    t11 = $[2];
   }
-  return t23;
+  return t11;
 }

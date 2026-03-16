@@ -153,6 +153,12 @@ pub struct HIRBuilder {
 
     /// Monotonically increasing ID for manual memoization markers (useMemo/useCallback).
     next_memo_id: u32,
+
+    /// Registry mapping binding names to their stable (IdentifierId, DeclarationId).
+    /// All references to the same variable reuse the same IDs instead of
+    /// creating fresh ones, enabling correct value-flow tracking through the
+    /// compiler pipeline.
+    binding_ids: FxHashMap<String, (IdentifierId, DeclarationId)>,
 }
 
 impl HIRBuilder {
@@ -183,6 +189,7 @@ impl HIRBuilder {
             next_label: 0,
             context_vars: FxHashSet::default(),
             next_memo_id: 0,
+            binding_ids: FxHashMap::default(),
         }
     }
 
@@ -235,6 +242,7 @@ impl HIRBuilder {
         Place {
             identifier: Identifier {
                 id,
+                ssa_version: 0,
                 declaration_id: None,
                 name: None,
                 mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
@@ -249,12 +257,22 @@ impl HIRBuilder {
     }
 
     /// Create a named place for a local binding.
+    ///
+    /// All references to the same binding name reuse the same IdentifierId
+    /// and DeclarationId, enabling correct value-flow tracking through the
+    /// compiler pipeline. The SSA pass later distinguishes versions via the
+    /// `ssa_version` field.
     fn make_named_place(&mut self, name: &str, loc: Span) -> Place {
-        let id = self.env.id_generator.next_identifier_id();
-        let decl_id = self.env.id_generator.next_declaration_id();
+        let (id, decl_id) = self.binding_ids.get(name).copied().unwrap_or_else(|| {
+            let new_id = self.env.id_generator.next_identifier_id();
+            let new_decl = self.env.id_generator.next_declaration_id();
+            self.binding_ids.insert(name.to_string(), (new_id, new_decl));
+            (new_id, new_decl)
+        });
         Place {
             identifier: Identifier {
                 id,
+                ssa_version: 0,
                 declaration_id: Some(decl_id),
                 name: Some(name.to_string()),
                 mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
