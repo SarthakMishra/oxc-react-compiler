@@ -40,6 +40,7 @@ allow-mutating-ref-property-in-callback-passed-to-jsx-indirect.tsx
 allow-mutating-ref-property-in-callback-passed-to-jsx.tsx
 allow-passing-ref-to-render-helper-props-object.js
 allow-passing-ref-to-render-helper.js
+allow-passing-refs-as-props.js
 allow-reassignment-to-global-function-jsx-prop.js
 allow-ref-access-in-effect-indirect.js
 allow-ref-access-in-effect.js
@@ -222,6 +223,7 @@ dependencies-outputs.js
 dependencies.js
 destructure-array-assignment-to-context-var.js
 destructure-array-declaration-to-context-var.js
+destructure-capture-global.js
 destructure-default-array-with-unary.js
 destructure-direct-reassignment.js
 destructure-in-branch-ssa.ts
@@ -273,12 +275,16 @@ error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-couldnt-find-binding-for-decl.js
 error.bug-invariant-unnamed-temporary.js
 error.default-param-accesses-local.js
+error.hoist-optional-member-expression-with-conditional-optional.js
+error.hoist-optional-member-expression-with-conditional.js
 error.hoisting-simple-function-declaration.js
 error.invalid-hoisting-setstate.js
 error.invalid-mutate-after-aliased-freeze.js
 error.invalid-mutate-phi-which-could-be-frozen.js
 error.invalid-mutate-props-in-effect-fixpoint.js
+error.invalid-mutate-props-via-for-of-iterator.js
 error.invalid-mutation-of-possible-props-phi-indirect.js
+error.invalid-optional-member-expression-as-memo-dep-non-optional-in-body.js
 error.invalid-pass-mutable-function-as-prop.js
 error.invalid-return-mutable-function-from-hook.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
@@ -293,6 +299,8 @@ error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hoisting-simple-var-declaration.js
+error.todo-kitchensink.js
+error.todo-repro-unmemoized-callback-captured-in-context-variable.tsx
 error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
 escape-analysis-destructured-rest-element.js
@@ -461,6 +469,7 @@ hoisting-simple-const-declaration.js
 hoisting-simple-function-expression.js
 hoisting-simple-let-declaration.js
 hoisting-within-lambda.js
+holey-array-expr.js
 holey-array-pattern-dce-2.js
 holey-array-pattern-dce.js
 hook-call-freezes-captured-memberexpr.tsx
@@ -487,6 +496,7 @@ independent-across-if.js
 independent.js
 independently-memoize-object-property.js
 infer-compile-hooks-with-multiple-params.js
+infer-computed-delete.js
 infer-functions-component-with-hook-call.js
 infer-functions-component-with-ref-arg.js
 infer-functions-hook-with-hook-call.js
@@ -690,11 +700,13 @@ object-expression-computed-key-object-mutated-later.js
 object-expression-computed-key.js
 object-expression-computed-member.js
 object-expression-member-expr-call.js
+object-expression-string-literal-key.js
 object-keys.js
 object-literal-method-call-in-ternary-test.js
 object-literal-method-derived-in-ternary-consequent.js
 object-literal-method-in-ternary-consequent.js
 object-literal-method-in-ternary-test.js
+object-literal-spread-element.js
 object-method-maybe-alias.js
 object-method-shorthand-3.js
 object-method-shorthand-aliased-mutate-after.js
@@ -751,7 +763,15 @@ preserve-jsxtext-stringliteral-distinction.js
 preserve-memo-deps-conditional-property-chain-less-precise-deps.js
 preserve-memo-deps-conditional-property-chain.js
 preserve-memo-deps-optional-property-chain.js
+preserve-memo-validation/error.hoist-useCallback-conditional-access-own-scope.ts
+preserve-memo-validation/error.useCallback-aliased-var.ts
+preserve-memo-validation/error.useCallback-conditional-access-noAlloc.ts
+preserve-memo-validation/error.useCallback-infer-less-specific-conditional-access.ts
+preserve-memo-validation/error.useMemo-aliased-var.ts
+preserve-memo-validation/error.useMemo-infer-less-specific-conditional-access.ts
+preserve-memo-validation/error.useMemo-infer-less-specific-conditional-value-block.ts
 preserve-memo-validation/error.useMemo-unrelated-mutation-in-depslist.ts
+preserve-memo-validation/error.validate-useMemo-named-function.js
 preserve-memo-validation/maybe-invalid-useMemo-no-memoblock-sideeffect.ts
 preserve-memo-validation/preserve-use-callback-stable-built-ins.ts
 preserve-memo-validation/preserve-use-memo-ref-missing-ok.ts
@@ -805,6 +825,8 @@ propagate-scope-deps-hir-fork/conditional-early-return.js
 propagate-scope-deps-hir-fork/conditional-on-mutable.js
 propagate-scope-deps-hir-fork/early-return-nested-early-return-within-reactive-scope.js
 propagate-scope-deps-hir-fork/early-return-within-reactive-scope.js
+propagate-scope-deps-hir-fork/error.todo-optional-member-expression-with-conditional-optional.js
+propagate-scope-deps-hir-fork/error.todo-optional-member-expression-with-conditional.js
 propagate-scope-deps-hir-fork/iife-return-modified-later-phi.js
 propagate-scope-deps-hir-fork/infer-component-props-non-null.tsx
 propagate-scope-deps-hir-fork/infer-non-null-destructure.ts
@@ -1042,6 +1064,7 @@ repro-no-value-for-temporary.js
 repro-non-identifier-object-keys.ts
 repro-object-expression-computed-key-modified-during-after-construction-hoisted-sequence-expr.js
 repro-object-fromEntries-entries.js
+repro-object-pattern.js
 repro-preds-undefined-try-catch-return-primitive.js
 repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency.js
 repro-propagate-type-of-ternary-jsx.js
@@ -1063,7 +1086,9 @@ repro-unreachable-code-early-return-in-useMemo.js
 repro-useMemo-if-else-both-early-return.js
 repro.js
 resolve-react-hooks-based-on-import-name.js
+rest-param-with-array-pattern.js
 rest-param-with-identifier.js
+rest-param-with-object-spread-pattern.js
 return-ref-callback-structure.js
 return-ref-callback.js
 reverse-postorder.js
@@ -1094,6 +1119,7 @@ sequentially-constant-progagatable-if-test-conditions.js
 shapes-object-key.ts
 simple-alias.js
 simple-function-1.js
+simple-scope.js
 simple.js
 ssa-arrayexpression.js
 ssa-call-jsx-2.js
@@ -1108,6 +1134,7 @@ ssa-leave-case.js
 ssa-multiple-phis.js
 ssa-nested-loops-no-reassign.js
 ssa-newexpression.js
+ssa-non-empty-initializer.js
 ssa-objectexpression-phi.js
 ssa-objectexpression.js
 ssa-property-alias-alias-mutate-if.js
@@ -1201,6 +1228,7 @@ ts-enum-inline.tsx
 ts-instantiation-default-param.tsx
 ts-instantiation-expression.tsx
 ts-non-null-expression-default-value.tsx
+type-alias-declaration.ts
 type-alias-used-as-annotation.ts
 type-alias-used-as-annotation_.flow.js
 type-alias-used-as-variable-annotation.ts
@@ -1209,6 +1237,7 @@ type-alias.flow.js
 type-args-test-binary-operator.js
 type-binary-operator.js
 type-cast-expression.flow.js
+type-field-load.js
 type-inference-array-from.js
 type-provider-log-default-import.tsx
 type-provider-log.tsx

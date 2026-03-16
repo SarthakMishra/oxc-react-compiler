@@ -5,29 +5,23 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function Display(t0) {
-  const $ = _c(3);
-  const { items } = t0;
-  const count = items.length;
-  if (count > 0) {
-    t14 = "Has items";
+  const $ = _c(1);
+  let items;
+  let count;
+  let label;
+  let t17;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    count = items.length;
+    $[0] = t17;
   } else {
-    t14 = "Empty";
+    t17 = $[0];
   }
-  const label = t14;
-  let t25;
-  if ($[0] !== count || $[1] !== label) {
-    t25 = (
-      <div>
-        {label}
-        : 
-        {count}
-      </div>
-    );
-    $[0] = count;
-    $[1] = label;
-    $[2] = t25;
+  let t10;
+  if (t9) {
+    t10 = "Has items";
   } else {
-    t25 = $[2];
+    t10 = "Empty";
   }
-  return t25;
+  label = t10;
+  return <div>{label}: {count}</div>;
 }

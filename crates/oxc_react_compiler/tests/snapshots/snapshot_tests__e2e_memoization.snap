@@ -5,14 +5,16 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function Counter() {
-  const $ = _c(2);
-  let t11;
-  if ($[0] !== count) {
-    t11 = <div>{count}</div>;
-    $[0] = count;
-    $[1] = t11;
+  const $ = _c(1);
+  const t3 = useState(0);
+  let count;
+  let setCount;
+  let t9;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t9 = <div>{count}</div>;
+    $[0] = t9;
   } else {
-    t11 = $[1];
+    t9 = $[0];
   }
-  return t11;
+  return t9;
 }

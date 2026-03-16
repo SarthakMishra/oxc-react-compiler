@@ -5,16 +5,16 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function Doubler(t0) {
-  const $ = _c(2);
-  const { value } = t0;
-  const doubled = value * 2;
-  let t12;
-  if ($[0] !== doubled) {
-    t12 = <span>{doubled}</span>;
-    $[0] = doubled;
-    $[1] = t12;
+  const $ = _c(1);
+  let value;
+  let doubled;
+  let t9;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    doubled = value * 2;
+    t9 = <span>{doubled}</span>;
+    $[0] = t9;
   } else {
-    t12 = $[1];
+    t9 = $[0];
   }
-  return t12;
+  return t9;
 }

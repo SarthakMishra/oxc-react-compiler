@@ -5,23 +5,22 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function UserCard(t0) {
-  const $ = _c(4);
-  const { name, age, role } = t0;
-  let t20;
-  if ($[0] !== age || $[1] !== name || $[2] !== role) {
-    t20 = (
+  const $ = _c(1);
+  let name;
+  let age;
+  let role;
+  let t17;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t17 = (
       <div>
         <h2>{name}</h2>
         <p>Age: {age}</p>
         <p>Role: {role}</p>
       </div>
     );
-    $[0] = age;
-    $[1] = name;
-    $[2] = role;
-    $[3] = t20;
+    $[0] = t17;
   } else {
-    t20 = $[3];
+    t17 = $[0];
   }
-  return t20;
+  return t17;
 }

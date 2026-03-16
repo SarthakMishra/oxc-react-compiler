@@ -5,15 +5,14 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function Counter(t0) {
-  const $ = _c(2);
-  const { count } = t0;
-  let t6;
-  if ($[0] !== count) {
-    t6 = <div>{count}</div>;
-    $[0] = count;
-    $[1] = t6;
+  const $ = _c(1);
+  let count;
+  let t5;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t5 = <div>{count}</div>;
+    $[0] = t5;
   } else {
-    t6 = $[1];
+    t5 = $[0];
   }
-  return t6;
+  return t5;
 }

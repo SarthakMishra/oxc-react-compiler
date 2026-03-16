@@ -345,9 +345,21 @@ impl HIRBuilder {
     // ------------------------------------------------------------------
 
     /// Emit an instruction into the current block and return its lvalue place.
+    ///
+    /// For StoreLocal/StoreContext/DeclareLocal/DeclareContext, the instruction's
+    /// lvalue is set to the named variable (the store/declare target) instead of
+    /// an anonymous temp. This ensures downstream passes (mutable ranges, reactive
+    /// scopes) track the variable directly, enabling correct scope boundaries.
     fn emit(&mut self, value: InstructionValue, loc: Span) -> Place {
         let instr_id = self.env.id_generator.next_instruction_id();
-        let lvalue = self.make_temp(loc);
+        // For Store/Declare instructions, use the named target as the lvalue
+        let lvalue = match &value {
+            InstructionValue::StoreLocal { lvalue, .. }
+            | InstructionValue::StoreContext { lvalue, .. }
+            | InstructionValue::DeclareLocal { lvalue, .. }
+            | InstructionValue::DeclareContext { lvalue } => lvalue.clone(),
+            _ => self.make_temp(loc),
+        };
         let instr = Instruction { id: instr_id, lvalue: lvalue.clone(), value, loc, effects: None };
         self.current_block_mut().instructions.push(instr);
         lvalue

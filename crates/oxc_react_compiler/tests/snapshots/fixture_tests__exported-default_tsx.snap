@@ -7,15 +7,14 @@ diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
 export default function Page(t0) {
-  const $ = _c(2);
-  const { content } = t0;
-  let t6;
-  if ($[0] !== content) {
-    t6 = <main>{content}</main>;
-    $[0] = content;
-    $[1] = t6;
+  const $ = _c(1);
+  let content;
+  let t5;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t5 = <main>{content}</main>;
+    $[0] = t5;
   } else {
-    t6 = $[1];
+    t5 = $[0];
   }
-  return t6;
+  return t5;
 }

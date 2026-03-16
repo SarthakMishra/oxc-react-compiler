@@ -10,29 +10,29 @@ function Toggle(t0) {
   const $ = _c(2);
   const { isOn } = t0;
   if (isOn) {
-    let t7;
+    let t6;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-      t7 = (
+      t6 = (
         <div>
           ON
         </div>
       );
-      $[0] = t7;
+      $[0] = t6;
     } else {
-      t7 = $[0];
+      t6 = $[0];
     }
-    return t7;
+    return t6;
   }
-  let t10;
+  let t9;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t10 = (
+    t9 = (
       <div>
         OFF
       </div>
     );
-    $[1] = t10;
+    $[1] = t9;
   } else {
-    t10 = $[1];
+    t9 = $[1];
   }
-  return t10;
+  return t9;
 }
