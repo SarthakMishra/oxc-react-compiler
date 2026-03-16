@@ -220,21 +220,68 @@ each change.
 
 ---
 
+## Status: REVERTED (2026-03-16)
+
+The initial implementation (commit `0b8b792`) was reverted in `f161523` because
+the flat `binding_ids: FxHashMap<String, IdentifierId>` registry does not handle
+JavaScript scoping correctly:
+
+- **Shadowing**: `let x = 1; { let x = 2; }` — inner `x` gets the same ID as
+  outer `x`, conflating two distinct bindings
+- **Block scope**: Variables declared in different blocks but with the same name
+  share IDs when they shouldn't
+- **Closures**: Nested function builders create fresh `HIRBuilder` instances with
+  empty registries, but `setup_context_variables()` is never called, so captured
+  variables from outer scope get fresh IDs anyway
+
+### What's needed to retry
+
+The `binding_ids` registry must be **scope-aware** instead of a flat name map.
+Options:
+
+1. **Scope stack approach**: Push/pop scope frames when entering/leaving blocks.
+   Each frame has its own name→ID map. Lookup walks the stack for the innermost
+   binding. This matches JavaScript's lexical scoping.
+
+2. **OXC semantic info approach**: Use the binding information already computed by
+   `oxc_semantic::SemanticBuilder` (which resolves all scopes and bindings) and
+   thread it through to the HIR builder. Each OXC `SymbolId` maps to exactly one
+   binding — use it as the stable ID.
+
+3. **DeclarationId-based approach**: The HIR already has `DeclarationId` on
+   declaration sites. Extend the builder to record `name → DeclarationId` per
+   scope, and when creating a reference, look up the binding's DeclarationId to
+   find the corresponding IdentifierId.
+
+Option 2 is the most robust (OXC already solved scoping) but requires threading
+semantic info through the builder. Option 1 is self-contained but must handle
+all JS scoping rules correctly.
+
+### Lessons from the first attempt
+
+- The SSA rewrite (enter_ssa.rs, eliminate_redundant_phi.rs) was correct and
+  could be reused — the ssa_version field approach works
+- Downstream passes (inference, reactive scopes, validation, codegen) were
+  genuinely compatible — no changes needed
+- The ONLY issue was in Phase 1: the flat binding_ids registry
+- The conformance test's temp normalization (`tN` → sequential renaming) already
+  handles renumbered temps correctly
+
 ## Files Checklist (40+ files)
 
 ### CRITICAL (must redesign):
-- [x] hir/types.rs — added `ssa_version: u32` to Identifier
-- [x] hir/build.rs — added `binding_ids` registry, make_named_place reuses IDs
-- [x] ssa/enter_ssa.rs — rewrote to use ssa_version instead of fresh IDs
-- [x] ssa/eliminate_redundant_phi.rs — rewrote to use (IdentifierId, ssa_version) tuples
+- [ ] hir/types.rs — add `ssa_version: u32` to Identifier (was done, reverted)
+- [ ] hir/build.rs — add **scope-aware** binding registry (flat map was wrong)
+- [ ] ssa/enter_ssa.rs — rewrite to use ssa_version (was done, reverted)
+- [ ] ssa/eliminate_redundant_phi.rs — use (IdentifierId, ssa_version) tuples (was done, reverted)
 - [x] inference/infer_mutation_aliasing_effects.rs — verified compatible (no changes needed)
 
 ### IMPORTANT (algorithm updates):
-- [x] inference/infer_mutation_aliasing_ranges.rs — verified compatible (conservative ranges)
+- [x] inference/infer_mutation_aliasing_ranges.rs — verified compatible
 - [x] reactive_scopes/propagate_dependencies.rs — verified compatible
 - [x] reactive_scopes/merge_scopes.rs — verified compatible
 - [x] reactive_scopes/infer_reactive_scope_variables.rs — verified compatible
-- [x] reactive_scopes/prune_scopes.rs — updated ssa_version field
+- [ ] reactive_scopes/prune_scopes.rs — needs ssa_version field update
 - [x] reactive_scopes/codegen.rs — verified compatible (temps have unique IDs)
 - [x] validation/validate_no_mutation_after_freeze.rs — verified compatible
 - [x] inference/analyse_functions.rs — verified compatible
@@ -242,11 +289,11 @@ each change.
 ### MODERATE (map key refactoring):
 - [x] inference/infer_types.rs — verified compatible
 - [x] inference/infer_reactive_places.rs — verified compatible
-- [x] inference/collect_optional_chain_dependencies.rs — updated ssa_version field
+- [ ] inference/collect_optional_chain_dependencies.rs — needs ssa_version field update
 - [x] optimization/dead_code_elimination.rs — verified compatible
 - [x] optimization/constant_propagation.rs — verified compatible
-- [x] optimization/prune_temporary_lvalves.rs — verified compatible
+- [x] optimization/prune_temporary_lvalues.rs — verified compatible
 
 ### LOW (mechanical simplification):
 - [x] All 11 validation passes — verified compatible
-- [x] All snapshot/test files — updated
+- [ ] All snapshot/test files — need updating after re-implementation
