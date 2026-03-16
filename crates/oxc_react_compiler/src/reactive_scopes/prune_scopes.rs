@@ -1395,11 +1395,12 @@ fn scan_max_in_block(block: &ReactiveBlock, max: &mut u32) {
 /// Returns true if a scope declaration with the given name should be renamed
 /// to a temp variable. A declaration is NOT renamed if:
 /// - It already has a temp name (`t{digits}`) — checked by caller
-/// - It appears as an instruction lvalue more than once in the scope body
-///   (reassignment, e.g., variables mutated in a while loop)
-/// - It is referenced (read or mutated) anywhere in the scope body beyond
-///   its initial assignment — e.g., used as a method receiver, property
-///   store target, function argument, or any other operand
+/// - It is a reassignment of an outer-scope variable
+/// - It is MUTATED inside the scope (PropertyStore, ComputedStore, MethodCall,
+///   PrefixUpdate, PostfixUpdate — these modify the value's properties/state)
+///
+/// PropertyLoad reads (e.g., `x.b`) do NOT prevent renaming — they're
+/// scope-internal property access, and upstream renames regardless.
 fn can_rename_scope_decl(name: &str, scope_body: &ReactiveBlock) -> bool {
     let mut lvalue_count = 0u32;
     let mut read_count = 0u32;
@@ -1411,10 +1412,10 @@ fn can_rename_scope_decl(name: &str, scope_body: &ReactiveBlock) -> bool {
         &mut read_count,
         &mut is_reassign,
     );
-    // Only rename if:
-    // 1. Not a reassignment of an outer-scope variable, AND
-    // 2. Assigned at most once (no multiple writes), AND
-    // 3. Never read within the scope body after assignment
+    // Only block rename for reassignment or mutations (not reads).
+    // `read_count` tracks mutations (PropertyStore, MethodCall, etc.) and
+    // other meaningful uses (function args, return values).
+    // With named lvalues, `lvalue_count` tracks writes (StoreLocal).
     !is_reassign && lvalue_count <= 1 && read_count == 0
 }
 

@@ -355,6 +355,8 @@ impl HIRBuilder {
         // For Store/Declare instructions, use the named target as the lvalue.
         // This ensures downstream passes (mutable ranges, reactive scopes)
         // track the variable directly, enabling correct scope boundaries.
+        // LoadLocal is NOT included: lvalue = place would create a self-referencing
+        // instruction (x = LoadLocal(x)) which breaks SSA semantics.
         let lvalue = match &value {
             InstructionValue::StoreLocal { lvalue, .. }
             | InstructionValue::StoreContext { lvalue, .. }
