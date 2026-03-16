@@ -1132,7 +1132,25 @@ fn upstream_conformance() {
     if !unexpected_divergences.is_empty() {
         println!("--- UNEXPECTED DIVERGENCES ---");
         for r in &unexpected_divergences {
-            println!("  DIVERGED: {}", r.relative_path);
+            if r.first_diff.is_empty() {
+                println!("  DIVERGED: {}", r.relative_path);
+            } else {
+                println!(
+                    "  DIVERGED: {} | @{}: ours=[{}] exp=[{}]",
+                    r.relative_path,
+                    r.first_diff.split('@').nth(1).unwrap_or("?").split(':').next().unwrap_or("?"),
+                    r.first_diff
+                        .split("ours=[")
+                        .nth(1)
+                        .and_then(|s| s.split(']').next())
+                        .unwrap_or("?"),
+                    r.first_diff
+                        .split("exp=[")
+                        .nth(1)
+                        .and_then(|s| s.split(']').next())
+                        .unwrap_or("?"),
+                );
+            }
         }
         println!();
     }
