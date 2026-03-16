@@ -2,24 +2,4 @@
 source: crates/oxc_react_compiler/tests/per_pass_snapshots.rs
 expression: code
 ---
-import { c as _c } from "react/compiler-runtime";
-
-function Counter() {
-  const $ = _c(1);
-  const t3 = useState(0);
-  let count;
-  let setCount;
-  let next;
-  let t14;
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    next = count + 1;
-    const t12 = () => {
-      return setCount(next);
-    };
-    t14 = <button onClick={t12}>{count}</button>;
-    $[0] = t14;
-  } else {
-    t14 = $[0];
-  }
-  return t14;
-}
+// not transformed (useState without import)

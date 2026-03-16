@@ -63,6 +63,13 @@ pub fn run_pipeline(
     // Pass 9.5: Prune temporary lvalues (post-SSA cleanup)
     crate::optimization::prune_temporary_lvalues::prune_temporary_lvalues(hir);
 
+    // Pass 9.6: Inline LoadLocal temps into their consumers (post-SSA).
+    // With named lvalues on Store/Declare, LoadLocal creates an emit-temp
+    // that's a copy of the named variable. Replace references to the
+    // emit-temp with the named variable in subsequent instructions and
+    // terminals. Excludes globals/imports to avoid validation errors.
+    inline_load_local_temps(hir);
+
     // Phase 3: Optimization & Type Inference
     // Pass 10: Constant propagation
     crate::optimization::constant_propagation::constant_propagation(hir);
@@ -421,4 +428,205 @@ fn extract_param_ids(params: &[Param]) -> Vec<IdentifierId> {
             Param::Identifier(place) | Param::Spread(place) => place.identifier.id,
         })
         .collect()
+}
+
+/// Inline LoadLocal emit-temps into their consumers.
+///
+/// For each `LoadLocal { place: x } → temp` where `x` is a named variable,
+/// replace all references to `temp.id` with `x`'s Place in subsequent
+/// instructions and terminals. This eliminates the emit-temp indirection
+/// so that scope analysis tracks the named variable directly.
+///
+/// Must run after SSA (the LoadLocal instruction defines a new SSA version
+/// of the emit-temp, which would conflict with the named variable's versions
+/// if done before SSA).
+fn inline_load_local_temps(hir: &mut HIR) {
+    use crate::hir::types::{InstructionValue, Place};
+    use rustc_hash::FxHashMap;
+
+    // Phase 1: Collect IDs that originate from LoadGlobal (hooks, builtins,
+    // imports). Track through StoreLocal chains: if a global result is stored
+    // into a named variable, that variable should NOT be inlined.
+    let mut global_ids: rustc_hash::FxHashSet<IdentifierId> = rustc_hash::FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if matches!(&instr.value, InstructionValue::LoadGlobal { .. }) {
+                global_ids.insert(instr.lvalue.identifier.id);
+            }
+            // Propagate: if StoreLocal stores a global-origin value, mark the target
+            if let InstructionValue::StoreLocal { lvalue, value, .. }
+            | InstructionValue::StoreContext { lvalue, value } = &instr.value
+                && global_ids.contains(&value.identifier.id)
+            {
+                global_ids.insert(lvalue.identifier.id);
+            }
+        }
+    }
+
+    // Phase 2: Build substitution map (emit-temp ID → named place).
+    // Substitute ALL LoadLocal of named variables, excluding globals/imports.
+    // This is the broadest possible inline that maximizes conformance.
+    let mut subs: FxHashMap<IdentifierId, Place> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } =
+                &instr.value
+                && place.identifier.name.is_some()
+                && instr.lvalue.identifier.name.is_none()
+                && !global_ids.contains(&place.identifier.id)
+            {
+                subs.insert(instr.lvalue.identifier.id, place.clone());
+            }
+        }
+    }
+
+    if subs.is_empty() {
+        return;
+    }
+
+    // Phase 2: Apply substitutions to all operand places
+    for (_, block) in &mut hir.blocks {
+        for instr in &mut block.instructions {
+            substitute_operands(&mut instr.value, &subs);
+        }
+        substitute_terminal(&mut block.terminal, &subs);
+    }
+}
+
+fn substitute_operands(
+    value: &mut crate::hir::types::InstructionValue,
+    subs: &rustc_hash::FxHashMap<IdentifierId, crate::hir::types::Place>,
+) {
+    use crate::hir::types::{ArrayElement, InstructionValue, ObjectPropertyKey};
+
+    let sub = |place: &mut crate::hir::types::Place| {
+        if let Some(replacement) = subs.get(&place.identifier.id) {
+            *place = replacement.clone();
+        }
+    };
+
+    match value {
+        InstructionValue::StoreLocal { value, .. }
+        | InstructionValue::StoreContext { value, .. } => sub(value),
+        InstructionValue::CallExpression { callee, args }
+        | InstructionValue::NewExpression { callee, args } => {
+            sub(callee);
+            for arg in args {
+                sub(arg);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            sub(receiver);
+            for arg in args {
+                sub(arg);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => sub(object),
+        InstructionValue::PropertyStore { object, value, .. } => {
+            sub(object);
+            sub(value);
+        }
+        InstructionValue::ComputedLoad { object, property }
+        | InstructionValue::ComputedDelete { object, property } => {
+            sub(object);
+            sub(property);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            sub(object);
+            sub(property);
+            sub(value);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            sub(left);
+            sub(right);
+        }
+        InstructionValue::UnaryExpression { value, .. }
+        | InstructionValue::Await { value }
+        | InstructionValue::TypeCastExpression { value, .. }
+        | InstructionValue::StoreGlobal { value, .. }
+        | InstructionValue::GetIterator { collection: value }
+        | InstructionValue::NextPropertyOf { value } => sub(value),
+        InstructionValue::IteratorNext { iterator, .. } => sub(iterator),
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => sub(lvalue),
+        InstructionValue::Destructure { value, .. } => sub(value),
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                sub(&mut prop.value);
+                if let ObjectPropertyKey::Computed(k) = &mut prop.key {
+                    sub(k);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for el in elements {
+                match el {
+                    ArrayElement::Expression(p) | ArrayElement::Spread(p) => sub(p),
+                    ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            sub(tag);
+            for a in props {
+                sub(&mut a.value);
+            }
+            for c in children {
+                sub(c);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for c in children {
+                sub(c);
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for s in subexpressions {
+                sub(s);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value: tpl } => {
+            sub(tag);
+            for s in &mut tpl.subexpressions {
+                sub(s);
+            }
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            sub(decl);
+            for d in deps {
+                sub(d);
+            }
+        }
+        // No operands to substitute
+        InstructionValue::LoadLocal { .. }
+        | InstructionValue::LoadContext { .. }
+        | InstructionValue::DeclareLocal { .. }
+        | InstructionValue::DeclareContext { .. }
+        | InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
+    }
+}
+
+fn substitute_terminal(
+    terminal: &mut crate::hir::types::Terminal,
+    subs: &rustc_hash::FxHashMap<IdentifierId, crate::hir::types::Place>,
+) {
+    use crate::hir::types::Terminal;
+    let sub = |place: &mut crate::hir::types::Place| {
+        if let Some(replacement) = subs.get(&place.identifier.id) {
+            *place = replacement.clone();
+        }
+    };
+    match terminal {
+        Terminal::Return { value } | Terminal::Throw { value } => sub(value),
+        Terminal::If { test, .. } | Terminal::Branch { test, .. } => sub(test),
+        _ => {}
+    }
 }

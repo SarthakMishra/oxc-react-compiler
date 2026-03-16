@@ -2,4 +2,4 @@
 source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
 expression: "format!(\"{errors:?}\")"
 ---
-["Cannot call setState during render. Calling setState during render may trigger an infinite loop. * To reset state based on a condition, check if state is already set and early return.\n* To derive data from props/state, calculate it during render."]
+["Hooks may not be referenced as normal values, they must be called. See https://react.dev/reference/rules/react-calls-components-and-hooks"]

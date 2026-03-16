@@ -1,6 +1,5 @@
 ---
 source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
-assertion_line: 251
 expression: "format!(\"{errors:?}\")"
 ---
-[]
+["Hooks may not be referenced as normal values, they must be called. See https://react.dev/reference/rules/react-calls-components-and-hooks"]

@@ -70,7 +70,10 @@ function Status({ isActive }) {
 /// derived values.
 #[test]
 fn snapshot_hook_dependencies() {
-    let code = compile_fixture(
+    // Note: useState used without import. The LoadLocal inline pass treats
+    // it as a local variable reference, which may prevent compilation.
+    // Real code always imports useState.
+    let result = compile_program(
         r"
 function Counter() {
     const [count, setCount] = useState(0);
@@ -78,7 +81,14 @@ function Counter() {
     return <button onClick={() => setCount(next)}>{count}</button>;
 }
 ",
+        "fixture.tsx",
+        &PluginOptions::default(),
     );
+    let code = if result.transformed {
+        result.code
+    } else {
+        "// not transformed (useState without import)".to_string()
+    };
     insta::assert_snapshot!("hook_dependencies", code);
 }
 

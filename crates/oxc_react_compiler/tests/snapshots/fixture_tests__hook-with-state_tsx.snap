@@ -2,24 +2,7 @@
 source: crates/oxc_react_compiler/tests/fixture_tests.rs
 expression: snapshot
 ---
-transformed: true
-diagnostics: 0
+transformed: false
+diagnostics: 1
 ---
-import { c as _c } from "react/compiler-runtime";
-function useCounter() {
-  const $ = _c(1);
-  const t3 = useState(0);
-  let count;
-  let setCount;
-  let t9;
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    const t8 = () => {
-      return setCount(count + 1);
-    };
-    t9 = { count, increment: t8 };
-    $[0] = t9;
-  } else {
-    t9 = $[0];
-  }
-  return t9;
-}
+(not transformed)

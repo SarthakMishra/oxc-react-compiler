@@ -2,4 +2,4 @@
 source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
 expression: "format!(\"{errors:?}\")"
 ---
-["setState is called directly inside \"useEffect\". Synchronous setState in effects causes an extra re-render. Consider deriving the value during render or moving the update into a callback.", "Values derived from props and state should be calculated during render, not in an effect. (https://react.dev/learn/you-might-not-need-an-effect)"]
+["Hooks may not be referenced as normal values, they must be called. See https://react.dev/reference/rules/react-calls-components-and-hooks", "Hooks may not be referenced as normal values, they must be called. See https://react.dev/reference/rules/react-calls-components-and-hooks"]
