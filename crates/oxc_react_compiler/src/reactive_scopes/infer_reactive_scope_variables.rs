@@ -23,6 +23,7 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
     let mut ranges: FxHashMap<IdentifierId, MutableRange> = FxHashMap::default();
     let mut is_reactive: FxHashMap<IdentifierId, bool> = FxHashMap::default();
     let mut is_allocating_id: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut is_mutable_id: FxHashSet<IdentifierId> = FxHashSet::default();
     // Phase 1: Collect all identifiers and their mutable ranges
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -32,6 +33,9 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
             is_reactive.insert(id, instr.lvalue.reactive);
             if is_allocating_instruction(&instr.value) {
                 is_allocating_id.insert(id);
+            }
+            if is_mutable_instruction(&instr.value) {
+                is_mutable_id.insert(id);
             }
         }
         for phi in &block.phis {
@@ -97,12 +101,21 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
             }
         }
 
-        // Check if any member is an allocating instruction (JSX, objects, arrays, etc.)
-        // Allocating expressions get sentinel scopes even without reactive deps,
-        // matching upstream's `ValueKind.Mutable` check in InferReactiveScopeVariables.ts.
+        // Check if any member is an allocating instruction (for sentinel scopes)
         let any_allocating = members.iter().any(|m| is_allocating_id.contains(m));
+        // Check if any member produces a mutable value (objects, arrays, calls, etc.)
+        // Reactive-only sets (primitives, LoadLocal, arithmetic) don't need scopes
+        // because those values are cheap to recompute and have no identity.
+        let any_mutable = members.iter().any(|m| is_mutable_id.contains(m));
 
-        if (any_reactive || any_allocating) && merged_range.end.0 > merged_range.start.0 {
+        // Create scope if:
+        // - any_allocating (sentinel scope for identity memoization), OR
+        // - any_reactive AND any_mutable (reactive computation producing a mutable value)
+        // Pure-reactive but non-mutable sets (e.g., `return x` where x is a param)
+        // don't get scopes — matches upstream's ValueKind.Mutable check.
+        if (any_allocating || (any_reactive && any_mutable))
+            && merged_range.end.0 > merged_range.start.0
+        {
             let scope_idx = scopes.len();
             let scope = ReactiveScope {
                 id: ScopeId(scope_id_counter),
@@ -180,8 +193,8 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
 }
 
 /// Returns true if an instruction value creates a new heap allocation.
-/// These expressions should get sentinel scopes even without reactive deps,
-/// matching upstream's `ValueKind.Mutable` check in InferReactiveScopeVariables.ts.
+/// Used for sentinel scope detection: allocating expressions get scopes
+/// even without reactive deps (for identity memoization).
 fn is_allocating_instruction(value: &InstructionValue) -> bool {
     matches!(
         value,
@@ -192,6 +205,34 @@ fn is_allocating_instruction(value: &InstructionValue) -> bool {
             | InstructionValue::NewExpression { .. }
             | InstructionValue::FunctionExpression { .. }
             | InstructionValue::ObjectMethod { .. }
+    )
+}
+
+/// Returns true if an instruction value produces a potentially mutable value
+/// (one that benefits from memoization when reactive).
+///
+/// This is broader than `is_allocating_instruction`: it also includes
+/// CallExpression and MethodCall, whose return types are unknown and
+/// conservatively treated as mutable (they may return objects/arrays).
+///
+/// Used to gate scope creation: a reactive-only set (primitives, LoadLocal,
+/// arithmetic) doesn't need a scope because those values are cheap to
+/// recompute and have no identity. A set with a mutable value (call result,
+/// object literal, etc.) DOES need a scope.
+///
+/// Matches upstream's `ValueKind.Mutable` in InferReactiveScopeVariables.ts.
+fn is_mutable_instruction(value: &InstructionValue) -> bool {
+    matches!(
+        value,
+        InstructionValue::ObjectExpression { .. }
+            | InstructionValue::ArrayExpression { .. }
+            | InstructionValue::JsxExpression { .. }
+            | InstructionValue::JsxFragment { .. }
+            | InstructionValue::NewExpression { .. }
+            | InstructionValue::FunctionExpression { .. }
+            | InstructionValue::ObjectMethod { .. }
+            | InstructionValue::CallExpression { .. }
+            | InstructionValue::MethodCall { .. }
     )
 }
 

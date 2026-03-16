@@ -258,6 +258,7 @@ do-while-early-unconditional-break.js
 do-while-simple.js
 dominator.js
 dont-memoize-primitive-function-call-non-escaping-useMemo.js
+dont-memoize-primitive-function-call-non-escaping.js
 dont-merge-if-dep-is-inner-declaration-of-previous-scope.js
 dont-merge-overlapping-scopes-store-const-used-later.js
 dont-merge-overlapping-scopes-with-intermediate-reassignment.js
@@ -271,6 +272,7 @@ empty-catch-statement.ts
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-couldnt-find-binding-for-decl.js
 error.bug-invariant-unnamed-temporary.js
+error.default-param-accesses-local.js
 error.hoisting-simple-function-declaration.js
 error.invalid-hoisting-setstate.js
 error.invalid-mutate-after-aliased-freeze.js
@@ -281,6 +283,7 @@ error.invalid-pass-mutable-function-as-prop.js
 error.invalid-return-mutable-function-from-hook.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
 error.invalid-type-provider-nonhook-name-typed-as-hook.js
+error.invalid-unconditional-set-state-hook-return-in-render.js
 error.modify-state-2.js
 error.mutate-function-property.js
 error.ref-like-name-not-Ref.js
@@ -489,6 +492,7 @@ infer-functions-component-with-ref-arg.js
 infer-functions-hook-with-hook-call.js
 infer-global-object.js
 infer-nested-object-method.jsx
+infer-no-component-annot.ts
 infer-no-component-nested-jsx.js
 infer-no-component-obj-return.js
 infer-sequential-optional-chain-nonnull.ts
@@ -623,7 +627,6 @@ new-mutability/capturing-function-alias-computed-load-2-iife.js
 new-mutability/capturing-function-alias-computed-load-3-iife.js
 new-mutability/capturing-function-alias-computed-load-4-iife.js
 new-mutability/capturing-function-alias-computed-load-iife.js
-new-mutability/error.invalid-useCallback-captures-reassigned-context.js
 new-mutability/error.mutate-frozen-value.js
 new-mutability/iife-return-modified-later-phi.js
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections-2.js
@@ -661,7 +664,6 @@ new-mutability/useCallback-reordering-depslist-assignment.tsx
 new-mutability/useMemo-reordering-depslist-assignment.ts
 new-spread.js
 noAlias-filter-on-array-prop.js
-non-null-assertion.ts
 nonmutated-spread-hook-return.js
 nonmutated-spread-props-jsx.js
 nonmutated-spread-props-local-indirection.js
@@ -749,9 +751,6 @@ preserve-jsxtext-stringliteral-distinction.js
 preserve-memo-deps-conditional-property-chain-less-precise-deps.js
 preserve-memo-deps-conditional-property-chain.js
 preserve-memo-deps-optional-property-chain.js
-preserve-memo-validation/error.false-positive-useMemo-dropped-infer-always-invalidating.ts
-preserve-memo-validation/error.invalid-useCallback-captures-reassigned-context.ts
-preserve-memo-validation/error.todo-useCallback-captures-invalidating-value.ts
 preserve-memo-validation/error.useMemo-unrelated-mutation-in-depslist.ts
 preserve-memo-validation/maybe-invalid-useMemo-no-memoblock-sideeffect.ts
 preserve-memo-validation/preserve-use-callback-stable-built-ins.ts
@@ -1085,7 +1084,6 @@ rules-of-hooks/todo.bail.rules-of-hooks-6949b255e7eb.js
 rules-of-hooks/todo.bail.rules-of-hooks-e0a5db3ae21e.js
 rules-of-hooks/todo.bail.rules-of-hooks-e9f9bac89f8f.js
 rules-of-hooks/todo.bail.rules-of-hooks-fadd52c1e460.js
-rules-of-hooks/todo.invalid.invalid-rules-of-hooks-e675f0a672d8.js
 same-variable-as-dep-and-redeclare-maybe-frozen.js
 same-variable-as-dep-and-redeclare.js
 script-source-type.js
@@ -1155,7 +1153,9 @@ switch-non-final-default.js
 switch-with-fallthrough.js
 switch-with-only-default.js
 switch.js
+tagged-template-in-hook.js
 tagged-template-literal.js
+template-literal.js
 temporary-accessed-outside-scope.js
 temporary-at-start-of-value-block.js
 temporary-property-load-accessed-outside-scope.js
@@ -1223,6 +1223,7 @@ type-test-return-type-inference.js
 unary-expr.js
 unconditional-break-label.js
 uninitialized-declaration-in-reactive-scope.js
+unknown-hooks-do-not-assert.js
 unlabeled-break-within-label-loop.ts
 unlabeled-break-within-label-switch.ts
 unmemoized-nonreactive-dependency-is-pruned-as-dependency.js

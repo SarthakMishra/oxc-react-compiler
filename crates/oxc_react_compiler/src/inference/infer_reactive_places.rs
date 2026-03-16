@@ -11,7 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// Uses fixpoint iteration. Since the HIR builder creates fresh IdentifierIds for every
 /// Place reference (even for the same variable), we track reactivity by variable NAME
 /// in addition to ID, so that DeclareLocal(count) → LoadLocal(count) propagation works.
-pub fn infer_reactive_places(hir: &mut HIR, param_names: &[String], _param_ids: &[IdentifierId]) {
+pub fn infer_reactive_places(hir: &mut HIR, param_names: &[String], param_ids: &[IdentifierId]) {
     // Build id → name map for resolving names across instruction boundaries.
     // LoadGlobal: lvalue_id → global name (e.g., "useState")
     // DeclareLocal: lvalue_id → inner lvalue name (e.g., "count")
@@ -82,11 +82,16 @@ pub fn infer_reactive_places(hir: &mut HIR, param_names: &[String], _param_ids: 
     // lvalue name matches a param name. This catches destructured params
     // (e.g., `function Foo({a, b})` produces DeclareLocal for `a` and `b`).
     //
-    // Note: Simple params (e.g., `function Foo(props)`) don't produce
-    // DeclareLocal — they're stored in HIRFunction.params. The param_ids
-    // are available but not used for seeding because it causes over-memoization
-    // in ~30 fixtures (primitives-only functions get unnecessary scopes).
-    // TODO: Use param_ids with a ValueKind.Mutable gate to avoid over-memoization.
+    // With stable IDs, param Places share one IdentifierId across all references.
+    // Seed directly from param_ids so that LoadLocal/PropertyLoad of params
+    // propagates reactivity through the fixpoint loop.
+    // Over-memoization is prevented by the `any_mutable` gate in
+    // infer_reactive_scope_variables (primitives-only reactive sets don't get scopes).
+    for (id, name) in param_ids.iter().zip(param_names.iter()) {
+        reactive_ids.insert(*id);
+        reactive_names.insert(name.clone());
+    }
+    // Also seed DeclareLocal in the entry block for destructured params
     if let Some((_, entry_block)) = hir.blocks.first() {
         for instr in &entry_block.instructions {
             if let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value
