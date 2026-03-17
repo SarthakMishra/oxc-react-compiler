@@ -1048,6 +1048,33 @@ fn upstream_conformance() {
     println!("  Other:                          {cat_other}");
     println!();
 
+    // Print full slot-diff distribution
+    {
+        let mut diff_dist: std::collections::BTreeMap<i32, u32> = std::collections::BTreeMap::new();
+        let mut diff_samples: std::collections::BTreeMap<i32, Vec<&str>> =
+            std::collections::BTreeMap::new();
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            if we_memo && r.expected_has_memo && r.our_slots != r.expected_slots {
+                let diff = r.our_slots.cast_signed() - r.expected_slots.cast_signed();
+                *diff_dist.entry(diff).or_insert(0) += 1;
+                diff_samples.entry(diff).or_default().push(&r.relative_path);
+            }
+        }
+        if !diff_dist.is_empty() {
+            println!("--- SLOT DIFF DISTRIBUTION ---");
+            for (diff, count) in &diff_dist {
+                let sign = if *diff > 0 { "+" } else { "" };
+                let samples = diff_samples
+                    .get(diff)
+                    .map(|v| v.iter().take(3).copied().collect::<Vec<_>>().join(", "))
+                    .unwrap_or_default();
+                println!("  {sign}{diff}: {count} fixtures (e.g. {samples})");
+            }
+            println!();
+        }
+    }
+
     // Print bail-out error breakdown
     if !bail_errors.is_empty() {
         println!("--- BAIL-OUT ERROR BREAKDOWN ({cat_we_bail_they_compile} fixtures) ---");
