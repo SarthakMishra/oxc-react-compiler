@@ -147,6 +147,51 @@ pub fn validate_no_mutation_after_freeze(
     }
 
     // Pre-freeze hook return values (useState state, useReducer state, etc.)
+    // Skip ref-typed values: useRef() returns are designed to be mutable
+    // (ref.current can always be modified). Upstream's type system handles
+    // this via Type::Ref; we check the lvalue type here.
+    //
+    // Also collect ref-typed names so we don't freeze them via other paths.
+    // Collect ref-typed names and names from useRef() calls.
+    // Refs are mutable by design (ref.current can always be modified).
+    // Detect via: Type::Ref annotation, or useRef() call result, or
+    // naming convention (variable name ends with "Ref").
+    let mut ref_names: FxHashSet<String> = FxHashSet::default();
+    let mut ref_hook_result_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            // Type-based detection
+            if matches!(instr.lvalue.identifier.type_, crate::hir::types::Type::Ref)
+                && let Some(name) = &instr.lvalue.identifier.name
+            {
+                ref_names.insert(name.clone());
+            }
+            // useRef() call detection
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                let callee_name = id_to_name
+                    .get(&callee.identifier.id)
+                    .copied()
+                    .or(callee.identifier.name.as_deref());
+                if callee_name == Some("useRef") {
+                    ref_hook_result_ids.insert(instr.lvalue.identifier.id);
+                }
+            }
+            // Track StoreLocal of useRef results
+            if let InstructionValue::StoreLocal { lvalue, value, .. } = &instr.value {
+                if ref_hook_result_ids.contains(&value.identifier.id)
+                    && let Some(name) = &lvalue.identifier.name
+                {
+                    ref_names.insert(name.clone());
+                }
+                if matches!(lvalue.identifier.type_, crate::hir::types::Type::Ref)
+                    && let Some(name) = &lvalue.identifier.name
+                {
+                    ref_names.insert(name.clone());
+                }
+            }
+        }
+    }
+
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -155,7 +200,10 @@ pub fn validate_no_mutation_after_freeze(
                     if hook_return_ids.contains(&value.identifier.id) {
                         hook_return_ids.insert(instr.lvalue.identifier.id);
                         if let Some(name) = &lvalue.identifier.name {
-                            frozen_names.insert(name);
+                            // Don't freeze ref values — they're designed to be mutable
+                            if !ref_names.contains(name.as_str()) {
+                                frozen_names.insert(name);
+                            }
                         }
                     }
                 }
@@ -167,6 +215,11 @@ pub fn validate_no_mutation_after_freeze(
                 _ => {}
             }
         }
+    }
+
+    // Remove any ref names that leaked into frozen_names via other paths
+    for name in &ref_names {
+        frozen_names.remove(name.as_str());
     }
 
     // Main pass: walk instructions, check for frozen mutations
