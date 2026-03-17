@@ -9,11 +9,13 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge(t0) {
-  const $ = _c(3);
+  const $ = _c(7);
   const { status } = t0;
-  let t41;
-  if ($[0] !== status || $[1] !== useMemo) {
-    const t30 = () => {
+  let t19;
+  let t7;
+  let t9;
+  if ($[0] !== status) {
+    t7 = () => {
       switch (status) {
         case "confirmed":
           return { label: "Confirmed", color: "bg-green-100 text-green-800" };
@@ -26,14 +28,30 @@ export function StatusBadge(t0) {
       }
       return undefined;
     };
-    const config = useMemo(t30, [status]);
-    t41 = <span className={`px-2 py-1 rounded text-sm ${config.color}`}>{config.label}</span>;
+    t9 = [status];
     $[0] = status;
-    $[1] = useMemo;
-    $[2] = t41;
+    $[1] = t19;
+    $[2] = t7;
+    $[3] = t9;
   } else {
-    t41 = $[2];
+    t19 = $[1];
+    t7 = $[2];
+    t9 = $[3];
   }
-  return t41;
+  const config = t19;
+  const t10 = useMemo(t7, t9);
+  let config;
+  let t18;
+  if ($[4] !== t10) {
+    config = t10;
+    t18 = <span className={`px-2 py-1 rounded text-sm ${config.color}`}>{config.label}</span>;
+    $[4] = t10;
+    $[5] = config;
+    $[6] = t18;
+  } else {
+    config = $[5];
+    t18 = $[6];
+  }
+  return t18;
 }
 

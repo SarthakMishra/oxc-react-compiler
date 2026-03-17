@@ -444,16 +444,30 @@ fn has_mutation_on_frozen_names(hir: &HIR, outer_frozen: &FxHashSet<&str>) -> bo
             }
 
             // Check MutateFrozen effects
+            // For call instructions (CallExpression, MethodCall, NewExpression), only
+            // check definite mutations — conditional ones come from Apply fallback and
+            // cause false positives on frozen params passed to functions.
+            // This mirrors the logic in the outer Check 5.
             if let Some(ref effects) = instr.effects {
+                let is_call = matches!(
+                    instr.value,
+                    InstructionValue::CallExpression { .. }
+                        | InstructionValue::MethodCall { .. }
+                        | InstructionValue::NewExpression { .. }
+                );
                 for effect in effects {
                     if matches!(effect, AliasingEffect::MutateFrozen { .. }) {
                         return true;
                     }
                     let mutated_name = match effect {
                         AliasingEffect::Mutate { value }
-                        | AliasingEffect::MutateConditionally { value }
-                        | AliasingEffect::MutateTransitive { value }
-                        | AliasingEffect::MutateTransitiveConditionally { value } => {
+                        | AliasingEffect::MutateTransitive { value } => {
+                            local_id_map.get(&value.identifier.id).copied()
+                        }
+                        AliasingEffect::MutateConditionally { value }
+                        | AliasingEffect::MutateTransitiveConditionally { value }
+                            if !is_call =>
+                        {
                             local_id_map.get(&value.identifier.id).copied()
                         }
                         _ => None,
@@ -469,8 +483,8 @@ fn has_mutation_on_frozen_names(hir: &HIR, outer_frozen: &FxHashSet<&str>) -> bo
                 local_id_map.get(id).is_some_and(|name| outer_frozen.contains(name))
             };
             match &instr.value {
-                InstructionValue::MethodCall { receiver, .. } => {
-                    if check_frozen(&receiver.identifier.id) {
+                InstructionValue::MethodCall { receiver, property, .. } => {
+                    if check_frozen(&receiver.identifier.id) && is_known_mutating_method(property) {
                         return true;
                     }
                 }
