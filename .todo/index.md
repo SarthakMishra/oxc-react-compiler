@@ -2,89 +2,67 @@
 
 > Every item exists to increase the fixture pass rate. Nothing else.
 
-**Current: 435/1717 (25.3%) -- 1282 failures remaining**
+**Current: 422/1717 (24.6%) -- 1295 failures remaining**
 
-Last updated: 2026-03-16
+**Target: 600/1717 (35%) -- see [roadmap-to-600.md](roadmap-to-600.md)**
 
----
-
-## Priority 0 -- Architectural (root-cause fix for multiple tiers)
-
-- [ ] Stable IdentifierId refactor: reuse declaration IDs for all references to the same binding -- [stable-identifier-ids.md](stable-identifier-ids.md)
-
-> This is the single most impactful change. Fresh-ID-per-reference is the root
-> cause of broken value flow in the abstract heap, which cascades into
-> frozen-mutation false positives (158), scope over/under-counting (636), and
-> incorrect alias tracking. Fixes here propagate across Tiers 1-4.
+Last updated: 2026-03-17
 
 ---
 
-## Failure Breakdown (from automated analysis at 399/1717)
+## Completed
 
-Note: These counts are from the 399/1717 baseline. The parameter seeding
-fix (+31 fixtures) reduced over-count and unnecessary-memo categories.
-Re-run breakdown analysis to get updated numbers.
+- [x] Stable IdentifierId refactor (Phase 78) -- [stable-identifier-ids.md](stable-identifier-ids.md)
+- [x] useMemo/useCallback argument count fix -- [false-bailouts.md](false-bailouts.md)#usememo-usecallback-arg-count
 
-| Root Cause | Fixtures | Fix |
+---
+
+## Failure Breakdown (from analysis at 422/1717)
+
+| Category | Fixtures | Roadmap Stream |
 |---|---|---|
-| Slot over-count (too many scopes/deps) | ~443 | [scope-analysis.md] |
-| False-positive frozen-mutation bail-out | 158 | [false-bailouts.md] |
-| Slot under-count (missing scopes) | ~162 | [scope-analysis.md] |
-| Same slots, different codegen structure | ~150 | [codegen-structure.md] |
-| We memoize, upstream returns unchanged | ~102 | [unnecessary-memo.md] |
-| Both no-memo, output differs | ~43 | [unnecessary-memo.md] |
-| Upstream errors we should match | 35 | [upstream-errors.md] |
-| False-positive locals-reassigned bail-out | 11 | [false-bailouts.md] |
-| False-positive ref-access bail-out | 11 | [false-bailouts.md] |
-| False-positive useMemo/useCallback args | 17 | [false-bailouts.md] |
-| False-positive global-reassignment bail-out | 9 | [false-bailouts.md] |
-| False-positive setState bail-out | 3 | [false-bailouts.md] |
-| Flow syntax (parser limitation) | 38 | Skip |
+| We bail, they compile (silent / 0 scopes) | 157 | [1A](roadmap-to-600.md#1a-silent-bail-outs--0-scopes-produced-157-fixtures) |
+| We bail, they compile (frozen-mutation FP) | 104 | [1B](roadmap-to-600.md#1b-frozen-mutation-false-positives-104-fixtures) |
+| We bail, they compile (preserve-memo) | 37 | [1C](roadmap-to-600.md#1c-preserve-existing-memoization-validation-37-fixtures) |
+| We bail, they compile (other validators) | 52 | [1D](roadmap-to-600.md#1d-minor-validator-fixes-38-fixtures-combined) |
+| Both compile, slots DIFFER | 553 | [2A](roadmap-to-600.md#2a-scope-over-count-our_slots---expected--1-312-fixtures), [2B](roadmap-to-600.md#2b-scope-under-count-our_slots---expected---1-241-fixtures) |
+| Both compile, slots MATCH (codegen diff) | 190 | [3A](roadmap-to-600.md#3a-temp-variable-inlining-improvements-80-100-of-the-190), [3B](roadmap-to-600.md#3b-scope-declaration-and-dependency-ordering-20-30-of-the-190) |
+| We compile, they don't | 95 | [4A](roadmap-to-600.md#4a-match-upstream-validation-errors-35-fixtures), [4B](roadmap-to-600.md#4b-over-compilation-in-infer-mode-60-fixtures) |
+| Both no memo (format diff) | 107 | [5](roadmap-to-600.md#stream-5-both-no-memo-format-differences-107-fixtures) |
 
 ---
 
-## Tier 1 -- False-Positive Bail-Outs (~256 fixtures)
+## Priority 1 -- Quick Wins (immediate, no dependencies)
 
-We reject functions that upstream compiles successfully. Each fix is
-a direct 1:1 fixture gain -- bail-out removed = fixture passes.
+- [ ] Fix hook-without-JSX frozen-mutation regression (+3-5) -- [roadmap-to-600.md](roadmap-to-600.md#7b-frozen-mutation-hook-without-jsx-regression-3-5-fixtures)
+- [~] Fix locals-reassigned-after-render false positives (16 remaining) -- [false-bailouts.md](false-bailouts.md)#locals-reassigned-false-positives
+- [~] Fix ref-access-during-render false positives (8 remaining) -- [false-bailouts.md](false-bailouts.md)#ref-access-false-positives
+- [~] Fix global-reassignment false positives (8 remaining) -- [false-bailouts.md](false-bailouts.md)#global-reassignment-false-positives
+- [~] Fix setState-during-render false positives (3 remaining) -- [false-bailouts.md](false-bailouts.md)#setstate-false-positives
 
-- [~] Fix frozen-mutation false positives (158 remaining, 19 fixed via direct-only frozen check + param pre-freezing) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-false-positives
-- [ ] Fix frozen-mutation false positive on hooks without JSX (pre-existing regression) -- [false-bailouts.md](false-bailouts.md)#frozen-mutation-hooks-without-jsx
-- [~] Fix locals-reassigned-after-render false positives (11 remaining, 15 fixed via render-only detection) -- [false-bailouts.md](false-bailouts.md)#locals-reassigned-false-positives
-- [~] Fix ref-access-during-render false positives (11 remaining, 9 fixed via non-render callback detection) -- [false-bailouts.md](false-bailouts.md)#ref-access-false-positives
-- [ ] Fix useMemo/useCallback argument count false positives (17 fixtures) -- [false-bailouts.md](false-bailouts.md)#usememo-usecallback-arg-count
-- [~] Fix global-reassignment false positives (15 fixtures, partially fixed) -- [false-bailouts.md](false-bailouts.md)#global-reassignment-false-positives
-- [~] Fix setState-during-render false positives (3 remaining, 11 fixed via name heuristic gating) -- [false-bailouts.md](false-bailouts.md)#setstate-false-positives
+## Priority 2 -- High Yield (major fixture gains)
 
-## Tier 2 -- Slot Count Divergences (~636 fixtures)
+- [ ] Fix silent bail-outs: loosen is_mutable_instruction gate (+60-80) -- [roadmap-to-600.md](roadmap-to-600.md#1a-silent-bail-outs--0-scopes-produced-157-fixtures)
+- [~] Wire mutable ranges into frozen-mutation validator (+50-70) -- [roadmap-to-600.md](roadmap-to-600.md#1b-frozen-mutation-false-positives-104-fixtures)
+- [ ] Fix temp variable inlining in codegen (+40-60) -- [roadmap-to-600.md](roadmap-to-600.md#3a-temp-variable-inlining-improvements-80-100-of-the-190)
 
-Both compile with `_c()` but our slot count N differs. 474 over-count,
-162 under-count. Fixing scope/dependency analysis is the highest-volume
-path but each fix requires careful upstream comparison.
+## Priority 3 -- Scope Analysis
 
-- [ ] Fix scope over-counting: extra reactive scopes (474 fixtures) -- [scope-analysis.md](scope-analysis.md)#over-counting
-- [ ] Fix scope under-counting: missing reactive scopes (162 fixtures) -- [scope-analysis.md](scope-analysis.md)#under-counting
+- [ ] Fix scope over-counting: extra reactive scopes (~312 fixtures) -- [scope-analysis.md](scope-analysis.md)#over-counting
+- [ ] Fix scope under-counting: missing reactive scopes (~241 fixtures) -- [scope-analysis.md](scope-analysis.md)#under-counting
+- [ ] Fix preserve-memo validation false positives (37 fixtures) -- [roadmap-to-600.md](roadmap-to-600.md#1c-preserve-existing-memoization-validation-37-fixtures)
 
-## Tier 3 -- Same Slots, Different Structure (~150 fixtures)
+## Priority 4 -- Upstream Error Matching & Over-Compilation
 
-Slot count matches but generated code within scopes differs.
-These are codegen and scope-internal ordering issues.
+- [~] Match upstream validation errors (35 fixtures) -- [upstream-errors.md](upstream-errors.md)#remaining-errors
+- [ ] Fix over-compilation in Infer mode (~60 fixtures) -- [roadmap-to-600.md](roadmap-to-600.md#4b-over-compilation-in-infer-mode-60-fixtures)
 
-- [ ] Fix codegen structure divergences (150 fixtures) -- [codegen-structure.md](codegen-structure.md)#structure-divergences
+## Priority 5 -- Format & Structure
 
-## Tier 4 -- Unnecessary Memoization (~176 fixtures)
+- [ ] Fix codegen scope ordering divergences (~20-30 fixtures) -- [codegen-structure.md](codegen-structure.md)#structure-divergences
+- [ ] Fix both-no-memo format differences (107 fixtures) -- [roadmap-to-600.md](roadmap-to-600.md#stream-5-both-no-memo-format-differences-107-fixtures)
 
-We add `_c()` caching but upstream returns source unchanged.
-Root cause: missing DCE, const-prop, or incorrect scope creation
-for non-reactive functions.
-
-- [ ] Stop memoizing functions upstream doesn't memoize (133 + 43 fixtures) -- [unnecessary-memo.md](unnecessary-memo.md)#unnecessary-memoization
-
-## Tier 5 -- Upstream Errors (~35 fixtures)
-
-Upstream rejects with an error, we should too.
-
-- [~] Match upstream validation errors (39 fixtures, 4 done via validate_no_unsupported_nodes) -- [upstream-errors.md](upstream-errors.md)#remaining-errors
+---
 
 ## Skipped
 
