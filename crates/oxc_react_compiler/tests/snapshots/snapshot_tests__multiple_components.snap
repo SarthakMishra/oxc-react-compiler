@@ -5,26 +5,30 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function Header(t0) {
-  const $ = _c(1);
+  const $ = _c(2);
+  const { title } = t0;
   let t5;
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[0] !== title) {
     t5 = <h1>{title}</h1>;
-    $[0] = t5;
+    $[0] = title;
+    $[1] = t5;
   } else {
-    t5 = $[0];
+    t5 = $[1];
   }
   return t5;
 }
 
 
 function Footer(t0) {
-  const $ = _c(1);
+  const $ = _c(2);
+  const { text } = t0;
   let t5;
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[0] !== text) {
     t5 = <footer>{text}</footer>;
-    $[0] = t5;
+    $[0] = text;
+    $[1] = t5;
   } else {
-    t5 = $[0];
+    t5 = $[1];
   }
   return t5;
 }

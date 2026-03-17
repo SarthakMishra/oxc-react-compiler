@@ -267,7 +267,9 @@ pub fn run_pipeline(
 
     // Phase 8: Reactive Scope Construction
     // Pass 33: infer_reactive_scope_variables
-    crate::reactive_scopes::infer_reactive_scope_variables::infer_reactive_scope_variables(hir);
+    crate::reactive_scopes::infer_reactive_scope_variables::infer_reactive_scope_variables(
+        hir, param_ids,
+    );
 
     // Pass 34: memoize_fbt_and_macro_operands_in_same_scope
     crate::reactive_scopes::prune_scopes::memoize_fbt_and_macro_operands_in_same_scope(hir);

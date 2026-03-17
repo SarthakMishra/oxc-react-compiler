@@ -70,7 +70,6 @@ array-properties.js
 array-property-call.js
 array-push-effect.js
 array-spread-later-mutated.js
-array-spread-mutable-iterator.js
 arrow-expr-directive.js
 arrow-function-one-line-directive.js
 assignment-expression-computed.js
@@ -632,7 +631,6 @@ new-mutability/error.mutate-frozen-value.js
 new-mutability/iife-return-modified-later-phi.js
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections-2.js
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections.js
-new-mutability/mutate-through-boxing-unboxing-indirections.js
 new-mutability/mutate-through-identity-function-expression.js
 new-mutability/mutate-through-identity.js
 new-mutability/mutate-through-propertyload.js
@@ -1036,7 +1034,6 @@ repro-no-value-for-temporary.js
 repro-non-identifier-object-keys.ts
 repro-object-expression-computed-key-modified-during-after-construction-hoisted-sequence-expr.js
 repro-object-fromEntries-entries.js
-repro-object-pattern.js
 repro-preds-undefined-try-catch-return-primitive.js
 repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency.js
 repro-propagate-type-of-ternary-jsx.js
@@ -1058,9 +1055,7 @@ repro-unreachable-code-early-return-in-useMemo.js
 repro-useMemo-if-else-both-early-return.js
 repro.js
 resolve-react-hooks-based-on-import-name.js
-rest-param-with-array-pattern.js
 rest-param-with-identifier.js
-rest-param-with-object-spread-pattern.js
 return-ref-callback-structure.js
 return-ref-callback.js
 reverse-postorder.js

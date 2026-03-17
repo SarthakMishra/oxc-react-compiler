@@ -180,7 +180,7 @@ fn test_infer_reactive_scope_variables_no_reactive() {
 
     let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
-    let scopes = infer_reactive_scope_variables(&mut hir);
+    let scopes = infer_reactive_scope_variables(&mut hir, &[]);
     // No reactive identifiers means no scopes (or empty scopes).
     // The pass should at minimum not panic.
     assert!(
@@ -215,7 +215,7 @@ fn test_infer_reactive_scope_variables_with_reactive_identifier() {
 
     let mut hir = HIR { entry: block_id, blocks: vec![(block_id, block)] };
 
-    let scopes = infer_reactive_scope_variables(&mut hir);
+    let scopes = infer_reactive_scope_variables(&mut hir, &[]);
     // Should run without panic; scope count depends on the pass logic.
     let _ = scopes;
 }

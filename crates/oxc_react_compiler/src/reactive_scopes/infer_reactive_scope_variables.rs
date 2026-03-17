@@ -18,7 +18,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 ///    - If any operand is reactive, the set becomes reactive
 /// 2. For phi nodes with mutated values, union all operands
 /// 3. Each disjoint set becomes a ReactiveScope
-pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
+pub fn infer_reactive_scope_variables(
+    hir: &mut HIR,
+    param_ids: &[IdentifierId],
+) -> Vec<ReactiveScope> {
+    let param_id_set: FxHashSet<IdentifierId> = param_ids.iter().copied().collect();
     let mut dsu: DisjointSet<IdentifierId> = DisjointSet::new();
     let mut ranges: FxHashMap<IdentifierId, MutableRange> = FxHashMap::default();
     let mut is_reactive: FxHashMap<IdentifierId, bool> = FxHashMap::default();
@@ -46,16 +50,38 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
         }
     }
 
+    // Collect IDs produced by param destructures — these should not be unioned
+    // into reactive scopes because they represent function parameter values that
+    // should remain external scope dependencies. Upstream achieves this by placing
+    // param destructures outside reactive scope boundaries.
+    let mut param_destructure_target_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::Destructure { value, lvalue_pattern } = &instr.value
+                && param_id_set.contains(&value.identifier.id)
+            {
+                let target_ids = collect_destructure_target_ids(lvalue_pattern);
+                for tid in target_ids {
+                    param_destructure_target_ids.insert(tid);
+                }
+            }
+        }
+    }
+
     // Phase 2: Union identifiers that should be in the same scope
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             let lvalue_id = instr.lvalue.identifier.id;
             let lvalue_range = instr.lvalue.identifier.mutable_range;
 
-            // If the lvalue has a non-trivial mutable range, union with mutable operands
+            // If the lvalue has a non-trivial mutable range, union with mutable operands.
+            // Skip param destructure targets — they must remain outside scopes.
             if lvalue_range.end.0 > lvalue_range.start.0 + 1 {
                 let operand_ids = collect_operand_ids(&instr.value);
                 for op_id in operand_ids {
+                    if param_destructure_target_ids.contains(&op_id) {
+                        continue;
+                    }
                     if let Some(&op_range) = ranges.get(&op_id)
                         && op_range.end.0 > op_range.start.0 + 1
                     {
@@ -152,9 +178,15 @@ pub fn infer_reactive_scope_variables(hir: &mut HIR) -> Vec<ReactiveScope> {
         for instr in &block.instructions {
             let lvalue_id = instr.lvalue.identifier.id;
 
-            // If this instruction is already scoped, propagate to Destructure pattern targets
+            // If this instruction is already scoped, propagate to Destructure pattern targets.
+            // Exception: don't propagate into targets of param destructures — these values
+            // come from function parameters and should remain external scope dependencies.
+            // Upstream places param destructures outside scope boundaries; we achieve the
+            // same effect by excluding their targets from scope membership.
             if let Some(&scope_idx) = id_to_scope_idx.get(&lvalue_id) {
-                if let InstructionValue::Destructure { lvalue_pattern, .. } = &instr.value {
+                if let InstructionValue::Destructure { lvalue_pattern, value } = &instr.value
+                    && !param_id_set.contains(&value.identifier.id)
+                {
                     let target_ids = collect_destructure_target_ids(lvalue_pattern);
                     for tid in target_ids {
                         id_to_scope_idx.entry(tid).or_insert(scope_idx);
