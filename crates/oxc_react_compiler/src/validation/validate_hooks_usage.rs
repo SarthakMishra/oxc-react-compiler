@@ -100,6 +100,7 @@ pub fn validate_hooks_usage(
                     if let Some(name) = &place.identifier.name
                         && is_hook(name)
                         && !hook_callee_ids.contains(&instr.lvalue.identifier.id)
+                        && !hook_callee_ids.contains(&place.identifier.id)
                     {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,

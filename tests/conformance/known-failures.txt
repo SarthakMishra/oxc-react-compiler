@@ -93,6 +93,7 @@ bug-type-inference-control-flow.ts
 builtin-jsx-tag-lowered-between-mutations.js
 call-args-assignment.js
 call-args-destructuring-assignment.js
+call-spread-argument-mutable-iterator.js
 call-spread.js
 call-with-independently-memoizable-arg.js
 call.js
@@ -273,8 +274,11 @@ error.bug-invariant-unnamed-temporary.js
 error.default-param-accesses-local.js
 error.hoisting-simple-function-declaration.js
 error.invalid-mutate-after-aliased-freeze.js
+error.invalid-mutate-props-in-effect-fixpoint.js
 error.invalid-mutate-props-via-for-of-iterator.js
+error.invalid-mutation-of-possible-props-phi-indirect.js
 error.invalid-pass-mutable-function-as-prop.js
+error.invalid-return-mutable-function-from-hook.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
 error.invalid-type-provider-nonhook-name-typed-as-hook.js
 error.mutate-function-property.js
@@ -282,8 +286,10 @@ error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hoisting-simple-var-declaration.js
+error.todo-kitchensink.js
 error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
+error.unconditional-set-state-nested-function-expressions.js
 error.validate-mutate-ref-arg-in-render.js
 escape-analysis-destructured-rest-element.js
 escape-analysis-jsx-child.js
@@ -605,6 +611,7 @@ nested-function-with-param-as-captured-dep.ts
 nested-optional-chains.ts
 nested-optional-member-expr.js
 nested-scopes-begin-same-instr-valueblock.ts
+nested-scopes-hook-call.js
 new-does-not-mutate-class.ts
 new-mutability/aliased-nested-scope-truncated-dep.tsx
 new-mutability/array-filter.js
@@ -619,6 +626,7 @@ new-mutability/capturing-function-alias-computed-load-2-iife.js
 new-mutability/capturing-function-alias-computed-load-3-iife.js
 new-mutability/capturing-function-alias-computed-load-4-iife.js
 new-mutability/capturing-function-alias-computed-load-iife.js
+new-mutability/error.mutate-frozen-value.js
 new-mutability/iife-return-modified-later-phi.js
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections-2.js
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections.js
@@ -701,6 +709,7 @@ object-shorthand-method-2.js
 object-shorthand-method-nested.js
 object-values-mutation.js
 object-values.js
+optional-call-chain-in-ternary.ts
 optional-call-chained.js
 optional-call-logical.js
 optional-call-simple.js
@@ -851,7 +860,10 @@ property-assignment.js
 property-call-evaluation-order.js
 property-call-spread.js
 props-method-dependency.js
+prune-scopes-whose-deps-invalidate-array.js
 prune-scopes-whose-deps-invalidate-jsx.js
+prune-scopes-whose-deps-invalidate-new.js
+prune-scopes-whose-deps-invalidate-object.js
 prune-scopes-whose-deps-may-invalidate-array.js
 quoted-strings-in-jsx-attribute-escaped.js
 quoted-strings-in-jsx-attribute.js
@@ -999,6 +1011,7 @@ repro-hoisting.js
 repro-independently-memoized-property-load-for-method-call.js
 repro-instruction-part-of-already-closed-scope.js
 repro-invalid-destructuring-reassignment-undefined-variable.js
+repro-invalid-phi-as-dependency.tsx
 repro-invalid-pruned-scope-leaks-value-via-alias.ts
 repro-invalid-pruned-scope-leaks-value.ts
 repro-invalid-reactivity-value-block.ts
@@ -1052,6 +1065,7 @@ reverse-postorder.js
 rewrite-phis-in-lambda-capture-context.js
 rules-of-hooks/allow-locals-named-like-hooks.js
 rules-of-hooks/allow-props-named-like-hooks.js
+rules-of-hooks/rules-of-hooks-0e2214abc294.js
 rules-of-hooks/rules-of-hooks-4f6c78a14bf7.js
 rules-of-hooks/rules-of-hooks-69521d94fa03.js
 rules-of-hooks/rules-of-hooks-93dc5d5e538a.js
@@ -1207,6 +1221,7 @@ unconditional-break-label.js
 uninitialized-declaration-in-reactive-scope.js
 unlabeled-break-within-label-loop.ts
 unlabeled-break-within-label-switch.ts
+unmemoized-nonreactive-dependency-is-pruned-as-dependency.js
 unused-array-middle-element.js
 unused-array-rest-element.js
 unused-conditional.js

@@ -2,4 +2,4 @@
 source: crates/oxc_react_compiler/tests/error_diagnostic_tests.rs
 expression: "format!(\"{errors:?}\")"
 ---
-["Hooks may not be referenced as normal values, they must be called. See https://react.dev/reference/rules/react-calls-components-and-hooks", "React Hook \"useState\" is called conditionally. Hooks must be called in the exact same order in every render."]
+["React Hook \"useState\" is called conditionally. Hooks must be called in the exact same order in every render."]
