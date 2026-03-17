@@ -8,7 +8,6 @@ diagnostics: 0
 import { c as _c } from "react/compiler-runtime";
 function Header(t0) {
   const $ = _c(1);
-  let title;
   let t5;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t5 = <h1>{title}</h1>;
@@ -22,7 +21,6 @@ function Header(t0) {
 
 function Footer(t0) {
   const $ = _c(1);
-  let text;
   let t5;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t5 = <footer>{text}</footer>;

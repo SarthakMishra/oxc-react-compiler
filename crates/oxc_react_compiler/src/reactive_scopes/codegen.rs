@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 
+use crate::hir::types::IdentifierId;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::hir::types::{
@@ -1533,17 +1534,24 @@ fn codegen_scope(
     let deps = &scope.scope.dependencies;
     let slot_start = *cache_slot;
 
-    // Hoist DeclareLocal instructions out of the scope body.
-    // These must be emitted before the scope's dependency check since the
-    // check may reference these variables (e.g., `$[0] !== count`).
-    // DeclareLocal/DeclareContext are never inlinable, so we use an empty inline map.
+    // Hoist DeclareLocal instructions for scope DECLARATIONS only.
+    // Variables that are scope outputs (stored in cache, loaded in else branch)
+    // need `let` declarations before the scope guard. Variables that are only
+    // used inside the scope body should remain as `const` inside the if-block.
+    let scope_decl_ids: FxHashSet<IdentifierId> =
+        scope.scope.declarations.iter().map(|(id, _)| *id).collect();
     let empty_inline_map = InlineMap::default();
     for instr in &scope.instructions.instructions {
         if let ReactiveInstruction::Instruction(instruction) = instr
-            && let InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. } =
-                &instruction.value
+            && let InstructionValue::DeclareLocal { lvalue, .. }
+            | InstructionValue::DeclareContext { lvalue, .. } = &instruction.value
         {
-            codegen_instruction(instruction, output, &indent_str, declared, &empty_inline_map);
+            // Only hoist if this variable is a scope declaration (output)
+            if scope_decl_ids.contains(&lvalue.identifier.id)
+                || scope_decl_ids.contains(&instruction.lvalue.identifier.id)
+            {
+                codegen_instruction(instruction, output, &indent_str, declared, &empty_inline_map);
+            }
         }
     }
 

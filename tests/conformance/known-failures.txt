@@ -90,7 +90,6 @@ bug-capturing-func-maybealias-captured-mutate.ts
 bug-ref-prefix-postfix-operator.js
 bug-separate-memoization-due-to-callback-capturing.js
 bug-type-inference-control-flow.ts
-builtin-jsx-tag-lowered-between-mutations.js
 call-args-assignment.js
 call-args-destructuring-assignment.js
 call-spread-argument-mutable-iterator.js
@@ -423,7 +422,6 @@ gating/multi-arrow-expr-export-default-gating-test.js
 gating/multi-arrow-expr-export-gating-test.js
 gating/multi-arrow-expr-gating-test.js
 gating/reassigned-fnexpr-variable.js
-global-jsx-tag-lowered-between-mutations.js
 global-types/call-spread-argument-set.ts
 global-types/map-constructor.ts
 global-types/repro-array-filter-capture-mutate-bug.tsx
@@ -519,7 +517,6 @@ inner-function/nullable-objects/assume-invoked/use-memo-returned.ts
 inner-function/nullable-objects/bug-invalid-array-map-manual.js
 inner-function/nullable-objects/return-object-of-functions.js
 inner-memo-value-not-promoted-to-outer-scope-dynamic.js
-inner-memo-value-not-promoted-to-outer-scope-static.js
 interdependent-across-if.js
 interdependent.js
 invalid-jsx-lowercase-localvar.jsx
@@ -544,7 +541,6 @@ jsx-local-tag-in-lambda.js
 jsx-lowercase-localvar-memberexpr-in-lambda.jsx
 jsx-lowercase-localvar-memberexpr.jsx
 jsx-lowercase-memberexpr.jsx
-jsx-member-expression-tag-grouping.js
 jsx-memberexpr-tag-in-lambda.js
 jsx-outlining-child-stored-in-id.js
 jsx-outlining-dup-key-diff-value.js
@@ -1111,7 +1107,6 @@ ssa-if-else.js
 ssa-leave-case.js
 ssa-multiple-phis.js
 ssa-nested-loops-no-reassign.js
-ssa-newexpression.js
 ssa-non-empty-initializer.js
 ssa-objectexpression-phi.js
 ssa-objectexpression.js
@@ -1124,7 +1119,6 @@ ssa-property-call.js
 ssa-property-mutate-2.js
 ssa-property-mutate-alias.js
 ssa-property-mutate.js
-ssa-property.js
 ssa-reassign-in-rval.js
 ssa-reassign.js
 ssa-renaming-ternary-destruction-with-mutation.js

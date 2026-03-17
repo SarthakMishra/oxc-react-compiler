@@ -8,12 +8,9 @@ diagnostics: 0
 import { c as _c } from "react/compiler-runtime";
 function Display(t0) {
   const $ = _c(1);
-  let items;
-  let count;
-  let label;
   let t17;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    count = items.length;
+    const count = items.length;
     $[0] = t17;
   } else {
     t17 = $[0];
@@ -24,6 +21,6 @@ function Display(t0) {
   } else {
     t10 = "Empty";
   }
-  label = t10;
+  const label = t10;
   return <div>{label}: {count}</div>;
 }

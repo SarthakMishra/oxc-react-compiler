@@ -6,7 +6,6 @@ import { c as _c } from "react/compiler-runtime";
 
 function Layout(t0) {
   const $ = _c(1);
-  let children;
   let t6;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t6 = <div className="container">{children}</div>;

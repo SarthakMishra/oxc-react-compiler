@@ -15,13 +15,12 @@ function useToggle(initial) {
   }
   const value = t13;
   let setValue;
-  let toggle;
   let t12;
   if ($[1] !== t4 || $[2] !== value) {
     const t9 = () => {
       return setValue(!value);
     };
-    toggle = t9;
+    const toggle = t9;
     t12 = [value, toggle];
     $[1] = t4;
     $[2] = value;
