@@ -239,14 +239,19 @@ pub fn validate_no_mutation_after_freeze(
                 }
             }
 
-            // Check 2: MethodCall on frozen receiver
-            if let InstructionValue::MethodCall { receiver, .. } = &instr.value {
+            // Check 2: MethodCall on frozen receiver — only flag if the method
+            // is KNOWN to mutate. Read-only methods (.map(), .at(), .filter(),
+            // .toString(), .foo()) are safe on frozen values.
+            // Upstream uses method signatures; we use a conservative allowlist.
+            if let InstructionValue::MethodCall { receiver, property, .. } = &instr.value {
                 let receiver_name = resolve_name(
                     receiver.identifier.id,
                     &id_to_name,
                     receiver.identifier.name.as_deref(),
                 );
-                if receiver_name.is_some_and(|name| frozen_names.contains(name)) {
+                if receiver_name.is_some_and(|name| frozen_names.contains(name))
+                    && is_known_mutating_method(property)
+                {
                     errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
                         FROZEN_MUTATION_ERROR,
@@ -336,6 +341,23 @@ pub fn validate_no_mutation_after_freeze(
             }
         }
     }
+}
+
+/// Returns true if a method name is known to mutate its receiver.
+/// Used to distinguish mutating methods (.push(), .splice()) from
+/// read-only ones (.map(), .at(), .filter()) when checking MethodCall
+/// on frozen receivers.
+fn is_known_mutating_method(method: &str) -> bool {
+    matches!(
+        method,
+        // Array mutating methods
+        "push" | "pop" | "shift" | "unshift" | "splice" | "sort" | "reverse"
+        | "fill" | "copyWithin"
+        // Set/Map mutating methods
+        | "add" | "set" | "delete" | "clear"
+        // Generic mutating patterns
+        | "append" | "remove" | "insert" | "assign"
+    )
 }
 
 /// Check if a nested function body contains mutations to any of the outer frozen variables.

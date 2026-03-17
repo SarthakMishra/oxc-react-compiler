@@ -1059,6 +1059,28 @@ fn upstream_conformance() {
         println!();
     }
 
+    // Print frozen-mutation bail-out fixtures
+    {
+        let mut frozen_bailouts: Vec<&str> = Vec::new();
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            if !we_memo
+                && r.expected_has_memo
+                && r.first_error.starts_with("This value cannot be modified")
+            {
+                frozen_bailouts.push(&r.relative_path);
+            }
+        }
+        if !frozen_bailouts.is_empty() {
+            frozen_bailouts.sort_unstable();
+            println!("--- FROZEN-MUTATION BAIL-OUTS ({} fixtures) ---", frozen_bailouts.len());
+            for name in &frozen_bailouts {
+                println!("  {name}");
+            }
+            println!();
+        }
+    }
+
     // Print silent bail-out fixtures (we produce 0 scopes, upstream memoizes, no error)
     {
         let mut silent_bailouts: Vec<&str> = Vec::new();
