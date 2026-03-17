@@ -46,6 +46,10 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
 
     // First pass: seed non-reactive IDs from globals, primitives, stable types,
     // and free variables (names loaded but never locally defined).
+    // Also check ALL named operand places (including CallExpression callees,
+    // MethodCall receivers/args, etc.) for free variable detection. After the
+    // LoadLocal inline pass + DCE, LoadLocal instructions for free variables
+    // may be eliminated, leaving only their named references in consumers.
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -74,11 +78,13 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                         && !locally_defined_names.contains(name)
                     {
                         non_reactive_ids.insert(instr.lvalue.identifier.id);
+                        non_reactive_ids.insert(place.identifier.id);
                         non_reactive_names.insert(name.clone());
                     }
                     // Still check for stable types
                     if matches!(instr.lvalue.identifier.type_, Type::SetState | Type::Ref) {
                         non_reactive_ids.insert(instr.lvalue.identifier.id);
+                        non_reactive_ids.insert(place.identifier.id);
                         if let Some(name) = &instr.lvalue.identifier.name {
                             non_reactive_names.insert(name.clone());
                         }
@@ -92,6 +98,26 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             non_reactive_names.insert(name.clone());
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // Additional free variable detection: after the LoadLocal inline + DCE,
+    // some free variables no longer have LoadLocal instructions (the inline
+    // substituted their temps, then DCE removed the LoadLocal). Check ALL
+    // named operand places in ALL instructions for names that aren't locally
+    // defined — these are free variables that should be non-reactive.
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            let operands = collect_read_operand_places(&instr.value);
+            for place in operands {
+                if let Some(name) = &place.identifier.name
+                    && !locally_defined_names.contains(name.as_str())
+                    && !non_reactive_ids.contains(&place.identifier.id)
+                {
+                    non_reactive_ids.insert(place.identifier.id);
+                    non_reactive_names.insert(name.clone());
                 }
             }
         }
@@ -462,7 +488,6 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                     }
                 } else {
                     // No resolution — use as-is (named variable or unresolved temp)
-                    let op_id = place.identifier.id;
                     if !is_scope_internal(place)
                         && !non_reactive_ids.contains(&place.identifier.id)
                         && !place
@@ -479,7 +504,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                                     place.identifier.declaration_id,
                                 ) {
                                     (Some(a), Some(b)) => a == b,
-                                    _ => d.identifier.id == op_id,
+                                    _ => d.identifier.id == place.identifier.id,
                                 }
                         });
                         if !already_added {

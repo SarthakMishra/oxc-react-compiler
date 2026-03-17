@@ -221,7 +221,6 @@ dependencies-outputs.js
 dependencies.js
 destructure-array-assignment-to-context-var.js
 destructure-array-declaration-to-context-var.js
-destructure-capture-global.js
 destructure-default-array-with-unary.js
 destructure-direct-reassignment.js
 destructure-in-branch-ssa.ts
@@ -466,7 +465,6 @@ hoisting-simple-const-declaration.js
 hoisting-simple-function-expression.js
 hoisting-simple-let-declaration.js
 hoisting-within-lambda.js
-holey-array-expr.js
 holey-array-pattern-dce-2.js
 holey-array-pattern-dce.js
 hook-call-freezes-captured-memberexpr.tsx
@@ -494,7 +492,6 @@ independent.js
 independently-memoize-object-property.js
 infer-compile-hooks-with-multiple-params.js
 infer-computed-delete.js
-infer-function-expression-component.js
 infer-functions-component-with-hook-call.js
 infer-functions-component-with-ref-arg.js
 infer-functions-hook-with-hook-call.js
@@ -536,7 +533,6 @@ inverted-if-else.js
 inverted-if.js
 issue852.js
 issue933-disjoint-set-infinite-loop.js
-jsx-attribute-default-to-true.tsx
 jsx-attribute-with-jsx-element-value.js
 jsx-attribute-with-jsx-fragment-value.flow.js
 jsx-bracket-in-text.jsx
@@ -549,7 +545,6 @@ jsx-lowercase-localvar-memberexpr-in-lambda.jsx
 jsx-lowercase-localvar-memberexpr.jsx
 jsx-lowercase-memberexpr.jsx
 jsx-member-expression-tag-grouping.js
-jsx-member-expression.js
 jsx-memberexpr-tag-in-lambda.js
 jsx-outlining-child-stored-in-id.js
 jsx-outlining-dup-key-diff-value.js
@@ -593,7 +588,6 @@ memoize-value-block-value-logical.js
 memoize-value-block-value-sequence.js
 merge-consecutive-nested-scopes.js
 merge-consecutive-scopes-deps-subset-of-decls.js
-merge-consecutive-scopes-no-deps.js
 merge-consecutive-scopes-objects.js
 merge-consecutive-scopes.js
 merge-nested-scopes-with-same-inputs.js
@@ -1094,7 +1088,6 @@ rules-of-hooks/todo.bail.rules-of-hooks-6949b255e7eb.js
 rules-of-hooks/todo.bail.rules-of-hooks-e0a5db3ae21e.js
 rules-of-hooks/todo.bail.rules-of-hooks-e9f9bac89f8f.js
 rules-of-hooks/todo.bail.rules-of-hooks-fadd52c1e460.js
-rules-of-hooks/todo.invalid.invalid-rules-of-hooks-e675f0a672d8.js
 same-variable-as-dep-and-redeclare-maybe-frozen.js
 same-variable-as-dep-and-redeclare.js
 script-source-type.js

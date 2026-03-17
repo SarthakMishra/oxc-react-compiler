@@ -5,24 +5,22 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function Counter() {
-  const $ = _c(5);
+  const $ = _c(3);
   let t9;
   let t2;
-  if ($[0] !== t3 || $[1] !== count) {
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = 0;
-    $[0] = t3;
-    $[1] = count;
-    $[2] = t9;
-    $[3] = t2;
+    $[0] = t9;
+    $[1] = t2;
   } else {
-    t9 = $[2];
-    t2 = $[3];
+    t9 = $[0];
+    t2 = $[1];
   }
   let t10;
-  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    $[4] = t10;
+  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
+    $[2] = t10;
   } else {
-    t10 = $[4];
+    t10 = $[2];
   }
   const count = t10;
   let setCount;
