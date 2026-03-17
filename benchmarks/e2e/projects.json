@@ -1,0 +1,56 @@
+{
+  "projects": [
+    {
+      "name": "ephe",
+      "repo": "https://github.com/unvalley/ephe.git",
+      "description": "Ephemeral markdown paper / daily planner PWA",
+      "stars": 569,
+      "scale": "small",
+      "vite_version": "7.3.1",
+      "react_compiler_version": "19.1.0-rc.1",
+      "frontend_files": "~100",
+      "vite_config_path": "vite.config.ts",
+      "build_command": "npx vite build",
+      "dist_dir": "dist"
+    },
+    {
+      "name": "rai-pal",
+      "repo": "https://github.com/Raicuparta/rai-pal.git",
+      "description": "Mod manager for universal game mods (Tauri + React)",
+      "stars": 684,
+      "scale": "medium",
+      "vite_version": "7.0.6",
+      "react_compiler_version": "19.1.0-rc.2",
+      "frontend_files": "~96",
+      "vite_config_path": "vite.config.ts",
+      "build_command": "npx vite build",
+      "dist_dir": "dist"
+    },
+    {
+      "name": "arcomage-hd",
+      "repo": "https://github.com/arcomage/arcomage-hd.git",
+      "description": "Web HD remaster of Arcomage card game — 16 languages, PWA, P2P",
+      "stars": 170,
+      "scale": "large",
+      "vite_version": "7.2.2",
+      "react_compiler_version": "1.0.0",
+      "frontend_files": "~622",
+      "vite_config_path": "vite.config.ts",
+      "build_command": "npx vite build",
+      "dist_dir": "dist"
+    },
+    {
+      "name": "docmost",
+      "repo": "https://github.com/docmost/docmost.git",
+      "description": "Open-source collaborative wiki & documentation",
+      "stars": 10700,
+      "scale": "large",
+      "react_version": "18",
+      "has_react_compiler": false,
+      "frontend_files": "~295",
+      "vite_config_path": "apps/client/vite.config.ts",
+      "build_command": "npx vite build",
+      "dist_dir": "apps/client/dist"
+    }
+  ]
+}

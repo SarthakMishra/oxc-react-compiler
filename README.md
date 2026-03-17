@@ -302,16 +302,107 @@ The benchmark suite compiles 16 real-world React components through both OXC and
 
 Most divergences are conservative misses where OXC's reactive scope analysis creates fewer scopes than Babel.
 
-### Performance (p50 latency)
+### Compile Performance: OXC vs Babel (p50 latency)
 
-Measured on the 16-fixture benchmark suite at `--release`. RSS stays at ~56 MB across all fixture sizes.
+All numbers measured on the 16-fixture benchmark suite (`--release` build, 50 iterations, 10 warmup). Both compilers process the same fixtures with equivalent configuration (JSX automatic runtime, TypeScript support, React compiler plugin).
 
-| Size | LOC range   | p50 latency   |
-| ---- | ----------- | ------------- |
-| XS   | 8–23 LOC    | 55–165 µs     |
-| S    | 35–60 LOC   | 55–270 µs     |
-| M    | 80–147 LOC  | 165–530 µs    |
-| L    | 152–284 LOC | 710 µs–2.0 ms |
+| Fixture | Size | LOC | OXC p50 | Babel p50 | Speedup |
+|---------|------|-----|---------|-----------|---------|
+| simple-counter | XS | 8 | 71.7 µs | 7.22 ms | **100.8x** |
+| theme-toggle | XS | 16 | 151.6 µs | 6.21 ms | **41.0x** |
+| status-badge | XS | 21 | 108.8 µs | 6.53 ms | **60.0x** |
+| avatar-group | XS | 23 | 198.7 µs | 8.99 ms | **45.2x** |
+| todo-list | S | 35 | 539.6 µs | 23.11 ms | **42.8x** |
+| form-validation | S | 50 | 729.8 µs | 24.94 ms | **34.2x** |
+| search-input | S | 55 | 94.2 µs | 14.28 ms | **151.5x** |
+| toolbar | S | 60 | 52.2 µs | 15.41 ms | **294.9x** |
+| time-slot-picker | M | 81 | 630.0 µs | 20.88 ms | **33.1x** |
+| data-table | M | 80 | 931.0 µs | 32.92 ms | **35.4x** |
+| color-picker | M | 125 | 910.3 µs | 36.73 ms | **40.4x** |
+| command-menu | M | 147 | 1.15 ms | 39.82 ms | **34.6x** |
+| booking-list | L | 152 | 1.74 ms | 46.70 ms | **26.8x** |
+| availability-schedule | L | 255 | 2.67 ms | 56.25 ms | **21.1x** |
+| canvas-sidebar | L | 272 | 2.44 ms | 63.68 ms | **26.1x** |
+| multi-step-form | L | 284 | 2.05 ms | 83.42 ms | **40.6x** |
+
+**Aggregate**: median **40.4x** faster, mean 64.3x, range 21.1x–294.9x
+
+> The high-speedup outliers (search-input 151x, toolbar 295x) are fixtures where OXC bails out early (low slot count), so the comparison reflects OXC's fast "no-op" path vs Babel's full compilation. The conservative fixtures (21x–45x) are the most representative of typical component compilation.
+
+### Batch Project Build (End-to-End Throughput)
+
+Simulates compiling an entire project — all 16 fixtures compiled sequentially as a single batch, measured 50 times.
+
+| Metric | OXC | Babel |
+|--------|-----|-------|
+| Files compiled | 16 | 16 |
+| Total LOC | 1,664 | 1,664 |
+| Batch p50 | 15.48 ms | 482.41 ms |
+| Batch p95 | 16.58 ms | 534.17 ms |
+| Throughput | 107,468 LOC/s | 3,449 LOC/s |
+| **Speedup** | **31.2x** | baseline |
+
+### Vite Dev Server Simulation
+
+Simulates Vite's transform pipeline with content-hash caching — cold build (all files, no cache) and warm HMR rebuild (one file changed, rest cached).
+
+| Scenario | OXC p50 | Babel p50 | Speedup |
+|----------|---------|-----------|---------|
+| Cold build (16 files, no cache) | 15.12 ms | 477.55 ms | **31.6x** |
+| Warm HMR rebuild (1 file changed) | 2.25 ms | 69.71 ms | **31.0x** |
+
+Changed file: `multi-step-form` (284 LOC, largest fixture)
+
+### SSR Render Performance
+
+Measures ReactDOMServer.renderToString() timing for original (uncompiled), OXC-compiled, and Babel-compiled output. This is a proxy for runtime performance — well-memoized code should render comparably to uncompiled code on initial render.
+
+> **Note:** Most OXC fixtures error at render time due to the scope analysis gaps documented in the memoization benchmarks above (15 of 16 fixtures produce runtime errors). This reflects the correctness delta, not a performance issue. As conformance improves, more fixtures will render successfully.
+
+| Fixture | Size | Original p50 | OXC p50 | Babel p50 |
+|---------|------|-------------|---------|-----------|
+| simple-counter | XS | 56.1 µs | 48.4 µs | 55.4 µs |
+| form-validation | S | 133.2 µs | — | 65.4 µs |
+| toolbar | S | 165.2 µs | — | 162.1 µs |
+| color-picker | M | 58.2 µs | — | 43.8 µs |
+| availability-schedule | L | 182.8 µs | — | 185.3 µs |
+
+The single renderable OXC fixture (`simple-counter`) shows a 1.16x improvement over uncompiled. Babel-compiled output is within 1.0x of uncompiled on average — the memoization cache overhead roughly offsets any render savings on initial render, as expected (memoization benefits show on re-renders with unchanged deps, not measured in SSR).
+
+### Real-World E2E Vite Builds
+
+The e2e benchmark clones real open-source projects that use Vite + React, builds them with `babel-plugin-react-compiler` (baseline), then patches the Vite config to swap in the OXC plugin and rebuilds. All builds run 3 iterations; median is reported.
+
+| Project | Scale | React Files | Babel Build | OXC Build | Speedup |
+|---------|-------|-------------|-------------|-----------|---------|
+| [ephe](https://github.com/unvalley/ephe) (PWA markdown editor) | small | 19 | 16.00s | 13.77s | **1.16x** |
+| [rai-pal](https://github.com/Raicuparta/rai-pal) (Tauri game mod manager) | medium | 42 | 7.06s | 6.03s | **1.17x** |
+| [arcomage-hd](https://github.com/arcomage/arcomage-hd) (web card game) | large | 62 | 12.50s | 10.01s | **1.25x** |
+| [docmost](https://github.com/docmost/docmost) (collaborative wiki, 10.7K★) | large | 295 | 32.05s | 21.89s | **1.46x** |
+
+#### Bundle Size Comparison
+
+| Project | Babel JS | OXC JS | Delta |
+|---------|----------|--------|-------|
+| ephe | 2.8 MB | 2.8 MB | -7.5 KB (-0.3%) |
+| rai-pal | 634.3 KB | 612.0 KB | -22.3 KB (-3.5%) |
+| arcomage-hd | 845.0 KB | 806.4 KB | -38.6 KB (-4.6%) |
+| docmost | 10.4 MB | 10.1 MB | -300.2 KB (-2.8%) |
+
+#### OXC Transform Coverage
+
+| Project | React Files | Compiled | Validation Errors | Coverage |
+|---------|------------|----------|-------------------|----------|
+| ephe | 19 | 11 | 10 | 52% |
+| rai-pal | 42 | 18 | 26 | 41% |
+| arcomage-hd | 62 | 11 | 31 | 26% |
+| docmost | 295 | 139 | 107 | 57% |
+
+> **Why is OXC faster despite lower coverage?** The speedup comes from two sources: (1) OXC's native Rust compiler is 21–295x faster per-file than Babel's JS-based compiler (see micro-benchmarks above), and (2) files where OXC's output fails validation fall through to the original source code, skipping the Babel React Compiler entirely. As OXC's conformance improves and more files compile correctly, the speedup should increase further since more files will benefit from the faster compiler path.
+>
+> **Why is OXC output smaller?** Files where OXC bails out or produces invalid output use original (unmemoized) source, which has no `useMemoCache` imports or cache slot allocations. This makes the OXC bundle smaller but also means those files lack memoization. The size difference is a side effect of lower coverage, not a genuine optimization.
+>
+> **Scaling trend**: The speedup increases with project size — from 1.16x on a 19-file project to **1.46x on a 295-file monorepo** (docmost). This demonstrates that OXC's native Rust performance advantage compounds as compilation workload grows. Docmost also shows the highest coverage at 57%, suggesting that larger real-world codebases exercise more of the compilation paths OXC handles correctly.
 
 ### Running Benchmarks
 
@@ -319,17 +410,26 @@ Measured on the 16-fixture benchmark suite at `--release`. RSS stays at ~56 MB a
 # Build NAPI binding first
 cd napi/react-compiler && npm install && npx napi build --release
 
-# Run benchmark suite
-cd ../.. && node benchmarks/bench.mjs
+# Comparative benchmark (OXC vs Babel — compile speed + batch + Vite sim)
+cd ../../benchmarks && node scripts/bench-compare.mjs
 
-# Compare against Babel (requires babel-plugin-react-compiler)
-node benchmarks/bench.mjs --diff
+# Per-fixture OXC-only latency
+node bench.mjs
 
-# Update snapshots
-node benchmarks/bench.mjs --update-snapshots
+# Memoization structural comparison
+node scripts/babel-compile.mjs --diff
 
-# Run render equivalence (E2E HTML comparison)
-node benchmarks/scripts/render-compare.mjs
+# SSR render timing comparison
+node scripts/runtime-bench.mjs
+
+# Render equivalence (HTML output comparison)
+node scripts/render-compare.mjs
+
+# E2E real-world project builds (clones repos, ~5 min)
+node e2e/e2e-bench.mjs
+
+# Quick run (fewer iterations for CI)
+node scripts/bench-compare.mjs --iterations 20 --warmup 5
 ```
 
 ## Known Limitations

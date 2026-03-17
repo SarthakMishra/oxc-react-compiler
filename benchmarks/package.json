@@ -13,7 +13,15 @@
     "correctness": "node scripts/analyze-correctness.mjs --all",
     "render:compare": "node scripts/render-compare.mjs",
     "render:compare-json": "node scripts/render-compare.mjs --format json",
-    "render:compare-verbose": "node scripts/render-compare.mjs --verbose"
+    "render:compare-verbose": "node scripts/render-compare.mjs --verbose",
+    "compare": "node scripts/bench-compare.mjs",
+    "compare:json": "node scripts/bench-compare.mjs --format json",
+    "compare:quick": "node scripts/bench-compare.mjs --iterations 20 --warmup 5",
+    "runtime": "node scripts/runtime-bench.mjs",
+    "runtime:json": "node scripts/runtime-bench.mjs --format json",
+    "e2e": "node e2e/e2e-bench.mjs",
+    "e2e:json": "node e2e/e2e-bench.mjs --format json",
+    "e2e:quick": "node e2e/e2e-bench.mjs --iterations 1"
   },
   "dependencies": {
     "@babel/core": "^7.29.0",

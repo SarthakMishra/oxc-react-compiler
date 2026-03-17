@@ -31,6 +31,10 @@ Thumbs.db
 /benchmarks/results.json
 /benchmarks/correctness-report.json
 /benchmarks/baseline.json
+/benchmarks/compare-report.json
+/benchmarks/runtime-report.json
+/benchmarks/e2e/.workspace/
+/benchmarks/e2e/reports/
 
 # Misc
 *.log
