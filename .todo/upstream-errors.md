@@ -1,25 +1,20 @@
-# Upstream Errors We Should Match (39 fixtures)
+# Upstream Errors We Should Match (126 fixtures)
 
 Upstream rejects with an error, we either compile or produce the wrong error.
+This is the "we compile, they don't" category -- 126 fixtures at 415/1717.
+
+Note: this number increased from 95 to 126 as we fixed bail-outs that were
+previously masking over-compilation (we now compile more fixtures, some of
+which upstream rejects).
 
 ## Error Categories
 
-### Upstream Internal Errors (Invariant/Todo) -- 16 fixtures
+### Upstream Internal Errors (Invariant/Todo) -- partly matched
 
-These are upstream compiler bugs/limitations, not validation errors.
+**Matched (via `validate_no_unsupported_nodes`):**
+- YieldExpression, ClassExpression, getter/setter syntax, new.target, for-await-of
 
-**Now matched (via `validate_no_unsupported_nodes`):**
-- ~~"Todo: (BuildHIR::lowerExpression) Handle YieldExpression..." (1)~~ -- `error.useMemo-callback-generator.js` now passes
-- ~~"Todo: (BuildHIR::lowerStatement) Handle for-await..." (1)~~ -- `error.todo-for-await-loops.js` now passes
-- ~~"Todo: (BuildHIR::lowerExpression) Handle MetaProperty..." (1)~~ -- `error.todo-new-target-meta-property.js` now passes
-- ~~"Todo: (BuildHIR::lowerExpression) Handle get function..." (1)~~ -- `error.todo-object-expression-get-syntax.js` now passes
-
-**Completed**: Created `validate_no_unsupported_nodes.rs` pass that detects YieldExpression, ClassExpression, getter/setter syntax, new.target, and for-await-of in HIR `UnsupportedNode` instructions and emits upstream-matching Todo errors. Also added getter/setter, new.target, and for-await detection in `hir/build.rs`. Registered in pipeline as pass 7.5 (after HIR build, before other validations).
-- `crates/oxc_react_compiler/src/validation/validate_no_unsupported_nodes.rs`
-- `crates/oxc_react_compiler/src/hir/build.rs`
-- `crates/oxc_react_compiler/src/entrypoint/pipeline.rs`
-
-**Still unmatched (not yet implemented):**
+**Still unmatched (known upstream limitations, low priority):**
 - "Invariant: [InferMutationAliasingEffects] Expected..." (3)
 - "Invariant: [Codegen] Internal error..." (2)
 - "Todo: [PruneHoistedContexts]..." (2)
@@ -28,35 +23,32 @@ These are upstream compiler bugs/limitations, not validation errors.
 - "Todo: (BuildHIR::lowerExpression) Handle UpdateExpression..." (1)
 - "Todo: (BuildHIR::lowerStatement) Handle var kinds..." (1)
 
-**Action:** The remaining 12 are known-skips representing upstream
-limitations that we should NOT try to reproduce exactly.
+These are known-skips representing upstream limitations.
 
-### Validation Errors We Should Match -- 23 fixtures
+### Validation Errors We Should Match
 
-These are real validation errors where upstream correctly rejects:
+From the DIVERGED list (7 unexpected divergences):
+- `error.bug-invariant-expected-consistent-destructuring.js`
+- `error.invalid-jsx-captures-context-variable.js`
+- `error.invalid-setState-in-useMemo-indirect-useCallback.js`
+- `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js`
+- `error.todo-for-loop-with-context-variable-iterator.js`
+- `error.todo-missing-source-locations.js`
+- `exhaustive-deps/error.invalid-exhaustive-effect-deps-missing-only.js`
 
-- "This value cannot be modified" (2) -- frozen mutation
-- "Cannot modify local variables after render" (2) -- locals reassigned
-- "Invalid type configuration for module" (2) -- type provider
-- "Compilation Skipped: Existing memoization" (3) -- preserve-memo
-- "Cannot access variable before declared" (1) -- TDZ/hoisting
-- "This value cannot be modified (component props)" (1)
-- "Support spread syntax for hook arguments" (1) -- hook spread
-- "Support functions with unreachable code" (1) -- unreachable
-- "Const declaration cannot be referenced before init" (1)
-- "Support local variables named `fbt`" (1)
-- "fbt tags should be module-level imports" (1)
-- "Dynamic gating directive invalid" (1)
-- "Unexpected empty block with goto" (1)
-- "BuildHIR::lowerStatement Handle ThrowStatement" (1)
-- "EnterSSA: Expected identifier" (1)
-- "Expected variable declaration" (1)
+### Over-Compilation in Infer Mode
 
-**Fix strategy:** Each requires individual analysis. The 3 preserve-memo
-and 2 type-provider fixtures are the most likely to yield gains.
-The Invariant/Todo errors should probably be matched with our own
-bail-out diagnostics rather than trying to reproduce the exact error.
+The remaining ~119 fixtures where we compile but upstream doesn't are
+likely a mix of:
+1. Functions upstream skips in `compilationMode:"infer"` (non-component, non-hook)
+2. Functions where upstream emits a validation error we haven't implemented
+3. Cases where our component/hook detection heuristics differ from upstream
+
+**Fix strategy:**
+1. Check if `@compilationMode` directive parsing is complete
+2. Verify component/hook detection matches upstream heuristics
+3. Match individual upstream validation errors case-by-case
 
 **Key files:**
+- `crates/oxc_react_compiler/src/entrypoint/program.rs`
 - Various validation passes in `crates/oxc_react_compiler/src/validation/`
-- `crates/oxc_react_compiler/src/entrypoint/pipeline.rs`
