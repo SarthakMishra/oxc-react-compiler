@@ -302,14 +302,17 @@ pub fn run_pipeline(
     // Pass 42: merge_overlapping_reactive_scopes_hir
     crate::reactive_scopes::merge_scopes::merge_overlapping_reactive_scopes_hir(hir);
 
+    // Pass 42.5: flatten_scopes_with_hooks_or_use_hir
+    // Must run BEFORE build_reactive_scope_terminals_hir so that split scopes
+    // get proper Terminal::Scope structures. This pass splits scopes around
+    // hook calls instead of removing them entirely.
+    crate::reactive_scopes::prune_scopes::flatten_scopes_with_hooks_or_use_hir(hir);
+
     // Pass 43: build_reactive_scope_terminals_hir
     crate::reactive_scopes::prune_scopes::build_reactive_scope_terminals_hir(hir);
 
     // Pass 44: flatten_reactive_loops_hir
     crate::reactive_scopes::prune_scopes::flatten_reactive_loops_hir(hir);
-
-    // Pass 45: flatten_scopes_with_hooks_or_use_hir
-    crate::reactive_scopes::prune_scopes::flatten_scopes_with_hooks_or_use_hir(hir);
 
     // Pass 46: propagate_scope_dependencies_hir
     crate::reactive_scopes::propagate_dependencies::propagate_scope_dependencies_hir(

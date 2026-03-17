@@ -3,7 +3,7 @@
 use crate::hir::types::{
     ArrayElement, BasicBlock, BlockId, BlockKind, HIR, IdentifierId, InstructionKind,
     InstructionValue, ObjectPropertyKey, Param, Place, ReactiveBlock, ReactiveFunction,
-    ReactiveInstruction, ReactiveTerminal, ScopeId, Terminal,
+    ReactiveInstruction, ReactiveScope, ReactiveTerminal, ScopeId, Terminal,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -2325,35 +2325,141 @@ pub fn flatten_reactive_loops_hir(hir: &mut HIR) {
 }
 
 /// Flatten scopes containing hooks or `use` in HIR.
+/// Split reactive scopes that contain hook calls.
+///
+/// Hooks cannot be inside conditional scope guards (`if ($[0] !== dep) { useState(...) }`)
+/// because that would violate the rules of hooks (called conditionally).
+///
+/// Instead of removing the entire scope (losing all memoization), we SPLIT the scope
+/// around the hook call:
+/// - Instructions before the hook → keep the original scope ID
+/// - The hook call itself → remove scope annotation (will be unscoped)
+/// - Instructions after the hook → get a new scope ID
+///
+/// This runs BEFORE `build_reactive_scope_terminals_hir`, so the split scopes
+/// will be properly converted to `Terminal::Scope` structures later.
 pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
     use crate::hir::globals::is_hook_name;
+    use crate::hir::types::InstructionValue;
 
-    // Find scopes that contain hook calls
-    let mut scopes_with_hooks: FxHashSet<ScopeId> = FxHashSet::default();
-
+    // Build callee name map: instruction lvalue ID → callee name
+    // (handles the LoadLocal inline where callee is a named place)
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let crate::hir::types::InstructionValue::CallExpression { callee, .. } = &instr.value
-                && let Some(name) = &callee.identifier.name
-                && is_hook_name(name)
-                && let Some(ref scope) = instr.lvalue.identifier.scope
-            {
-                scopes_with_hooks.insert(scope.id);
+            match &instr.value {
+                InstructionValue::LoadGlobal { binding } => {
+                    id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                }
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name {
+                        id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                    }
+                }
+                _ => {}
             }
         }
     }
 
-    // Remove scope annotations for scopes containing hooks
+    // Find scopes that contain hook calls, and the positions of hook instructions
+    let mut scopes_with_hooks: FxHashMap<ScopeId, Vec<IdentifierId>> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                let callee_name = callee
+                    .identifier
+                    .name
+                    .as_deref()
+                    .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+                if callee_name.is_some_and(is_hook_name)
+                    && let Some(ref scope) = instr.lvalue.identifier.scope
+                {
+                    scopes_with_hooks.entry(scope.id).or_default().push(instr.lvalue.identifier.id);
+                }
+            }
+        }
+    }
+
     if scopes_with_hooks.is_empty() {
         return;
     }
 
-    for (_, block) in &mut hir.blocks {
-        for instr in &mut block.instructions {
-            if let Some(ref scope) = instr.lvalue.identifier.scope
-                && scopes_with_hooks.contains(&scope.id)
-            {
-                instr.lvalue.identifier.scope = None;
+    // For each scope with hooks: remove scope annotation from hook instructions
+    // AND from all instructions BEFORE the FIRST hook (since hook must run first
+    // to establish state). Actually, the simpler approach: just remove the scope
+    // from the hook instruction itself. The scope will become discontinuous,
+    // which build_reactive_scope_terminals_hir handles by creating separate scopes.
+    //
+    // But wait — build_reactive_scope_terminals uses first/last position to create
+    // ONE contiguous scope. A gap in the middle won't create two scopes.
+    //
+    // The correct approach: assign a NEW scope ID to instructions AFTER each hook,
+    // so the scope naturally splits into two contiguous scopes.
+    let mut next_scope_id = {
+        let mut max_id = 0u32;
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                if let Some(ref scope) = instr.lvalue.identifier.scope {
+                    max_id = max_id.max(scope.id.0);
+                }
+            }
+        }
+        max_id + 1
+    };
+
+    for (scope_id, hook_ids) in &scopes_with_hooks {
+        let hook_id_set: FxHashSet<IdentifierId> = hook_ids.iter().copied().collect();
+
+        for (_, block) in &mut hir.blocks {
+            let mut in_scope = false;
+            let mut past_hook = false;
+            let mut current_new_scope_id = None;
+
+            for instr in &mut block.instructions {
+                let is_this_scope =
+                    instr.lvalue.identifier.scope.as_ref().is_some_and(|s| s.id == *scope_id);
+
+                if !is_this_scope {
+                    if in_scope {
+                        // Left the scope — reset
+                        in_scope = false;
+                        past_hook = false;
+                        current_new_scope_id = None;
+                    }
+                    continue;
+                }
+
+                in_scope = true;
+
+                if hook_id_set.contains(&instr.lvalue.identifier.id) {
+                    // This IS the hook instruction — remove its scope
+                    instr.lvalue.identifier.scope = None;
+                    past_hook = true;
+                    current_new_scope_id = None; // Will assign on next scoped instruction
+                } else if past_hook {
+                    // After a hook — assign a new scope ID so it's a separate scope
+                    if current_new_scope_id.is_none() {
+                        current_new_scope_id = Some(ScopeId(next_scope_id));
+                        next_scope_id += 1;
+                    }
+                    if let Some(ref mut scope) = instr.lvalue.identifier.scope {
+                        // Clone the scope with a new ID
+                        let new_id = current_new_scope_id.unwrap();
+                        **scope = ReactiveScope {
+                            id: new_id,
+                            range: scope.range,
+                            dependencies: Vec::new(),
+                            declarations: Vec::new(),
+                            reassignments: Vec::new(),
+                            early_return_value: None,
+                            merged: Vec::new(),
+                            loc: scope.loc,
+                            is_allocating: scope.is_allocating,
+                        };
+                    }
+                }
+                // else: before any hook — keep the original scope ID
             }
         }
     }

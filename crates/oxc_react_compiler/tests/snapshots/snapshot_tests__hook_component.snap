@@ -5,19 +5,29 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function useCounter() {
-  const $ = _c(1);
-  const t3 = useState(0);
-  let count;
-  let setCount;
+  const $ = _c(5);
   let t9;
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    const t8 = () => {
-      return setCount(count + 1);
-    };
-    t9 = { count, increment: t8 };
-    $[0] = t9;
+  let t2;
+  if ($[0] !== t3 || $[1] !== count) {
+    t2 = 0;
+    $[0] = t3;
+    $[1] = count;
+    $[2] = t9;
+    $[3] = t2;
   } else {
-    t9 = $[0];
+    t9 = $[2];
+    t2 = $[3];
   }
-  return t9;
+  let t10;
+  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
+    $[4] = t10;
+  } else {
+    t10 = $[4];
+  }
+  const count = t10;
+  let setCount;
+  const t8 = () => {
+    return setCount(count + 1);
+  };
+  return { count, increment: t8 };
 }
