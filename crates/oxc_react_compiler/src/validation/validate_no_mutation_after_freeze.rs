@@ -146,6 +146,43 @@ pub fn validate_no_mutation_after_freeze(
         }
     }
 
+    // Collect function IDs passed to effect/callback hooks. Mutations inside
+    // these lambdas happen after render (effect time / event time) and are safe.
+    // Upstream's type system handles this via function effect signatures; we use
+    // a name-based allowlist of hooks whose callbacks execute post-render.
+    let mut effect_callback_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::CallExpression { callee, args } = &instr.value {
+                let callee_name = id_to_name
+                    .get(&callee.identifier.id)
+                    .copied()
+                    .or(callee.identifier.name.as_deref());
+                if callee_name.is_some_and(is_effect_or_callback_hook) {
+                    // The first argument to these hooks is the callback
+                    if let Some(first_arg) = args.first() {
+                        effect_callback_ids.insert(first_arg.identifier.id);
+                        // Also track via StoreLocal chains (the arg might be a
+                        // temp that was stored from a named function expression)
+                        if let Some(name) = resolve_name(
+                            first_arg.identifier.id,
+                            &id_to_name,
+                            first_arg.identifier.name.as_deref(),
+                        ) {
+                            // Find function IDs with this name
+                            for &fid in func_bodies.keys() {
+                                let fname = id_to_name.get(&fid).copied();
+                                if fname == Some(name) {
+                                    effect_callback_ids.insert(fid);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Pre-freeze hook return values (useState state, useReducer state, etc.)
     // Skip ref-typed values: useRef() returns are designed to be mutable
     // (ref.current can always be modified). Upstream's type system handles
@@ -254,14 +291,19 @@ pub fn validate_no_mutation_after_freeze(
                 }
             }
 
-            // Hook calls freeze captured variables of function arguments
+            // Hook calls freeze captured variables of function arguments.
+            // Skip effect/callback hooks — their callbacks execute after render,
+            // so we should not freeze their captures or check their bodies for
+            // frozen mutations.
             if let InstructionValue::CallExpression { callee, args } = &instr.value {
                 let callee_name = resolve_name(
                     callee.identifier.id,
                     &id_to_name,
                     callee.identifier.name.as_deref(),
                 );
-                if callee_name.is_some_and(is_hook_name) {
+                if callee_name.is_some_and(is_hook_name)
+                    && !callee_name.is_some_and(is_effect_or_callback_hook)
+                {
                     for arg in args {
                         let arg_captures = func_captures.get(&arg.identifier.id).or_else(|| {
                             let arg_name = resolve_name(
@@ -337,9 +379,12 @@ pub fn validate_no_mutation_after_freeze(
                 _ => {}
             }
 
-            // Check 4: Mutations inside nested function bodies on frozen outer variables
+            // Check 4: Mutations inside nested function bodies on frozen outer variables.
+            // Skip lambdas passed to effect/callback hooks — those execute after render,
+            // so mutations inside them (e.g., ref.current = x in useEffect) are safe.
             if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
                 && !frozen_names.is_empty()
+                && !effect_callback_ids.contains(&instr.lvalue.identifier.id)
                 && has_mutation_on_frozen_names(&lowered_func.body, &frozen_names)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
@@ -394,6 +439,22 @@ pub fn validate_no_mutation_after_freeze(
             }
         }
     }
+}
+
+/// Returns true if a hook name represents an effect or callback hook whose
+/// first argument (the callback) executes after render, not during render.
+/// Mutations inside these callbacks are safe and should not trigger
+/// frozen-mutation errors.
+fn is_effect_or_callback_hook(name: &str) -> bool {
+    matches!(
+        name,
+        "useEffect"
+            | "useLayoutEffect"
+            | "useInsertionEffect"
+            | "useCallback"
+            | "useEffectEvent"
+            | "useImperativeHandle"
+    )
 }
 
 /// Returns true if a method name is known to mutate its receiver.
