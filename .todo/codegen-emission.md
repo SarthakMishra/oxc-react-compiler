@@ -1,40 +1,20 @@
-# Codegen Emission Bugs
+# Codegen Emission Gaps
 
 Issues in `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs` and `crates/oxc_react_compiler/src/reactive_scopes/build_reactive_function.rs`.
 
-Completed: Gaps 1-5, 6b, 7, 8, 9, fixture bugs. Remaining: 1 correctness improvement (Gap 6), 3 minor render divergences.
+Completed: Gaps 1-5, 6b, 7, 8, 9, fixture bugs. Remaining: output format divergences, render divergences, ternary reconstruction.
 
 ---
 
-## Gap 1: Duplicate Declarations in `codegen_scope` ✅
+## Gap 1: Duplicate Declarations in `codegen_scope` -- COMPLETED
 
-**Completed** (commit `02e0038`): Pre-declare ALL scope output variables at function level before any scope guards, matching upstream compiler behavior.
+## Gap 2: Hook Destructuring Codegen -- COMPLETED
 
----
+## Gap 3: Variable Ordering / Use-Before-Declare -- COMPLETED
 
-## Gap 2: Hook Destructuring Codegen ✅
+## Gap 4: Assignment vs Re-declaration -- COMPLETED
 
-**Completed** (commit `02e0038`): Fixed by scope splitting bug fix in `prune_scopes.rs`.
-
----
-
-## Gap 3: Variable Ordering / Use-Before-Declare ✅
-
-**Completed** (commit `02e0038`): Resolved by pre-declaring all scope output variables at function level.
-
----
-
-## Gap 4: Assignment vs Re-declaration for Pre-declared Variables ✅
-
-**Completed** (commit `02e0038`): Changed all StoreLocal, Destructure, and general instruction declarations to use `let`.
-
----
-
-## Gap 5: Logical Expression Flattening ✅
-
-**Completed**: Added `ReactiveTerminal::Logical` variant. Render equivalence improved from 40% to 68%.
-
----
+## Gap 5: Logical Expression Flattening -- COMPLETED
 
 ## Gap 6: Ternary Expression Reconstruction
 
@@ -52,46 +32,90 @@ Completed: Gaps 1-5, 6b, 7, 8, 9, fixture bugs. Remaining: 1 correctness improve
 
 ---
 
-## Gap 6b: ForOf/ForIn Loop Codegen ✅
+## Gap 6b: ForOf/ForIn Loop Codegen -- COMPLETED
 
-**Completed**: Added codegen support for `for...of` and `for...in` loop forms.
+## Gap 7: availability-schedule Arithmetic -- COMPLETED
 
----
+## Gap 8: canvas-sidebar Missing Return -- COMPLETED
 
-## Gap 7: availability-schedule Arithmetic ✅
-
-~~**Priority:** P1 -- renders but wrong output (2 issues)~~
-
-**Completed**: Added `Continue` and `Break` variants to `ReactiveTerminal`. `build_reactive_block_until` now passes `LoopContext` with correct per-loop-type continue targets. Inlined binary expressions are wrapped in parentheses. Render: availability-schedule now matches. Commit `39d28fb`.
+## Gap 9b: booking-list localeCompare -- COMPLETED (fixture bug)
 
 ---
 
-## Gap 8: canvas-sidebar Missing Return ✅
+## Gap 11: Destructuring Pattern Codegen
 
-~~**Priority:** P1 -- renders empty/wrong content (missing return statement)~~
+**Priority:** P1 -- 43 conformance fixtures diverge because we emit member access instead of destructuring
 
-**Completed**: Three fixes: (1) `build_scope_block_only` now receives scope fallthrough as stop boundary to prevent post-scope code from being consumed inside scope bodies. (2) `codegen_scope` handles `early_return_value` by converting trailing `return X;` to `ern = X;`, caching the value, and emitting `return ern;` after the scope guard. (3) Multi-line JSXText whitespace collapsing. Canvas-sidebar now renders correctly but has a minor JSX text whitespace edge case. Commit `39d28fb`.
+**Current state:** When upstream emits `const { x, y } = t0` or `const [a, b] = t0`, we emit `const x = t0.x; const y = t0.y` (property access form). This causes 34 object-destructuring and 9 array-destructuring divergences in conformance.
+
+**What's needed:**
+- Detect when a temporary is destructured (multiple properties read from the same source in the same scope)
+- Emit destructuring pattern form instead of individual property access assignments
+- Handle both object `{ }` and array `[ ]` destructuring
+- Handle nested destructuring and rest elements
+
+**Upstream:** `src/ReactiveScopes/CodegenReactiveFunction.ts` (destructuring reconstruction)
+**Depends on:** None
 
 ---
 
-## Gap 9b: booking-list localeCompare ✅ (fixture bug)
+## Gap 12: Named Variable Preservation
 
-~~**Priority:** P2 -- 1/2 test cases match~~
+**Priority:** P1 -- ~80+ conformance fixtures diverge because we use temp names where upstream preserves original names
 
-**Resolved**: The failing test case crashes for ALL compilers (Original, Babel, OXC) with `Cannot read properties of undefined (reading 'localeCompare')`. This is a fixture bug (the test passes undefined props), not a compiler bug. The one valid test case matches correctly. Effective result: 1/1 valid test cases pass.
+**Current state:** Our codegen assigns temporary names (`t0`, `t1`, ...) to intermediate values. The upstream compiler preserves original variable names from the source when possible (e.g., `const x = ...` instead of `const t0 = ...`). After normalization, temp names are canonicalized, but the divergence appears when the expected output uses a named variable and we use a temp in its place.
+
+**What's needed:**
+- Investigate how upstream `CodegenReactiveFunction.ts` decides when to use original names vs temps
+- Preserve the original identifier name from the HIR when emitting declarations
+- Likely requires carrying the original name through the reactive scope tree
+
+**Upstream:** `src/ReactiveScopes/CodegenReactiveFunction.ts`
+**Depends on:** None
 
 ---
 
-## Fixture Bugs
+## Gap 13: Async Function Emission
 
-The following fixtures crash for ALL compilers (Original React, Babel plugin, and OXC) due to test fixture issues (undefined props, missing data). These are NOT compiler bugs.
+**Priority:** P2 -- ~1 fixture diverges because we drop `async` keyword
 
-| Fixture | Error | Notes |
-|---------|-------|-------|
-| data-table | `Cannot read properties of undefined (reading 'length')` | Crashes for Original + Babel + OXC |
-| time-slot-picker | `Cannot read properties of undefined (reading 'filter')` | Crashes for all, 2 test cases |
-| command-menu | `Cannot read properties of undefined (reading '0')` | Crashes for all |
-| multi-step-form | `Cannot read properties of undefined (reading '0')` | Crashes for all (1 case) |
-| booking-list | `Cannot read properties of undefined (reading 'localeCompare')` | Crashes for all (1 case, other case passes) |
+**Current state:** At least 1 conformance fixture has `ours=[function]` vs `exp=[async]`, indicating we don't preserve the `async` keyword on function declarations.
 
-**Completed**: Fixed all 5 fixture bugs by providing valid default props in `render-compare.mjs`. data-table, time-slot-picker, booking-list now match. command-menu and multi-step-form render but have minor divergences (active item styling, field count). Commit `39d28fb`.
+**What's needed:**
+- Check if `async` flag is preserved through HIR lowering
+- Emit `async function` when the original was async
+
+**Upstream:** `src/ReactiveScopes/CodegenReactiveFunction.ts`
+**Depends on:** None
+
+---
+
+## Gap 14: Known-Failures Housekeeping
+
+**Priority:** P1 -- quick win
+
+**Current state:** 2 fixtures are newly passing (should be removed from known-failures.txt) and 5 fixtures have regressed (should be added). The conformance test prints these at the end of each run.
+
+**What's needed:**
+- Remove `error.unconditional-set-state-in-render-after-loop.js` from known-failures.txt
+- Remove `jsx-bracket-in-text.jsx` from known-failures.txt
+- Add the 5 unexpected divergences to known-failures.txt
+
+**Depends on:** None
+
+---
+
+## Gap 15: Remaining Render Divergences (3 fixtures)
+
+**Priority:** P3 -- minor visual differences in E2E benchmarks
+
+**Current state:** 3 of 25 benchmark fixtures show `semantic_divergence`:
+1. **command-menu**: Active item class styling differs (likely conditional logic in compiled output)
+2. **canvas-sidebar**: Minor content differences (possibly JSX text whitespace edge case)
+3. **multi-step-form**: Shows "0/0 fields" instead of "0/1 fields" (field count logic difference)
+
+**What's needed:**
+- Diff the OXC vs Babel compiled output for each to find the specific codegen difference
+- These are likely symptoms of scope/memoization issues rather than pure codegen bugs
+
+**Depends on:** Possibly scope inference fixes (Gap 7/11 in scope-inference.md)
