@@ -2,7 +2,7 @@
 
 Issues in `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs` and `crates/oxc_react_compiler/src/reactive_scopes/build_reactive_function.rs`.
 
-Completed: Gaps 1-5, 6b, 9. Remaining: 2 render failures (Gaps 7-8), 1 correctness improvement (Gap 6), fixture bug tracking.
+Completed: Gaps 1-5, 6b, 7, 8, 9, fixture bugs. Remaining: 1 correctness improvement (Gap 6), 3 minor render divergences.
 
 ---
 
@@ -58,38 +58,19 @@ Completed: Gaps 1-5, 6b, 9. Remaining: 2 render failures (Gaps 7-8), 1 correctne
 
 ---
 
-## Gap 7: availability-schedule Arithmetic
+## Gap 7: availability-schedule Arithmetic ✅
 
-**Priority:** P1 -- renders but wrong output (2 issues)
+~~**Priority:** P1 -- renders but wrong output (2 issues)~~
 
-**Current state:** The availability-schedule fixture renders but produces wrong arithmetic results.
-
-**Issue 1 -- Missing `continue` statement:** Loop codegen does not emit `continue` statements. The upstream compiler emits `continue` for `Terminal::Continue` (or equivalent). Our codegen either drops it or converts it to an unconditional goto that falls through.
-
-**Issue 2 -- Operator precedence:** The expression `(a - b) / c` is emitted as `a - b / c`, which evaluates differently due to operator precedence. The codegen needs parenthesization logic for binary expressions where the sub-expression has lower precedence than the parent.
-
-**What's needed:**
-- Add `continue` support to loop terminal codegen
-- Add operator precedence awareness to binary expression codegen (parenthesize when child precedence < parent precedence)
-
-**Upstream:** `src/ReactiveScopes/CodegenReactiveFunction.ts`
-**Depends on:** None
+**Completed**: Added `Continue` and `Break` variants to `ReactiveTerminal`. `build_reactive_block_until` now passes `LoopContext` with correct per-loop-type continue targets. Inlined binary expressions are wrapped in parentheses. Render: availability-schedule now matches. Commit `39d28fb`.
 
 ---
 
-## Gap 8: canvas-sidebar Missing Return
+## Gap 8: canvas-sidebar Missing Return ✅
 
-**Priority:** P1 -- renders empty/wrong content (missing return statement)
+~~**Priority:** P1 -- renders empty/wrong content (missing return statement)~~
 
-**Current state:** The canvas-sidebar fixture's compiled output is missing its main `return` statement, causing the component to return `undefined`. A deep-work investigation identified this as the main return being dropped during codegen.
-
-**What's needed:**
-- Investigate which terminal/block path drops the return statement
-- Likely a codegen issue where a `Terminal::Return` with a value is not emitted, or the return value is assigned to a temporary that is then not returned
-- Check if this is related to scope boundary handling (the return may be inside a reactive scope that swallows it)
-
-**Upstream:** `src/ReactiveScopes/CodegenReactiveFunction.ts`
-**Depends on:** None
+**Completed**: Three fixes: (1) `build_scope_block_only` now receives scope fallthrough as stop boundary to prevent post-scope code from being consumed inside scope bodies. (2) `codegen_scope` handles `early_return_value` by converting trailing `return X;` to `ern = X;`, caching the value, and emitting `return ern;` after the scope guard. (3) Multi-line JSXText whitespace collapsing. Canvas-sidebar now renders correctly but has a minor JSX text whitespace edge case. Commit `39d28fb`.
 
 ---
 
@@ -113,4 +94,4 @@ The following fixtures crash for ALL compilers (Original React, Babel plugin, an
 | multi-step-form | `Cannot read properties of undefined (reading '0')` | Crashes for all (1 case) |
 | booking-list | `Cannot read properties of undefined (reading 'localeCompare')` | Crashes for all (1 case, other case passes) |
 
-**Recommendation:** Fix these test fixtures by providing valid default props, OR add a `@knownFixtureBug` marker and exclude them from the render equivalence denominator. Either approach is acceptable; fixing the fixtures is preferred for cleaner metrics.
+**Completed**: Fixed all 5 fixture bugs by providing valid default props in `render-compare.mjs`. data-table, time-slot-picker, booking-list now match. command-menu and multi-step-form render but have minor divergences (active item styling, field count). Commit `39d28fb`.
