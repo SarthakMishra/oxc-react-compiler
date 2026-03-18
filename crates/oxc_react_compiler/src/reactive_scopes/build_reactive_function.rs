@@ -259,12 +259,18 @@ fn build_reactive_block_until(
                 current = *fallthrough;
                 continue;
             }
-            Terminal::Logical { right, fallthrough, .. } => {
-                // Inline the right-side block. DeclareLocal and StoreLocal for the
-                // result are already in the HIR (emitted by the builder).
+            Terminal::Logical { operator, right, fallthrough, result, .. } => {
+                // The left-side instructions (including StoreLocal for result)
+                // are already emitted above. The right block must execute
+                // conditionally based on the operator.
                 let right_block =
                     build_reactive_block_until(hir, *right, Some(*fallthrough), visited);
-                instructions.extend(right_block.instructions);
+                instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Logical {
+                    operator: *operator,
+                    right: right_block,
+                    result: result.clone(),
+                    id: current,
+                }));
                 current = *fallthrough;
                 continue;
             }
@@ -387,10 +393,15 @@ fn build_scope_block_only(
                 let remaining = build_scope_block_only(hir, *fallthrough, visited);
                 instructions.extend(remaining.instructions);
             }
-            Terminal::Logical { right, fallthrough, .. } => {
+            Terminal::Logical { operator, right, fallthrough, result, .. } => {
                 let right_block =
                     build_reactive_block_until(hir, *right, Some(*fallthrough), visited);
-                instructions.extend(right_block.instructions);
+                instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Logical {
+                    operator: *operator,
+                    right: right_block,
+                    result: result.clone(),
+                    id: block_id,
+                }));
                 let remaining = build_scope_block_only(hir, *fallthrough, visited);
                 instructions.extend(remaining.instructions);
             }

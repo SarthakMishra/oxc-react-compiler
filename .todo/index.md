@@ -2,11 +2,10 @@
 
 > Last updated: 2026-03-18
 
-Render equivalence is at 40% (10/25 pairs). Root cause analysis shows two dominant bugs accounting for nearly all remaining failures: (1) logical/ternary expression flattening destroys short-circuit semantics, and (2) uninitialized scope outputs from variables produced by useMemo/useCallback that are never assigned in the scope's if-branch.
+Render equivalence is at 68% (17/25 pairs). Logical expression flattening fix brought 7 new fixtures to semantic_match. Remaining failures: ternary expression result handling, uninitialized scope outputs, and runtime errors in complex fixtures.
 
-## P0 -- Logical/Ternary Expression Codegen
+## P0 -- Ternary Expression Codegen
 
-- [ ] Reconstruct short-circuit expressions from Logical terminals instead of flattening — [codegen-emission.md](codegen-emission.md)#gap-5-logical-expression-flattening
 - [ ] Reconstruct ternary expressions from If terminals with result places — [codegen-emission.md](codegen-emission.md)#gap-6-ternary-expression-reconstruction
 
 ## P0 -- Scope Output Correctness

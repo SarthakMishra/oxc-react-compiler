@@ -915,6 +915,21 @@ pub enum ReactiveTerminal {
         value: Place,
         id: BlockId,
     },
+    /// Logical expression (&&, ||, ??).
+    ///
+    /// The left-side instructions are already emitted before this terminal
+    /// (they always execute and store the left value into `result`).
+    /// The `right` block is conditional: it executes and overwrites `result`
+    /// only when the operator's short-circuit condition is not met.
+    Logical {
+        operator: LogicalOp,
+        right: ReactiveBlock,
+        /// The place holding the logical expression result. Before this
+        /// terminal, it contains the left value; the right block may
+        /// overwrite it.
+        result: Option<Place>,
+        id: BlockId,
+    },
 }
 
 #[derive(Debug, Clone)]

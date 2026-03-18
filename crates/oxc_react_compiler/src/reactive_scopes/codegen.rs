@@ -124,6 +124,9 @@ fn visit_terminal_child_blocks(terminal: &ReactiveTerminal, counts: &mut FxHashM
         ReactiveTerminal::Label { block, .. } => {
             count_temp_uses_in_slice(&block.instructions, counts);
         }
+        ReactiveTerminal::Logical { right, .. } => {
+            count_temp_uses_in_slice(&right.instructions, counts);
+        }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }
 }
@@ -152,7 +155,8 @@ fn visit_terminal_uses(terminal: &ReactiveTerminal, counts: &mut FxHashMap<Strin
         | ReactiveTerminal::ForOf { .. }
         | ReactiveTerminal::ForIn { .. }
         | ReactiveTerminal::Try { .. }
-        | ReactiveTerminal::Label { .. } => {}
+        | ReactiveTerminal::Label { .. }
+        | ReactiveTerminal::Logical { .. } => {}
     }
 }
 
@@ -790,6 +794,9 @@ fn collect_tag_constants_from_terminal(terminal: &ReactiveTerminal, map: &mut Ta
         }
         ReactiveTerminal::Label { block, .. } => {
             collect_tag_constants_from_block(block, map);
+        }
+        ReactiveTerminal::Logical { right, .. } => {
+            collect_tag_constants_from_block(right, map);
         }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }
@@ -1842,6 +1849,28 @@ fn codegen_terminal(
             codegen_block(block, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}}\n"));
         }
+        ReactiveTerminal::Logical { operator, right, result, .. } => {
+            // The left-side instructions (including `result = left_val`) were
+            // already emitted. Wrap the right block in a conditional that
+            // preserves short-circuit semantics.
+            if let Some(result_place) = result {
+                let result_name = resolve_place(result_place, inline_map);
+                let condition = match operator {
+                    crate::hir::types::LogicalOp::And => format!("{result_name}"),
+                    crate::hir::types::LogicalOp::Or => format!("!{result_name}"),
+                    crate::hir::types::LogicalOp::NullishCoalescing => {
+                        format!("{result_name} == null")
+                    }
+                };
+                output.push_str(&format!("{indent_str}if ({condition}) {{\n"));
+                codegen_block(right, output, cache_slot, indent + 1, declared, tag_constants);
+                output.push_str(&format!("{indent_str}}}\n"));
+            } else {
+                // No result place — just emit the right block unconditionally
+                // (fallback, should not happen in practice)
+                codegen_block(right, output, cache_slot, indent, declared, tag_constants);
+            }
+        }
     }
 }
 
@@ -2351,6 +2380,9 @@ fn collect_scope_declarations_in_terminal(
         ReactiveTerminal::Label { block, .. } => {
             collect_all_scope_declarations(block, output, declared, indent);
         }
+        ReactiveTerminal::Logical { right, .. } => {
+            collect_all_scope_declarations(right, output, declared, indent);
+        }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }
 }
@@ -2438,6 +2470,7 @@ fn count_terminal_slots(terminal: &ReactiveTerminal) -> u32 {
             cases.iter().map(|(_, block)| count_cache_slots(block)).sum()
         }
         ReactiveTerminal::Label { block, .. } => count_cache_slots(block),
+        ReactiveTerminal::Logical { right, .. } => count_cache_slots(right),
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => 0,
     }
 }

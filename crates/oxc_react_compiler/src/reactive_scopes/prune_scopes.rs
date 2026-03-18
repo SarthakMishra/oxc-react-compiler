@@ -253,6 +253,12 @@ fn collect_used_in_terminal(terminal: &ReactiveTerminal, used: &mut FxHashSet<Id
         ReactiveTerminal::Label { block, .. } => {
             collect_used_ids(block, used);
         }
+        ReactiveTerminal::Logical { right, result, .. } => {
+            collect_used_ids(right, used);
+            if let Some(r) = result {
+                used.insert(r.identifier.id);
+            }
+        }
     }
 }
 
@@ -342,6 +348,9 @@ fn prune_scopes_in_terminal(terminal: &mut ReactiveTerminal, used_ids: &FxHashSe
         }
         ReactiveTerminal::Label { block, .. } => {
             prune_scopes_in_block(block, used_ids);
+        }
+        ReactiveTerminal::Logical { right, .. } => {
+            prune_scopes_in_block(right, used_ids);
         }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }
@@ -799,6 +808,11 @@ fn substitute_places_in_terminal(
         | ReactiveTerminal::DoWhile { .. }
         | ReactiveTerminal::Try { .. }
         | ReactiveTerminal::Label { .. } => {}
+        ReactiveTerminal::Logical { result, .. } => {
+            if let Some(r) = result {
+                substitute_place(r, subs);
+            }
+        }
     }
 }
 
@@ -1086,6 +1100,11 @@ fn promote_places_in_terminal(terminal: &mut ReactiveTerminal) {
             // These terminals have blocks but no direct Place fields
             // (blocks are walked by for_each_block_in_terminal_mut)
         }
+        ReactiveTerminal::Logical { result, .. } => {
+            if let Some(r) = result {
+                promote_place(r);
+            }
+        }
     }
 }
 
@@ -1299,6 +1318,7 @@ fn set_terminal_id(terminal: &mut ReactiveTerminal, new_id: crate::hir::types::B
         | ReactiveTerminal::DoWhile { id, .. }
         | ReactiveTerminal::Label { id, .. }
         | ReactiveTerminal::Try { id, .. }
+        | ReactiveTerminal::Logical { id, .. }
         | ReactiveTerminal::Return { id, .. }
         | ReactiveTerminal::Throw { id, .. } => {
             *id = new_id;
@@ -2621,6 +2641,9 @@ fn for_each_block_in_terminal(terminal: &ReactiveTerminal, mut f: impl FnMut(&Re
         ReactiveTerminal::Label { block, .. } => {
             f(block);
         }
+        ReactiveTerminal::Logical { right, .. } => {
+            f(right);
+        }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }
 }
@@ -2664,6 +2687,9 @@ fn for_each_block_in_terminal_mut(
         }
         ReactiveTerminal::Label { block, .. } => {
             f(block);
+        }
+        ReactiveTerminal::Logical { right, .. } => {
+            f(right);
         }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }

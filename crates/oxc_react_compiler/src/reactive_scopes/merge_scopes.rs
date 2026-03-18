@@ -85,6 +85,12 @@ fn collectlast_usage_in_terminal(terminal: &ReactiveTerminal, map: &mut LastUsag
         ReactiveTerminal::Label { block, .. } => {
             collectlast_usage_in_block(block, map);
         }
+        ReactiveTerminal::Logical { right, result, .. } => {
+            collectlast_usage_in_block(right, map);
+            if let Some(r) = result {
+                record_place_usage(r, u32::MAX, map);
+            }
+        }
         ReactiveTerminal::Return { value, .. } => {
             record_place_usage(value, u32::MAX, map);
         }
@@ -965,6 +971,9 @@ fn merge_scopes_in_terminal(
         }
         ReactiveTerminal::Label { block, .. } => {
             merge_scopes_in_block(block, last_usage);
+        }
+        ReactiveTerminal::Logical { right, .. } => {
+            merge_scopes_in_block(right, last_usage);
         }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }

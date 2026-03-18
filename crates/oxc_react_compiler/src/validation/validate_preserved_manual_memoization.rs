@@ -167,6 +167,9 @@ fn walk_terminal_blocks(
             walk_reactive_block(block, current_scope, memo_scopes);
             walk_reactive_block(handler, current_scope, memo_scopes);
         }
+        ReactiveTerminal::Logical { right, .. } => {
+            walk_reactive_block(right, current_scope, memo_scopes);
+        }
         ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }
 }
