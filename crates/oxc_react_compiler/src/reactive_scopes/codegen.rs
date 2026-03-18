@@ -908,12 +908,14 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     let mut cache_slot = 0u32;
 
     // Generate function header — preserve arrow vs function syntax from source
+    let async_prefix = if rf.is_async { "async " } else { "" };
+    let generator_star = if rf.is_generator { "*" } else { "" };
     if rf.is_arrow {
-        output.push('(');
+        output.push_str(&format!("{async_prefix}("));
     } else if let Some(ref name) = rf.id {
-        output.push_str(&format!("function {name}("));
+        output.push_str(&format!("{async_prefix}function{generator_star} {name}("));
     } else {
-        output.push_str("function (");
+        output.push_str(&format!("{async_prefix}function{generator_star} ("));
     }
 
     // Generate parameters
@@ -3448,12 +3450,14 @@ pub fn codegen_function_with_source_map(
     ctx.map_from_span(rf.loc, source_text);
 
     // Generate function header — preserve arrow vs function syntax from source.
+    let async_prefix = if rf.is_async { "async " } else { "" };
+    let generator_star = if rf.is_generator { "*" } else { "" };
     if rf.is_arrow {
-        ctx.write("(");
+        ctx.write(&format!("{async_prefix}("));
     } else if let Some(ref name) = rf.id {
-        ctx.write(&format!("function {name}("));
+        ctx.write(&format!("{async_prefix}function{generator_star} {name}("));
     } else {
-        ctx.write("function (");
+        ctx.write(&format!("{async_prefix}function{generator_star} ("));
     }
 
     for (i, param) in rf.params.iter().enumerate() {

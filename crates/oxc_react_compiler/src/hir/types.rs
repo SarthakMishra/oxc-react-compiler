@@ -835,6 +835,12 @@ pub struct ReactiveFunction {
     /// Whether the original source function was an arrow function expression.
     /// Used by codegen to preserve `() => {}` vs `function() {}` syntax.
     pub is_arrow: bool,
+    /// Whether the original source function was async.
+    /// Used by codegen to emit `async function` or `async () =>`.
+    pub is_async: bool,
+    /// Whether the original source function was a generator.
+    /// Used by codegen to emit `function*`.
+    pub is_generator: bool,
 }
 
 #[derive(Debug, Clone)]

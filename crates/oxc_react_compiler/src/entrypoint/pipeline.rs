@@ -358,6 +358,8 @@ pub fn run_full_pipeline(
         hir_func.loc,
         hir_func.directives,
         hir_func.is_arrow,
+        hir_func.is_async,
+        hir_func.is_generator,
     );
 
     // Phase 9: RF Optimization Passes (48–60)

@@ -279,6 +279,8 @@ fn test_build_reactive_function_single_block() {
         dummy_span(),
         vec![],
         false,
+        false,
+        false,
     );
 
     assert_eq!(rf.id.as_deref(), Some("TestComponent"));
@@ -318,6 +320,8 @@ fn test_build_reactive_function_with_params() {
         Some("MyHook".to_string()),
         dummy_span(),
         vec![],
+        false,
+        false,
         false,
     );
 
@@ -411,6 +415,8 @@ fn test_build_reactive_function_if_terminal() {
         dummy_span(),
         vec![],
         false,
+        false,
+        false,
     );
 
     assert_eq!(rf.id.as_deref(), Some("IfComponent"));
@@ -436,6 +442,8 @@ fn test_codegen_empty_function() {
         body: ReactiveBlock { instructions: vec![] },
         directives: vec![],
         is_arrow: false,
+        is_async: false,
+        is_generator: false,
     };
 
     let code = codegen_function(&rf);
@@ -452,6 +460,8 @@ fn test_codegen_arrow_function() {
         body: ReactiveBlock { instructions: vec![] },
         directives: vec![],
         is_arrow: true,
+        is_async: false,
+        is_generator: false,
     };
 
     let code = codegen_function(&rf);
@@ -476,6 +486,8 @@ fn test_codegen_function_with_return() {
         },
         directives: vec![],
         is_arrow: false,
+        is_async: false,
+        is_generator: false,
     };
 
     let code = codegen_function(&rf);
@@ -503,6 +515,8 @@ fn test_codegen_function_with_primitive() {
         body: ReactiveBlock { instructions: vec![ReactiveInstruction::Instruction(instr)] },
         directives: vec![],
         is_arrow: false,
+        is_async: false,
+        is_generator: false,
     };
 
     let code = codegen_function(&rf);
@@ -523,6 +537,8 @@ fn test_codegen_function_with_params() {
         body: ReactiveBlock { instructions: vec![] },
         directives: vec![],
         is_arrow: false,
+        is_async: false,
+        is_generator: false,
     };
 
     let code = codegen_function(&rf);
@@ -571,6 +587,8 @@ fn test_codegen_scope_block() {
         body: ReactiveBlock { instructions: vec![ReactiveInstruction::Scope(scope_block)] },
         directives: vec![],
         is_arrow: false,
+        is_async: false,
+        is_generator: false,
     };
 
     let code = codegen_function(&rf);
@@ -612,6 +630,8 @@ fn test_hir_to_codegen_roundtrip() {
         Some("Greeter".to_string()),
         dummy_span(),
         vec![],
+        false,
+        false,
         false,
     );
 
