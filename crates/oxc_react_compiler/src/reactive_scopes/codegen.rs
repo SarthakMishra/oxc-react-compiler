@@ -964,14 +964,6 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
         })
         .collect();
 
-    // Pre-declare ALL scope declaration variables at function level.
-    // This ensures that any StoreLocal targeting a scope output uses bare
-    // assignment instead of `const`/`let`, preventing "Assignment to constant
-    // variable" errors and duplicate declarations. This matches the upstream
-    // compiler's approach where scope outputs are always `let`-declared at
-    // function scope before the scope guard.
-    collect_all_scope_declarations(&rf.body, &mut output, &mut declared, 1);
-
     // Build a global map of temp → constant expression for JSX tag resolution.
     // This allows JSX tags assigned in one scope to be resolved in another.
     let tag_constants = build_tag_constant_map(&rf.body);
@@ -979,6 +971,8 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     // Hoist Destructure instructions that destructure from function parameters
     // (e.g., `const { status } = t0;`) to the top of the function body,
     // before any reactive scope checks that may reference those variables.
+    // This is emitted BEFORE scope pre-declarations to match upstream ordering
+    // where destructured params appear before scope output `let` declarations.
     //
     // Build an inline map for default value temps so they're resolved correctly.
     // Default value temps (e.g., `t4 = "member"`) are emitted before the Destructure
@@ -1023,6 +1017,14 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
             }
         }
     }
+
+    // Pre-declare ALL scope declaration variables at function level.
+    // This ensures that any StoreLocal targeting a scope output uses bare
+    // assignment instead of `const`/`let`, preventing "Assignment to constant
+    // variable" errors and duplicate declarations. This matches the upstream
+    // compiler's approach where scope outputs are always `let`-declared at
+    // function scope before the scope guard.
+    collect_all_scope_declarations(&rf.body, &mut output, &mut declared, 1);
 
     // Generate body, skipping hoisted instructions
     codegen_block_skip_hoisted(

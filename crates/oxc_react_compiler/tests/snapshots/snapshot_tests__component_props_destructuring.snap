@@ -6,8 +6,8 @@ import { c as _c } from "react/compiler-runtime";
 
 function Greeting(t0) {
   const $ = _c(3);
-  let t9;
   let { name, age } = t0;
+  let t9;
   if ($[0] !== age || $[1] !== name) {
     t9 = (
       <div>
