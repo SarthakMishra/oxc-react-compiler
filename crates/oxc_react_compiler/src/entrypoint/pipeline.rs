@@ -139,6 +139,7 @@ pub fn run_pipeline(
         hir,
         errors,
         param_names,
+        param_ids,
     );
 
     // Bail if frozen-mutation detected (before expensive downstream passes)
