@@ -264,8 +264,10 @@ fn visit_instr_uses(value: &InstructionValue, counts: &mut FxHashMap<String, u32
                 bump_temp(c, counts);
             }
         }
-        InstructionValue::Destructure { value, .. } => {
+        InstructionValue::Destructure { value, lvalue_pattern } => {
             bump_temp(value, counts);
+            // Count uses of default value temps in destructure properties
+            bump_destructure_default_temps(lvalue_pattern, counts);
         }
         InstructionValue::PrefixUpdate { lvalue, .. }
         | InstructionValue::PostfixUpdate { lvalue, .. } => {
@@ -291,6 +293,40 @@ fn bump_temp(place: &Place, counts: &mut FxHashMap<String, u32>) {
     if is_temp_place(place) {
         let name = format!("t{}", place.identifier.id.0);
         *counts.entry(name).or_insert(0) += 1;
+    }
+}
+
+/// Count uses of default value temps in destructure patterns.
+/// Default values (e.g., `{ x = defaultVal }`) reference temps that hold
+/// the default expressions. These are real uses that prevent the temp from
+/// being eliminated as dead code.
+fn bump_destructure_default_temps(
+    pattern: &crate::hir::types::DestructurePattern,
+    counts: &mut FxHashMap<String, u32>,
+) {
+    use crate::hir::types::DestructurePattern;
+    match pattern {
+        DestructurePattern::Object { properties, .. } => {
+            for prop in properties {
+                if let Some(ref default_place) = prop.default_value {
+                    bump_temp(default_place, counts);
+                }
+                // Recurse into nested patterns
+                if let crate::hir::types::DestructureTarget::Pattern(nested) = &prop.value {
+                    bump_destructure_default_temps(nested, counts);
+                }
+            }
+        }
+        DestructurePattern::Array { items, .. } => {
+            for item in items {
+                if let crate::hir::types::DestructureArrayItem::Value(
+                    crate::hir::types::DestructureTarget::Pattern(nested),
+                ) = item
+                {
+                    bump_destructure_default_temps(nested, counts);
+                }
+            }
+        }
     }
 }
 
@@ -925,22 +961,44 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     // Hoist Destructure instructions that destructure from function parameters
     // (e.g., `const { status } = t0;`) to the top of the function body,
     // before any reactive scope checks that may reference those variables.
-    // Hoisted parameter destructures are never temps, so we use an empty inline map.
-    let empty_inline_map = InlineMap::default();
+    //
+    // Build an inline map for default value temps so they're resolved correctly.
+    // Default value temps (e.g., `t4 = "member"`) are emitted before the Destructure
+    // in the instruction list but won't be in a full block inline_map since we
+    // process hoisted instructions separately.
     let mut hoisted_indices = FxHashSet::default();
     for (i, instr) in rf.body.instructions.iter().enumerate() {
         if let ReactiveInstruction::Instruction(instruction) = instr
-            && let InstructionValue::Destructure { value, .. } = &instruction.value
+            && let InstructionValue::Destructure { value, lvalue_pattern } = &instruction.value
         {
             let value_name = place_name(value);
             if param_names.contains(value_name.as_ref()) {
+                // Build a mini inline map for default value temps.
+                // Find instructions that produce default values referenced by this pattern.
+                let mut default_inline_map: InlineMap = FxHashMap::default();
+                collect_default_value_inline_entries(
+                    lvalue_pattern,
+                    &rf.body.instructions,
+                    &mut default_inline_map,
+                    &tag_constants,
+                );
+                // Also mark default value temp instructions as hoisted (skip in body)
+                for (j, other) in rf.body.instructions.iter().enumerate() {
+                    if let ReactiveInstruction::Instruction(other_instr) = other {
+                        let temp_name = format!("t{}", other_instr.lvalue.identifier.id.0);
+                        if default_inline_map.contains_key(&temp_name) {
+                            hoisted_indices.insert(j);
+                        }
+                    }
+                }
+
                 let indent_str = "  ";
                 codegen_instruction(
                     instruction,
                     &mut output,
                     indent_str,
                     &mut declared,
-                    &empty_inline_map,
+                    &default_inline_map,
                     &tag_constants,
                 );
                 hoisted_indices.insert(i);
@@ -1457,6 +1515,11 @@ fn codegen_instruction(
                 // Register destructured names so later DeclareLocal/scopes don't re-declare
                 collect_pattern_names(lvalue_pattern, declared);
             }
+            // Emit default value checks for properties with defaults.
+            // For `{ x = defaultVal } = obj`, generates:
+            //   if (x === undefined) { x = defaultVal; }
+            // This matches Babel's approach of `x = t1 === undefined ? default : t1`.
+            codegen_destructure_defaults(lvalue_pattern, output, indent, inline_map);
         }
         InstructionValue::DeclareLocal { lvalue, type_ } => {
             let name = place_name(lvalue);
@@ -1869,8 +1932,24 @@ fn codegen_scope(
 
     // Filter out scope declarations that correspond to DeclareLocal temps for
     // destructured variables (they're replaced by the actual pattern names).
-    let sorted_decls: Vec<_> =
-        sorted_decls.into_iter().filter(|(id, _)| !destructured_declare_ids.contains(id)).collect();
+    //
+    // DIVERGENCE: Also filter out scope declarations whose variable is only declared
+    // (via DeclareLocal) but never assigned a value within this scope body.
+    // This prevents caching undefined for variables whose actual value comes from
+    // a hook call (useMemo, useCallback, useRef) that runs AFTER this scope.
+    // Pattern: ScopeA wraps callback+deps creation for useMemo, but also contains
+    // a DeclareLocal for the NEXT useMemo's result variable. Without this filter,
+    // the scope caches the uninitialized variable, causing "Cannot read properties
+    // of undefined" errors at runtime.
+    let value_producing_names = collect_value_producing_names(&scope.instructions);
+    let sorted_decls: Vec<_> = sorted_decls
+        .into_iter()
+        .filter(|(id, _)| !destructured_declare_ids.contains(id))
+        .filter(|(_, decl)| {
+            let decl_name = identifier_display_name(&decl.identifier);
+            value_producing_names.contains(decl_name.as_ref())
+        })
+        .collect();
 
     // Pre-declare scope output variables with `let` so the else-branch
     // (cache reload) can assign to them. Variables already declared by
@@ -2052,6 +2131,51 @@ fn find_destructured_declare_ids(scope: &ReactiveScopeBlock) -> FxHashSet<Identi
     result
 }
 
+/// Collect the set of identifier IDs and display names that have value-producing
+/// instructions (not just DeclareLocal/DeclareContext) within a scope body.
+/// A "value-producing" instruction is one that computes or stores a value
+/// (StoreLocal, FunctionExpression, ArrayExpression, CallExpression, etc.),
+/// as opposed to DeclareLocal which merely declares a variable without assigning.
+///
+/// This is used to filter scope declarations: a variable that is only DeclareLocal'd
+/// inside a scope but never assigned should NOT be cached as a scope output, because
+/// its value is undefined at cache time. The actual assignment happens later (e.g.,
+/// after a useMemo/useCallback call that follows the scope).
+fn collect_value_producing_names(block: &ReactiveBlock) -> FxHashSet<String> {
+    let mut names = FxHashSet::default();
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                match &instruction.value {
+                    // DeclareLocal/DeclareContext only declare — they don't produce values
+                    InstructionValue::DeclareLocal { .. }
+                    | InstructionValue::DeclareContext { .. } => {}
+                    // StoreLocal/StoreContext produce values for the TARGET variable
+                    InstructionValue::StoreLocal { lvalue, .. }
+                    | InstructionValue::StoreContext { lvalue, .. } => {
+                        // The store target is value-produced
+                        let target_name = identifier_display_name(&lvalue.identifier);
+                        names.insert(target_name.to_string());
+                        // The instruction's own lvalue (temp) is also value-produced
+                        let lvalue_name = identifier_display_name(&instruction.lvalue.identifier);
+                        names.insert(lvalue_name.to_string());
+                    }
+                    // All other instructions produce a value in their lvalue
+                    _ => {
+                        let lvalue_name = identifier_display_name(&instruction.lvalue.identifier);
+                        names.insert(lvalue_name.to_string());
+                    }
+                }
+            }
+            ReactiveInstruction::Scope(_) | ReactiveInstruction::Terminal(_) => {
+                // Nested scopes and terminals also produce values but we don't
+                // recurse — scope declarations reference top-level names.
+            }
+        }
+    }
+    names
+}
+
 /// Collect declaration_ids and names from all places in a Destructure pattern.
 fn collect_pattern_identifiers(
     pattern: &crate::hir::types::DestructurePattern,
@@ -2152,6 +2276,8 @@ fn collect_all_scope_declarations(
             ReactiveInstruction::Scope(scope) => {
                 // Find DeclareLocal temps that correspond to destructured variables
                 let destructured_declare_ids = find_destructured_declare_ids(scope);
+                // Find names with value-producing instructions in this scope body
+                let value_producing = collect_value_producing_names(&scope.instructions);
 
                 // Sort declarations by source location for deterministic ordering
                 let mut sorted_decls: Vec<_> = scope.scope.declarations.iter().collect();
@@ -2164,6 +2290,11 @@ fn collect_all_scope_declarations(
                         continue;
                     }
                     let decl_name = identifier_display_name(&decl.identifier);
+                    // Skip declarations that are only DeclareLocal'd but never
+                    // assigned a value — their value comes from a later scope
+                    if !value_producing.contains(decl_name.as_ref()) {
+                        continue;
+                    }
                     if !declared.contains(decl_name.as_ref()) {
                         declared.insert(decl_name.to_string());
                         output.push_str(&format!("{indent_str}let {decl_name};\n"));
@@ -2763,6 +2894,99 @@ fn codegen_destructure_pattern(
                 output.push_str(&format!("...{}", place_name(rest_place)));
             }
             output.push(']');
+        }
+    }
+}
+
+/// Build inline map entries for default value temps in a destructure pattern.
+/// Finds the instructions in the block that produce the default values and
+/// generates their expression strings for inlining.
+fn collect_default_value_inline_entries(
+    pattern: &crate::hir::types::DestructurePattern,
+    instructions: &[ReactiveInstruction],
+    inline_map: &mut InlineMap,
+    tag_constants: &TagConstantMap,
+) {
+    // Collect all default value temp IDs from the pattern
+    let mut default_temp_ids: FxHashSet<String> = FxHashSet::default();
+    collect_default_temp_names(pattern, &mut default_temp_ids);
+
+    if default_temp_ids.is_empty() {
+        return;
+    }
+
+    // Find instructions that produce these temps and generate inline expressions
+    for ri in instructions {
+        if let ReactiveInstruction::Instruction(instr) = ri {
+            let temp_name = format!("t{}", instr.lvalue.identifier.id.0);
+            if default_temp_ids.contains(&temp_name)
+                && let Some(expr) = expr_string(&instr.value, inline_map, tag_constants)
+            {
+                inline_map.insert(temp_name, expr);
+            }
+        }
+    }
+}
+
+/// Collect temp names from default value places in a destructure pattern.
+fn collect_default_temp_names(
+    pattern: &crate::hir::types::DestructurePattern,
+    names: &mut FxHashSet<String>,
+) {
+    use crate::hir::types::DestructurePattern;
+    match pattern {
+        DestructurePattern::Object { properties, .. } => {
+            for prop in properties {
+                if let Some(ref default_place) = prop.default_value
+                    && is_temp_place(default_place)
+                {
+                    names.insert(format!("t{}", default_place.identifier.id.0));
+                }
+                if let crate::hir::types::DestructureTarget::Pattern(nested) = &prop.value {
+                    collect_default_temp_names(nested, names);
+                }
+            }
+        }
+        DestructurePattern::Array { items, .. } => {
+            for item in items {
+                if let crate::hir::types::DestructureArrayItem::Value(
+                    crate::hir::types::DestructureTarget::Pattern(nested),
+                ) = item
+                {
+                    collect_default_temp_names(nested, names);
+                }
+            }
+        }
+    }
+}
+
+/// Emit default value checks for destructure properties that have defaults.
+/// For `{ x = defaultVal } = obj`, generates:
+///   if (x === undefined) { x = defaultVal; }
+///
+/// This is called after the destructure statement is emitted.
+fn codegen_destructure_defaults(
+    pattern: &crate::hir::types::DestructurePattern,
+    output: &mut String,
+    indent: &str,
+    inline_map: &InlineMap,
+) {
+    match pattern {
+        crate::hir::types::DestructurePattern::Object { properties, .. } => {
+            for prop in properties {
+                if let Some(ref default_place) = prop.default_value
+                    && let crate::hir::types::DestructureTarget::Place(target) = &prop.value
+                {
+                    let var_name = place_name(target);
+                    let default_val = resolve_place(default_place, inline_map);
+                    output.push_str(&format!(
+                        "{indent}if ({var_name} === undefined) {{ {var_name} = {default_val}; }}\n"
+                    ));
+                }
+            }
+        }
+        crate::hir::types::DestructurePattern::Array { .. } => {
+            // Array destructuring defaults not yet supported
         }
     }
 }

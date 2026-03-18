@@ -63,7 +63,11 @@ fn collect_used_in_instruction_value(value: &InstructionValue, used: &mut FxHash
         }
         InstructionValue::DeclareLocal { lvalue, .. } => add(lvalue),
         InstructionValue::DeclareContext { lvalue } => add(lvalue),
-        InstructionValue::Destructure { value, .. } => add(value),
+        InstructionValue::Destructure { value, lvalue_pattern } => {
+            add(value);
+            // Mark default value temps as used so DCE doesn't remove them
+            collect_default_value_uses(lvalue_pattern, used);
+        }
         InstructionValue::BinaryExpression { left, right, .. } => {
             add(left);
             add(right);
@@ -171,6 +175,33 @@ fn collect_used_in_instruction_value(value: &InstructionValue, used: &mut FxHash
         | InstructionValue::LoadGlobal { .. }
         | InstructionValue::StartMemoize { .. }
         | InstructionValue::UnsupportedNode { .. } => {}
+    }
+}
+
+/// Collect IdentifierIds of default value places in a destructure pattern.
+fn collect_default_value_uses(
+    pattern: &crate::hir::types::DestructurePattern,
+    used: &mut FxHashSet<IdentifierId>,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+    match pattern {
+        DestructurePattern::Object { properties, .. } => {
+            for prop in properties {
+                if let Some(ref default_place) = prop.default_value {
+                    used.insert(default_place.identifier.id);
+                }
+                if let DestructureTarget::Pattern(nested) = &prop.value {
+                    collect_default_value_uses(nested, used);
+                }
+            }
+        }
+        DestructurePattern::Array { items, .. } => {
+            for item in items {
+                if let DestructureArrayItem::Value(DestructureTarget::Pattern(nested)) = item {
+                    collect_default_value_uses(nested, used);
+                }
+            }
+        }
     }
 }
 

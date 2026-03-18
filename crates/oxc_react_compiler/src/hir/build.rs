@@ -817,11 +817,23 @@ impl HIRBuilder {
         let mut properties = Vec::new();
         for prop in &pat.properties {
             let key = self.property_key_to_string(&prop.key);
-            let target = self.lower_binding_pattern_to_target(&prop.value, kind);
+            // Check if the property has a default value (AssignmentPattern).
+            // E.g., `{ presets = DEFAULT_PRESETS }` has `presets` as the target
+            // and `DEFAULT_PRESETS` as the default value.
+            let (target, default_value) =
+                if let BindingPattern::AssignmentPattern(assign) = &prop.value {
+                    let target = self.lower_binding_pattern_to_target(&assign.left, kind);
+                    let default_place = self.lower_expression(&assign.right);
+                    (target, Some(default_place))
+                } else {
+                    let target = self.lower_binding_pattern_to_target(&prop.value, kind);
+                    (target, None)
+                };
             properties.push(DestructureObjectProperty {
                 key,
                 value: target,
                 shorthand: prop.shorthand,
+                default_value,
             });
         }
         let rest = pat.rest.as_ref().map(|r| match &r.argument {

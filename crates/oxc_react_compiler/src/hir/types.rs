@@ -510,6 +510,10 @@ pub struct DestructureObjectProperty {
     pub key: String,
     pub value: DestructureTarget,
     pub shorthand: bool,
+    /// Optional default value for this property. When present, the destructured
+    /// value should be checked against `undefined` and replaced with this default
+    /// if undefined. Corresponds to `{ key = defaultExpr }` syntax.
+    pub default_value: Option<Place>,
 }
 
 #[derive(Debug, Clone)]

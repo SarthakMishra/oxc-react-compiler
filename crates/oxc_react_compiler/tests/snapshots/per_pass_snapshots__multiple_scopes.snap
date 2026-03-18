@@ -7,18 +7,16 @@ import { c as _c } from "react/compiler-runtime";
 function Summary(t0) {
   const $ = _c(4);
   let count;
-  let t26;
   let { items, threshold } = t0;
+  let t26;
   if ($[0] !== items.length || $[1] !== threshold) {
     count = items.length;
     let hasMany = count > threshold;
     $[0] = items.length;
     $[1] = threshold;
     $[2] = count;
-    $[3] = t26;
   } else {
     count = $[2];
-    t26 = $[3];
   }
   let label = t26;
   let t13;
