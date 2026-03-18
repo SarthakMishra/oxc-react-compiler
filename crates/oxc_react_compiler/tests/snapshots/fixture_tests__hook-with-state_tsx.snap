@@ -8,15 +8,15 @@ diagnostics: 0
 import { c as _c } from "react/compiler-runtime";
 function useCounter() {
   const $ = _c(3);
-  let t9;
   let t2;
+  let t9;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = 0;
-    $[0] = t9;
-    $[1] = t2;
+    $[0] = t2;
+    $[1] = t9;
   } else {
-    t9 = $[0];
-    t2 = $[1];
+    t2 = $[0];
+    t9 = $[1];
   }
   let t10;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {

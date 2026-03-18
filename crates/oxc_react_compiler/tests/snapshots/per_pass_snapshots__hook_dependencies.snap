@@ -6,15 +6,15 @@ import { c as _c } from "react/compiler-runtime";
 
 function Counter() {
   const $ = _c(3);
-  let t14;
   let t2;
+  let t14;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = 0;
-    $[0] = t14;
-    $[1] = t2;
+    $[0] = t2;
+    $[1] = t14;
   } else {
-    t14 = $[0];
-    t2 = $[1];
+    t2 = $[0];
+    t14 = $[1];
   }
   let t15;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {

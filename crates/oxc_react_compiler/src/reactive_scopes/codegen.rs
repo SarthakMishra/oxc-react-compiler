@@ -1534,6 +1534,11 @@ fn codegen_scope(
     let deps = &scope.scope.dependencies;
     let slot_start = *cache_slot;
 
+    // Sort declarations by source location for deterministic cache slot ordering.
+    // Upstream's CodegenReactiveFunction uses compareScopeDeclaration() for this.
+    let mut sorted_decls: Vec<_> = scope.scope.declarations.iter().collect();
+    sorted_decls.sort_by_key(|(_, decl)| decl.identifier.loc.start);
+
     // Hoist DeclareLocal instructions for scope DECLARATIONS only.
     // Variables that are scope outputs (stored in cache, loaded in else branch)
     // need `let` declarations before the scope guard. Variables that are only
@@ -1558,7 +1563,7 @@ fn codegen_scope(
     // Pre-declare scope output variables with `let` so the else-branch
     // (cache reload) can assign to them. Variables already declared by
     // DeclareLocal above are skipped.
-    for (_, decl) in &scope.scope.declarations {
+    for (_, decl) in &sorted_decls {
         let decl_name = identifier_display_name(&decl.identifier);
         if !declared.contains(decl_name.as_ref()) {
             declared.insert(decl_name.to_string());
@@ -1619,7 +1624,7 @@ fn codegen_scope(
     if deps.is_empty() {
         // Sentinel scope: store declarations starting from slot_start
         // (reusing the sentinel slot for the first declaration)
-        for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
+        for (i, (_, decl)) in sorted_decls.iter().enumerate() {
             let decl_name = identifier_display_name(&decl.identifier);
             output.push_str(&format!(
                 "{}$[{}] = {};\n",
@@ -1643,7 +1648,7 @@ fn codegen_scope(
         }
         // Store declarations after deps
         let decl_slot_start = slot_start + deps.len() as u32;
-        for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
+        for (i, (_, decl)) in sorted_decls.iter().enumerate() {
             let decl_name = identifier_display_name(&decl.identifier);
             output.push_str(&format!(
                 "{}$[{}] = {};\n",
@@ -1664,7 +1669,7 @@ fn codegen_scope(
         output.push_str(&format!("{indent_str}}} else {{\n"));
 
         // Load cached declarations
-        for (i, (_, decl)) in scope.scope.declarations.iter().enumerate() {
+        for (i, (_, decl)) in sorted_decls.iter().enumerate() {
             let decl_name = identifier_display_name(&decl.identifier);
             let inner_indent = "  ".repeat(indent + 1);
             output.push_str(&format!(
