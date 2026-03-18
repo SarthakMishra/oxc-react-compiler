@@ -493,7 +493,7 @@ struct FixtureResult {
 ///
 /// Parses both `PluginOptions` (compilation mode, panic threshold) and
 /// `EnvironmentConfig` (validation toggles, feature flags) from comment directives.
-fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
+fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig, bool) {
     // Helper: extract the value after a directive like @name:"value" or @name(value)
     fn find_directive_value<'a>(comment: &'a str, name: &str) -> Option<&'a str> {
         let needle = format!("@{name}");
@@ -674,7 +674,13 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig) {
         }
     }
 
-    (opts, env)
+    // @expectNothingCompiled — test expects no transformation
+    let expect_nothing_compiled = source
+        .lines()
+        .take_while(|l| l.trim().starts_with("//") || l.trim().is_empty())
+        .any(|l| l.contains("@expectNothingCompiled"));
+
+    (opts, env, expect_nothing_compiled)
 }
 
 /// Run a single fixture through the compiler.
@@ -702,7 +708,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
     };
 
     let filename = fixture_path.file_name().unwrap().to_string_lossy().into_owned();
-    let (options, env_config) = parse_fixture_options(&source);
+    let (options, env_config, expect_nothing_compiled) = parse_fixture_options(&source);
 
     // Use catch_unwind to detect panics.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -725,6 +731,15 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                 if expected.starts_with("// UPSTREAM ERROR:") {
                     first_diff = if compile_result.transformed {
                         "we transformed, expected upstream error".to_string()
+                    } else {
+                        String::new()
+                    };
+                    (Some(!compile_result.transformed), false, 0)
+                } else if expect_nothing_compiled {
+                    // @expectNothingCompiled: correct behavior is to NOT transform.
+                    // If we transform, that's a divergence.
+                    first_diff = if compile_result.transformed {
+                        "we compiled, expected nothing compiled".to_string()
                     } else {
                         String::new()
                     };
