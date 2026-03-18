@@ -4,13 +4,13 @@
 
 Conformance: **408/1717 (23.8%)**. Render equivalence: **88% (22/25)**. All 196 Rust tests pass, 0 panics.
 
-Key breakdown of 1309 diverged fixtures:
-- 247 "both compile, slots match" (output format only)
-- 622 "both compile, slots differ" (scope/memoization divergence)
-- 205 "we bail, they compile" (false bail-outs)
-- 137 "we compile, they don't" (we over-compile -- usually fine)
-- 93 "both no memo, format diff"
-- 5 unexpected regressions (need known-failures update)
+Key breakdown of 1332 known-failure fixtures:
+- 250 "both compile, slots match" (output format only)
+- 673 "both compile, slots differ" (scope/memoization divergence)
+- 151 "we bail, they compile" (false bail-outs -- down from 205 after memoization fix)
+- 143 "we compile, they don't" (we over-compile -- usually fine)
+- 87 "both no memo, format diff"
+- 28 dep-comparison error fixtures (need `validateInferredDep` implementation)
 
 ## Active Work
 
@@ -28,9 +28,9 @@ Key breakdown of 1309 diverged fixtures:
 - [ ] Under-memoization: 404 fixtures with fewer slots than upstream (scope merging too aggressive or scopes missing) — [scope-inference.md](scope-inference.md)#gap-11-under-memoization
 - [ ] Over-memoization: 175 fixtures with more slots than upstream — [scope-inference.md](scope-inference.md)#gap-7-over-memoization-slot-count-divergence
 
-## P2 -- Conformance: False Bail-outs (205 fixtures)
+## P2 -- Conformance: False Bail-outs (~~205~~ 151 fixtures)
 
-- [ ] 58 false "memoization preservation" errors — [validation-gaps.md](validation-gaps.md)#gap-5a-false-memoization-preservation
+- [x] ~~58~~ 4 false "memoization preservation" errors (54 fixed; 28 dep-comparison error fixtures moved to known-failures) — [validation-gaps.md](validation-gaps.md)#gap-5a-false-memoization-preservation
 - [ ] 63 silent bail-outs (compile but 0 scopes, no error) — [validation-gaps.md](validation-gaps.md)#gap-6-silent-bail-outs
 - [ ] 26 false "frozen mutation" errors — [validation-gaps.md](validation-gaps.md)#gap-5b-false-frozen-mutation
 - [ ] 16 false "reassigned after render" errors — [validation-gaps.md](validation-gaps.md)#gap-5c-false-reassigned-after-render
