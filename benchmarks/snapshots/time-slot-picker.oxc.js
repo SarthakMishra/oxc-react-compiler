@@ -15,29 +15,46 @@ interface TimeSlotPickerProps {
 }
 
 export function TimeSlotPicker(t0) {
-  const $ = _c(29);
-  const { slots, selectedDate, onSelect, timezone } = t0;
+  const $ = _c(26);
   let t8;
+  let availableSlots;
+  let t90;
+  let t25;
+  let t27;
+  let t91;
+  let t92;
+  let t33;
+  let t35;
+  let t93;
+  let t42;
+  let t44;
+  let t94;
+  let t47;
+  let t53;
+  let t58;
+  let t62;
+  let t75;
+  let { slots, selectedDate, onSelect, timezone } = t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t8 = null;
     $[0] = t8;
   } else {
     t8 = $[0];
   }
-  let availableSlots;
-  const t17 = () => {
-    const t2 = (s) => {
+  let selectedSlot;
+  let setSelectedSlot;
+  ([selectedSlot, setSelectedSlot] = useState(t8));
+  let t17 = () => {
+    let t2 = (s) => {
       return s.available;
     };
     return slots.filter(t2);
   };
-  const t20 = useMemo(t17, [slots]);
-  let t90;
-  let t25;
-  let t27;
+  let t20 = useMemo(t17, [slots]);
   if ($[1] !== t20) {
     availableSlots = t20;
     t25 = () => {
-      const t2 = (s) => {
+      let t2 = (s) => {
         return parseInt(s.time) < 12;
       };
       return availableSlots.filter(t2);
@@ -54,16 +71,12 @@ export function TimeSlotPicker(t0) {
     t25 = $[4];
     t27 = $[5];
   }
-  const morningSlots = t90;
-  const t28 = useMemo(t25, t27);
-  let t92;
-  let t91;
-  let t33;
-  let t35;
+  let morningSlots = t90;
+  let t28 = useMemo(t25, t27);
   if ($[6] !== t28) {
     t91 = t28;
     t33 = () => {
-      const t2 = (s) => {
+      let t2 = (s) => {
         return parseInt(s.time) >= 12;
       };
       return availableSlots.filter(t2);
@@ -80,106 +93,89 @@ export function TimeSlotPicker(t0) {
     t33 = $[9];
     t35 = $[10];
   }
-  const morningSlots = t91;
-  const afternoonSlots = t92;
-  const t36 = useMemo(t33, t35);
-  let t93;
-  if ($[11] !== t36) {
-    t93 = t36;
-    $[11] = t36;
-    $[12] = t93;
-  } else {
-    t93 = $[12];
-  }
-  const afternoonSlots = t93;
-  let t94;
-  let t42;
-  let t44;
-  if ($[13] !== onSelect) {
+  morningSlots = t91;
+  let afternoonSlots = t92;
+  afternoonSlots = useMemo(t33, t35);
+  if ($[11] !== onSelect) {
     t42 = (time) => {
-      const t4 = setSelectedSlot(time);
-      const t8 = onSelect(time);
+      let t4 = setSelectedSlot(time);
+      let t8 = onSelect(time);
       return undefined;
     };
     t44 = [onSelect];
-    $[13] = onSelect;
-    $[14] = t94;
-    $[15] = t42;
-    $[16] = t44;
+    $[11] = onSelect;
+    $[12] = t93;
+    $[13] = t42;
+    $[14] = t44;
   } else {
-    t94 = $[14];
-    t42 = $[15];
-    t44 = $[16];
+    t93 = $[12];
+    t42 = $[13];
+    t44 = $[14];
   }
-  const handleSelect = t94;
-  const t45 = useCallback(t42, t44);
-  let t95;
-  if ($[17] !== t45) {
-    t95 = t45;
-    $[17] = t45;
-    $[18] = t95;
+  let handleSelect = t93;
+  let t45 = useCallback(t42, t44);
+  if ($[15] !== t45) {
+    t94 = t45;
+    $[15] = t45;
+    $[16] = t94;
   } else {
-    t95 = $[18];
+    t94 = $[16];
   }
-  const handleSelect = t95;
-  let t58;
-  if (availableSlots.length === 0) {
-    let t89;
-    let t96;
-    let t17;
-    let t19;
-    if ($[19] !== t20 || $[20] !== afternoonSlots.length || $[21] !== morningSlots.length || $[22] !== selectedDate || $[23] !== slots || $[24] !== timezone) {
-      t58 = <p>No available slots</p>;
-      $[19] = t20;
-      $[20] = afternoonSlots.length;
-      $[21] = morningSlots.length;
-      $[22] = selectedDate;
-      $[23] = slots;
-      $[24] = timezone;
-      $[25] = t89;
-      $[26] = t96;
-      $[27] = t17;
-      $[28] = t19;
+  handleSelect = t94;
+  if ($[17] !== availableSlots.length || $[18] !== selectedDate || $[19] !== timezone) {
+    if (availableSlots.length === 0) {
+      if ($[20] === Symbol.for("react.memo_cache_sentinel")) {
+        t58 = <p>No available slots</p>;
+        $[20] = t58;
+      } else {
+        t58 = $[20];
+      }
     } else {
-      t89 = $[25];
-      t96 = $[26];
-      t17 = $[27];
-      t19 = $[28];
+      t62 = morningSlots.length > 0;
+      let t72 = (slot) => {
+        let t4 = () => {
+          return handleSelect(slot.time);
+        };
+        let t10;
+        if (selectedSlot === slot.time) {
+          t10 = "selected";
+        } else {
+          t10 = "";
+        }
+        return <button key={slot.time} onClick={t4} className={t10}>{slot.time}</button>;
+      };
+      t62 = <div><h4>Morning</h4>{morningSlots.map(t72)}</div>;
+      t75 = afternoonSlots.length > 0;
+      let t85 = (slot) => {
+        let t4 = () => {
+          return handleSelect(slot.time);
+        };
+        let t10;
+        if (selectedSlot === slot.time) {
+          t10 = "selected";
+        } else {
+          t10 = "";
+        }
+        return <button key={slot.time} onClick={t4} className={t10}>{slot.time}</button>;
+      };
+      t75 = <div><h4>Afternoon</h4>{afternoonSlots.map(t85)}</div>;
+      t58 = <>{t62}{t75}</>;
     }
-    availableSlots = t96;
+    return <div><h3>{selectedDate} ({timezone})</h3>{t58}</div>;
+    $[17] = availableSlots.length;
+    $[18] = selectedDate;
+    $[19] = timezone;
+    $[20] = t47;
+    $[21] = t53;
+    $[22] = t58;
+    $[23] = t62;
+    $[24] = t75;
   } else {
-    let t62;
-    t62 = morningSlots.length > 0;
-    const t72 = (slot) => {
-      const t4 = () => {
-        return handleSelect(slot.time);
-      };
-      let t10;
-      if (selectedSlot === slot.time) {
-        t10 = "selected";
-      } else {
-        t10 = "";
-      }
-      return <button key={slot.time} onClick={t4} className={t10}>{slot.time}</button>;
-    };
-    t62 = <div><h4>Morning</h4>{morningSlots.map(t72)}</div>;
-    let t75;
-    t75 = afternoonSlots.length > 0;
-    const t85 = (slot) => {
-      const t4 = () => {
-        return handleSelect(slot.time);
-      };
-      let t10;
-      if (selectedSlot === slot.time) {
-        t10 = "selected";
-      } else {
-        t10 = "";
-      }
-      return <button key={slot.time} onClick={t4} className={t10}>{slot.time}</button>;
-    };
-    t75 = <div><h4>Afternoon</h4>{afternoonSlots.map(t85)}</div>;
-    t58 = <>{t62}{t75}</>;
+    t47 = $[20];
+    t53 = $[21];
+    t58 = $[22];
+    t62 = $[23];
+    t75 = $[24];
   }
-  return <div><h3>{selectedDate} ({timezone})</h3>{t58}</div>;
 }
 

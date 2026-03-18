@@ -28,522 +28,426 @@ interface SidebarProps {
 type Tab = 'layers' | 'properties' | 'history';
 
 export function CanvasSidebar(t0) {
-  const $ = _c(74);
-  const { layers, activeLayerId, onLayerSelect, onLayerToggleVisible, onLayerToggleLock, onLayerRename, onLayerReorder, onLayerDelete, onLayerAdd, onLayerDuplicate, onLayerOpacity } = t0;
+  const $ = _c(64);
   let t15;
+  let t21;
+  let t27;
+  let t33;
+  let t39;
+  let t45;
+  let t322;
+  let t53;
+  let t323;
+  let t57;
+  let t324;
+  let t325;
+  let t74;
+  let t77;
+  let t326;
+  let t327;
+  let t83;
+  let t85;
+  let t328;
+  let t92;
+  let t93;
+  let t329;
+  let commitEdit;
+  let t330;
+  let t109;
+  let t111;
+  let t331;
+  let t332;
+  let t117;
+  let t118;
+  let t333;
+  let t334;
+  let t335;
+  let t133;
+  let t134;
+  let t336;
+  let t165;
+  let t207;
+  let t226;
+  let t258;
+  let t265;
+  let t288;
+  let t298;
+  let t319;
+  let t145;
+  let t146;
+  let t147;
+  let t164;
+  let { layers, activeLayerId, onLayerSelect, onLayerToggleVisible, onLayerToggleLock, onLayerRename, onLayerReorder, onLayerDelete, onLayerAdd, onLayerDuplicate, onLayerOpacity } = t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t15 = "layers";
     $[0] = t15;
   } else {
     t15 = $[0];
   }
-  let t328;
+  let activeTab;
+  let setActiveTab;
+  ([activeTab, setActiveTab] = useState(t15));
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    $[1] = t328;
+    t21 = null;
+    $[1] = t21;
   } else {
-    t328 = $[1];
+    t21 = $[1];
   }
-  const editingId = t328;
+  let t22 = useState(t21);
+  let editingId;
   let setEditingId;
-  let t27;
+  ([editingId, setEditingId] = t22);
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    $[2] = t27;
+    $[2] = editingId;
+    $[3] = setEditingId;
   } else {
-    t27 = $[2];
+    editingId = $[2];
+    setEditingId = $[3];
   }
-  let t33;
-  if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    $[3] = t33;
-  } else {
-    t33 = $[3];
-  }
-  let t329;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    $[4] = t329;
+    t27 = "";
+    $[4] = t27;
   } else {
-    t329 = $[4];
+    t27 = $[4];
   }
-  const dragIndex = t329;
-  let setDragIndex;
-  let t45;
+  let editName;
+  let setEditName;
+  ([editName, setEditName] = useState(t27));
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    $[5] = t45;
+    t33 = "";
+    $[5] = t33;
   } else {
-    t45 = $[5];
+    t33 = $[5];
   }
-  let t330;
-  let t53;
+  let searchQuery;
+  let setSearchQuery;
+  ([searchQuery, setSearchQuery] = useState(t33));
   if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
-    t53 = null;
-    $[6] = t330;
-    $[7] = t53;
+    t39 = null;
+    $[6] = t39;
   } else {
-    t330 = $[6];
-    t53 = $[7];
+    t39 = $[6];
   }
-  const editInputRef = t330;
-  const t54 = useRef(t53);
-  let t331;
-  if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t331 = t54;
-    $[8] = t331;
+  let t40 = useState(t39);
+  let dragIndex;
+  let setDragIndex;
+  ([dragIndex, setDragIndex] = t40);
+  if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
+    $[7] = dragIndex;
+    $[8] = setDragIndex;
   } else {
-    t331 = $[8];
+    dragIndex = $[7];
+    setDragIndex = $[8];
   }
-  const editInputRef = t331;
-  let t57;
   if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
+    t45 = false;
+    $[9] = t45;
+  } else {
+    t45 = $[9];
+  }
+  let collapsed;
+  let setCollapsed;
+  ([collapsed, setCollapsed] = useState(t45));
+  if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
+    t53 = null;
+    $[10] = t322;
+    $[11] = t53;
+  } else {
+    t322 = $[10];
+    t53 = $[11];
+  }
+  let editInputRef = t322;
+  let t54 = useRef(t53);
+  if ($[12] === Symbol.for("react.memo_cache_sentinel")) {
+    t323 = t54;
+    $[12] = t323;
+  } else {
+    t323 = $[12];
+  }
+  editInputRef = t323;
+  if ($[13] === Symbol.for("react.memo_cache_sentinel")) {
     t57 = () => {
       let t0;
       t0 = editingId;
       t0 = editInputRef.current;
       if (t0) {
-        const t8 = editInputRef.current.focus();
-        const t11 = editInputRef.current.select();
+        let t8 = editInputRef.current.focus();
+        let t11 = editInputRef.current.select();
       }
       return undefined;
     };
-    $[9] = t57;
+    $[13] = t57;
   } else {
-    t57 = $[9];
+    t57 = $[13];
   }
-  let t332;
-  let t99;
-  let t103;
-  let t21;
-  let t59;
-  if ($[10] !== onLayerRename) {
-    t59 = [editingId];
-    $[10] = onLayerRename;
-    $[11] = t332;
-    $[12] = t99;
-    $[13] = t103;
-    $[14] = t21;
-    $[15] = t59;
-  } else {
-    t332 = $[11];
-    t99 = $[12];
-    t103 = $[13];
-    t21 = $[14];
-    t59 = $[15];
-  }
-  const commitEdit = t332;
-  const t60 = useEffect(t57, t59);
+  let t60 = useEffect(t57, [editingId]);
   let filteredLayers;
-  const t65 = () => {
+  let t65 = () => {
     if (!searchQuery) {
       return layers;
     }
     let q;
     q = searchQuery.toLowerCase();
-    const t9 = (l) => {
+    let t9 = (l) => {
       return l.name.toLowerCase().includes(q);
     };
     return layers.filter(t9);
   };
-  const t69 = useMemo(t65, [layers, searchQuery]);
-  let t334;
-  let t333;
-  let t74;
-  let t77;
-  if ($[16] !== t69 || $[17] !== activeLayerId || $[18] !== layers) {
-    t333 = t69;
+  let t69 = useMemo(t65, [layers, searchQuery]);
+  if ($[14] !== t69 || $[15] !== activeLayerId || $[16] !== layers) {
+    t324 = t69;
     t74 = () => {
-      const t2 = (l) => {
+      let t2 = (l) => {
         return l.id === activeLayerId;
       };
       return layers.find(t2);
     };
     t77 = [layers, activeLayerId];
-    $[16] = t69;
-    $[17] = activeLayerId;
-    $[18] = layers;
-    $[19] = t333;
-    $[20] = t334;
-    $[21] = t74;
-    $[22] = t77;
+    $[14] = t69;
+    $[15] = activeLayerId;
+    $[16] = layers;
+    $[17] = t324;
+    $[18] = t325;
+    $[19] = t74;
+    $[20] = t77;
   } else {
-    t333 = $[19];
-    t334 = $[20];
-    t74 = $[21];
-    t77 = $[22];
+    t324 = $[17];
+    t325 = $[18];
+    t74 = $[19];
+    t77 = $[20];
   }
-  filteredLayers = t333;
-  const activeLayer = t334;
-  const t78 = useMemo(t74, t77);
-  let t336;
-  let t335;
-  let t83;
-  let t85;
-  if ($[23] !== t78 || $[24] !== layers) {
-    t335 = t78;
+  filteredLayers = t324;
+  let activeLayer = t325;
+  let t78 = useMemo(t74, t77);
+  if ($[21] !== t78 || $[22] !== layers) {
+    t326 = t78;
     t83 = () => {
-      const t2 = (sum, l) => {
+      let t2 = (sum, l) => {
         return sum + l.elements;
       };
-      const t6 = (l) => {
+      let t6 = (l) => {
         return l.visible;
       };
-      const t10 = (l) => {
+      let t10 = (l) => {
         return l.locked;
       };
       return { totalElements: layers.reduce(t2, 0), visibleLayers: layers.filter(t6).length, lockedLayers: layers.filter(t10).length };
     };
     t85 = [layers];
-    $[23] = t78;
-    $[24] = layers;
-    $[25] = t335;
-    $[26] = t336;
-    $[27] = t83;
-    $[28] = t85;
+    $[21] = t78;
+    $[22] = layers;
+    $[23] = t326;
+    $[24] = t327;
+    $[25] = t83;
+    $[26] = t85;
   } else {
-    t335 = $[25];
-    t336 = $[26];
-    t83 = $[27];
-    t85 = $[28];
+    t326 = $[23];
+    t327 = $[24];
+    t83 = $[25];
+    t85 = $[26];
   }
-  const activeLayer = t335;
-  const stats = t336;
-  const t86 = useMemo(t83, t85);
-  let t337;
-  if ($[29] !== t86) {
-    t337 = t86;
-    $[29] = t86;
-    $[30] = t337;
-  } else {
-    t337 = $[30];
-  }
-  const stats = t337;
-  let t338;
-  let t92;
-  let t93;
-  if ($[31] === Symbol.for("react.memo_cache_sentinel")) {
+  activeLayer = t326;
+  let stats = t327;
+  stats = useMemo(t83, t85);
+  if ($[27] === Symbol.for("react.memo_cache_sentinel")) {
     t92 = (layer) => {
-      const t5 = setEditingId(layer.id);
-      const t10 = setEditName(layer.name);
+      let t5 = setEditingId(layer.id);
+      let t10 = setEditName(layer.name);
       return undefined;
     };
     t93 = [];
-    $[31] = t338;
-    $[32] = t92;
-    $[33] = t93;
+    $[27] = t328;
+    $[28] = t92;
+    $[29] = t93;
   } else {
-    t338 = $[31];
-    t92 = $[32];
-    t93 = $[33];
+    t328 = $[27];
+    t92 = $[28];
+    t93 = $[29];
   }
-  const startEditing = t338;
-  const t94 = useCallback(t92, t93);
-  let t339;
-  if ($[34] !== t94) {
-    t339 = t94;
-    $[34] = t94;
-    $[35] = t339;
+  let startEditing = t328;
+  let t94 = useCallback(t92, t93);
+  if ($[30] !== t94) {
+    t329 = t94;
+    $[30] = t94;
+    $[31] = t329;
   } else {
-    t339 = $[35];
+    t329 = $[31];
   }
-  const startEditing = t339;
-  let commitEdit;
-  t99 = () => {
+  startEditing = t329;
+  let t99 = () => {
     let t0;
     t0 = editingId;
     t0 = editName.trim();
     if (t0) {
-      const t11 = onLayerRename(editingId, editName.trim());
+      let t11 = onLayerRename(editingId, editName.trim());
     }
-    const t15 = setEditingId(null);
+    let t15 = setEditingId(null);
     return undefined;
   };
-  const t104 = useCallback(t99, [editingId, editName, onLayerRename]);
-  let t340;
-  let t109;
-  let t111;
-  if ($[36] !== t104) {
+  let t104 = useCallback(t99, [editingId, editName, onLayerRename]);
+  if ($[32] !== t104) {
     commitEdit = t104;
     t109 = (e) => {
       if (e.key === "Enter") {
-        const t7 = commitEdit();
+        let t7 = commitEdit();
       }
       if (e.key === "Escape") {
-        const t15 = setEditingId(null);
+        let t15 = setEditingId(null);
       }
       return undefined;
     };
     t111 = [commitEdit];
-    $[36] = t104;
-    $[37] = commitEdit;
-    $[38] = t340;
-    $[39] = t109;
-    $[40] = t111;
+    $[32] = t104;
+    $[33] = commitEdit;
+    $[34] = t330;
+    $[35] = t109;
+    $[36] = t111;
   } else {
-    commitEdit = $[37];
-    t340 = $[38];
-    t109 = $[39];
-    t111 = $[40];
+    commitEdit = $[33];
+    t330 = $[34];
+    t109 = $[35];
+    t111 = $[36];
   }
-  const handleKeyDown = t340;
-  const t112 = useCallback(t109, t111);
-  let t341;
-  if ($[41] !== t112) {
-    t341 = t112;
-    $[41] = t112;
-    $[42] = t341;
+  let handleKeyDown = t330;
+  let t112 = useCallback(t109, t111);
+  if ($[37] !== t112) {
+    t331 = t112;
+    $[37] = t112;
+    $[38] = t331;
   } else {
-    t341 = $[42];
+    t331 = $[38];
   }
-  const handleKeyDown = t341;
-  let t342;
-  let t117;
-  let t118;
-  if ($[43] === Symbol.for("react.memo_cache_sentinel")) {
+  handleKeyDown = t331;
+  if ($[39] === Symbol.for("react.memo_cache_sentinel")) {
     t117 = (index) => {
-      const t4 = setDragIndex(index);
+      let t4 = setDragIndex(index);
       return undefined;
     };
     t118 = [];
-    $[43] = t342;
-    $[44] = t117;
-    $[45] = t118;
+    $[39] = t332;
+    $[40] = t117;
+    $[41] = t118;
   } else {
-    t342 = $[43];
-    t117 = $[44];
-    t118 = $[45];
+    t332 = $[39];
+    t117 = $[40];
+    t118 = $[41];
   }
-  const handleDragStart = t342;
-  const t119 = useCallback(t117, t118);
-  let t343;
-  if ($[46] !== t119) {
-    t343 = t119;
-    $[46] = t119;
-    $[47] = t343;
+  let handleDragStart = t332;
+  let t119 = useCallback(t117, t118);
+  if ($[42] !== t119) {
+    t333 = t119;
+    $[42] = t119;
+    $[43] = t333;
   } else {
-    t343 = $[47];
+    t333 = $[43];
   }
-  const handleDragStart = t343;
-  let t344;
-  let t39;
-  let t124;
-  let t127;
-  if ($[48] !== onLayerReorder) {
-    t124 = (e, index) => {
-      const t3 = e.preventDefault();
-      let t4;
-      t4 = dragIndex !== null;
-      t4 = dragIndex !== index;
-      if (t4) {
-        const t16 = onLayerReorder(dragIndex, index);
-        const t20 = setDragIndex(index);
-      }
-      return undefined;
-    };
-    t127 = [dragIndex, onLayerReorder];
-    $[48] = onLayerReorder;
-    $[49] = t39;
-    $[50] = t344;
-    $[51] = t124;
-    $[52] = t127;
-  } else {
-    t39 = $[49];
-    t344 = $[50];
-    t124 = $[51];
-    t127 = $[52];
-  }
-  const handleDragOver = t344;
-  const t128 = useCallback(t124, t127);
-  let t345;
-  if ($[53] !== t128) {
-    t345 = t128;
-    $[53] = t128;
-    $[54] = t345;
-  } else {
-    t345 = $[54];
-  }
-  const handleDragOver = t345;
-  let handleDragEnd;
-  const t133 = () => {
-    const t3 = setDragIndex(null);
+  handleDragStart = t333;
+  let handleDragOver;
+  let t124 = (e, index) => {
+    let t3 = e.preventDefault();
+    let t4;
+    t4 = dragIndex !== null;
+    t4 = dragIndex !== index;
+    if (t4) {
+      let t16 = onLayerReorder(dragIndex, index);
+      let t20 = setDragIndex(index);
+    }
     return undefined;
   };
-  const t135 = useCallback(t133, []);
-  let t346;
-  if ($[55] !== t135) {
-    t346 = t135;
-    $[55] = t135;
-    $[56] = t346;
+  let t128 = useCallback(t124, [dragIndex, onLayerReorder]);
+  if ($[44] !== t128) {
+    t334 = t128;
+    $[44] = t128;
+    $[45] = t334;
   } else {
-    t346 = $[56];
+    t334 = $[45];
   }
-  handleDragEnd = t346;
-  if (collapsed) {
-    let t145;
-    if ($[57] === Symbol.for("react.memo_cache_sentinel")) {
-      const t141 = () => {
-        return setCollapsed(false);
-      };
-      t145 = <div className="w-10 bg-white border-l flex flex-col items-center py-2"><button onClick={t141} className="text-gray-500 hover:text-gray-700">\n          ◀\n        </button></div>;
-      $[57] = t145;
-    } else {
-      t145 = $[57];
-    }
-    return t145;
-  }
-  let t327;
-  let t347;
-  let t133;
-  let t134;
-  let t348;
-  let t65;
-  let t68;
-  if ($[58] !== t69 || $[59] !== activeLayer.opacity || $[60] !== activeLayer.name || $[61] !== activeLayer.elements || $[62] !== activeLayerId || $[63] !== layers || $[64] !== onLayerAdd || $[65] !== stats.totalElements || $[66] !== stats.visibleLayers) {
-    const t156 = (tab) => {
-      const t3 = () => {
-        return setActiveTab(tab);
-      };
-      let t8;
-      if (activeTab === tab) {
-        t8 = "bg-blue-100 text-blue-700";
-      } else {
-        t8 = "text-gray-500 hover:bg-gray-100";
-      }
-      return <button key={tab} onClick={t3} className={`px-2 py-1 text-xs rounded ${t8}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>;
-    };
-    const t160 = () => {
-      return setCollapsed(true);
-    };
-    $[58] = t69;
-    $[59] = activeLayer.opacity;
-    $[60] = activeLayer.name;
-    $[61] = activeLayer.elements;
-    $[62] = activeLayerId;
-    $[63] = layers;
-    $[64] = onLayerAdd;
-    $[65] = stats.totalElements;
-    $[66] = stats.visibleLayers;
-    $[67] = t327;
-    $[68] = t347;
-    $[69] = t133;
-    $[70] = t134;
-    $[71] = t348;
-    $[72] = t65;
-    $[73] = t68;
-  } else {
-    t327 = $[67];
-    t347 = $[68];
-    t133 = $[69];
-    t134 = $[70];
-    t348 = $[71];
-    t65 = $[72];
-    t68 = $[73];
-  }
-  handleDragEnd = t347;
-  filteredLayers = t348;
-  t165 = activeTab === "layers";
-  const t173 = (e) => {
-    return setSearchQuery(e.target.value);
-  };
-  const t181 = (layer, index) => {
-    const t6 = () => {
-      return handleDragStart(index);
-    };
-    const t7 = (e) => {
-      return handleDragOver(e, index);
-    };
-    const t10 = () => {
-      return onLayerSelect(layer.id);
-    };
-    let t16;
-    if (layer.id === activeLayerId) {
-      t16 = "bg-blue-50";
-    } else {
-      t16 = "hover:bg-gray-50";
-    }
-    let t23;
-    if (dragIndex === index) {
-      t23 = "opacity-50";
-    } else {
-      t23 = "";
-    }
-    const t28 = (e) => {
-      const t2 = e.stopPropagation();
-      const t8 = onLayerToggleVisible(layer.id);
+  handleDragOver = t334;
+  if ($[46] === Symbol.for("react.memo_cache_sentinel")) {
+    t133 = () => {
+      let t3 = setDragIndex(null);
       return undefined;
     };
-    let t32;
-    if (layer.visible) {
-      t32 = "👁";
-    } else {
-      t32 = "○";
-    }
-    let t41;
-    if (editingId === layer.id) {
-      const t47 = (e) => {
-        return setEditName(e.target.value);
-      };
-      t41 = <input ref={editInputRef} value={editName} onChange={t47} onBlur={commitEdit} onKeyDown={handleKeyDown} className="flex-1 text-xs border rounded px-1" />;
-    } else {
-      const t55 = () => {
-        return startEditing(layer);
-      };
-      let t59;
-      if (!layer.visible) {
-        t59 = "text-gray-400";
-      } else {
-        t59 = "";
-      }
-      t41 = <span onDoubleClick={t55} className={`flex-1 truncate ${t59}`}>{layer.name}</span>;
-    }
-    const t72 = (e) => {
-      const t2 = e.stopPropagation();
-      const t8 = onLayerToggleLock(layer.id);
-      return undefined;
-    };
-    let t76;
-    if (layer.locked) {
-      t76 = "🔒";
-    } else {
-      t76 = "🔓";
-    }
-    return <div key={layer.id} draggable onDragStart={t6} onDragOver={t7} onDragEnd={handleDragEnd} onClick={t10} className={`flex items-center px-3 py-2 text-sm cursor-pointer border-b ${t16} ${t23}`}><button onClick={t28} className="mr-2 text-xs">{t32}</button>{t41}<span className="text-xs text-gray-400 ml-1">{layer.elements}</span><button onClick={t72} className="ml-1 text-xs">{t76}</button></div>;
-  };
-  let t207;
-  t207 = activeLayer;
-  const t210 = () => {
-    return onLayerDuplicate(activeLayerId);
-  };
-  const t215 = () => {
-    return onLayerDelete(activeLayerId);
-  };
-  t207 = <><button onClick={t210} className="text-xs px-2 py-1 border rounded">\n                      ⧉\n                    </button><button onClick={t215} className="text-xs px-2 py-1 border rounded text-red-500" disabled={layers.length <= 1}>\n                      🗑\n                    </button></>;
-  let t226;
-  t226 = activeLayer;
-  const t242 = (e) => {
-    return onLayerOpacity(activeLayerId, parseInt(e.target.value) / 100);
-  };
-  t226 = <div className="mt-2"><label className="text-xs text-gray-500">Opacity</label><input type="range" min={0} max={100} value={activeLayer.opacity * 100} onChange={t242} className="w-full" /><span className="text-xs text-gray-400">{Math.round(activeLayer.opacity * 100)}%</span></div>;
-  t165 = <><div className="px-3 py-2 border-b"><input value={searchQuery} onChange={t173} placeholder="Search layers..." className="w-full text-xs border rounded px-2 py-1" /></div><div className="flex-1 overflow-y-auto">{filteredLayers.map(t181)}</div><div className="px-3 py-2 border-t"><div className="flex justify-between items-center"><div className="text-xs text-gray-500">{stats.totalElements} elements · {stats.visibleLayers}/{layers.length} visible\n              </div><div className="flex gap-1"><button onClick={onLayerAdd} className="text-xs px-2 py-1 bg-blue-500 text-white rounded">\n                  +\n                </button>{t207}</div></div>{t226}</div></>;
-  let t258;
-  t258 = activeTab === "properties";
-  let t265;
-  if (activeLayer) {
-    let t288;
-    if (activeLayer.visible) {
-      t288 = "Yes";
-    } else {
-      t288 = "No";
-    }
-    let t298;
-    if (activeLayer.locked) {
-      t298 = "Yes";
-    } else {
-      t298 = "No";
-    }
-    t265 = <div className="space-y-2"><div><strong>Name:</strong>{activeLayer.name}</div><div><strong>Elements:</strong>{activeLayer.elements}</div><div><strong>Visible:</strong>{t288}</div><div><strong>Locked:</strong>{t298}</div><div><strong>Opacity:</strong>{Math.round(activeLayer.opacity * 100)}%</div></div>;
+    t134 = [];
+    $[46] = t335;
+    $[47] = t133;
+    $[48] = t134;
   } else {
-    t265 = <p>Select a layer to view properties</p>;
+    t335 = $[46];
+    t133 = $[47];
+    t134 = $[48];
   }
-  t258 = <div className="p-3 text-sm text-gray-500">{t265}</div>;
-  let t319;
-  t319 = activeTab === "history";
-  t319 = <div className="p-3 text-sm text-gray-500 text-center">\n          History panel (not implemented)\n        </div>;
-  return <t146 className={t147}>{t164}{t165}{t258}{t319}</t146>;
+  let handleDragEnd = t335;
+  let t135 = useCallback(t133, t134);
+  if ($[49] !== t135) {
+    t336 = t135;
+    if (collapsed) {
+      if ($[50] === Symbol.for("react.memo_cache_sentinel")) {
+        let t141 = () => {
+          return setCollapsed(false);
+        };
+        t145 = <div className="w-10 bg-white border-l flex flex-col items-center py-2"><button onClick={t141} className="text-gray-500 hover:text-gray-700">\n          ◀\n        </button></div>;
+        $[50] = t145;
+      } else {
+        t145 = $[50];
+      }
+      return t145;
+    }
+    if ($[51] === Symbol.for("react.memo_cache_sentinel")) {
+      t146 = "div";
+      t147 = "w-64 bg-white border-l flex flex-col h-full";
+      let t156 = (tab) => {
+        let t3 = () => {
+          return setActiveTab(tab);
+        };
+        let t8;
+        if (activeTab === tab) {
+          t8 = "bg-blue-100 text-blue-700";
+        } else {
+          t8 = "text-gray-500 hover:bg-gray-100";
+        }
+        return <button key={tab} onClick={t3} className={`px-2 py-1 text-xs rounded ${t8}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>;
+      };
+      let t160 = () => {
+        return setCollapsed(true);
+      };
+      t164 = (
+        <div className="flex items-center justify-between px-3 py-2 border-b">
+          <div className="flex gap-1">{["layers", "properties", "history"].map(t156)}</div>
+          <button onClick={t160} className="text-gray-400 hover:text-gray-600">\n          ▶\n        </button>
+        </div>
+      );
+      $[51] = t146;
+      $[52] = t147;
+      $[53] = t164;
+      $[54] = t165;
+    } else {
+      t146 = $[51];
+      t147 = $[52];
+      t164 = $[53];
+      t165 = $[54];
+    }
+    $[49] = t135;
+    $[50] = t336;
+    $[51] = t165;
+    $[52] = t207;
+    $[53] = t226;
+    $[54] = t258;
+    $[55] = t265;
+    $[56] = t288;
+    $[57] = t298;
+    $[58] = t319;
+  } else {
+    t336 = $[50];
+    t165 = $[51];
+    t207 = $[52];
+    t226 = $[53];
+    t258 = $[54];
+    t265 = $[55];
+    t288 = $[56];
+    t298 = $[57];
+    t319 = $[58];
+  }
+  handleDragEnd = t336;
 }
 

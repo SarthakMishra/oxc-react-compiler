@@ -97,87 +97,106 @@ interface AvailabilityScheduleProps {
 }
 
 export function AvailabilitySchedule(t0) {
-  const $ = _c(51);
-  const { initialSchedule, onSave, timezone } = t0;
+  const $ = _c(43);
   let t9;
-  if ($[0] !== initialSchedule) {
-    $[0] = initialSchedule;
-    $[1] = t9;
+  let t136;
+  let t20;
+  let t26;
+  let t137;
+  let t138;
+  let t43;
+  let t45;
+  let t139;
+  let t140;
+  let t52;
+  let t53;
+  let t141;
+  let t142;
+  let t59;
+  let t62;
+  let t143;
+  let t144;
+  let t68;
+  let t70;
+  let t145;
+  let t146;
+  let t76;
+  let t78;
+  let handleReset;
+  let t81;
+  let t82;
+  let t83;
+  let t84;
+  let t96;
+  let t97;
+  let t98;
+  let t103;
+  let t104;
+  let t106;
+  let { initialSchedule, onSave, timezone } = t0;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    $[0] = t9;
   } else {
-    t9 = $[1];
+    t9 = $[0];
   }
   t9 = initialSchedule;
   t9 = createInitialSchedule();
-  let t137;
-  let t106;
-  let t135;
-  let t136;
-  let t35;
-  let t37;
-  if ($[2] !== t38 || $[3] !== onSave) {
-    $[2] = t38;
-    $[3] = onSave;
-    $[4] = t106;
-    $[5] = t135;
-    $[6] = t136;
-    $[7] = t35;
-    $[8] = t37;
-    $[9] = t137;
+  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+    $[1] = t136;
   } else {
-    t106 = $[4];
-    t135 = $[5];
-    t136 = $[6];
-    t35 = $[7];
-    t37 = $[8];
-    t137 = $[9];
+    t136 = $[1];
   }
-  const totalHours = t136;
-  const schedule = t137;
+  let schedule = t136;
   let dispatch;
-  let t20;
-  if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
-    $[10] = t20;
+  ([schedule, dispatch] = useReducer(scheduleReducer, t9));
+  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
+    t20 = false;
+    $[2] = t20;
   } else {
-    t20 = $[10];
+    t20 = $[2];
   }
-  let t26;
-  if ($[11] === Symbol.for("react.memo_cache_sentinel")) {
-    $[11] = t26;
+  let isDirty;
+  let setIsDirty;
+  ([isDirty, setIsDirty] = useState(t20));
+  if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
+    t26 = null;
+    $[3] = t26;
   } else {
-    t26 = $[11];
+    t26 = $[3];
   }
+  let copySource;
+  let setCopySource;
+  ([copySource, setCopySource] = useState(t26));
   let totalHours;
-  t35 = () => {
+  let t35 = () => {
     let total;
     total = 0;
-    const t4 = DAYS[Symbol.iterator]();
-    const t5 = t4.next();
+    let t4 = DAYS[Symbol.iterator]();
+    let t5 = t4.next();
     let day;
     day = t5;
     let daySchedule;
     daySchedule = schedule[day];
     if (!daySchedule.enabled) {
     }
-    const t17 = daySchedule.ranges[Symbol.iterator]();
-    const t18 = t17.next();
+    let t17 = daySchedule.ranges[Symbol.iterator]();
+    let t18 = t17.next();
     let range;
     range = t18;
     let startH;
     let startM;
+    ([startH, startM] = range.start.split(":").map(Number));
     let endH;
     let endM;
+    ([endH, endM] = range.end.split(":").map(Number));
     total = total + endH * 60 + endM - startH * 60 - startM / 60;
   };
-  const t38 = useMemo(t35, [schedule]);
-  let t139;
-  let t138;
-  let t43;
-  let t45;
-  if ($[12] !== t38) {
-    t138 = t38;
+  let t38 = useMemo(t35, [schedule]);
+  if ($[4] !== t38) {
+    t137 = t38;
     t43 = () => {
-      const t2 = DAYS[Symbol.iterator]();
-      const t3 = t2.next();
+      let t2 = DAYS[Symbol.iterator]();
+      let t3 = t2.next();
       let day;
       day = t3;
       let daySchedule;
@@ -185,7 +204,7 @@ export function AvailabilitySchedule(t0) {
       if (!daySchedule.enabled) {
       }
       let sorted;
-      const t17 = (a, b) => {
+      let t17 = (a, b) => {
         return a.start.localeCompare(b.start);
       };
       sorted = [...daySchedule.ranges].sort(t17);
@@ -198,139 +217,113 @@ export function AvailabilitySchedule(t0) {
       }
     };
     t45 = [schedule];
-    $[12] = t38;
-    $[13] = t138;
-    $[14] = t139;
-    $[15] = t43;
-    $[16] = t45;
+    $[4] = t38;
+    $[5] = t137;
+    $[6] = t138;
+    $[7] = t43;
+    $[8] = t45;
   } else {
-    t138 = $[13];
-    t139 = $[14];
-    t43 = $[15];
-    t45 = $[16];
+    t137 = $[5];
+    t138 = $[6];
+    t43 = $[7];
+    t45 = $[8];
   }
-  totalHours = t138;
-  const hasOverlaps = t139;
-  const t46 = useMemo(t43, t45);
-  let t141;
-  let t140;
-  let t52;
-  let t53;
-  if ($[17] !== t46) {
-    t140 = t46;
+  totalHours = t137;
+  let hasOverlaps = t138;
+  let t46 = useMemo(t43, t45);
+  if ($[9] !== t46) {
+    t139 = t46;
     t52 = (action) => {
-      const t4 = dispatch(action);
-      const t8 = setIsDirty(true);
+      let t4 = dispatch(action);
+      let t8 = setIsDirty(true);
       return undefined;
     };
     t53 = [];
-    $[17] = t46;
-    $[18] = t140;
-    $[19] = t141;
-    $[20] = t52;
-    $[21] = t53;
+    $[9] = t46;
+    $[10] = t139;
+    $[11] = t140;
+    $[12] = t52;
+    $[13] = t53;
   } else {
-    t140 = $[18];
-    t141 = $[19];
-    t52 = $[20];
-    t53 = $[21];
+    t139 = $[10];
+    t140 = $[11];
+    t52 = $[12];
+    t53 = $[13];
   }
-  const hasOverlaps = t140;
-  const handleChange = t141;
-  const t54 = useCallback(t52, t53);
-  let t143;
-  let t142;
-  let t59;
-  let t62;
-  if ($[22] !== t54 || $[23] !== onSave) {
-    t142 = t54;
+  hasOverlaps = t139;
+  let handleChange = t140;
+  let t54 = useCallback(t52, t53);
+  if ($[14] !== t54 || $[15] !== onSave) {
+    t141 = t54;
     t59 = () => {
-      const t4 = onSave(schedule);
-      const t8 = setIsDirty(false);
+      let t4 = onSave(schedule);
+      let t8 = setIsDirty(false);
       return undefined;
     };
     t62 = [schedule, onSave];
-    $[22] = t54;
-    $[23] = onSave;
-    $[24] = t142;
-    $[25] = t143;
-    $[26] = t59;
-    $[27] = t62;
+    $[14] = t54;
+    $[15] = onSave;
+    $[16] = t141;
+    $[17] = t142;
+    $[18] = t59;
+    $[19] = t62;
   } else {
-    t142 = $[24];
-    t143 = $[25];
-    t59 = $[26];
-    t62 = $[27];
+    t141 = $[16];
+    t142 = $[17];
+    t59 = $[18];
+    t62 = $[19];
   }
-  const handleChange = t142;
-  const handleSave = t143;
-  const t63 = useCallback(t59, t62);
-  let t145;
-  let t144;
-  let t68;
-  let t70;
-  if ($[28] !== t63) {
-    t144 = t63;
+  handleChange = t141;
+  let handleSave = t142;
+  let t63 = useCallback(t59, t62);
+  if ($[20] !== t63) {
+    t143 = t63;
     t68 = (day) => {
-      const t6 = handleChange({ type: "COPY_TO_ALL", sourceDay: day });
-      const t10 = setCopySource(day);
-      const t12 = () => {
+      let t6 = handleChange({ type: "COPY_TO_ALL", sourceDay: day });
+      let t10 = setCopySource(day);
+      let t12 = () => {
         return setCopySource(null);
       };
-      const t14 = setTimeout(t12, 2000);
+      let t14 = setTimeout(t12, 2000);
       return undefined;
     };
     t70 = [handleChange];
-    $[28] = t63;
-    $[29] = t144;
-    $[30] = t145;
-    $[31] = t68;
-    $[32] = t70;
+    $[20] = t63;
+    $[21] = t143;
+    $[22] = t144;
+    $[23] = t68;
+    $[24] = t70;
   } else {
-    t144 = $[29];
-    t145 = $[30];
-    t68 = $[31];
-    t70 = $[32];
+    t143 = $[21];
+    t144 = $[22];
+    t68 = $[23];
+    t70 = $[24];
   }
-  const handleSave = t144;
-  const handleCopyToAll = t145;
-  const t71 = useCallback(t68, t70);
-  let t147;
-  let t146;
-  let t76;
-  let t78;
-  if ($[33] !== t71) {
-    t146 = t71;
+  handleSave = t143;
+  let handleCopyToAll = t144;
+  let t71 = useCallback(t68, t70);
+  if ($[25] !== t71) {
+    t145 = t71;
     t76 = () => {
-      const t4 = handleChange({ type: "RESET" });
+      let t4 = handleChange({ type: "RESET" });
       return undefined;
     };
     t78 = [handleChange];
-    $[33] = t71;
-    $[34] = t146;
-    $[35] = t147;
-    $[36] = t76;
-    $[37] = t78;
+    $[25] = t71;
+    $[26] = t145;
+    $[27] = t146;
+    $[28] = t76;
+    $[29] = t78;
   } else {
-    t146 = $[34];
-    t147 = $[35];
-    t76 = $[36];
-    t78 = $[37];
+    t145 = $[26];
+    t146 = $[27];
+    t76 = $[28];
+    t78 = $[29];
   }
-  const handleCopyToAll = t146;
-  const handleReset = t147;
-  const t79 = useCallback(t76, t78);
-  let handleReset;
-  let t81;
-  let t82;
-  let t83;
-  let t84;
-  let t96;
-  let t97;
-  let t98;
-  let t103;
-  let t104;
-  if ($[38] !== t79 || $[39] !== timezone) {
+  handleCopyToAll = t145;
+  handleReset = t146;
+  let t79 = useCallback(t76, t78);
+  if ($[30] !== t79 || $[31] !== timezone) {
     handleReset = t79;
     t81 = "div";
     t82 = "space-y-4";
@@ -350,31 +343,31 @@ export function AvailabilitySchedule(t0) {
       </button>
     );
     t104 = "button";
-    $[38] = t79;
-    $[39] = timezone;
-    $[40] = handleReset;
-    $[41] = t81;
-    $[42] = t82;
-    $[43] = t83;
-    $[44] = t84;
-    $[45] = t96;
-    $[46] = t97;
-    $[47] = t98;
-    $[48] = t103;
-    $[49] = t104;
-    $[50] = t106;
+    $[30] = t79;
+    $[31] = timezone;
+    $[32] = handleReset;
+    $[33] = t81;
+    $[34] = t82;
+    $[35] = t83;
+    $[36] = t84;
+    $[37] = t96;
+    $[38] = t97;
+    $[39] = t98;
+    $[40] = t103;
+    $[41] = t104;
+    $[42] = t106;
   } else {
-    handleReset = $[40];
-    t81 = $[41];
-    t82 = $[42];
-    t83 = $[43];
-    t84 = $[44];
-    t96 = $[45];
-    t97 = $[46];
-    t98 = $[47];
-    t103 = $[48];
-    t104 = $[49];
-    t106 = $[50];
+    handleReset = $[32];
+    t81 = $[33];
+    t82 = $[34];
+    t83 = $[35];
+    t84 = $[36];
+    t96 = $[37];
+    t97 = $[38];
+    t98 = $[39];
+    t103 = $[40];
+    t104 = $[41];
+    t106 = $[42];
   }
   t106 = !isDirty;
   t106 = hasOverlaps;
@@ -390,7 +383,7 @@ export function AvailabilitySchedule(t0) {
   let t122;
   t122 = hasOverlaps;
   t122 = <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">\n          Some time ranges overlap. Please fix before saving.\n        </div>;
-  const t132 = (day) => {
+  let t132 = (day) => {
     let daySchedule;
     daySchedule = schedule[day];
     let t10;
@@ -399,7 +392,7 @@ export function AvailabilitySchedule(t0) {
     } else {
       t10 = "bg-gray-50";
     }
-    const t22 = () => {
+    let t22 = () => {
       return handleChange({ type: "TOGGLE_DAY", day });
     };
     let t27;
@@ -410,7 +403,7 @@ export function AvailabilitySchedule(t0) {
     }
     let t33;
     t33 = daySchedule.enabled;
-    const t37 = () => {
+    let t37 = () => {
       return handleCopyToAll(day);
     };
     let t43;
@@ -422,27 +415,27 @@ export function AvailabilitySchedule(t0) {
     t33 = <button onClick={t37} className="text-xs text-blue-500 hover:text-blue-700">{t43}</button>;
     let t48;
     t48 = daySchedule.enabled;
-    const t55 = (range, i) => {
-      const t9 = (e) => {
+    let t55 = (range, i) => {
+      let t9 = (e) => {
         return handleChange({ type: "UPDATE_RANGE", day, index: i, field: "start", value: e.target.value });
       };
-      const t20 = (e) => {
+      let t20 = (e) => {
         return handleChange({ type: "UPDATE_RANGE", day, index: i, field: "end", value: e.target.value });
       };
       let t23;
       t23 = daySchedule.ranges.length > 1;
-      const t31 = () => {
+      let t31 = () => {
         return handleChange({ type: "REMOVE_RANGE", day, index: i });
       };
       t23 = <button onClick={t31} className="text-red-400 hover:text-red-600 text-sm">\n                          ×\n                        </button>;
       return <div key={i} className="flex items-center gap-2"><input type="time" value={range.start} onChange={t9} className="border rounded px-2 py-1 text-sm" /><span className="text-gray-400">—</span><input type="time" value={range.end} onChange={t20} className="border rounded px-2 py-1 text-sm" />{t23}</div>;
     };
-    const t58 = () => {
+    let t58 = () => {
       return handleChange({ type: "ADD_RANGE", day });
     };
     t48 = <div className="mt-2 space-y-1">{daySchedule.ranges.map(t55)}<button onClick={t58} className="text-xs text-blue-500 hover:text-blue-700">\n                    + Add time range\n                  </button></div>;
     return <div key={day} className={`p-3 rounded border ${t10}`}><div className="flex items-center justify-between"><label className="flex items-center gap-2"><input type="checkbox" checked={daySchedule.enabled} onChange={t22} /><span className={t27}>{day}</span></label>{t33}</div>{t48}</div>;
   };
-  return <t81 className={t82}><t83 className={t84}>{t96}<t97 className={t98}>{t103}<t104 onClick={handleSave} disabled={t106} className={`px-4 py-2 rounded text-white text-sm ${t114}`}>\n            Save\n          </t104></t97></t83>{t122}<div className="space-y-3">{DAYS.map(t132)}</div></t81>;
+  return <div className={t82}><div className={t84}>{t96}<div className={t98}>{t103}<button onClick={handleSave} disabled={t106} className={`px-4 py-2 rounded text-white text-sm ${t114}`}>\n            Save\n          </button></div></div>{t122}<div className="space-y-3">{DAYS.map(t132)}</div></div>;
 }
 

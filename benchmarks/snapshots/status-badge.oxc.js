@@ -10,10 +10,12 @@ interface StatusBadgeProps {
 
 export function StatusBadge(t0) {
   const $ = _c(7);
-  const { status } = t0;
   let t19;
   let t7;
   let t9;
+  let config;
+  let t18;
+  let { status } = t0;
   if ($[0] !== status) {
     t7 = () => {
       switch (status) {
@@ -38,10 +40,8 @@ export function StatusBadge(t0) {
     t7 = $[2];
     t9 = $[3];
   }
-  const config = t19;
-  const t10 = useMemo(t7, t9);
-  let config;
-  let t18;
+  config = t19;
+  let t10 = useMemo(t7, t9);
   if ($[4] !== t10) {
     config = t10;
     t18 = <span className={`px-2 py-1 rounded text-sm ${config.color}`}>{config.label}</span>;

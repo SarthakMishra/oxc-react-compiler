@@ -5,11 +5,13 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function useToggle(initial) {
-  const $ = _c(2);
+  const $ = _c(4);
   let t12;
   let t4 = useState(initial);
+  let value;
+  let setValue;
+  ([value, setValue] = t4);
   if ($[0] !== t4) {
-    let [value, setValue] = t4;
     let t9 = () => {
       return setValue(!value);
     };
@@ -17,8 +19,12 @@ function useToggle(initial) {
     t12 = [value, toggle];
     $[0] = t4;
     $[1] = t12;
+    $[2] = value;
+    $[3] = setValue;
   } else {
     t12 = $[1];
+    value = $[2];
+    setValue = $[3];
   }
   return t12;
 }

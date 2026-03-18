@@ -61,27 +61,88 @@ interface MultiStepFormProps {
 }
 
 export function MultiStepForm(t0) {
-  const $ = _c(76);
-  const { steps, onSubmit, onCancel } = t0;
+  const $ = _c(72);
   let t7;
+  let t20;
+  let t26;
+  let t224;
+  let t225;
+  let t60;
+  let t64;
+  let t226;
+  let t227;
+  let t71;
+  let t75;
+  let validateStep;
+  let t228;
+  let t81;
+  let t86;
+  let t229;
+  let t230;
+  let t92;
+  let t93;
+  let t231;
+  let t232;
+  let t99;
+  let t105;
+  let t233;
+  let t111;
+  let t112;
+  let t234;
+  let t235;
+  let t118;
+  let t123;
+  let stepErrors;
+  let t126;
+  let t127;
+  let t159;
+  let t165;
+  let t166;
+  let t167;
+  let t172;
+  let t177;
+  let t178;
+  let t198;
+  let t208;
+  let t217;
+  let t223;
+  let { steps, onSubmit, onCancel } = t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t7 = 0;
     $[0] = t7;
   } else {
     t7 = $[0];
   }
-  let t20;
-  if ($[1] !== t21) {
-    $[1] = t21;
-    $[2] = t20;
+  let currentStep;
+  let setCurrentStep;
+  ([currentStep, setCurrentStep] = useState(t7));
+  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+    t20 = { data: {}, errors: {}, touched: new Set() };
+    $[1] = t20;
   } else {
-    t20 = $[2];
+    t20 = $[1];
   }
-  let t26;
-  if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    $[3] = t26;
+  let t21 = useReducer(formReducer, t20);
+  let formState;
+  let dispatch;
+  ([formState, dispatch] = t21);
+  if ($[2] !== t21) {
+    $[2] = t21;
+    $[3] = formState;
+    $[4] = dispatch;
   } else {
-    t26 = $[3];
+    formState = $[3];
+    dispatch = $[4];
   }
+  if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
+    t26 = false;
+    $[5] = t26;
+  } else {
+    t26 = $[5];
+  }
+  let submitting;
+  let setSubmitting;
+  ([submitting, setSubmitting] = useState(t26));
   let step;
   step = steps[currentStep];
   let isFirstStep;
@@ -89,55 +150,47 @@ export function MultiStepForm(t0) {
   let isLastStep;
   isLastStep = currentStep === steps.length - 1;
   let progress;
-  const t50 = () => {
+  let t50 = () => {
     return Math.round(currentStep + 1 / steps.length * 100);
   };
-  const t55 = useMemo(t50, [currentStep, steps.length]);
-  let t236;
-  let t235;
-  let t60;
-  let t64;
-  if ($[4] !== t55 || $[5] !== formState.data || $[6] !== steps) {
-    t235 = t55;
+  let t55 = useMemo(t50, [currentStep, steps.length]);
+  if ($[6] !== t55 || $[7] !== formState.data || $[8] !== steps) {
+    t224 = t55;
     t60 = () => {
       let completed;
       completed = 0;
       let total;
       total = 0;
-      const t6 = steps[Symbol.iterator]();
-      const t7 = t6.next();
+      let t6 = steps[Symbol.iterator]();
+      let t7 = t6.next();
       let s;
       s = t7;
-      const t11 = s.fields[Symbol.iterator]();
-      const t12 = t11.next();
+      let t11 = s.fields[Symbol.iterator]();
+      let t12 = t11.next();
       let field;
       field = t12;
       if (formState.data[field.name]) {
       }
     };
     t64 = [steps, formState.data];
-    $[4] = t55;
-    $[5] = formState.data;
-    $[6] = steps;
-    $[7] = t235;
-    $[8] = t236;
-    $[9] = t60;
-    $[10] = t64;
+    $[6] = t55;
+    $[7] = formState.data;
+    $[8] = steps;
+    $[9] = t224;
+    $[10] = t225;
+    $[11] = t60;
+    $[12] = t64;
   } else {
-    t235 = $[7];
-    t236 = $[8];
-    t60 = $[9];
-    t64 = $[10];
+    t224 = $[9];
+    t225 = $[10];
+    t60 = $[11];
+    t64 = $[12];
   }
-  progress = t235;
-  const completedFields = t236;
-  const t65 = useMemo(t60, t64);
-  let t238;
-  let t237;
-  let t71;
-  let t75;
-  if ($[11] !== t65 || $[12] !== formState.data || $[13] !== steps) {
-    t237 = t65;
+  progress = t224;
+  let completedFields = t225;
+  let t65 = useMemo(t60, t64);
+  if ($[13] !== t65 || $[14] !== formState.data || $[15] !== steps) {
+    t226 = t65;
     t71 = (stepIndex) => {
       let stepToValidate;
       stepToValidate = steps[stepIndex];
@@ -145,8 +198,8 @@ export function MultiStepForm(t0) {
       errors = {};
       let valid;
       valid = true;
-      const t12 = stepToValidate.fields[Symbol.iterator]();
-      const t13 = t12.next();
+      let t12 = stepToValidate.fields[Symbol.iterator]();
+      let t13 = t12.next();
       let field;
       field = t13;
       let value;
@@ -172,171 +225,148 @@ export function MultiStepForm(t0) {
       }
     };
     t75 = [steps, formState.data];
-    $[11] = t65;
-    $[12] = formState.data;
-    $[13] = steps;
-    $[14] = t237;
-    $[15] = t238;
-    $[16] = t71;
-    $[17] = t75;
+    $[13] = t65;
+    $[14] = formState.data;
+    $[15] = steps;
+    $[16] = t226;
+    $[17] = t227;
+    $[18] = t71;
+    $[19] = t75;
   } else {
-    t237 = $[14];
-    t238 = $[15];
-    t71 = $[16];
-    t75 = $[17];
+    t226 = $[16];
+    t227 = $[17];
+    t71 = $[18];
+    t75 = $[19];
   }
-  const completedFields = t237;
-  const validateStep = t238;
-  const t76 = useCallback(t71, t75);
-  let t239;
-  let validateStep;
-  let t81;
-  let t86;
-  if ($[18] !== t76 || $[19] !== steps.length) {
+  completedFields = t226;
+  validateStep = t227;
+  let t76 = useCallback(t71, t75);
+  if ($[20] !== t76 || $[21] !== steps.length) {
     validateStep = t76;
     t81 = () => {
       if (validateStep(currentStep)) {
-        const t7 = (s) => {
+        let t7 = (s) => {
           return Math.min(s + 1, steps.length - 1);
         };
-        const t8 = setCurrentStep(t7);
+        let t8 = setCurrentStep(t7);
       }
       return undefined;
     };
     t86 = [currentStep, validateStep, steps.length];
-    $[18] = t76;
-    $[19] = steps.length;
-    $[20] = validateStep;
-    $[21] = t239;
-    $[22] = t81;
-    $[23] = t86;
+    $[20] = t76;
+    $[21] = steps.length;
+    $[22] = validateStep;
+    $[23] = t228;
+    $[24] = t81;
+    $[25] = t86;
   } else {
-    validateStep = $[20];
-    t239 = $[21];
-    t81 = $[22];
-    t86 = $[23];
+    validateStep = $[22];
+    t228 = $[23];
+    t81 = $[24];
+    t86 = $[25];
   }
-  const handleNext = t239;
-  const t87 = useCallback(t81, t86);
-  let t241;
-  let t240;
-  let t92;
-  let t93;
-  if ($[24] !== t87) {
-    t240 = t87;
+  let handleNext = t228;
+  let t87 = useCallback(t81, t86);
+  if ($[26] !== t87) {
+    t229 = t87;
     t92 = () => {
-      const t2 = (s) => {
+      let t2 = (s) => {
         return Math.max(s - 1, 0);
       };
-      const t3 = setCurrentStep(t2);
+      let t3 = setCurrentStep(t2);
       return undefined;
     };
     t93 = [];
-    $[24] = t87;
-    $[25] = t240;
-    $[26] = t241;
-    $[27] = t92;
-    $[28] = t93;
+    $[26] = t87;
+    $[27] = t229;
+    $[28] = t230;
+    $[29] = t92;
+    $[30] = t93;
   } else {
-    t240 = $[25];
-    t241 = $[26];
-    t92 = $[27];
-    t93 = $[28];
+    t229 = $[27];
+    t230 = $[28];
+    t92 = $[29];
+    t93 = $[30];
   }
-  const handleNext = t240;
-  const handlePrev = t241;
-  const t94 = useCallback(t92, t93);
-  let t243;
-  let t242;
-  let t99;
-  let t105;
-  if ($[29] !== t94 || $[30] !== formState.data || $[31] !== onSubmit || $[32] !== steps) {
-    t242 = t94;
+  handleNext = t229;
+  let handlePrev = t230;
+  let t94 = useCallback(t92, t93);
+  if ($[31] !== t94 || $[32] !== formState.data || $[33] !== onSubmit || $[34] !== steps) {
+    t231 = t94;
     t99 = async () => {
       if (!validateStep(currentStep)) {
         return undefined;
       }
-      const t10 = setSubmitting(true);
-      const t16 = onSubmit(formState.data);
-      const t19 = setSubmitting(false);
+      let t10 = setSubmitting(true);
+      let t16 = onSubmit(formState.data);
+      let t19 = setSubmitting(false);
       return undefined;
     };
     t105 = [currentStep, validateStep, formState.data, onSubmit];
-    $[29] = t94;
-    $[30] = formState.data;
-    $[31] = onSubmit;
-    $[32] = steps;
-    $[33] = t242;
-    $[34] = t243;
-    $[35] = t99;
-    $[36] = t105;
+    $[31] = t94;
+    $[32] = formState.data;
+    $[33] = onSubmit;
+    $[34] = steps;
+    $[35] = t231;
+    $[36] = t232;
+    $[37] = t99;
+    $[38] = t105;
   } else {
-    t242 = $[33];
-    t243 = $[34];
-    t99 = $[35];
-    t105 = $[36];
+    t231 = $[35];
+    t232 = $[36];
+    t99 = $[37];
+    t105 = $[38];
   }
-  const handlePrev = t242;
-  const handleSubmit = t243;
-  const t106 = useCallback(t99, t105);
-  let t244;
-  if ($[37] !== t106) {
-    t244 = t106;
-    $[37] = t106;
-    $[38] = t244;
-  } else {
-    t244 = $[38];
-  }
-  const handleSubmit = t244;
-  let t245;
-  let t111;
-  let t112;
+  handlePrev = t231;
+  let handleSubmit = t232;
+  handleSubmit = useCallback(t99, t105);
   if ($[39] === Symbol.for("react.memo_cache_sentinel")) {
     t111 = (name, value) => {
-      const t8 = dispatch({ type: "SET_FIELD", name, value });
-      const t13 = dispatch({ type: "CLEAR_ERROR", name });
+      let t8 = dispatch({ type: "SET_FIELD", name, value });
+      let t13 = dispatch({ type: "CLEAR_ERROR", name });
       return undefined;
     };
     t112 = [];
-    $[39] = t245;
+    $[39] = t233;
     $[40] = t111;
     $[41] = t112;
   } else {
-    t245 = $[39];
+    t233 = $[39];
     t111 = $[40];
     t112 = $[41];
   }
-  const handleFieldChange = t245;
-  const t113 = useCallback(t111, t112);
-  let t246;
+  let handleFieldChange = t233;
+  let t113 = useCallback(t111, t112);
   if ($[42] !== t113) {
-    t246 = t113;
+    t234 = t113;
     $[42] = t113;
-    $[43] = t246;
+    $[43] = t234;
   } else {
-    t246 = $[43];
+    t234 = $[43];
   }
-  const handleFieldChange = t246;
-  let stepErrors;
-  const t118 = () => {
-    const t3 = (f) => {
-      return formState.errors[f.name];
+  handleFieldChange = t234;
+  if ($[44] !== formState.errors || $[45] !== step.fields) {
+    t118 = () => {
+      let t3 = (f) => {
+        return formState.errors[f.name];
+      };
+      return step.fields.filter(t3).length;
     };
-    return step.fields.filter(t3).length;
-  };
-  const t124 = useMemo(t118, [step.fields, formState.errors]);
-  let t178;
-  let t247;
-  let t126;
-  let t127;
-  let t159;
-  let t165;
-  let t166;
-  let t167;
-  let t172;
-  let t177;
-  if ($[44] !== t124 || $[45] !== completedFields.completed || $[46] !== completedFields.total || $[47] !== formState.data || $[48] !== step.title || $[49] !== step.description || $[50] !== steps) {
-    t247 = t124;
+    t123 = [step.fields, formState.errors];
+    $[44] = formState.errors;
+    $[45] = step.fields;
+    $[46] = t235;
+    $[47] = t118;
+    $[48] = t123;
+  } else {
+    t235 = $[46];
+    t118 = $[47];
+    t123 = $[48];
+  }
+  stepErrors = t235;
+  let t124 = useMemo(t118, t123);
+  if ($[49] !== t124 || $[50] !== completedFields.completed || $[51] !== completedFields.total || $[52] !== formState.data || $[53] !== step.title || $[54] !== step.description || $[55] !== steps) {
+    stepErrors = t124;
     t126 = "div";
     t127 = "max-w-2xl mx-auto";
     t159 = (
@@ -345,7 +375,7 @@ export function MultiStepForm(t0) {
         <div className="w-full bg-gray-200 rounded h-2"><div className="bg-blue-600 rounded h-2 transition-all" style={{ width: `${progress}%` }} /></div>
       </div>
     );
-    const t163 = (s, i) => {
+    let t163 = (s, i) => {
       let t10;
       if (i < currentStep) {
         t10 = "bg-green-500 text-white";
@@ -376,193 +406,138 @@ export function MultiStepForm(t0) {
       return <div key={i} className="flex-1 flex items-center"><div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${t10}`}>{t22}</div><span className={`ml-2 text-sm ${t32}`}>{s.title}</span>{t39}</div>;
     };
     t165 = <div className="flex mb-8">{steps.map(t163)}</div>;
-    t166 = "div";
-    t167 = "bg-white border rounded-lg p-6";
-    t172 = <h2 className="text-xl font-semibold mb-1">{step.title}</h2>;
-    t177 = <p className="text-sm text-gray-500 mb-6">{step.description}</p>;
-    $[44] = t124;
-    $[45] = completedFields.completed;
-    $[46] = completedFields.total;
-    $[47] = formState.data;
-    $[48] = step.title;
-    $[49] = step.description;
-    $[50] = steps;
-    $[51] = t247;
-    $[52] = t126;
-    $[53] = t127;
-    $[54] = t159;
-    $[55] = t165;
-    $[56] = t166;
-    $[57] = t167;
-    $[58] = t172;
-    $[59] = t177;
-    $[60] = t178;
-  } else {
-    t247 = $[51];
-    t126 = $[52];
-    t127 = $[53];
-    t159 = $[54];
-    t165 = $[55];
-    t166 = $[56];
-    t167 = $[57];
-    t172 = $[58];
-    t177 = $[59];
-    t178 = $[60];
-  }
-  stepErrors = t247;
-  let t234;
-  let t118;
-  let t123;
-  let t248;
-  let t249;
-  let t50;
-  let t54;
-  let t250;
-  let t251;
-  if ($[61] !== t172 || $[62] !== steps) {
     t178 = stepErrors > 0;
-    $[61] = t172;
-    $[62] = steps;
-    $[63] = t178;
-    $[64] = t234;
-    $[65] = stepErrors;
-    $[66] = t118;
-    $[67] = t123;
-    $[68] = t248;
-    $[69] = t249;
-    $[70] = t50;
-    $[71] = t54;
-    $[72] = t250;
-    $[73] = t251;
-  } else {
-    t178 = $[63];
-    t234 = $[64];
-    stepErrors = $[65];
-    t118 = $[66];
-    t123 = $[67];
-    t248 = $[68];
-    t249 = $[69];
-    t50 = $[70];
-    t54 = $[71];
-    t250 = $[72];
-    t251 = $[73];
-  }
-  step = t248;
-  progress = t249;
-  const currentStep = t250;
-  const formState = t251;
-  t178 = <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm mb-4">{stepErrors} field(s) have errors\n          </div>;
-  const t191 = (field) => {
-    let value;
-    let t2;
-    t2 = formState.data[field.name];
-    t2 = "";
-    value = t2;
-    let error;
-    error = formState.errors[field.name];
-    let touched;
-    touched = formState.touched.has(field.name);
-    let t29;
-    t29 = field.required;
-    t29 = <span className="text-red-500 ml-1">*</span>;
-    let t41;
-    if (field.type === "textarea") {
-      const t44 = (e) => {
-        return handleFieldChange(field.name, e.target.value);
-      };
-      let t45;
-      t45 = error;
-      t45 = touched;
-      let t48;
-      if (t45) {
-        t48 = "border-red-500";
-      } else {
-        t48 = "";
-      }
-      t41 = <textarea value={value} onChange={t44} className={`w-full border rounded px-3 py-2 ${t48}`} rows={3} />;
-    } else {
-      let t58;
-      if (field.type === "select") {
-        const t61 = (e) => {
+    t178 = <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm mb-4">{stepErrors} field(s) have errors\n          </div>;
+    let t191 = (field) => {
+      let value;
+      let t2;
+      t2 = formState.data[field.name];
+      t2 = "";
+      value = t2;
+      let error;
+      error = formState.errors[field.name];
+      let touched;
+      touched = formState.touched.has(field.name);
+      let t29;
+      t29 = field.required;
+      t29 = <span className="text-red-500 ml-1">*</span>;
+      let t41;
+      if (field.type === "textarea") {
+        let t44 = (e) => {
           return handleFieldChange(field.name, e.target.value);
         };
-        let t62;
-        t62 = error;
-        t62 = touched;
-        let t65;
-        if (t62) {
-          t65 = "border-red-500";
+        let t45;
+        t45 = error;
+        t45 = touched;
+        let t48;
+        if (t45) {
+          t48 = "border-red-500";
         } else {
-          t65 = "";
+          t48 = "";
         }
-        const t75 = (opt) => {
-          return <option key={opt} value={opt}>{opt}</option>;
-        };
-        t58 = <select value={value} onChange={t61} className={`w-full border rounded px-3 py-2 ${t65}`}><option value="">Select...</option>{field.options.map(t75)}</select>;
+        t41 = <textarea value={value} onChange={t44} className={`w-full border rounded px-3 py-2 ${t48}`} rows={3} />;
       } else {
-        let t82;
-        if (field.type === "checkbox") {
-          const t88 = (e) => {
-            let t9;
-            if (e.target.checked) {
-              t9 = "true";
-            } else {
-              t9 = "false";
-            }
-            return handleFieldChange(field.name, t9);
-          };
-          t82 = <input type="checkbox" checked={value === "true"} onChange={t88} />;
-        } else {
-          const t94 = (e) => {
+        let t58;
+        if (field.type === "select") {
+          let t61 = (e) => {
             return handleFieldChange(field.name, e.target.value);
           };
-          let t95;
-          t95 = error;
-          t95 = touched;
-          let t98;
-          if (t95) {
-            t98 = "border-red-500";
+          let t62;
+          t62 = error;
+          t62 = touched;
+          let t65;
+          if (t62) {
+            t65 = "border-red-500";
           } else {
-            t98 = "";
+            t65 = "";
           }
-          t82 = <input type={field.type} value={value} onChange={t94} className={`w-full border rounded px-3 py-2 ${t98}`} />;
+          let t75 = (opt) => {
+            return <option key={opt} value={opt}>{opt}</option>;
+          };
+          t58 = <select value={value} onChange={t61} className={`w-full border rounded px-3 py-2 ${t65}`}><option value="">Select...</option>{field.options.map(t75)}</select>;
+        } else {
+          let t82;
+          if (field.type === "checkbox") {
+            let t88 = (e) => {
+              let t9;
+              if (e.target.checked) {
+                t9 = "true";
+              } else {
+                t9 = "false";
+              }
+              return handleFieldChange(field.name, t9);
+            };
+            t82 = <input type="checkbox" checked={value === "true"} onChange={t88} />;
+          } else {
+            let t94 = (e) => {
+              return handleFieldChange(field.name, e.target.value);
+            };
+            let t95;
+            t95 = error;
+            t95 = touched;
+            let t98;
+            if (t95) {
+              t98 = "border-red-500";
+            } else {
+              t98 = "";
+            }
+            t82 = <input type={field.type} value={value} onChange={t94} className={`w-full border rounded px-3 py-2 ${t98}`} />;
+          }
+          t58 = t82;
         }
-        t58 = t82;
+        t41 = t58;
       }
-      t41 = t58;
-    }
-    let t103;
-    let t104;
-    t104 = error;
-    t104 = touched;
-    t103 = t104;
-    t103 = <p className="text-red-500 text-xs mt-1">{error}</p>;
-    return <div key={field.name}><label className="block text-sm font-medium mb-1">{field.label}{t29}</label>{t41}{t103}</div>;
-  };
-  let t198;
-  if ($[74] !== onCancel) {
-    $[74] = onCancel;
-    $[75] = t198;
-  } else {
-    t198 = $[75];
-  }
-  t198 = onCancel;
-  t198 = <button onClick={onCancel} className="text-gray-500 hover:text-gray-700">\n              Cancel\n            </button>;
-  let t208;
-  t208 = !isFirstStep;
-  t208 = <button onClick={handlePrev} className="px-4 py-2 border rounded">\n              Back\n            </button>;
-  let t217;
-  if (isLastStep) {
-    let t223;
-    if (submitting) {
-      t223 = "Submitting...";
+      let t103;
+      let t104;
+      t104 = error;
+      t104 = touched;
+      t103 = t104;
+      t103 = <p className="text-red-500 text-xs mt-1">{error}</p>;
+      return <div key={field.name}><label className="block text-sm font-medium mb-1">{field.label}{t29}</label>{t41}{t103}</div>;
+    };
+    if ($[56] === Symbol.for("react.memo_cache_sentinel")) {
+      $[56] = t198;
     } else {
-      t223 = "Submit";
+      t198 = $[56];
     }
-    t217 = <button onClick={handleSubmit} disabled={submitting} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{t223}</button>;
+    $[49] = t124;
+    $[50] = completedFields.completed;
+    $[51] = completedFields.total;
+    $[52] = formState.data;
+    $[53] = step.title;
+    $[54] = step.description;
+    $[55] = steps;
+    $[56] = stepErrors;
+    $[57] = t126;
+    $[58] = t127;
+    $[59] = t159;
+    $[60] = t165;
+    $[61] = t166;
+    $[62] = t167;
+    $[63] = t172;
+    $[64] = t177;
+    $[65] = t178;
+    $[66] = t178;
+    $[67] = t198;
+    $[68] = t208;
+    $[69] = t217;
+    $[70] = t223;
   } else {
-    t217 = <button onClick={handleNext} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">\n              Next\n            </button>;
+    stepErrors = $[56];
+    t126 = $[57];
+    t127 = $[58];
+    t159 = $[59];
+    t165 = $[60];
+    t166 = $[61];
+    t167 = $[62];
+    t172 = $[63];
+    t177 = $[64];
+    t178 = $[65];
+    t178 = $[66];
+    t198 = $[67];
+    t208 = $[68];
+    t217 = $[69];
+    t223 = $[70];
   }
-  return <t126 className={t127}>{t159}{t165}<t166 className={t167}>{t172}{t177}{t178}<div className="space-y-4">{step.fields.map(t191)}</div></t166><div className="flex justify-between mt-6"><div>{t198}</div><div className="flex gap-3">{t208}{t217}</div></div></t126>;
 }
 

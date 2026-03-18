@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use crate::hir::types::IdentifierId;
+use crate::hir::types::{DeclarationId, IdentifierId};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::hir::types::{
@@ -378,12 +378,23 @@ fn build_inline_map(
 
     // Collect temps that are used in scope declarations (outputs from child scopes) —
     // these must never be removed as dead even if they have 0 intra-block uses.
+    // HOWEVER, DeclareLocal temps for destructured variables are excluded:
+    // when a scope contains a Destructure, the DeclareLocal temps for the
+    // destructured names are hoisted out and replaced by the actual pattern names.
+    // The DeclareLocal temp is never assigned a useful value, so caching it
+    // would store undefined.
     let mut scope_output_temps: FxHashSet<String> = FxHashSet::default();
+    let mut phantom_destructure_temps: FxHashSet<String> = FxHashSet::default();
     for ri in instructions {
         if let ReactiveInstruction::Scope(scope_block) = ri {
-            for (_, decl) in &scope_block.scope.declarations {
+            let destructured_declare_ids = find_destructured_declare_ids(scope_block);
+            for (id, decl) in &scope_block.scope.declarations {
                 let decl_name = identifier_display_name(&decl.identifier);
-                scope_output_temps.insert(decl_name.to_string());
+                if destructured_declare_ids.contains(id) {
+                    phantom_destructure_temps.insert(decl_name.to_string());
+                } else {
+                    scope_output_temps.insert(decl_name.to_string());
+                }
             }
         }
     }
@@ -447,6 +458,14 @@ fn build_inline_map(
         if let Some(expr) = expr_string(&instr.value, &inline_map, tag_constants) {
             inline_map.insert(temp_name, expr);
         }
+    }
+
+    // Add phantom destructure temps as dead (empty sentinel) so that:
+    // 1. Any instruction whose lvalue is the phantom temp gets skipped
+    // 2. StoreLocal instructions that reference the phantom temp get skipped
+    //    (codegen_instruction checks for empty value_name)
+    for name in &phantom_destructure_temps {
+        inline_map.insert(name.clone(), String::new());
     }
 
     inline_map
@@ -1040,6 +1059,28 @@ fn codegen_block_skip_declares(
     protected_names: &FxHashSet<String>,
     tag_constants: &TagConstantMap,
 ) {
+    codegen_block_skip_declares_and_ids(
+        block,
+        output,
+        cache_slot,
+        indent,
+        declared,
+        protected_names,
+        tag_constants,
+        &FxHashSet::default(),
+    );
+}
+
+fn codegen_block_skip_declares_and_ids(
+    block: &ReactiveBlock,
+    output: &mut String,
+    cache_slot: &mut u32,
+    indent: usize,
+    declared: &mut FxHashSet<String>,
+    protected_names: &FxHashSet<String>,
+    tag_constants: &TagConstantMap,
+    skip_lvalue_ids: &FxHashSet<IdentifierId>,
+) {
     let inline_map = build_inline_map(&block.instructions, protected_names, tag_constants);
     for instr in &block.instructions {
         match instr {
@@ -1048,6 +1089,11 @@ fn codegen_block_skip_declares(
                     &instruction.value,
                     InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. }
                 ) {
+                    continue;
+                }
+                // Skip instructions whose lvalue IDs are in the skip set
+                // (e.g., hoisted Destructure instructions)
+                if skip_lvalue_ids.contains(&instruction.lvalue.identifier.id) {
                     continue;
                 }
                 let indent_str = "  ".repeat(indent);
@@ -1123,6 +1169,19 @@ fn codegen_instruction(
         InstructionValue::StoreLocal { lvalue: target, value, type_ } => {
             let target_name = place_name(target);
             let value_name = resolve_place(value, inline_map);
+            // Skip StoreLocal when the value is a phantom destructure temp.
+            // Check both resolve_place result (for true temps) and direct
+            // inline_map lookup by name (for promoted temps whose name doesn't
+            // match their ID, e.g. name="t61" but id=4).
+            if value_name.is_empty() {
+                return;
+            }
+            let value_display = place_name(value);
+            if let Some(mapped) = inline_map.get(value_display.as_ref())
+                && mapped.is_empty()
+            {
+                return;
+            }
             let already_declared = declared.contains(target_name.as_ref());
             let keyword = if already_declared {
                 ""
@@ -1740,10 +1799,21 @@ fn codegen_scope(
     let mut sorted_decls: Vec<_> = scope.scope.declarations.iter().collect();
     sorted_decls.sort_by_key(|(_, decl)| decl.identifier.loc.start);
 
+    // Identify DeclareLocal temps that correspond to destructured variables.
+    // These should be excluded from scope declarations and DeclareLocal hoisting.
+    // DIVERGENCE: upstream never places hook destructures in scope bodies.
+    // We fix this at codegen by:
+    //   (a) hoisting the Destructure before the scope guard
+    //   (b) pre-declaring pattern names so the Destructure emits bare assignment
+    //   (c) removing DeclareLocal-based scope declarations for destructured vars
+    //   (d) adding the actual destructured names as replacement scope declarations
+    let destructured_declare_ids = find_destructured_declare_ids(scope);
+
     // Hoist DeclareLocal instructions for scope DECLARATIONS only.
     // Variables that are scope outputs (stored in cache, loaded in else branch)
     // need `let` declarations before the scope guard. Variables that are only
     // used inside the scope body should remain as `const` inside the if-block.
+    // Skip DeclareLocals whose lvalue IDs are in destructured_declare_ids.
     let scope_decl_ids: FxHashSet<IdentifierId> =
         scope.scope.declarations.iter().map(|(id, _)| *id).collect();
     let empty_inline_map = InlineMap::default();
@@ -1752,6 +1822,10 @@ fn codegen_scope(
             && let InstructionValue::DeclareLocal { lvalue, .. }
             | InstructionValue::DeclareContext { lvalue, .. } = &instruction.value
         {
+            // Skip DeclareLocal for destructured variables
+            if destructured_declare_ids.contains(&instruction.lvalue.identifier.id) {
+                continue;
+            }
             // Only hoist if this variable is a scope declaration (output)
             if scope_decl_ids.contains(&lvalue.identifier.id)
                 || scope_decl_ids.contains(&instruction.lvalue.identifier.id)
@@ -1767,6 +1841,36 @@ fn codegen_scope(
             }
         }
     }
+    let mut hoisted_destructure_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut destructure_pattern_names: Vec<String> = Vec::new();
+    for instr in &scope.instructions.instructions {
+        if let ReactiveInstruction::Instruction(instruction) = instr
+            && let InstructionValue::Destructure { lvalue_pattern, .. } = &instruction.value
+        {
+            // Pre-declare the destructured names
+            collect_pattern_names_with_declarations(lvalue_pattern, output, declared, &indent_str);
+            // Emit the destructure before the scope guard
+            codegen_instruction(
+                instruction,
+                output,
+                &indent_str,
+                declared,
+                &empty_inline_map,
+                tag_constants,
+            );
+            // Collect the pattern names as replacement declarations
+            let mut names = Vec::new();
+            collect_pattern_name_strings(lvalue_pattern, &mut names);
+            destructure_pattern_names.extend(names);
+            // Track this Destructure instruction's lvalue for skipping
+            hoisted_destructure_ids.insert(instruction.lvalue.identifier.id);
+        }
+    }
+
+    // Filter out scope declarations that correspond to DeclareLocal temps for
+    // destructured variables (they're replaced by the actual pattern names).
+    let sorted_decls: Vec<_> =
+        sorted_decls.into_iter().filter(|(id, _)| !destructured_declare_ids.contains(id)).collect();
 
     // Pre-declare scope output variables with `let` so the else-branch
     // (cache reload) can assign to them. Variables already declared by
@@ -1809,7 +1913,10 @@ fn codegen_scope(
         .iter()
         .map(|(_, decl)| identifier_display_name(&decl.identifier).to_string())
         .collect();
-    codegen_block_skip_declares(
+    // Merge the hoisted Destructure and its DeclareLocal IDs for skipping
+    let mut skip_ids = hoisted_destructure_ids.clone();
+    skip_ids.extend(destructured_declare_ids.iter());
+    codegen_block_skip_declares_and_ids(
         &scope.instructions,
         output,
         cache_slot,
@@ -1817,7 +1924,18 @@ fn codegen_scope(
         declared,
         &scope_decl_names,
         tag_constants,
+        &skip_ids,
     );
+
+    // Build the effective list of declaration names for cache store/load.
+    // This includes the original (non-phantom) declarations plus any
+    // destructured names that replace phantom temps.
+    let mut effective_decl_names: Vec<String> = sorted_decls
+        .iter()
+        .map(|(_, decl)| identifier_display_name(&decl.identifier).to_string())
+        .collect();
+    effective_decl_names.extend(destructure_pattern_names.iter().cloned());
+    let effective_decl_count = effective_decl_names.len() as u32;
 
     // Store dep values and declarations into cache slots.
     //
@@ -1833,8 +1951,7 @@ fn codegen_scope(
     if deps.is_empty() {
         // Sentinel scope: store declarations starting from slot_start
         // (reusing the sentinel slot for the first declaration)
-        for (i, (_, decl)) in sorted_decls.iter().enumerate() {
-            let decl_name = identifier_display_name(&decl.identifier);
+        for (i, decl_name) in effective_decl_names.iter().enumerate() {
             output.push_str(&format!(
                 "{}$[{}] = {};\n",
                 inner_indent,
@@ -1843,7 +1960,7 @@ fn codegen_scope(
             ));
         }
         // Advance cache_slot past the declarations (sentinel slot is included)
-        *cache_slot = slot_start + (scope.scope.declarations.len() as u32).max(1);
+        *cache_slot = slot_start + effective_decl_count.max(1);
     } else {
         // Reactive scope: store dep values for next comparison
         for (i, dep) in deps.iter().enumerate() {
@@ -1857,8 +1974,7 @@ fn codegen_scope(
         }
         // Store declarations after deps
         let decl_slot_start = slot_start + deps.len() as u32;
-        for (i, (_, decl)) in sorted_decls.iter().enumerate() {
-            let decl_name = identifier_display_name(&decl.identifier);
+        for (i, decl_name) in effective_decl_names.iter().enumerate() {
             output.push_str(&format!(
                 "{}$[{}] = {};\n",
                 inner_indent,
@@ -1866,7 +1982,7 @@ fn codegen_scope(
                 decl_name
             ));
         }
-        *cache_slot = decl_slot_start + scope.scope.declarations.len() as u32;
+        *cache_slot = decl_slot_start + effective_decl_count;
     }
 
     // Compute the declaration slot start for the else-branch reload
@@ -1874,12 +1990,11 @@ fn codegen_scope(
         if deps.is_empty() { slot_start } else { slot_start + deps.len() as u32 };
 
     // Only emit else block if there are declarations to load from cache
-    if !scope.scope.declarations.is_empty() {
+    if !effective_decl_names.is_empty() {
         output.push_str(&format!("{indent_str}}} else {{\n"));
 
         // Load cached declarations
-        for (i, (_, decl)) in sorted_decls.iter().enumerate() {
-            let decl_name = identifier_display_name(&decl.identifier);
+        for (i, decl_name) in effective_decl_names.iter().enumerate() {
             let inner_indent = "  ".repeat(indent + 1);
             output.push_str(&format!(
                 "{}{} = $[{}];\n",
@@ -1891,6 +2006,114 @@ fn codegen_scope(
     }
 
     output.push_str(&format!("{indent_str}}}\n"));
+}
+
+/// Find scope declaration IDs that should be replaced when a scope contains
+/// a Destructure instruction. These are DeclareLocal instructions whose
+/// target variable is also a target of a Destructure pattern in the same scope.
+///
+/// Matching is done by declaration_id (linking SSA versions of the same
+/// source variable) or by name when declaration_id is not available.
+fn find_destructured_declare_ids(scope: &ReactiveScopeBlock) -> FxHashSet<IdentifierId> {
+    // Collect declaration_ids and names from all Destructure patterns
+    let mut destructure_decl_ids: FxHashSet<DeclarationId> = FxHashSet::default();
+    let mut destructure_names: FxHashSet<String> = FxHashSet::default();
+    for si in &scope.instructions.instructions {
+        if let ReactiveInstruction::Instruction(instruction) = si
+            && let InstructionValue::Destructure { lvalue_pattern, .. } = &instruction.value
+        {
+            collect_pattern_identifiers(
+                lvalue_pattern,
+                &mut destructure_decl_ids,
+                &mut destructure_names,
+            );
+        }
+    }
+    if destructure_decl_ids.is_empty() && destructure_names.is_empty() {
+        return FxHashSet::default();
+    }
+
+    // Find DeclareLocal instructions whose target matches a Destructure pattern variable
+    let mut result = FxHashSet::default();
+    for si in &scope.instructions.instructions {
+        if let ReactiveInstruction::Instruction(instruction) = si
+            && let InstructionValue::DeclareLocal { lvalue, .. } = &instruction.value
+        {
+            let matches = lvalue
+                .identifier
+                .declaration_id
+                .is_some_and(|did| destructure_decl_ids.contains(&did))
+                || lvalue.identifier.name.as_ref().is_some_and(|n| destructure_names.contains(n));
+            if matches {
+                result.insert(instruction.lvalue.identifier.id);
+            }
+        }
+    }
+    result
+}
+
+/// Collect declaration_ids and names from all places in a Destructure pattern.
+fn collect_pattern_identifiers(
+    pattern: &crate::hir::types::DestructurePattern,
+    decl_ids: &mut FxHashSet<DeclarationId>,
+    names: &mut FxHashSet<String>,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        if let Some(did) = place.identifier.declaration_id {
+                            decl_ids.insert(did);
+                        }
+                        if let Some(name) = &place.identifier.name {
+                            names.insert(name.clone());
+                        }
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        collect_pattern_identifiers(nested, decl_ids, names);
+                    }
+                }
+            }
+            if let Some(rest_place) = rest {
+                if let Some(did) = rest_place.identifier.declaration_id {
+                    decl_ids.insert(did);
+                }
+                if let Some(name) = &rest_place.identifier.name {
+                    names.insert(name.clone());
+                }
+            }
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(target) => match target {
+                        DestructureTarget::Place(place) => {
+                            if let Some(did) = place.identifier.declaration_id {
+                                decl_ids.insert(did);
+                            }
+                            if let Some(name) = &place.identifier.name {
+                                names.insert(name.clone());
+                            }
+                        }
+                        DestructureTarget::Pattern(nested) => {
+                            collect_pattern_identifiers(nested, decl_ids, names);
+                        }
+                    },
+                    DestructureArrayItem::Hole | DestructureArrayItem::Spread(_) => {}
+                }
+            }
+            if let Some(rest_place) = rest {
+                if let Some(did) = rest_place.identifier.declaration_id {
+                    decl_ids.insert(did);
+                }
+                if let Some(name) = &rest_place.identifier.name {
+                    names.insert(name.clone());
+                }
+            }
+        }
+    }
 }
 
 /// Generate JavaScript from a lowered HIR function body (used for nested
@@ -1927,11 +2150,19 @@ fn collect_all_scope_declarations(
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Scope(scope) => {
+                // Find DeclareLocal temps that correspond to destructured variables
+                let destructured_declare_ids = find_destructured_declare_ids(scope);
+
                 // Sort declarations by source location for deterministic ordering
                 let mut sorted_decls: Vec<_> = scope.scope.declarations.iter().collect();
                 sorted_decls.sort_by_key(|(_, decl)| decl.identifier.loc.start);
 
-                for (_, decl) in &sorted_decls {
+                for (id, decl) in &sorted_decls {
+                    // Skip DeclareLocal temps for destructured variables — they
+                    // will be replaced by the actual destructured names
+                    if destructured_declare_ids.contains(id) {
+                        continue;
+                    }
                     let decl_name = identifier_display_name(&decl.identifier);
                     if !declared.contains(decl_name.as_ref()) {
                         declared.insert(decl_name.to_string());
@@ -2009,14 +2240,35 @@ fn count_cache_slots(block: &ReactiveBlock) -> u32 {
         match instr {
             ReactiveInstruction::Scope(scope) => {
                 let deps = &scope.scope.dependencies;
-                let decls = scope.scope.declarations.len() as u32;
+                // Count effective declarations: original declarations minus
+                // DeclareLocal temps for destructured vars, plus their replacement names.
+                let destructured_declare_ids = find_destructured_declare_ids(scope);
+                let mut replacement_name_count: u32 = 0;
+                for si in &scope.instructions.instructions {
+                    if let ReactiveInstruction::Instruction(instruction) = si
+                        && let InstructionValue::Destructure { lvalue_pattern, .. } =
+                            &instruction.value
+                    {
+                        let mut names = Vec::new();
+                        collect_pattern_name_strings(lvalue_pattern, &mut names);
+                        replacement_name_count += names.len() as u32;
+                    }
+                }
+                let non_phantom_decls = scope
+                    .scope
+                    .declarations
+                    .iter()
+                    .filter(|(id, _)| !destructured_declare_ids.contains(id))
+                    .count() as u32;
+                let effective_decls = non_phantom_decls + replacement_name_count;
+
                 if deps.is_empty() {
                     // Sentinel scope: the sentinel check reuses the first
                     // declaration's slot. Total = max(declarations, 1).
-                    count += decls.max(1);
+                    count += effective_decls.max(1);
                 } else {
                     // Reactive scope: deps + declarations as separate slots
-                    count += deps.len() as u32 + decls;
+                    count += deps.len() as u32 + effective_decls;
                 }
                 count += count_cache_slots(&scope.instructions);
             }
@@ -2330,6 +2582,116 @@ fn collect_pattern_names(
             }
             if let Some(rest_place) = rest {
                 declared.insert(place_name(rest_place).to_string());
+            }
+        }
+    }
+}
+
+/// Collect all variable names from a destructure pattern, emit `let name;`
+/// declarations for any not yet declared, and add them to the declared set.
+/// This is used to hoist destructure pattern names out of scope bodies so
+/// the destructure inside the scope guard emits bare assignment instead of
+/// block-scoped `let`.
+fn collect_pattern_names_with_declarations(
+    pattern: &crate::hir::types::DestructurePattern,
+    output: &mut String,
+    declared: &mut FxHashSet<String>,
+    indent: &str,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        let name = place_name(place);
+                        if !declared.contains(name.as_ref()) {
+                            declared.insert(name.to_string());
+                            output.push_str(&format!("{indent}let {name};\n"));
+                        }
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        collect_pattern_names_with_declarations(nested, output, declared, indent);
+                    }
+                }
+            }
+            if let Some(rest_place) = rest {
+                let name = place_name(rest_place);
+                if !declared.contains(name.as_ref()) {
+                    declared.insert(name.to_string());
+                    output.push_str(&format!("{indent}let {name};\n"));
+                }
+            }
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(target) => match target {
+                        DestructureTarget::Place(place) => {
+                            let name = place_name(place);
+                            if !declared.contains(name.as_ref()) {
+                                declared.insert(name.to_string());
+                                output.push_str(&format!("{indent}let {name};\n"));
+                            }
+                        }
+                        DestructureTarget::Pattern(nested) => {
+                            collect_pattern_names_with_declarations(
+                                nested, output, declared, indent,
+                            );
+                        }
+                    },
+                    DestructureArrayItem::Hole | DestructureArrayItem::Spread(_) => {}
+                }
+            }
+            if let Some(rest_place) = rest {
+                let name = place_name(rest_place);
+                if !declared.contains(name.as_ref()) {
+                    declared.insert(name.to_string());
+                    output.push_str(&format!("{indent}let {name};\n"));
+                }
+            }
+        }
+    }
+}
+
+/// Collect all variable names from a destructure pattern into a Vec of strings.
+fn collect_pattern_name_strings(
+    pattern: &crate::hir::types::DestructurePattern,
+    names: &mut Vec<String>,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        names.push(place_name(place).to_string());
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        collect_pattern_name_strings(nested, names);
+                    }
+                }
+            }
+            if let Some(rest_place) = rest {
+                names.push(place_name(rest_place).to_string());
+            }
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(target) => match target {
+                        DestructureTarget::Place(place) => {
+                            names.push(place_name(place).to_string());
+                        }
+                        DestructureTarget::Pattern(nested) => {
+                            collect_pattern_name_strings(nested, names);
+                        }
+                    },
+                    DestructureArrayItem::Hole | DestructureArrayItem::Spread(_) => {}
+                }
+            }
+            if let Some(rest_place) = rest {
+                names.push(place_name(rest_place).to_string());
             }
         }
     }

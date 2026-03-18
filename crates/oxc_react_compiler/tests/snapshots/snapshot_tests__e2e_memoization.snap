@@ -5,7 +5,7 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function Counter() {
-  const $ = _c(2);
+  const $ = _c(4);
   let t2;
   let t9;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -15,12 +15,18 @@ function Counter() {
     t2 = $[0];
   }
   let t3 = useState(t2);
+  let count;
+  let setCount;
+  ([count, setCount] = t3);
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    let [count, setCount] = t3;
     t9 = <div>{count}</div>;
     $[1] = t9;
+    $[2] = count;
+    $[3] = setCount;
   } else {
     t9 = $[1];
+    count = $[2];
+    setCount = $[3];
   }
   return t9;
 }

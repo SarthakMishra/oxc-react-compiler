@@ -8,71 +8,69 @@ interface Todo {
 }
 
 export function TodoList() {
-  const $ = _c(21);
-  let t60;
-  let t61;
-  let t17;
-  let t19;
+  const $ = _c(17);
   let t2;
-  if ($[0] !== t3 || $[1] !== todos) {
-    t2 = [];
-    $[0] = t3;
-    $[1] = todos;
-    $[2] = t60;
-    $[3] = t61;
-    $[4] = t17;
-    $[5] = t19;
-    $[6] = t2;
-  } else {
-    t60 = $[2];
-    t61 = $[3];
-    t17 = $[4];
-    t19 = $[5];
-    t2 = $[6];
-  }
-  const addTodo = t61;
-  let t62;
-  if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    $[7] = t62;
-  } else {
-    t62 = $[7];
-  }
-  const todos = t62;
-  let setTodos;
   let t8;
-  if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    $[8] = t8;
+  let t62;
+  let t63;
+  let t25;
+  let t26;
+  let t64;
+  let t65;
+  let t32;
+  let t33;
+  let t66;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t2 = [];
+    $[0] = t2;
   } else {
-    t8 = $[8];
+    t2 = $[0];
   }
+  let t3 = useState(t2);
+  let todos;
+  let setTodos;
+  ([todos, setTodos] = t3);
+  if ($[1] !== t3) {
+    $[1] = t3;
+    $[2] = todos;
+    $[3] = setTodos;
+  } else {
+    todos = $[2];
+    setTodos = $[3];
+  }
+  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
+    t8 = "";
+    $[4] = t8;
+  } else {
+    t8 = $[4];
+  }
+  let input;
+  let setInput;
+  ([input, setInput] = useState(t8));
   let addTodo;
-  t17 = () => {
+  let t17 = () => {
     if (input.trim()) {
-      const t5 = (prev) => {
+      let t5 = (prev) => {
         return [...prev, { id: Date.now(), text: input, done: false }];
       };
-      const t6 = setTodos(t5);
-      const t10 = setInput("");
+      let t6 = setTodos(t5);
+      let t10 = setInput("");
     }
     return undefined;
   };
-  const t20 = useCallback(t17, [input]);
-  let t63;
-  if ($[9] !== t20) {
-    t63 = t20;
-    $[9] = t20;
-    $[10] = t63;
+  let t20 = useCallback(t17, [input]);
+  if ($[5] !== t20) {
+    t62 = t20;
+    $[5] = t20;
+    $[6] = t62;
   } else {
-    t63 = $[10];
+    t62 = $[6];
   }
-  addTodo = t63;
-  let t64;
-  let t25;
-  let t26;
-  if ($[11] === Symbol.for("react.memo_cache_sentinel")) {
+  addTodo = t62;
+  if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
     t25 = (id) => {
-      const t3 = (prev) => {
-        const t2 = (t) => {
+      let t3 = (prev) => {
+        let t2 = (t) => {
           let t6;
           if (t.id === id) {
             t6 = { ...t, done: !t.done };
@@ -83,82 +81,77 @@ export function TodoList() {
         };
         return prev.map(t2);
       };
-      const t4 = setTodos(t3);
+      let t4 = setTodos(t3);
       return undefined;
     };
     t26 = [];
+    $[7] = t63;
+    $[8] = t25;
+    $[9] = t26;
+  } else {
+    t63 = $[7];
+    t25 = $[8];
+    t26 = $[9];
+  }
+  let toggleTodo = t63;
+  let t27 = useCallback(t25, t26);
+  if ($[10] !== t27) {
+    t64 = t27;
+    $[10] = t27;
     $[11] = t64;
-    $[12] = t25;
-    $[13] = t26;
   } else {
     t64 = $[11];
-    t25 = $[12];
-    t26 = $[13];
   }
-  const toggleTodo = t64;
-  const t27 = useCallback(t25, t26);
-  let t65;
-  if ($[14] !== t27) {
-    t65 = t27;
-    $[14] = t27;
-    $[15] = t65;
-  } else {
-    t65 = $[15];
-  }
-  const toggleTodo = t65;
-  let t66;
-  let t32;
-  let t33;
-  if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
+  toggleTodo = t64;
+  if ($[12] === Symbol.for("react.memo_cache_sentinel")) {
     t32 = (id) => {
-      const t3 = (prev) => {
-        const t2 = (t) => {
+      let t3 = (prev) => {
+        let t2 = (t) => {
           return t.id !== id;
         };
         return prev.filter(t2);
       };
-      const t4 = setTodos(t3);
+      let t4 = setTodos(t3);
       return undefined;
     };
     t33 = [];
+    $[12] = t65;
+    $[13] = t32;
+    $[14] = t33;
+  } else {
+    t65 = $[12];
+    t32 = $[13];
+    t33 = $[14];
+  }
+  let removeTodo = t65;
+  let t34 = useCallback(t32, t33);
+  if ($[15] !== t34) {
+    t66 = t34;
+    $[15] = t34;
     $[16] = t66;
-    $[17] = t32;
-    $[18] = t33;
   } else {
     t66 = $[16];
-    t32 = $[17];
-    t33 = $[18];
   }
-  const removeTodo = t66;
-  const t34 = useCallback(t32, t33);
-  let t67;
-  if ($[19] !== t34) {
-    t67 = t34;
-    $[19] = t34;
-    $[20] = t67;
-  } else {
-    t67 = $[20];
-  }
-  const removeTodo = t67;
+  removeTodo = t66;
   let remaining;
-  const t38 = (t) => {
+  let t38 = (t) => {
     return !t.done;
   };
   remaining = todos.filter(t38).length;
-  const t49 = (e) => {
+  let t49 = (e) => {
     return setInput(e.target.value);
   };
-  const t57 = (todo) => {
+  let t57 = (todo) => {
     let t6;
     if (todo.done) {
       t6 = "line-through";
     } else {
       t6 = "none";
     }
-    const t11 = () => {
+    let t11 = () => {
       return toggleTodo(todo.id);
     };
-    const t16 = () => {
+    let t16 = () => {
       return removeTodo(todo.id);
     };
     return <li key={todo.id} style={{ textDecoration: t6 }}><span onClick={t11}>{todo.text}</span><button onClick={t16}>x</button></li>;

@@ -22,41 +22,73 @@ interface BookingListProps {
 }
 
 export function BookingList(t0) {
-  const $ = _c(45);
-  const { bookings, onCancel, onReschedule, onConfirm, filter } = t0;
+  const $ = _c(41);
   let t9;
+  let t15;
+  let t21;
+  let now;
+  let t146;
+  let t37;
+  let t42;
+  let filteredBookings;
+  let t147;
+  let t48;
+  let t51;
+  let sortedBookings;
+  let t148;
+  let t57;
+  let t59;
+  let t149;
+  let t66;
+  let t67;
+  let t150;
+  let t151;
+  let t73;
+  let t75;
+  let t152;
+  let t78;
+  let t79;
+  let t129;
+  let t134;
+  let { bookings, onCancel, onReschedule, onConfirm, filter } = t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t9 = null;
     $[0] = t9;
   } else {
     t9 = $[0];
   }
-  let t15;
+  let expandedId;
+  let setExpandedId;
+  ([expandedId, setExpandedId] = useState(t9));
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+    t15 = "";
     $[1] = t15;
   } else {
     t15 = $[1];
   }
-  let t21;
+  let searchQuery;
+  let setSearchQuery;
+  ([searchQuery, setSearchQuery] = useState(t15));
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
+    t21 = "date";
     $[2] = t21;
   } else {
     t21 = $[2];
   }
-  let now;
-  const t30 = () => {
+  let sortBy;
+  let setSortBy;
+  ([sortBy, setSortBy] = useState(t21));
+  let t30 = () => {
     return new Date().toISOString();
   };
-  const t32 = useMemo(t30, []);
-  let t146;
-  let t37;
-  let t42;
+  let t32 = useMemo(t30, []);
   if ($[3] !== t32 || $[4] !== bookings || $[5] !== filter) {
     now = t32;
     t37 = () => {
       let result;
       result = bookings;
       if (filter === "upcoming") {
-        const t8 = (b) => {
+        let t8 = (b) => {
           let t1;
           t1 = b.startTime > now;
           t1 = b.status !== "cancelled";
@@ -65,7 +97,7 @@ export function BookingList(t0) {
         result = result.filter(t8);
       } else {
         if (filter === "past") {
-          const t14 = (b) => {
+          let t14 = (b) => {
             return b.endTime < now;
           };
           result = result.filter(t14);
@@ -74,10 +106,10 @@ export function BookingList(t0) {
       if (searchQuery) {
         let q;
         q = searchQuery.toLowerCase();
-        const t22 = (b) => {
+        let t22 = (b) => {
           let t1;
           t1 = b.title.toLowerCase().includes(q);
-          const t10 = (a) => {
+          let t10 = (a) => {
             let t1;
             t1 = a.name.toLowerCase().includes(q);
             t1 = a.email.toLowerCase().includes(q);
@@ -104,16 +136,12 @@ export function BookingList(t0) {
     t37 = $[8];
     t42 = $[9];
   }
-  const filteredBookings = t146;
-  const t43 = useMemo(t37, t42);
-  let t147;
-  let filteredBookings;
-  let t48;
-  let t51;
+  filteredBookings = t146;
+  let t43 = useMemo(t37, t42);
   if ($[10] !== t43) {
     filteredBookings = t43;
     t48 = () => {
-      const t3 = (a, b) => {
+      let t3 = (a, b) => {
         if (sortBy === "date") {
           return a.startTime.localeCompare(b.startTime);
         }
@@ -133,22 +161,18 @@ export function BookingList(t0) {
     t48 = $[13];
     t51 = $[14];
   }
-  const sortedBookings = t147;
-  const t52 = useMemo(t48, t51);
-  let t148;
-  let sortedBookings;
-  let t57;
-  let t59;
+  sortedBookings = t147;
+  let t52 = useMemo(t48, t51);
   if ($[15] !== t52) {
     sortedBookings = t52;
     t57 = () => {
-      const t4 = (b) => {
+      let t4 = (b) => {
         return b.status === "confirmed";
       };
-      const t8 = (b) => {
+      let t8 = (b) => {
         return b.status === "pending";
       };
-      const t12 = (b) => {
+      let t12 = (b) => {
         return b.status === "cancelled";
       };
       return { total: sortedBookings.length, confirmed: sortedBookings.filter(t4).length, pending: sortedBookings.filter(t8).length, cancelled: sortedBookings.filter(t12).length };
@@ -165,23 +189,11 @@ export function BookingList(t0) {
     t57 = $[18];
     t59 = $[19];
   }
-  const stats = t148;
-  const t60 = useMemo(t57, t59);
-  let t149;
-  if ($[20] !== t60) {
-    t149 = t60;
-    $[20] = t60;
-    $[21] = t149;
-  } else {
-    t149 = $[21];
-  }
-  const stats = t149;
-  let t150;
-  let t66;
-  let t67;
-  if ($[22] === Symbol.for("react.memo_cache_sentinel")) {
+  let stats = t148;
+  stats = useMemo(t57, t59);
+  if ($[20] === Symbol.for("react.memo_cache_sentinel")) {
     t66 = (id) => {
-      const t3 = (prev) => {
+      let t3 = (prev) => {
         let t5;
         if (prev === id) {
           t5 = null;
@@ -190,146 +202,131 @@ export function BookingList(t0) {
         }
         return t5;
       };
-      const t4 = setExpandedId(t3);
+      let t4 = setExpandedId(t3);
       return undefined;
     };
     t67 = [];
-    $[22] = t150;
-    $[23] = t66;
-    $[24] = t67;
+    $[20] = t149;
+    $[21] = t66;
+    $[22] = t67;
   } else {
-    t150 = $[22];
-    t66 = $[23];
-    t67 = $[24];
+    t149 = $[20];
+    t66 = $[21];
+    t67 = $[22];
   }
-  const toggleExpanded = t150;
-  const t68 = useCallback(t66, t67);
-  let t151;
-  if ($[25] !== t68) {
-    t151 = t68;
-    $[25] = t68;
-    $[26] = t151;
+  let toggleExpanded = t149;
+  let t68 = useCallback(t66, t67);
+  if ($[23] !== t68) {
+    t150 = t68;
+    $[23] = t68;
+    $[24] = t150;
   } else {
-    t151 = $[26];
+    t150 = $[24];
   }
-  const toggleExpanded = t151;
-  let t152;
-  let t73;
-  let t75;
-  if ($[27] !== onCancel) {
+  toggleExpanded = t150;
+  if ($[25] !== onCancel) {
     t73 = (id) => {
-      const t4 = onCancel(id);
-      const t8 = setExpandedId(null);
+      let t4 = onCancel(id);
+      let t8 = setExpandedId(null);
       return undefined;
     };
     t75 = [onCancel];
-    $[27] = onCancel;
-    $[28] = t152;
-    $[29] = t73;
-    $[30] = t75;
+    $[25] = onCancel;
+    $[26] = t151;
+    $[27] = t73;
+    $[28] = t75;
   } else {
-    t152 = $[28];
-    t73 = $[29];
-    t75 = $[30];
+    t151 = $[26];
+    t73 = $[27];
+    t75 = $[28];
   }
-  const handleCancel = t152;
-  const t76 = useCallback(t73, t75);
-  let t153;
-  if ($[31] !== t76) {
-    t153 = t76;
-    $[31] = t76;
-    $[32] = t153;
+  let handleCancel = t151;
+  let t76 = useCallback(t73, t75);
+  if ($[29] !== t76) {
+    t152 = t76;
+    $[29] = t76;
+    $[30] = t152;
   } else {
-    t153 = $[32];
+    t152 = $[30];
   }
-  const handleCancel = t153;
-  const t112 = (e) => {
-    return setSearchQuery(e.target.value);
-  };
-  const t118 = (e) => {
-    return setSortBy(e.target.value);
-  };
-  let t134;
-  if (sortedBookings.length === 0) {
-    let t145;
-    let t154;
-    let t155;
-    let t30;
-    let t31;
-    let t156;
-    if ($[33] !== t43 || $[34] !== sortedBookings.length || $[35] !== stats.total || $[36] !== stats.confirmed || $[37] !== stats.pending || $[38] !== stats.cancelled) {
-      t134 = <p className="text-gray-500 text-center py-8">No bookings found</p>;
-      $[33] = t43;
-      $[34] = sortedBookings.length;
-      $[35] = stats.total;
-      $[36] = stats.confirmed;
-      $[37] = stats.pending;
-      $[38] = stats.cancelled;
-      $[39] = t145;
-      $[40] = t154;
-      $[41] = t155;
-      $[42] = t30;
-      $[43] = t31;
-      $[44] = t156;
-    } else {
-      t145 = $[39];
-      t154 = $[40];
-      t155 = $[41];
-      t30 = $[42];
-      t31 = $[43];
-      t156 = $[44];
-    }
-    const sortBy = t154;
-    now = t155;
-    const searchQuery = t156;
-  } else {
-    const t142 = (booking) => {
-      const t7 = () => {
-        return toggleExpanded(booking.id);
-      };
-      let t35;
-      if (booking.status === "confirmed") {
-        t35 = "bg-green-100";
-      } else {
-        let t41;
-        if (booking.status === "pending") {
-          t41 = "bg-yellow-100";
-        } else {
-          t41 = "bg-red-100";
-        }
-        t35 = t41;
-      }
-      let t49;
-      t49 = expandedId === booking.id;
-      let t57;
-      t57 = booking.location;
-      t57 = <p className="text-sm">📍 {booking.location}</p>;
-      let t66;
-      t66 = booking.notes;
-      t66 = <p className="text-sm text-gray-600">{booking.notes}</p>;
-      const t82 = (a, i) => {
-        return <div key={i} className="text-sm flex justify-between"><span>{a.name} ({a.email})</span><span>{a.status}</span></div>;
-      };
-      let t87;
-      t87 = booking.status === "pending";
-      const t93 = () => {
-        return onConfirm(booking.id);
-      };
-      t87 = <button onClick={t93} className="text-green-600">Confirm</button>;
-      const t98 = () => {
-        return onReschedule(booking.id);
-      };
-      let t102;
-      t102 = booking.status !== "cancelled";
-      const t108 = () => {
-        return handleCancel(booking.id);
-      };
-      t102 = <button onClick={t108} className="text-red-600">Cancel</button>;
-      t49 = <div className="mt-2 pl-4 border-l-2">{t57}{t66}<div className="mt-2"><h4 className="text-xs font-semibold uppercase">Attendees</h4>{booking.attendees.map(t82)}</div><div className="mt-2 flex gap-2">{t87}<button onClick={t98} className="text-blue-600">Reschedule</button>{t102}</div></div>;
-      return <li key={booking.id} className="py-3"><div className="flex justify-between items-start cursor-pointer" onClick={t7}><div><h3 className="font-medium">{booking.title}</h3><p className="text-sm text-gray-500">{booking.startTime} - {booking.endTime}</p><p className="text-sm">{booking.attendees.length} attendee(s)</p></div><span className={`px-2 py-1 rounded text-xs ${t35}`}>{booking.status}</span></div>{t49}</li>;
+  handleCancel = t152;
+  if ($[31] !== sortedBookings.length || $[32] !== stats.total || $[33] !== stats.confirmed || $[34] !== stats.pending || $[35] !== stats.cancelled) {
+    let t112 = (e) => {
+      return setSearchQuery(e.target.value);
     };
-    t134 = <ul className="divide-y">{sortedBookings.map(t142)}</ul>;
+    let t118 = (e) => {
+      return setSortBy(e.target.value);
+    };
+    if (sortedBookings.length === 0) {
+      if ($[36] === Symbol.for("react.memo_cache_sentinel")) {
+        t134 = <p className="text-gray-500 text-center py-8">No bookings found</p>;
+        $[36] = t134;
+      } else {
+        t134 = $[36];
+      }
+    } else {
+      let t142 = (booking) => {
+        let t7 = () => {
+          return toggleExpanded(booking.id);
+        };
+        let t35;
+        if (booking.status === "confirmed") {
+          t35 = "bg-green-100";
+        } else {
+          let t41;
+          if (booking.status === "pending") {
+            t41 = "bg-yellow-100";
+          } else {
+            t41 = "bg-red-100";
+          }
+          t35 = t41;
+        }
+        let t49;
+        t49 = expandedId === booking.id;
+        let t57;
+        t57 = booking.location;
+        t57 = <p className="text-sm">📍 {booking.location}</p>;
+        let t66;
+        t66 = booking.notes;
+        t66 = <p className="text-sm text-gray-600">{booking.notes}</p>;
+        let t82 = (a, i) => {
+          return <div key={i} className="text-sm flex justify-between"><span>{a.name} ({a.email})</span><span>{a.status}</span></div>;
+        };
+        let t87;
+        t87 = booking.status === "pending";
+        let t93 = () => {
+          return onConfirm(booking.id);
+        };
+        t87 = <button onClick={t93} className="text-green-600">Confirm</button>;
+        let t98 = () => {
+          return onReschedule(booking.id);
+        };
+        let t102;
+        t102 = booking.status !== "cancelled";
+        let t108 = () => {
+          return handleCancel(booking.id);
+        };
+        t102 = <button onClick={t108} className="text-red-600">Cancel</button>;
+        t49 = <div className="mt-2 pl-4 border-l-2">{t57}{t66}<div className="mt-2"><h4 className="text-xs font-semibold uppercase">Attendees</h4>{booking.attendees.map(t82)}</div><div className="mt-2 flex gap-2">{t87}<button onClick={t98} className="text-blue-600">Reschedule</button>{t102}</div></div>;
+        return <li key={booking.id} className="py-3"><div className="flex justify-between items-start cursor-pointer" onClick={t7}><div><h3 className="font-medium">{booking.title}</h3><p className="text-sm text-gray-500">{booking.startTime} - {booking.endTime}</p><p className="text-sm">{booking.attendees.length} attendee(s)</p></div><span className={`px-2 py-1 rounded text-xs ${t35}`}>{booking.status}</span></div>{t49}</li>;
+      };
+      t134 = <ul className="divide-y">{sortedBookings.map(t142)}</ul>;
+    }
+    return <div className="space-y-4"><div className="flex justify-between items-center"><div className="flex gap-2 text-sm"><span>{stats.total} total</span><span className="text-green-600">{stats.confirmed} confirmed</span><span className="text-yellow-600">{stats.pending} pending</span><span className="text-red-600">{stats.cancelled} cancelled</span></div><div className="flex gap-2"><input value={searchQuery} onChange={t112} placeholder="Search bookings..." className="border rounded px-2 py-1" /><select value={sortBy} onChange={t118}><option value="date">Sort by date</option><option value="title">Sort by title</option></select></div></div>{t134}</div>;
+    $[31] = sortedBookings.length;
+    $[32] = stats.total;
+    $[33] = stats.confirmed;
+    $[34] = stats.pending;
+    $[35] = stats.cancelled;
+    $[36] = t78;
+    $[37] = t79;
+    $[38] = t129;
+    $[39] = t134;
+  } else {
+    t78 = $[36];
+    t79 = $[37];
+    t129 = $[38];
+    t134 = $[39];
   }
-  return <div className="space-y-4"><div className="flex justify-between items-center"><div className="flex gap-2 text-sm"><span>{stats.total} total</span><span className="text-green-600">{stats.confirmed} confirmed</span><span className="text-yellow-600">{stats.pending} pending</span><span className="text-red-600">{stats.cancelled} cancelled</span></div><div className="flex gap-2"><input value={searchQuery} onChange={t112} placeholder="Search bookings..." className="border rounded px-2 py-1" /><select value={sortBy} onChange={t118}><option value="date">Sort by date</option><option value="title">Sort by title</option></select></div></div>{t134}</div>;
 }
 

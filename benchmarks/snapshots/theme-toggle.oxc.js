@@ -3,57 +3,46 @@ import { c as _c } from "react/compiler-runtime";
 import { useState, useCallback } from 'react';
 
 export function ThemeToggle() {
-  const $ = _c(8);
+  const $ = _c(6);
   let t2;
+  let t30;
+  let t15;
+  let t29;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t2 = "light";
     $[0] = t2;
   } else {
     t2 = $[0];
   }
-  let t30;
-  let t29;
-  let t11;
-  let t12;
-  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t11 = () => {
-      const t2 = (t) => {
-        let t4;
-        if (t === "light") {
-          t4 = "dark";
-        } else {
-          t4 = "light";
-        }
-        return t4;
-      };
-      const t3 = setTheme(t2);
-      return undefined;
+  let theme;
+  let setTheme;
+  ([theme, setTheme] = useState(t2));
+  let toggle;
+  let t11 = () => {
+    let t2 = (t) => {
+      let t4;
+      if (t === "light") {
+        t4 = "dark";
+      } else {
+        t4 = "light";
+      }
+      return t4;
     };
-    t12 = [];
-    $[1] = t29;
-    $[2] = t30;
-    $[3] = t11;
-    $[4] = t12;
-  } else {
-    t29 = $[1];
-    t30 = $[2];
-    t11 = $[3];
-    t12 = $[4];
-  }
-  const toggle = t30;
-  const t13 = useCallback(t11, t12);
-  let t31;
-  let t15;
-  if ($[5] !== t13) {
-    t31 = t13;
+    let t3 = setTheme(t2);
+    return undefined;
+  };
+  let t13 = useCallback(t11, []);
+  if ($[1] !== t13) {
+    t30 = t13;
     t15 = "button";
-    $[5] = t13;
-    $[6] = t31;
-    $[7] = t15;
+    $[1] = t13;
+    $[2] = t30;
+    $[3] = t15;
   } else {
-    t31 = $[6];
-    t15 = $[7];
+    t30 = $[2];
+    t15 = $[3];
   }
-  const toggle = t31;
+  toggle = t30;
   let t20;
   if (theme === "dark") {
     t20 = "bg-gray-800 text-white";
@@ -66,6 +55,13 @@ export function ThemeToggle() {
   } else {
     t26 = "🌙";
   }
-  return <t15 onClick={toggle} className={t20}>{t26}</t15>;
+  if ($[4] !== t13) {
+    t29 = <button onClick={toggle} className={t20}>{t26}</button>;
+    $[4] = t13;
+    $[5] = t29;
+  } else {
+    t29 = $[5];
+  }
+  return t29;
 }
 

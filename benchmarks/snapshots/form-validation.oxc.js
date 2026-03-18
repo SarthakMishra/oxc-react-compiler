@@ -8,22 +8,56 @@ interface FormState {
 }
 
 export function FormValidation() {
-  const $ = _c(35);
+  const $ = _c(30);
   let t5;
-  if ($[0] !== t6) {
-    $[0] = t6;
-    $[1] = t5;
-  } else {
-    t5 = $[1];
-  }
   let t11;
-  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    $[2] = t11;
-  } else {
-    t11 = $[2];
-  }
   let errors;
-  const t20 = () => {
+  let t132;
+  let t28;
+  let t30;
+  let t133;
+  let t134;
+  let t37;
+  let t38;
+  let t135;
+  let t136;
+  let t44;
+  let t47;
+  let t137;
+  let t50;
+  let t53;
+  let t54;
+  let t63;
+  let t64;
+  let t65;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t5 = { email: "", password: "", confirmPassword: "" };
+    $[0] = t5;
+  } else {
+    t5 = $[0];
+  }
+  let t6 = useState(t5);
+  let form;
+  let setForm;
+  ([form, setForm] = t6);
+  if ($[1] !== t6) {
+    $[1] = t6;
+    $[2] = form;
+    $[3] = setForm;
+  } else {
+    form = $[2];
+    setForm = $[3];
+  }
+  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
+    t11 = false;
+    $[4] = t11;
+  } else {
+    t11 = $[4];
+  }
+  let submitted;
+  let setSubmitted;
+  ([submitted, setSubmitted] = useState(t11));
+  let t20 = () => {
     let errs;
     errs = {};
     if (!form.email.includes("@")) {
@@ -37,96 +71,79 @@ export function FormValidation() {
     }
     return errs;
   };
-  const t23 = useMemo(t20, [form]);
-  let t132;
-  let t28;
-  let t30;
-  if ($[3] !== t23) {
+  let t23 = useMemo(t20, [form]);
+  if ($[5] !== t23) {
     errors = t23;
     t28 = () => {
       return Object.keys(errors).length === 0;
     };
     t30 = [errors];
-    $[3] = t23;
-    $[4] = errors;
-    $[5] = t132;
-    $[6] = t28;
-    $[7] = t30;
+    $[5] = t23;
+    $[6] = errors;
+    $[7] = t132;
+    $[8] = t28;
+    $[9] = t30;
   } else {
-    errors = $[4];
-    t132 = $[5];
-    t28 = $[6];
-    t30 = $[7];
+    errors = $[6];
+    t132 = $[7];
+    t28 = $[8];
+    t30 = $[9];
   }
-  const isValid = t132;
-  const t31 = useMemo(t28, t30);
-  let t134;
-  let t133;
-  let t37;
-  let t38;
-  if ($[8] !== t31) {
+  let isValid = t132;
+  let t31 = useMemo(t28, t30);
+  if ($[10] !== t31) {
     t133 = t31;
     t37 = (field) => {
-      const t1 = (e) => {
-        const t3 = (prev) => {
+      let t1 = (e) => {
+        let t3 = (prev) => {
           return { ...prev, [field]: e.target.value };
         };
-        const t4 = setForm(t3);
+        let t4 = setForm(t3);
         return undefined;
       };
       return t1;
     };
     t38 = [];
-    $[8] = t31;
-    $[9] = t133;
-    $[10] = t134;
-    $[11] = t37;
-    $[12] = t38;
+    $[10] = t31;
+    $[11] = t133;
+    $[12] = t134;
+    $[13] = t37;
+    $[14] = t38;
   } else {
-    t133 = $[9];
-    t134 = $[10];
-    t37 = $[11];
-    t38 = $[12];
+    t133 = $[11];
+    t134 = $[12];
+    t37 = $[13];
+    t38 = $[14];
   }
-  const isValid = t133;
-  const handleChange = t134;
-  const t39 = useCallback(t37, t38);
-  let t136;
-  let t135;
-  let t44;
-  let t47;
-  if ($[13] !== t39 || $[14] !== form.email) {
+  isValid = t133;
+  let handleChange = t134;
+  let t39 = useCallback(t37, t38);
+  if ($[15] !== t39 || $[16] !== form) {
     t135 = t39;
     t44 = () => {
-      const t3 = setSubmitted(true);
+      let t3 = setSubmitted(true);
       if (isValid) {
-        const t10 = console.log("Form submitted:", form);
+        let t10 = console.log("Form submitted:", form);
       }
       return undefined;
     };
     t47 = [isValid, form];
-    $[13] = t39;
-    $[14] = form.email;
-    $[15] = t135;
-    $[16] = t136;
-    $[17] = t44;
-    $[18] = t47;
+    $[15] = t39;
+    $[16] = form;
+    $[17] = t135;
+    $[18] = t136;
+    $[19] = t44;
+    $[20] = t47;
   } else {
-    t135 = $[15];
-    t136 = $[16];
-    t44 = $[17];
-    t47 = $[18];
+    t135 = $[17];
+    t136 = $[18];
+    t44 = $[19];
+    t47 = $[20];
   }
-  const handleChange = t135;
-  const handleSubmit = t136;
-  const t48 = useCallback(t44, t47);
-  let t64;
-  let t137;
-  let t50;
-  let t53;
-  let t54;
-  let t63;
-  if ($[19] !== t48 || $[20] !== form.email) {
+  handleChange = t135;
+  let handleSubmit = t136;
+  let t48 = useCallback(t44, t47);
+  if ($[21] !== t48 || $[22] !== form) {
     t137 = t48;
     t50 = "div";
     t53 = (
@@ -136,47 +153,28 @@ export function FormValidation() {
     );
     t54 = "div";
     t63 = <input type="email" value={form.email} onChange={handleChange("email")} placeholder="Email" />;
-    $[19] = t48;
-    $[20] = form.email;
-    $[21] = t137;
-    $[22] = t50;
-    $[23] = t53;
-    $[24] = t54;
-    $[25] = t63;
-    $[26] = t64;
-  } else {
-    t137 = $[21];
-    t50 = $[22];
-    t53 = $[23];
-    t54 = $[24];
-    t63 = $[25];
-    t64 = $[26];
-  }
-  const handleSubmit = t137;
-  let t131;
-  let t138;
-  let t20;
-  let t22;
-  let t139;
-  if ($[27] !== t63 || $[28] !== form.email) {
+    $[21] = t48;
+    $[22] = form;
+    $[23] = t137;
+    $[24] = t50;
+    $[25] = t53;
+    $[26] = t54;
     $[27] = t63;
-    $[28] = form.email;
-    $[29] = t64;
-    $[30] = t131;
-    $[31] = t138;
-    $[32] = t20;
-    $[33] = t22;
-    $[34] = t139;
+    $[28] = t64;
   } else {
-    t64 = $[29];
-    t131 = $[30];
-    t138 = $[31];
-    t20 = $[32];
-    t22 = $[33];
-    t139 = $[34];
+    t137 = $[23];
+    t50 = $[24];
+    t53 = $[25];
+    t54 = $[26];
+    t63 = $[27];
+    t64 = $[28];
   }
-  errors = t138;
-  const form = t139;
+  handleSubmit = t137;
+  if ($[29] === Symbol.for("react.memo_cache_sentinel")) {
+    $[29] = t65;
+  } else {
+    t65 = $[29];
+  }
   t65 = submitted;
   t65 = errors.email;
   t64 = t65;
@@ -205,6 +203,6 @@ export function FormValidation() {
   } else {
     t127 = "Submit";
   }
-  return <t50>{t53}<t54>{t63}{t64}</t54><div><input type="password" value={form.password} onChange={handleChange("password")} placeholder="Password" />{t85}</div><div><input type="password" value={form.confirmPassword} onChange={handleChange("confirmPassword")} placeholder="Confirm Password" />{t106}</div><button onClick={handleSubmit} disabled={t119}>{t127}</button></t50>;
+  return <div>{t53}<div>{t63}{t64}</div><div><input type="password" value={form.password} onChange={handleChange("password")} placeholder="Password" />{t85}</div><div><input type="password" value={form.confirmPassword} onChange={handleChange("confirmPassword")} placeholder="Confirm Password" />{t106}</div><button onClick={handleSubmit} disabled={t119}>{t127}</button></div>;
 }
 
