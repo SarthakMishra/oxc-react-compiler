@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 88      | 1–88   | Full compiler: HIR foundation → 25.3% conformance. Recent: destructure-in-scope hoisting (Gap 8, render 36%→40%), unscooped variable declarations (Gap 10), JSX tag temp resolution (Gap 9), test infrastructure, conformance hardening |
+| [001.md](001.md) | 89      | 1–89   | Full compiler: HIR foundation → 25.3% conformance. Recent: phantom scope declaration filter + destructure defaults (Gap 11/12), destructure-in-scope hoisting (Gap 8, render 36%→40%), unscooped variable declarations (Gap 10), JSX tag temp resolution (Gap 9) |
 
 ## Archive
 
