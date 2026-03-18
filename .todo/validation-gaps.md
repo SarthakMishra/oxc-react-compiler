@@ -51,3 +51,20 @@ These issues reduce conformance coverage but do not break the core compilation p
 - Prioritize categories by frequency (fix the pattern that covers the most fixtures first)
 
 **Depends on:** None (independent of codegen fixes), but lower priority
+
+---
+
+## Gap 7: toolbar -- semantic_difference Bail
+
+**Priority:** P1 -- 0 scopes emitted for a fixture Babel successfully compiles
+
+**Current state:** The toolbar benchmark fixture produces 0 reactive scopes because we bail with a `semantic_difference` error. Babel successfully compiles this fixture. This means our compiler detects a semantic difference between the original and compiled code and refuses to emit, but the difference is likely a false positive.
+
+**What's needed:**
+
+- Investigate which semantic check triggers the bail-out
+- Determine if this is a false positive in our semantic equivalence checking or a genuine codegen issue that needs fixing
+- If false positive: relax the check or fix the upstream data that feeds into it
+- If genuine: fix the codegen issue so the compiled output is semantically equivalent
+
+**Depends on:** None

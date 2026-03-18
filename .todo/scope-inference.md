@@ -1,14 +1,14 @@
 # Scope Inference
 
-These issues cause scope output variables to be uninitialized or misaligned at runtime. Many of the "Cannot read properties of undefined" errors are a combination of this bug and the logical expression flattening bug (see codegen-emission.md Gap 5).
+Scope inference issues. Gaps 8, 9, and 10 are completed. The logical expression flattening bug (codegen-emission.md Gap 5) that caused many "undefined" errors is also fixed. Remaining work is over-memoization (Gap 7).
 
 ---
 
 ## Gap 7: Over-memoization / Slot Count Divergence
 
-**Priority:** P3 -- over/under-memoization
+**Priority:** P2 -- over-memoization (correct but wasteful, 8 fixtures affected)
 
-**Current state:** In 9 out of 16 benchmark fixtures, we create more cache slots than the upstream compiler. This indicates that our reactive scope inference is too aggressive -- we are creating more scopes or tracking more dependencies than necessary, leading to over-memoization.
+**Current state:** In 8 benchmark fixtures, we create more cache slots than the upstream compiler. This indicates that our reactive scope inference is too aggressive -- we are creating more scopes or tracking more dependencies than necessary, leading to over-memoization. Gap 5 (logical expression flattening) is now fixed, so this can be investigated cleanly.
 
 **What's needed:**
 
@@ -23,40 +23,17 @@ These issues cause scope output variables to be uninitialized or misaligned at r
 - `src/ReactiveScopes/PruneNonEscapingScopes.ts`
 - `src/ReactiveScopes/PropagateScopeDependencies.ts`
 
-**Evidence:** 9/16 benchmark fixtures show slot count > upstream. The excess slots don't necessarily cause wrong output (over-memoization is correct but wasteful), but they indicate scope inference divergence that may also manifest as correctness issues in edge cases.
+**Evidence:** 8 benchmark fixtures show slot count > upstream. The excess slots don't cause wrong output (over-memoization is correct but wasteful), but they indicate scope inference divergence.
 
-**Depends on:** Gap 5 (logical expression flattening) should be fixed first -- it affects scope output analysis.
+**Depends on:** None (Gap 5 logical expression flattening is now fixed)
 
 ---
 
-## Gap 8: Scope Output Variables Not Produced Inside Scope Body (partially fixed)
+## Gap 8: Scope Output Variables Not Produced Inside Scope Body ✅ (mostly)
 
-**Priority:** P0 -- causes 7 partial_error render failures
+~~**Priority:** P0 -- causes 7 partial_error render failures~~
 
-**Current state:** Partially addressed by multiple fixes:
-- Phase 3b in propagate_dependencies.rs catches unscooped StoreLocal/StoreContext variables
-- Destructure-in-scope hoisting (Phase 88) moves destructure instructions out of scope bodies
-- Phantom scope declaration filter (Phase 89) removes spurious declarations
-
-**Remaining issues (updated based on deep analysis):**
-
-Many of the "Cannot read properties of undefined" errors are actually caused by **Gap 5 (logical expression flattening)** rather than scope output misplacement. When `??` and `&&` are flattened, the right-branch value unconditionally overwrites the left-branch value, producing wrong types that then crash on method calls like `.filter()`, `.length`, etc.
-
-After Gap 5 is fixed, the remaining scope output issues to investigate:
-- Variables produced by `useMemo`/`useCallback` return values that are cached in scopes but never assigned in the computation branch (only in the else/reload branch)
-- Example from data-table.oxc.js: `sortedData = t125;` where `t125` is assigned in the `else` branch but not the `if` branch of the scope guard
-
-**What's still needed:**
-
-- Fix Gap 5 first (logical flattening), then re-evaluate which "undefined" errors remain
-- For remaining cases: ensure that when a variable is produced by a hook call (useMemo, useCallback) inside a scope, both the computation path and the reload path assign it
-
-**Upstream files:**
-- `src/ReactiveScopes/InferReactiveScopeVariables.ts`
-- `src/ReactiveScopes/BuildReactiveBlocks.ts`
-- `src/ReactiveScopes/PropagateScopeDependencies.ts`
-
-**Depends on:** Gap 5 (logical expression flattening) -- many "undefined" crashes will resolve when short-circuit semantics are restored
+**Completed** (3 sub-fixes committed): Phase 3b in propagate_dependencies.rs catches unscooped StoreLocal/StoreContext variables. Destructure-in-scope hoisting (Phase 88) moves destructure instructions out of scope bodies. Phantom scope declaration filter (Phase 89) removes spurious declarations. Combined with Gap 5 (logical expression flattening) fix, most "Cannot read properties of undefined" errors are resolved. Remaining edge cases are tracked as individual fixture issues (availability-schedule, canvas-sidebar, booking-list) in codegen-emission.md.
 
 ---
 
@@ -68,25 +45,8 @@ After Gap 5 is fixed, the remaining scope output issues to investigate:
 
 ---
 
-## Gap 10: Temporal Dead Zone / Initialization Order
+## Gap 10: Temporal Dead Zone / Initialization Order ✅
 
-**Priority:** P1 -- causes 2 render failures
+~~**Priority:** P1 -- causes 2 render failures~~
 
-**Current state:** Some compiled output has variables accessed before their initialization within the same scope, triggering TDZ errors. This is different from Gap 3 (which was cross-scope ordering, now fixed) -- these are within-scope ordering issues where the cache reload path reads a variable before the computation path has a chance to initialize it.
-
-**Symptoms:**
-- 1x `Cannot access 't38' before initialization`
-- 1x `Cannot access 'handleSubmit' before initialization`
-- 1x `t60 is not defined`
-
-**What's needed:**
-
-- Check if the scope's cache reload path (`else` branch of the guard) reads a variable that is only declared further down in the function
-- Verify that pre-declaration hoisting covers all variables that appear in cache reload paths, not just scope output variables
-- May need to hoist additional temporaries that are used in scope reload logic but defined inside scope bodies
-- Check if instruction ordering within scope bodies matches the original source order
-
-**Upstream files:**
-- `src/ReactiveScopes/CodegenReactiveFunction.ts`
-
-**Depends on:** Gap 5 (some TDZ errors may be caused by logical expression flattening producing unexpected variable references)
+**Completed**: Root causes were Gap 5 (logical expression flattening) and Gap 8 (scope output variables). With both fixed, TDZ errors are resolved. Remaining render failures are tracked as individual fixture issues (availability-schedule, canvas-sidebar, booking-list) in codegen-emission.md.

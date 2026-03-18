@@ -1,6 +1,6 @@
 # Codegen Emission Bugs
 
-All issues live in `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs` and `crates/oxc_react_compiler/src/reactive_scopes/build_reactive_function.rs`.
+Issues in `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs` and `crates/oxc_react_compiler/src/reactive_scopes/build_reactive_function.rs`. Gaps 1-5, 6b, and 9 are completed. Remaining work is fixture-specific correctness issues.
 
 ---
 
@@ -67,4 +67,65 @@ For statement-position ternaries (where `result` is None or unused), the current
 **Upstream files:**
 - `src/ReactiveScopes/CodegenReactiveFunction.ts`
 
-**Depends on:** Likely shares implementation approach with Gap 5
+**Depends on:** None (Gap 5 logical expression flattening is now done)
+
+---
+
+## Gap 6b: ForOf/ForIn Loop Codegen ✅
+
+~~**Priority:** P1 -- missing loop forms in codegen~~
+
+**Completed**: Added codegen support for `for...of` and `for...in` loop forms. These were previously not emitted, causing missing loop bodies in compiled output.
+
+---
+
+## Gap 7: availability-schedule Arithmetic
+
+**Priority:** P1 -- renders but wrong output
+
+**Current state:** The availability-schedule fixture renders but produces wrong arithmetic results. Two issues identified:
+- Missing `continue` statement in loop codegen
+- Operator precedence not preserved correctly in emitted expressions
+
+**What's needed:**
+- Add `continue` support to loop terminal codegen
+- Audit expression codegen for operator precedence (may need parenthesization logic)
+
+**Upstream files:**
+- `src/ReactiveScopes/CodegenReactiveFunction.ts`
+
+**Depends on:** None
+
+---
+
+## Gap 8: canvas-sidebar Missing Return
+
+**Priority:** P1 -- renders but missing return statement
+
+**Current state:** The canvas-sidebar fixture renders but is missing a return statement in the compiled output, causing the component to return `undefined` instead of its JSX tree in certain code paths.
+
+**What's needed:**
+- Investigate which terminal/block path drops the return statement
+- Likely a codegen issue where a terminal with a return value is emitted as a void statement
+
+**Upstream files:**
+- `src/ReactiveScopes/CodegenReactiveFunction.ts`
+
+**Depends on:** None
+
+---
+
+## Gap 9b: booking-list localeCompare
+
+**Priority:** P2 -- 1/2 test cases match
+
+**Current state:** The booking-list fixture matches on one test case but fails on the other with `localeCompare` being undefined. This suggests a scope output variable is not correctly assigned in one code path, causing the sort comparator to receive undefined instead of a string.
+
+**What's needed:**
+- Investigate which scope output is uninitialized in the failing test case
+- May be an edge case of scope output variable assignment
+
+**Upstream files:**
+- `src/ReactiveScopes/CodegenReactiveFunction.ts`
+
+**Depends on:** None

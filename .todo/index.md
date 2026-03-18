@@ -2,22 +2,22 @@
 
 > Last updated: 2026-03-18
 
-Render equivalence is at 68% (17/25 pairs). Logical expression flattening fix brought 7 new fixtures to semantic_match. Remaining failures: ternary expression result handling, uninitialized scope outputs, and runtime errors in complex fixtures.
+Render equivalence: 68% (17/25 pairs). Conformance: 407/1717 matched. Correctness score: 93.8%. All 196 Rust tests pass, 0 panics. E2E transform coverage: 95-100% across all real projects.
 
-## P0 -- Ternary Expression Codegen
+5 fixtures crash for ALL compilers (Original, Babel, OXC) -- these are fixture bugs, not compiler bugs: data-table, time-slot-picker, command-menu, multi-step-form (partial).
 
-- [ ] Reconstruct ternary expressions from If terminals with result places — [codegen-emission.md](codegen-emission.md)#gap-6-ternary-expression-reconstruction
+## P1 -- Remaining Render Failures
 
-## P0 -- Scope Output Correctness
+- [ ] availability-schedule: wrong arithmetic (missing continue, operator precedence) — [codegen-emission.md](codegen-emission.md)#gap-7-availability-schedule-arithmetic
+- [ ] canvas-sidebar: missing return statement in codegen — [codegen-emission.md](codegen-emission.md)#gap-8-canvas-sidebar-missing-return
+- [ ] booking-list: localeCompare undefined on one test case (1/2 match) — [codegen-emission.md](codegen-emission.md)#gap-9-booking-list-localecompare
+- [ ] toolbar: 0 scopes due to semantic_difference bail (we bail when babel compiles) — [validation-gaps.md](validation-gaps.md)#gap-7-toolbar-semantic-difference-bail
 
-- [ ] Fix uninitialized scope outputs for useMemo/useCallback results — [scope-inference.md](scope-inference.md)#gap-8-scope-output-variables-not-produced-inside-scope-body-partially-fixed
-- [ ] Fix temporal dead zone / initialization order in scope reload — [scope-inference.md](scope-inference.md)#gap-10-temporal-dead-zone--initialization-order
+## P2 -- Scope Inference Quality
+
+- [ ] Fix over-memoization in 8 fixtures (too many cache slots) — [scope-inference.md](scope-inference.md)#gap-7-over-memoization-slot-count-divergence
 
 ## P2 -- Validation & Coverage Gaps
 
 - [ ] Fix 208 false bail-outs (over-conservative validation) — [validation-gaps.md](validation-gaps.md)#gap-5-false-bail-outs-208-fixtures
 - [ ] Fix 66 silent bail-outs (missing compilable patterns) — [validation-gaps.md](validation-gaps.md)#gap-6-silent-bail-outs-66-fixtures
-
-## P3 -- Scope Inference Quality
-
-- [ ] Fix over-memoization / slot count divergence — [scope-inference.md](scope-inference.md)#gap-7-over-memoization-slot-count-divergence
