@@ -5,24 +5,28 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function Summary(t0) {
-  const $ = _c(3);
-  let t25;
+  const $ = _c(4);
+  let count;
+  let t26;
   let { items, threshold } = t0;
   if ($[0] !== items.length || $[1] !== threshold) {
-    let count = items.length;
+    count = items.length;
     let hasMany = count > threshold;
     $[0] = items.length;
     $[1] = threshold;
-    $[2] = t25;
+    $[2] = count;
+    $[3] = t26;
   } else {
-    t25 = $[2];
+    count = $[2];
+    t26 = $[3];
   }
+  let label = t26;
   let t13;
   if (hasMany) {
     t13 = "Many items";
   } else {
     t13 = "Few items";
   }
-  let label = t13;
+  label = t13;
   return <div><span>{label}</span><span>({count})</span></div>;
 }

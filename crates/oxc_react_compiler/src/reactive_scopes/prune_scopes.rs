@@ -2111,6 +2111,38 @@ pub fn build_reactive_scope_terminals_hir(hir: &mut HIR) {
     for (scope_id, _block_idx, start_pos, end_pos) in scope_info {
         insert_scope_terminal_by_position(hir, scope_id, start_pos, end_pos, &mut next_block_id);
     }
+
+    // Step 4: Clean up stale scope annotations from orphaned instructions.
+    //
+    // When a scope's annotated instructions span multiple basic blocks (e.g., after
+    // flatten_scopes_with_hooks_or_use_hir splits scopes around hooks), only the
+    // FIRST block's instructions get moved into the scope terminal block (Step 3).
+    // Instructions in other blocks still carry the same scope ID annotation, which
+    // causes propagate_scope_dependencies_hir to incorrectly declare them as scope
+    // outputs — even though they're never computed inside the scope body at codegen.
+    //
+    // Collect scope IDs that have actual Terminal::Scope entries, and the block IDs
+    // they point to. Then clear scope annotations from instructions that claim to
+    // belong to a scope but are NOT in that scope's terminal block.
+    let mut scope_to_block: FxHashMap<ScopeId, crate::hir::types::BlockId> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        if let Terminal::Scope { scope, block: scope_block, .. } = &block.terminal {
+            scope_to_block.insert(*scope, *scope_block);
+        }
+    }
+
+    for (block_id, block) in &mut hir.blocks {
+        for instr in &mut block.instructions {
+            if let Some(ref scope) = instr.lvalue.identifier.scope
+                && let Some(scope_block_id) = scope_to_block.get(&scope.id)
+                && *block_id != *scope_block_id
+            {
+                // This instruction's scope has a terminal in a DIFFERENT block.
+                // It's a stale annotation from a multi-block scope — clear it.
+                instr.lvalue.identifier.scope = None;
+            }
+        }
+    }
 }
 
 /// Insert a `Terminal::Scope` by splitting a block at position boundaries.
@@ -2161,37 +2193,124 @@ fn insert_scope_terminal_by_position(
     let original_terminal = hir.blocks[entry_idx].1.terminal.clone();
     let original_kind = hir.blocks[entry_idx].1.kind;
 
+    let total_instrs = hir.blocks[entry_idx].1.instructions.len();
     let before_instrs = hir.blocks[entry_idx].1.instructions[..start_pos].to_vec();
-    let scope_instrs = hir.blocks[entry_idx].1.instructions[start_pos..end_pos].to_vec();
+    let mut scope_instrs = hir.blocks[entry_idx].1.instructions[start_pos..end_pos].to_vec();
     let after_instrs = hir.blocks[entry_idx].1.instructions[end_pos..].to_vec();
+
+    // Annotate instructions in the scope block that lack any scope annotation.
+    // Instructions between scope-annotated boundaries are included in the scope block
+    // but may lack scope annotations (e.g., non-reactive instructions sandwiched between
+    // reactive ones). Without annotation, propagate_scope_dependencies_hir won't recognize
+    // their outputs as scope declarations, causing "not defined" errors when outputs are
+    // used outside the scope.
+    //
+    // NOTE: Only annotate instructions with NO scope. Instructions with a DIFFERENT
+    // scope ID are left as-is — they belong to a nested or adjacent scope whose
+    // annotations are handled by Step 4's stale cleanup pass.
+    let ref_scope = scope_instrs
+        .iter()
+        .find_map(|i| i.lvalue.identifier.scope.as_ref().filter(|s| s.id == scope_id).cloned());
+    if let Some(ref_scope) = ref_scope {
+        for instr in &mut scope_instrs {
+            if instr.lvalue.identifier.scope.is_none() {
+                instr.lvalue.identifier.scope = Some(Box::new(crate::hir::types::ReactiveScope {
+                    id: scope_id,
+                    range: ref_scope.range,
+                    dependencies: Vec::new(),
+                    declarations: Vec::new(),
+                    reassignments: Vec::new(),
+                    early_return_value: None,
+                    merged: Vec::new(),
+                    loc: ref_scope.loc,
+                    is_allocating: false,
+                }));
+            }
+        }
+    }
+
+    // When the scope covers all remaining instructions in the block (end_pos == total),
+    // the original block's terminal (Ternary, If, Logical, etc.) may be part of the scope.
+    // The scope block should inherit the terminal so that build_scope_block_only follows
+    // the control flow branches. The fallthrough becomes the original terminal's
+    // fallthrough (or a synthetic empty block for terminals without one).
+    //
+    // IMPORTANT: Only inherit terminals that represent control flow WITHIN the scope
+    // (Ternary, If, Logical, Optional, etc.). Do NOT inherit Return/Throw/Goto — these
+    // are exit terminals that should NOT be inside the scope body. A Return inside a
+    // scope guard would make the cache store and else-branch unreachable (dead code).
+    let scope_inherits_terminal = end_pos == total_instrs
+        && after_instrs.is_empty()
+        && matches!(
+            &original_terminal,
+            Terminal::If { .. }
+                | Terminal::Ternary { .. }
+                | Terminal::Logical { .. }
+                | Terminal::Optional { .. }
+                | Terminal::Sequence { .. }
+                | Terminal::Switch { .. }
+                | Terminal::For { .. }
+                | Terminal::ForOf { .. }
+                | Terminal::ForIn { .. }
+                | Terminal::While { .. }
+                | Terminal::DoWhile { .. }
+                | Terminal::Try { .. }
+                | Terminal::Label { .. }
+                | Terminal::Branch { .. }
+                | Terminal::MaybeThrow { .. }
+        );
 
     // Allocate block IDs for new blocks.
     let scope_block_id = BlockId(*next_id);
     *next_id += 1;
 
-    // Always create a fallthrough block. The scope block uses Goto to the fallthrough,
-    // and the fallthrough gets the after-scope instructions + original terminal.
-    // This avoids self-referential fallthrough when the original terminal is Return/Throw.
     {
         let fallthrough_block_id = BlockId(*next_id);
         *next_id += 1;
 
-        // Scope block: holds the scope content, falls through to fallthrough block.
+        let (scope_terminal, fallthrough_terminal, scope_successors) = if scope_inherits_terminal {
+            // Scope gets the original terminal; its control flow (ternary branches, etc.)
+            // will be processed by build_scope_block_only. The fallthrough block gets
+            // the original terminal's fallthrough target as a Goto, OR if the terminal
+            // has no fallthrough (Return/Throw), we still create an empty fallthrough
+            // block to satisfy the Scope terminal structure.
+            let ft = terminal_fallthrough(&original_terminal);
+            let successors = terminal_successors(&original_terminal);
+            match ft {
+                Some(ft_block) => {
+                    (original_terminal, Terminal::Goto { block: ft_block }, successors)
+                }
+                None => {
+                    // Terminal has no fallthrough (Return/Throw) — scope block
+                    // keeps the terminal, fallthrough block is unreachable.
+                    (
+                        original_terminal,
+                        Terminal::Goto { block: fallthrough_block_id }, // self-loop, unreachable
+                        successors,
+                    )
+                }
+            }
+        } else {
+            // Scope does NOT cover to end of block — use Goto to fallthrough,
+            // and fallthrough gets remaining instructions + original terminal.
+            let successors = terminal_successors(&original_terminal);
+            (Terminal::Goto { block: fallthrough_block_id }, original_terminal, successors)
+        };
+
         let scope_block = BasicBlock {
             kind: BlockKind::Block,
             id: scope_block_id,
             instructions: scope_instrs,
-            terminal: Terminal::Goto { block: fallthrough_block_id },
+            terminal: scope_terminal,
             preds: vec![original_block_id],
             phis: Vec::new(),
         };
 
-        // Fallthrough block: holds after-scope instructions + original terminal.
         let fallthrough_block = BasicBlock {
             kind: original_kind,
             id: fallthrough_block_id,
             instructions: after_instrs,
-            terminal: original_terminal.clone(),
+            terminal: fallthrough_terminal,
             preds: vec![scope_block_id],
             phis: Vec::new(),
         };
@@ -2204,16 +2323,18 @@ fn insert_scope_terminal_by_position(
             fallthrough: fallthrough_block_id,
         };
 
-        // Update predecessor lists for successors of the fallthrough block.
-        let successors = terminal_successors(&original_terminal);
         hir.blocks.push((scope_block_id, scope_block));
         hir.blocks.push((fallthrough_block_id, fallthrough_block));
 
-        for succ_id in successors {
+        // Update predecessor lists: successors of whatever block now holds the
+        // original terminal should reference the correct predecessor.
+        let pred_for_successors =
+            if scope_inherits_terminal { scope_block_id } else { fallthrough_block_id };
+        for succ_id in scope_successors {
             if let Some((_, succ_block)) = hir.blocks.iter_mut().find(|(id, _)| *id == succ_id) {
                 for pred in &mut succ_block.preds {
                     if *pred == original_block_id {
-                        *pred = fallthrough_block_id;
+                        *pred = pred_for_successors;
                     }
                 }
             }

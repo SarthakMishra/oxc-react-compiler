@@ -7,22 +7,26 @@ diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
 function Display(t0) {
-  const $ = _c(2);
-  let t17;
+  const $ = _c(3);
+  let count;
+  let t18;
   let { items } = t0;
   if ($[0] !== items.length) {
-    let count = items.length;
+    count = items.length;
     $[0] = items.length;
-    $[1] = t17;
+    $[1] = count;
+    $[2] = t18;
   } else {
-    t17 = $[1];
+    count = $[1];
+    t18 = $[2];
   }
+  let label = t18;
   let t10;
   if (t9) {
     t10 = "Has items";
   } else {
     t10 = "Empty";
   }
-  let label = t10;
+  label = t10;
   return <div>{label}: {count}</div>;
 }
