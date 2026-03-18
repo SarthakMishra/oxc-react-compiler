@@ -127,7 +127,10 @@ fn visit_terminal_child_blocks(terminal: &ReactiveTerminal, counts: &mut FxHashM
         ReactiveTerminal::Logical { right, .. } => {
             count_temp_uses_in_slice(&right.instructions, counts);
         }
-        ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
+        ReactiveTerminal::Return { .. }
+        | ReactiveTerminal::Throw { .. }
+        | ReactiveTerminal::Continue { .. }
+        | ReactiveTerminal::Break { .. } => {}
     }
 }
 
@@ -156,7 +159,9 @@ fn visit_terminal_uses(terminal: &ReactiveTerminal, counts: &mut FxHashMap<Strin
         | ReactiveTerminal::ForIn { .. }
         | ReactiveTerminal::Try { .. }
         | ReactiveTerminal::Label { .. }
-        | ReactiveTerminal::Logical { .. } => {}
+        | ReactiveTerminal::Logical { .. }
+        | ReactiveTerminal::Continue { .. }
+        | ReactiveTerminal::Break { .. } => {}
     }
 }
 
@@ -558,7 +563,10 @@ fn expr_string(
             Some(format!("{}[{}]", resolve(object), resolve(property)))
         }
         InstructionValue::BinaryExpression { op, left, right } => {
-            Some(format!("{} {} {}", resolve(left), binary_op_str(*op), resolve(right)))
+            // Wrap in parens so that when this expression is inlined into another
+            // binary expression, operator precedence is preserved.
+            // e.g., `(a - b) / c` instead of `a - b / c`
+            Some(format!("({} {} {})", resolve(left), binary_op_str(*op), resolve(right)))
         }
         InstructionValue::UnaryExpression { op, value } => {
             Some(format!("{}{}", unary_op_str(*op), resolve(value)))
@@ -798,7 +806,10 @@ fn collect_tag_constants_from_terminal(terminal: &ReactiveTerminal, map: &mut Ta
         ReactiveTerminal::Logical { right, .. } => {
             collect_tag_constants_from_block(right, map);
         }
-        ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
+        ReactiveTerminal::Return { .. }
+        | ReactiveTerminal::Throw { .. }
+        | ReactiveTerminal::Continue { .. }
+        | ReactiveTerminal::Break { .. } => {}
     }
 }
 
@@ -1877,6 +1888,12 @@ fn codegen_terminal(
                 codegen_block(right, output, cache_slot, indent, declared, tag_constants);
             }
         }
+        ReactiveTerminal::Continue { .. } => {
+            output.push_str(&format!("{indent_str}continue;\n"));
+        }
+        ReactiveTerminal::Break { .. } => {
+            output.push_str(&format!("{indent_str}break;\n"));
+        }
     }
 }
 
@@ -1996,6 +2013,14 @@ fn codegen_scope(
             output.push_str(&format!("{indent_str}let {decl_name};\n"));
         }
     }
+    // Pre-declare the early return variable if it exists and isn't already declared
+    if let Some(ref erv) = scope.scope.early_return_value {
+        let ern = identifier_display_name(&erv.value.identifier);
+        if !declared.contains(ern.as_ref()) {
+            declared.insert(ern.to_string());
+            output.push_str(&format!("{indent_str}let {ern};\n"));
+        }
+    }
 
     // Generate dependency check
     if deps.is_empty() {
@@ -2030,16 +2055,58 @@ fn codegen_scope(
     // Merge the hoisted Destructure and its DeclareLocal IDs for skipping
     let mut skip_ids = hoisted_destructure_ids.clone();
     skip_ids.extend(destructured_declare_ids.iter());
-    codegen_block_skip_declares_and_ids(
-        &scope.instructions,
-        output,
-        cache_slot,
-        indent + 1,
-        declared,
-        &scope_decl_names,
-        tag_constants,
-        &skip_ids,
-    );
+
+    // When the scope has an early return, we need to convert the trailing
+    // `return X;` into `early_return_var = X;` so control flow continues
+    // to the cache store instead of exiting the function.
+    let early_return_name = scope
+        .scope
+        .early_return_value
+        .as_ref()
+        .map(|erv| identifier_display_name(&erv.value.identifier).to_string());
+
+    if let Some(ref ern) = early_return_name {
+        // Codegen the scope body into a temporary buffer
+        let body_start = output.len();
+        codegen_block_skip_declares_and_ids(
+            &scope.instructions,
+            output,
+            cache_slot,
+            indent + 1,
+            declared,
+            &scope_decl_names,
+            tag_constants,
+            &skip_ids,
+        );
+        // Replace the last `return ...;` with `ern = ...;` in the generated body
+        let body = output[body_start..].to_string();
+        if let Some(return_pos) = body.rfind("return ") {
+            // Find the semicolon that ends this return statement
+            if let Some(semi_pos) = body[return_pos..].find(";\n") {
+                let return_value = &body[return_pos + 7..return_pos + semi_pos];
+                let replacement = format!("{ern} = {return_value}");
+                let new_body = format!(
+                    "{}{}{}",
+                    &body[..return_pos],
+                    replacement,
+                    &body[return_pos + semi_pos..]
+                );
+                output.truncate(body_start);
+                output.push_str(&new_body);
+            }
+        }
+    } else {
+        codegen_block_skip_declares_and_ids(
+            &scope.instructions,
+            output,
+            cache_slot,
+            indent + 1,
+            declared,
+            &scope_decl_names,
+            tag_constants,
+            &skip_ids,
+        );
+    }
 
     // Build the effective list of declaration names for cache store/load.
     // This includes the original (non-phantom) declarations plus any
@@ -2049,6 +2116,12 @@ fn codegen_scope(
         .map(|(_, decl)| identifier_display_name(&decl.identifier).to_string())
         .collect();
     effective_decl_names.extend(destructure_pattern_names.iter().cloned());
+    // Add early return value to effective declarations so it gets cached/reloaded
+    if let Some(ref ern) = early_return_name
+        && !effective_decl_names.contains(ern)
+    {
+        effective_decl_names.push(ern.clone());
+    }
     let effective_decl_count = effective_decl_names.len() as u32;
 
     // Store dep values and declarations into cache slots.
@@ -2120,6 +2193,15 @@ fn codegen_scope(
     }
 
     output.push_str(&format!("{indent_str}}}\n"));
+
+    // If this scope has an early return value, emit `return <value>;` after
+    // the scope guard. The return value should have been cached as a scope
+    // declaration, so it's available in both the if-branch (fresh) and
+    // else-branch (cached) paths.
+    if let Some(ref early_return) = scope.scope.early_return_value {
+        let return_name = identifier_display_name(&early_return.value.identifier);
+        output.push_str(&format!("{indent_str}return {return_name};\n"));
+    }
 }
 
 /// Find scope declaration IDs that should be replaced when a scope contains
@@ -2389,7 +2471,10 @@ fn collect_scope_declarations_in_terminal(
         ReactiveTerminal::Logical { right, .. } => {
             collect_all_scope_declarations(right, output, declared, indent);
         }
-        ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
+        ReactiveTerminal::Return { .. }
+        | ReactiveTerminal::Throw { .. }
+        | ReactiveTerminal::Continue { .. }
+        | ReactiveTerminal::Break { .. } => {}
     }
 }
 
@@ -2477,7 +2562,10 @@ fn count_terminal_slots(terminal: &ReactiveTerminal) -> u32 {
         }
         ReactiveTerminal::Label { block, .. } => count_cache_slots(block),
         ReactiveTerminal::Logical { right, .. } => count_cache_slots(right),
-        ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => 0,
+        ReactiveTerminal::Return { .. }
+        | ReactiveTerminal::Throw { .. }
+        | ReactiveTerminal::Continue { .. }
+        | ReactiveTerminal::Break { .. } => 0,
     }
 }
 

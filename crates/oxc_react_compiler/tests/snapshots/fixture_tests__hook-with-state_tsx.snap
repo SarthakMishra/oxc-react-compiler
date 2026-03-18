@@ -22,7 +22,7 @@ function useCounter() {
   ([count, setCount] = t3);
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     let t8 = () => {
-      return setCount(count + 1);
+      return setCount((count + 1));
     };
     t9 = { count, increment: t8 };
     $[1] = t9;

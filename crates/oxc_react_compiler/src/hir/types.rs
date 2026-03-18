@@ -930,6 +930,14 @@ pub enum ReactiveTerminal {
         result: Option<Place>,
         id: BlockId,
     },
+    /// Explicit `continue` statement inside a loop body.
+    Continue {
+        id: BlockId,
+    },
+    /// Explicit `break` statement inside a loop body.
+    Break {
+        id: BlockId,
+    },
 }
 
 #[derive(Debug, Clone)]

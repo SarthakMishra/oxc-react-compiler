@@ -194,7 +194,7 @@ const propsMap = {
     { label: 'empty', props: {} },
   ],
   'data-table': [
-    { label: 'empty', props: {} },
+    { label: 'empty', props: { data: [], columns: [{ key: 'name', label: 'Name' }] } },
   ],
   'theme-toggle': [
     { label: 'initial', props: {} },
@@ -218,31 +218,31 @@ const propsMap = {
     { label: 'defaults', props: {} },
   ],
   'time-slot-picker': [
-    { label: 'no-selection', props: { date: '2026-03-12', onSelect: () => {} } },
-    { label: 'with-booked', props: { date: '2026-03-12', bookedSlots: ['09:00', '10:00'], onSelect: () => {} } },
+    { label: 'no-selection', props: { slots: [{ time: '09:00', available: true }, { time: '10:00', available: true }], selectedDate: '2026-03-12', onSelect: () => {} } },
+    { label: 'with-booked', props: { slots: [{ time: '09:00', available: false }, { time: '10:00', available: true }], selectedDate: '2026-03-12', onSelect: () => {} } },
   ],
   'color-picker': [
     { label: 'default', props: { onColorChange: () => {} } },
     { label: 'with-initial', props: { initialColor: '#ff0000', onColorChange: () => {} } },
   ],
   'command-menu': [
-    { label: 'default', props: {} },
+    { label: 'default', props: { items: [{ id: '1', label: 'Copy', action: () => {}, category: 'edit' }, { id: '2', label: 'Paste', action: () => {}, category: 'edit' }] } },
   ],
   'booking-list': [
-    { label: 'empty', props: { bookings: [] } },
+    { label: 'empty', props: { bookings: [], onCancel: () => {}, onReschedule: () => {}, onConfirm: () => {} } },
     { label: 'with-data', props: { bookings: [
-      { id: '1', title: 'Meeting', attendee: 'Alice', date: '2026-03-12', time: '09:00', status: 'confirmed' },
-      { id: '2', title: 'Call', attendee: 'Bob', date: '2026-03-13', time: '14:00', status: 'pending' },
-    ] } },
+      { id: '1', title: 'Meeting', startTime: '2026-03-12T09:00:00', endTime: '2026-03-12T10:00:00', attendees: [{ name: 'Alice', email: 'alice@test.com', status: 'accepted' }], status: 'confirmed' },
+      { id: '2', title: 'Call', startTime: '2026-03-13T14:00:00', endTime: '2026-03-13T15:00:00', attendees: [{ name: 'Bob', email: 'bob@test.com', status: 'pending' }], status: 'pending' },
+    ], onCancel: () => {}, onReschedule: () => {}, onConfirm: () => {} } },
   ],
   'availability-schedule': [
-    { label: 'default', props: {} },
+    { label: 'default', props: { onSave: () => {} } },
   ],
   'canvas-sidebar': [
-    { label: 'empty', props: { layers: [], onLayerUpdate: () => {} } },
+    { label: 'empty', props: { layers: [{ id: '1', name: 'Layer 1', visible: true, locked: false, opacity: 1, elements: 3 }], activeLayerId: '1', onLayerSelect: () => {}, onLayerToggleVisible: () => {}, onLayerToggleLock: () => {}, onLayerRename: () => {}, onLayerReorder: () => {}, onLayerDelete: () => {}, onLayerAdd: () => {}, onLayerDuplicate: () => {}, onLayerOpacity: () => {} } },
   ],
   'multi-step-form': [
-    { label: 'default', props: { onSubmit: () => {} } },
+    { label: 'default', props: { steps: [{ title: 'Step 1', description: 'First step', fields: [{ name: 'name', label: 'Name', type: 'text', required: true }] }], onSubmit: () => {} } },
   ],
 };
 

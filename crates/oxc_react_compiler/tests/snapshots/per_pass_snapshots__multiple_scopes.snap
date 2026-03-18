@@ -11,7 +11,7 @@ function Summary(t0) {
   let t26;
   if ($[0] !== items.length || $[1] !== threshold) {
     count = items.length;
-    let hasMany = count > threshold;
+    let hasMany = (count > threshold);
     $[0] = items.length;
     $[1] = threshold;
     $[2] = count;

@@ -2533,8 +2533,8 @@ impl HIRBuilder {
         for child in children {
             match child {
                 JSXChild::Text(text) => {
-                    let trimmed = text.value.to_string();
-                    if !trimmed.trim().is_empty() {
+                    let trimmed = collapse_jsx_whitespace(&text.value);
+                    if !trimmed.is_empty() {
                         result.push(
                             self.emit(InstructionValue::JSXText { value: trimmed }, text.span),
                         );
@@ -2811,4 +2811,32 @@ fn regex_flags_to_string(flags: oxc_ast::ast::RegExpFlags) -> String {
         s.push('y');
     }
     s
+}
+
+/// Apply React's JSX whitespace collapsing rules to JSXText content.
+///
+/// Rules (matching React's JSX transform behavior):
+/// - If the text contains no newlines, return it as-is
+/// - Split into lines
+/// - Trim leading/trailing whitespace from each line
+/// - Lines that become empty are removed
+/// - Remaining non-empty lines are joined with a single space
+fn collapse_jsx_whitespace(text: &str) -> String {
+    // Single-line text is preserved as-is (including trailing spaces)
+    if !text.contains('\n') {
+        return text.to_string();
+    }
+
+    let lines: Vec<&str> = text.lines().collect();
+    let mut parts: Vec<&str> = Vec::new();
+
+    for line in &lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        parts.push(trimmed);
+    }
+
+    parts.join(" ")
 }

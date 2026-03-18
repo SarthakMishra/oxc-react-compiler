@@ -27,7 +27,7 @@ pub fn build_reactive_function(
     is_arrow: bool,
 ) -> ReactiveFunction {
     let mut visited = FxHashSet::default();
-    let body = build_reactive_block_until(&hir, hir.entry, None, &mut visited);
+    let body = build_reactive_block_until(&hir, hir.entry, None, &mut visited, None);
 
     ReactiveFunction { loc, id, params, body, directives, is_arrow }
 }
@@ -36,11 +36,20 @@ pub fn build_reactive_function(
 /// Used by codegen for nested function expressions.
 pub fn build_reactive_block_from_hir(hir: &HIR, start_block: BlockId) -> ReactiveBlock {
     let mut visited = FxHashSet::default();
-    build_reactive_block_until(hir, start_block, None, &mut visited)
+    build_reactive_block_until(hir, start_block, None, &mut visited, None)
 }
 
 fn find_block(hir: &HIR, block_id: BlockId) -> Option<&BasicBlock> {
     hir.blocks.iter().find(|(id, _)| *id == block_id).map(|(_, block)| block)
+}
+
+/// Loop context for detecting `continue` and `break` gotos inside loop bodies.
+/// `continue_target` is the block ID that a `continue` statement jumps to (typically
+/// the loop's test block). `break_target` is the loop's fallthrough block.
+#[derive(Clone, Copy)]
+struct LoopContext {
+    continue_target: BlockId,
+    break_target: BlockId,
 }
 
 /// Build a reactive block from the HIR, optionally stopping when a Goto
@@ -51,11 +60,16 @@ fn find_block(hir: &HIR, block_id: BlockId) -> Option<&BasicBlock> {
 /// exponential blowup from loop back-edges. When following a Goto that
 /// leads back to an already-visited block (e.g., a loop header), we stop
 /// instead of re-processing the entire loop body.
+///
+/// `loop_ctx` tracks the innermost enclosing loop's continue/break targets.
+/// When a Goto inside a loop body targets these blocks, we emit explicit
+/// `Continue` or `Break` reactive terminals instead of silently dropping them.
 fn build_reactive_block_until(
     hir: &HIR,
     start_block: BlockId,
     stop_at: Option<BlockId>,
     visited: &mut FxHashSet<BlockId>,
+    loop_ctx: Option<LoopContext>,
 ) -> ReactiveBlock {
     let mut instructions = Vec::new();
     let mut current = start_block;
@@ -64,6 +78,17 @@ fn build_reactive_block_until(
         // Prevent infinite loops from cyclic Goto chains and loop back-edges.
         // Each block is processed at most once across the entire tree construction.
         if !visited.insert(current) {
+            // Check if this is a continue (back-edge to loop header).
+            // Only emit explicit `continue` when inside a branch (stop_at is set),
+            // not at the natural end of the loop body where the back-edge is implicit.
+            if let Some(ctx) = loop_ctx
+                && current == ctx.continue_target
+                && stop_at.is_some()
+            {
+                instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Continue {
+                    id: current,
+                }));
+            }
             break;
         }
 
@@ -84,14 +109,33 @@ fn build_reactive_block_until(
                 if stop_at == Some(*next) {
                     break;
                 }
+                // Check for loop break gotos (continue is handled by visited check above)
+                if let Some(ctx) = loop_ctx
+                    && *next == ctx.break_target
+                {
+                    instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Break {
+                        id: current,
+                    }));
+                    break;
+                }
                 current = *next;
                 continue;
             }
             Terminal::If { test, consequent, alternate, fallthrough } => {
-                let consequent_block =
-                    build_reactive_block_until(hir, *consequent, Some(*fallthrough), visited);
-                let alternate_block =
-                    build_reactive_block_until(hir, *alternate, Some(*fallthrough), visited);
+                let consequent_block = build_reactive_block_until(
+                    hir,
+                    *consequent,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
+                let alternate_block = build_reactive_block_until(
+                    hir,
+                    *alternate,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::If {
                     test: test.clone(),
                     consequent: consequent_block,
@@ -119,7 +163,8 @@ fn build_reactive_block_until(
                 let reactive_cases: Vec<(Option<crate::hir::types::Place>, ReactiveBlock)> = cases
                     .iter()
                     .map(|case| {
-                        let block = build_reactive_block_until(hir, case.block, None, visited);
+                        let block =
+                            build_reactive_block_until(hir, case.block, None, visited, loop_ctx);
                         (case.test.clone(), block)
                     })
                     .collect();
@@ -132,11 +177,16 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::For { init, test, update, body, fallthrough } => {
-                let init_block = build_reactive_block_until(hir, *init, None, visited);
-                let test_block = build_reactive_block_until(hir, *test, None, visited);
-                let update_block =
-                    update.map(|u| build_reactive_block_until(hir, u, None, visited));
-                let body_block = build_reactive_block_until(hir, *body, None, visited);
+                let init_block = build_reactive_block_until(hir, *init, None, visited, loop_ctx);
+                let test_block = build_reactive_block_until(hir, *test, None, visited, loop_ctx);
+                // continue goes to update (or test if no update), break goes to fallthrough
+                let continue_target = update.unwrap_or(*test);
+                let body_loop_ctx =
+                    Some(LoopContext { continue_target, break_target: *fallthrough });
+                let update_block = update
+                    .map(|u| build_reactive_block_until(hir, u, None, visited, body_loop_ctx));
+                let body_block =
+                    build_reactive_block_until(hir, *body, None, visited, body_loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::For {
                     init: init_block,
                     test: test_block,
@@ -148,8 +198,11 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::While { test, body, fallthrough } => {
-                let test_block = build_reactive_block_until(hir, *test, None, visited);
-                let body_block = build_reactive_block_until(hir, *body, None, visited);
+                let test_block = build_reactive_block_until(hir, *test, None, visited, loop_ctx);
+                let body_loop_ctx =
+                    Some(LoopContext { continue_target: *test, break_target: *fallthrough });
+                let body_block =
+                    build_reactive_block_until(hir, *body, None, visited, body_loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::While {
                     test: test_block,
                     body: body_block,
@@ -159,8 +212,12 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::DoWhile { body, test, fallthrough } => {
-                let body_block = build_reactive_block_until(hir, *body, None, visited);
-                let test_block = build_reactive_block_until(hir, *test, None, visited);
+                let body_loop_ctx =
+                    Some(LoopContext { continue_target: *test, break_target: *fallthrough });
+                let body_block =
+                    build_reactive_block_until(hir, *body, None, visited, body_loop_ctx);
+                let test_block =
+                    build_reactive_block_until(hir, *test, None, visited, body_loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::DoWhile {
                     body: body_block,
                     test: test_block,
@@ -173,9 +230,15 @@ fn build_reactive_block_until(
                 // Use stop_at to prevent each sub-block from following Gotos
                 // into sibling blocks. Without this, init follows Goto->test->body,
                 // consuming all instructions and leaving test/body empty.
-                let init_block = build_reactive_block_until(hir, *init, Some(*test), visited);
-                let test_block = build_reactive_block_until(hir, *test, Some(*body), visited);
-                let body_block = build_reactive_block_until(hir, *body, None, visited);
+                let init_block =
+                    build_reactive_block_until(hir, *init, Some(*test), visited, loop_ctx);
+                let test_block =
+                    build_reactive_block_until(hir, *test, Some(*body), visited, loop_ctx);
+                // continue goes to init (where GetIterator/IteratorNext live), break goes to fallthrough
+                let body_loop_ctx =
+                    Some(LoopContext { continue_target: *init, break_target: *fallthrough });
+                let body_block =
+                    build_reactive_block_until(hir, *body, None, visited, body_loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::ForOf {
                     init: init_block,
                     test: test_block,
@@ -186,9 +249,15 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::ForIn { init, test, body, fallthrough } => {
-                let init_block = build_reactive_block_until(hir, *init, Some(*test), visited);
-                let test_block = build_reactive_block_until(hir, *test, Some(*body), visited);
-                let body_block = build_reactive_block_until(hir, *body, None, visited);
+                let init_block =
+                    build_reactive_block_until(hir, *init, Some(*test), visited, loop_ctx);
+                let test_block =
+                    build_reactive_block_until(hir, *test, Some(*body), visited, loop_ctx);
+                // continue goes to init (where NextPropertyOf lives), break goes to fallthrough
+                let body_loop_ctx =
+                    Some(LoopContext { continue_target: *init, break_target: *fallthrough });
+                let body_block =
+                    build_reactive_block_until(hir, *body, None, visited, body_loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::ForIn {
                     init: init_block,
                     test: test_block,
@@ -199,8 +268,10 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::Try { block: try_block, handler, fallthrough } => {
-                let try_reactive = build_reactive_block_until(hir, *try_block, None, visited);
-                let handler_reactive = build_reactive_block_until(hir, *handler, None, visited);
+                let try_reactive =
+                    build_reactive_block_until(hir, *try_block, None, visited, loop_ctx);
+                let handler_reactive =
+                    build_reactive_block_until(hir, *handler, None, visited, loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Try {
                     block: try_reactive,
                     handler: handler_reactive,
@@ -210,7 +281,8 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::Label { block: label_block, fallthrough, label } => {
-                let label_reactive = build_reactive_block_until(hir, *label_block, None, visited);
+                let label_reactive =
+                    build_reactive_block_until(hir, *label_block, None, visited, loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Label {
                     block: label_reactive,
                     id: current,
@@ -222,7 +294,15 @@ fn build_reactive_block_until(
             Terminal::Scope { block: scope_block, fallthrough, scope } => {
                 // Build only the scope block's instructions without following its Goto terminal.
                 // The scope block's Goto points to fallthrough, which we process separately.
-                let scope_reactive = build_scope_block_only(hir, *scope_block, visited);
+                // Pass the scope's fallthrough as a boundary so that If/Ternary branches
+                // inside the scope don't consume post-scope blocks.
+                let scope_reactive = build_scope_block_only(
+                    hir,
+                    *scope_block,
+                    visited,
+                    Some(*fallthrough),
+                    loop_ctx,
+                );
 
                 // Try to find the ReactiveScope from the block's instructions
                 // by looking at the scope ID
@@ -248,10 +328,20 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::Ternary { test, consequent, alternate, fallthrough, .. } => {
-                let consequent_block =
-                    build_reactive_block_until(hir, *consequent, Some(*fallthrough), visited);
-                let alternate_block =
-                    build_reactive_block_until(hir, *alternate, Some(*fallthrough), visited);
+                let consequent_block = build_reactive_block_until(
+                    hir,
+                    *consequent,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
+                let alternate_block = build_reactive_block_until(
+                    hir,
+                    *alternate,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
 
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::If {
                     test: test.clone(),
@@ -267,7 +357,7 @@ fn build_reactive_block_until(
                 // are already emitted above. The right block must execute
                 // conditionally based on the operator.
                 let right_block =
-                    build_reactive_block_until(hir, *right, Some(*fallthrough), visited);
+                    build_reactive_block_until(hir, *right, Some(*fallthrough), visited, loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Logical {
                     operator: *operator,
                     right: right_block,
@@ -279,8 +369,13 @@ fn build_reactive_block_until(
             }
             Terminal::Optional { consequent, fallthrough, .. } => {
                 // Inline consequent block (optional chain continuation)
-                let cons_block =
-                    build_reactive_block_until(hir, *consequent, Some(*fallthrough), visited);
+                let cons_block = build_reactive_block_until(
+                    hir,
+                    *consequent,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
                 instructions.extend(cons_block.instructions);
                 current = *fallthrough;
                 continue;
@@ -288,8 +383,13 @@ fn build_reactive_block_until(
             Terminal::Sequence { blocks, fallthrough } => {
                 // Process all sequence blocks in order
                 for block_id in blocks {
-                    let block =
-                        build_reactive_block_until(hir, *block_id, Some(*fallthrough), visited);
+                    let block = build_reactive_block_until(
+                        hir,
+                        *block_id,
+                        Some(*fallthrough),
+                        visited,
+                        loop_ctx,
+                    );
                     instructions.extend(block.instructions);
                 }
                 current = *fallthrough;
@@ -297,8 +397,10 @@ fn build_reactive_block_until(
             }
             Terminal::Branch { test, consequent, alternate } => {
                 // Lower Branch to If (Branch has no fallthrough — it's terminal)
-                let cons_block = build_reactive_block_until(hir, *consequent, None, visited);
-                let alt_block = build_reactive_block_until(hir, *alternate, None, visited);
+                let cons_block =
+                    build_reactive_block_until(hir, *consequent, None, visited, loop_ctx);
+                let alt_block =
+                    build_reactive_block_until(hir, *alternate, None, visited, loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::If {
                     test: test.clone(),
                     consequent: cons_block,
@@ -323,15 +425,28 @@ fn build_reactive_block_until(
 
 /// Build only the instructions from a single scope block, without following Goto terminals.
 /// This prevents duplication when the scope block's Goto leads to the fallthrough block.
+///
+/// `scope_fallthrough` is the scope's own fallthrough block ID. When processing
+/// If/Ternary branches inside the scope, `build_reactive_block_until` calls use
+/// this as an additional stop boundary to prevent consuming post-scope blocks.
 fn build_scope_block_only(
     hir: &HIR,
     block_id: BlockId,
     visited: &mut FxHashSet<BlockId>,
+    scope_fallthrough: Option<BlockId>,
+    loop_ctx: Option<LoopContext>,
 ) -> ReactiveBlock {
     let mut instructions = Vec::new();
 
     // Prevent infinite recursion from cyclic fallthrough chains
     if !visited.insert(block_id) {
+        return ReactiveBlock { instructions };
+    }
+
+    // Don't process blocks at or beyond the scope boundary
+    if scope_fallthrough == Some(block_id) {
+        // Un-visit this block so the outer caller can process it
+        visited.remove(&block_id);
         return ReactiveBlock { instructions };
     }
 
@@ -343,14 +458,31 @@ fn build_scope_block_only(
         // Process the terminal, but don't follow Goto (that's the fallthrough).
         // Other terminals (If, Switch, etc.) within the scope are processed normally.
         match &block.terminal {
-            Terminal::Goto { .. } => {
-                // Don't follow — fallthrough is handled by the caller
+            Terminal::Goto { block: next } => {
+                // Don't follow — fallthrough is handled by the caller.
+                // But if this Goto targets a block that ISN'T the scope fallthrough,
+                // we should follow it within the scope.
+                if scope_fallthrough != Some(*next) {
+                    let remaining =
+                        build_scope_block_only(hir, *next, visited, scope_fallthrough, loop_ctx);
+                    instructions.extend(remaining.instructions);
+                }
             }
             Terminal::If { test, consequent, alternate, fallthrough } => {
-                let consequent_block =
-                    build_reactive_block_until(hir, *consequent, Some(*fallthrough), visited);
-                let alternate_block =
-                    build_reactive_block_until(hir, *alternate, Some(*fallthrough), visited);
+                let consequent_block = build_reactive_block_until(
+                    hir,
+                    *consequent,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
+                let alternate_block = build_reactive_block_until(
+                    hir,
+                    *alternate,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::If {
                     test: test.clone(),
                     consequent: consequent_block,
@@ -358,7 +490,8 @@ fn build_scope_block_only(
                     id: block_id,
                 }));
                 // Continue with fallthrough within the scope
-                let remaining = build_scope_block_only(hir, *fallthrough, visited);
+                let remaining =
+                    build_scope_block_only(hir, *fallthrough, visited, scope_fallthrough, loop_ctx);
                 instructions.extend(remaining.instructions);
             }
             Terminal::Return { value } => {
@@ -369,7 +502,13 @@ fn build_scope_block_only(
             }
             Terminal::Scope { block: scope_block, fallthrough, scope } => {
                 // Nested scope within scope
-                let scope_reactive = build_scope_block_only(hir, *scope_block, visited);
+                let scope_reactive = build_scope_block_only(
+                    hir,
+                    *scope_block,
+                    visited,
+                    Some(*fallthrough),
+                    loop_ctx,
+                );
                 let reactive_scope = find_scope_in_block(hir, *scope_block, *scope);
                 if let Some(rs) = reactive_scope {
                     instructions.push(ReactiveInstruction::Scope(ReactiveScopeBlock {
@@ -379,59 +518,92 @@ fn build_scope_block_only(
                 } else {
                     instructions.extend(scope_reactive.instructions);
                 }
-                let remaining = build_scope_block_only(hir, *fallthrough, visited);
+                let remaining =
+                    build_scope_block_only(hir, *fallthrough, visited, scope_fallthrough, loop_ctx);
                 instructions.extend(remaining.instructions);
             }
             Terminal::Ternary { test, consequent, alternate, fallthrough, .. } => {
-                let consequent_block =
-                    build_reactive_block_until(hir, *consequent, Some(*fallthrough), visited);
-                let alternate_block =
-                    build_reactive_block_until(hir, *alternate, Some(*fallthrough), visited);
+                let consequent_block = build_reactive_block_until(
+                    hir,
+                    *consequent,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
+                let alternate_block = build_reactive_block_until(
+                    hir,
+                    *alternate,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::If {
                     test: test.clone(),
                     consequent: consequent_block,
                     alternate: alternate_block,
                     id: block_id,
                 }));
-                let remaining = build_scope_block_only(hir, *fallthrough, visited);
+                let remaining =
+                    build_scope_block_only(hir, *fallthrough, visited, scope_fallthrough, loop_ctx);
                 instructions.extend(remaining.instructions);
             }
             Terminal::Logical { operator, right, fallthrough, result, .. } => {
                 let right_block =
-                    build_reactive_block_until(hir, *right, Some(*fallthrough), visited);
+                    build_reactive_block_until(hir, *right, Some(*fallthrough), visited, loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Logical {
                     operator: *operator,
                     right: right_block,
                     result: result.clone(),
                     id: block_id,
                 }));
-                let remaining = build_scope_block_only(hir, *fallthrough, visited);
+                let remaining =
+                    build_scope_block_only(hir, *fallthrough, visited, scope_fallthrough, loop_ctx);
                 instructions.extend(remaining.instructions);
             }
             Terminal::Optional { consequent, fallthrough, .. } => {
-                let cons_block =
-                    build_reactive_block_until(hir, *consequent, Some(*fallthrough), visited);
+                let cons_block = build_reactive_block_until(
+                    hir,
+                    *consequent,
+                    Some(*fallthrough),
+                    visited,
+                    loop_ctx,
+                );
                 instructions.extend(cons_block.instructions);
-                let remaining = build_scope_block_only(hir, *fallthrough, visited);
+                let remaining =
+                    build_scope_block_only(hir, *fallthrough, visited, scope_fallthrough, loop_ctx);
                 instructions.extend(remaining.instructions);
             }
             Terminal::Sequence { blocks, fallthrough } => {
                 for bid in blocks {
-                    let block = build_reactive_block_until(hir, *bid, Some(*fallthrough), visited);
+                    let block = build_reactive_block_until(
+                        hir,
+                        *bid,
+                        Some(*fallthrough),
+                        visited,
+                        loop_ctx,
+                    );
                     instructions.extend(block.instructions);
                 }
-                let remaining = build_scope_block_only(hir, *fallthrough, visited);
+                let remaining =
+                    build_scope_block_only(hir, *fallthrough, visited, scope_fallthrough, loop_ctx);
                 instructions.extend(remaining.instructions);
             }
             Terminal::MaybeThrow { continuation, .. } => {
-                let remaining = build_scope_block_only(hir, *continuation, visited);
+                let remaining = build_scope_block_only(
+                    hir,
+                    *continuation,
+                    visited,
+                    scope_fallthrough,
+                    loop_ctx,
+                );
                 instructions.extend(remaining.instructions);
             }
             Terminal::Switch { test, cases, fallthrough } => {
                 let reactive_cases: Vec<(Option<crate::hir::types::Place>, ReactiveBlock)> = cases
                     .iter()
                     .map(|case| {
-                        let block = build_reactive_block_until(hir, case.block, None, visited);
+                        let block =
+                            build_reactive_block_until(hir, case.block, None, visited, loop_ctx);
                         (case.test.clone(), block)
                     })
                     .collect();
@@ -440,7 +612,8 @@ fn build_scope_block_only(
                     cases: reactive_cases,
                     id: block_id,
                 }));
-                let remaining = build_scope_block_only(hir, *fallthrough, visited);
+                let remaining =
+                    build_scope_block_only(hir, *fallthrough, visited, scope_fallthrough, loop_ctx);
                 instructions.extend(remaining.instructions);
             }
             Terminal::Throw { value } => {
@@ -450,8 +623,10 @@ fn build_scope_block_only(
                 }));
             }
             Terminal::Branch { test, consequent, alternate } => {
-                let cons_block = build_reactive_block_until(hir, *consequent, None, visited);
-                let alt_block = build_reactive_block_until(hir, *alternate, None, visited);
+                let cons_block =
+                    build_reactive_block_until(hir, *consequent, None, visited, loop_ctx);
+                let alt_block =
+                    build_reactive_block_until(hir, *alternate, None, visited, loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::If {
                     test: test.clone(),
                     consequent: cons_block,
@@ -459,8 +634,13 @@ fn build_scope_block_only(
                     id: block_id,
                 }));
             }
+            Terminal::PrunedScope { fallthrough, .. } => {
+                let remaining =
+                    build_scope_block_only(hir, *fallthrough, visited, scope_fallthrough, loop_ctx);
+                instructions.extend(remaining.instructions);
+            }
             _ => {
-                // Unreachable, PrunedScope, loops, etc. — no special handling needed in scope blocks
+                // Unreachable, loops, etc. — no special handling needed in scope blocks
             }
         }
     }
@@ -468,7 +648,6 @@ fn build_scope_block_only(
     ReactiveBlock { instructions }
 }
 
-/// Try to find a ReactiveScope from the instructions within a scope block.
 fn find_scope_in_block(
     hir: &HIR,
     block_id: BlockId,

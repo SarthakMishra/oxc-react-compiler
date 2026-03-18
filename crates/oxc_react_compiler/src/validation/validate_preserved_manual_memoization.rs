@@ -170,6 +170,9 @@ fn walk_terminal_blocks(
         ReactiveTerminal::Logical { right, .. } => {
             walk_reactive_block(right, current_scope, memo_scopes);
         }
-        ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
+        ReactiveTerminal::Return { .. }
+        | ReactiveTerminal::Throw { .. }
+        | ReactiveTerminal::Continue { .. }
+        | ReactiveTerminal::Break { .. } => {}
     }
 }
