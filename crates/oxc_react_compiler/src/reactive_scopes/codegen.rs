@@ -1824,6 +1824,11 @@ fn codegen_terminal(
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForOf { init, test, body, .. } => {
+            // Emit init instructions that precede GetIterator (e.g., property loads
+            // to compute the collection expression), then use the collection name in
+            // the for header. GetIterator/IteratorNext/DeclareLocal/StoreLocal are
+            // consumed by the for header syntax.
+            emit_for_of_preamble(init, output, indent, declared, tag_constants);
             let (loop_var, collection) = extract_for_of_parts(init);
             output.push_str(&format!("{indent_str}for (const {loop_var} of {collection}) {{\n"));
             codegen_block(test, output, cache_slot, indent + 1, declared, tag_constants);
@@ -1831,6 +1836,7 @@ fn codegen_terminal(
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForIn { init, test, body, .. } => {
+            emit_for_in_preamble(init, output, indent, declared, tag_constants);
             let (loop_var, collection) = extract_for_in_parts(init);
             output.push_str(&format!("{indent_str}for (const {loop_var} in {collection}) {{\n"));
             codegen_block(test, output, cache_slot, indent + 1, declared, tag_constants);
@@ -2521,21 +2527,91 @@ pub fn apply_compilation(
 // unnamed). However, many call sites collect into Vec<String> and feed into
 // join()/format!(), so the signature change cascades widely. Deferred until
 // profiling shows this is a measurable hotspot.
-/// Resolve a Place's display name without allocating when a name exists.
-/// Returns a borrowed `Cow` for named identifiers, avoiding the String clone
-/// that the previous implementation performed on every call.
+// ---------------------------------------------------------------------------
+// ForOf / ForIn helpers
+// ---------------------------------------------------------------------------
+
+/// Emit init block instructions that precede the iterator protocol for a `ForOf` loop.
+/// Instructions before `GetIterator` (e.g., property loads to compute the collection)
+/// need to be emitted before the `for` header.
+fn emit_for_of_preamble(
+    init: &ReactiveBlock,
+    output: &mut String,
+    indent: usize,
+    declared: &mut FxHashSet<String>,
+    tag_constants: &TagConstantMap,
+) {
+    let indent_str = "  ".repeat(indent);
+    let inline_map = build_inline_map(&init.instructions, &FxHashSet::default(), tag_constants);
+    for instr in &init.instructions {
+        if let ReactiveInstruction::Instruction(instruction) = instr {
+            match &instruction.value {
+                // Stop at GetIterator — everything from here is consumed by the for header
+                InstructionValue::GetIterator { .. } => break,
+                // Emit preceding instructions (e.g., property loads for the collection)
+                _ => {
+                    codegen_instruction(
+                        instruction,
+                        output,
+                        &indent_str,
+                        declared,
+                        &inline_map,
+                        tag_constants,
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Emit init block instructions that precede the iterator protocol for a `ForIn` loop.
+fn emit_for_in_preamble(
+    init: &ReactiveBlock,
+    output: &mut String,
+    indent: usize,
+    declared: &mut FxHashSet<String>,
+    tag_constants: &TagConstantMap,
+) {
+    let indent_str = "  ".repeat(indent);
+    let inline_map = build_inline_map(&init.instructions, &FxHashSet::default(), tag_constants);
+    for instr in &init.instructions {
+        if let ReactiveInstruction::Instruction(instruction) = instr {
+            match &instruction.value {
+                // Stop at NextPropertyOf — everything from here is consumed by the for header
+                InstructionValue::NextPropertyOf { .. } => break,
+                _ => {
+                    codegen_instruction(
+                        instruction,
+                        output,
+                        &indent_str,
+                        declared,
+                        &inline_map,
+                        tag_constants,
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Extract the loop variable name and collection expression from a `ForIn` init block.
 /// The init block contains `NextPropertyOf { value: collection }` followed by
 /// `StoreLocal/DeclareLocal { lvalue: loop_var }`.
 fn extract_for_in_parts(init: &ReactiveBlock) -> (String, String) {
     let mut collection_name = "_".to_string();
     let mut loop_var_name = "_".to_string();
+    let mut collection_id = None;
 
     for instr in &init.instructions {
         if let ReactiveInstruction::Instruction(instruction) = instr {
             match &instruction.value {
                 InstructionValue::NextPropertyOf { value } => {
-                    collection_name = place_name(value).into_owned();
+                    let name = place_name(value);
+                    if name.starts_with('t') && name[1..].chars().all(|c| c.is_ascii_digit()) {
+                        collection_id = Some(value.identifier.id);
+                    } else {
+                        collection_name = name.into_owned();
+                    }
                 }
                 InstructionValue::StoreLocal { lvalue, .. }
                 | InstructionValue::DeclareLocal { lvalue, .. } => {
@@ -2547,28 +2623,58 @@ fn extract_for_in_parts(init: &ReactiveBlock) -> (String, String) {
             }
         }
     }
+
+    // Resolve temp collection name by finding the instruction that produced it
+    if collection_name == "_"
+        && let Some(cid) = collection_id
+    {
+        for instr in &init.instructions {
+            if let ReactiveInstruction::Instruction(instruction) = instr
+                && instruction.lvalue.identifier.id == cid
+            {
+                match &instruction.value {
+                    InstructionValue::LoadLocal { place, .. }
+                    | InstructionValue::LoadContext { place, .. } => {
+                        collection_name = place_name(place).into_owned();
+                    }
+                    _ => {
+                        collection_name = place_name(&instruction.lvalue).into_owned();
+                    }
+                }
+                break;
+            }
+        }
+    }
+
     (loop_var_name, collection_name)
 }
 
 /// Extract the loop variable name and collection expression from a `ForOf` init block.
-/// The init block contains `IteratorNext { iterator }` followed by
-/// `StoreLocal/DeclareLocal { lvalue: loop_var }`. The collection is found via
-/// `GetIterator { collection }` which may be in a preceding block, but the iterator
-/// place's name often reveals the collection.
+/// The init block contains `GetIterator { collection }`, `IteratorNext { iterator }`,
+/// then `DeclareLocal/StoreLocal { lvalue: loop_var }`. When the collection is a temp
+/// (no name), we resolve it by looking for the LoadLocal/LoadContext that produced it.
 fn extract_for_of_parts(init: &ReactiveBlock) -> (String, String) {
     let mut collection_name = "_".to_string();
     let mut loop_var_name = "_".to_string();
+    // Track the GetIterator's collection place ID for temp resolution
+    let mut collection_id = None;
 
     for instr in &init.instructions {
         if let ReactiveInstruction::Instruction(instruction) = instr {
             match &instruction.value {
                 InstructionValue::GetIterator { collection } => {
-                    collection_name = place_name(collection).into_owned();
+                    let name = place_name(collection);
+                    if name.starts_with('t') && name[1..].chars().all(|c| c.is_ascii_digit()) {
+                        // Temp name — record ID for resolution
+                        collection_id = Some(collection.identifier.id);
+                    } else {
+                        collection_name = name.into_owned();
+                    }
                 }
                 InstructionValue::IteratorNext { iterator, .. } => {
                     // If we haven't found the collection via GetIterator yet,
                     // try to use the iterator's place name
-                    if collection_name == "_" {
+                    if collection_name == "_" && collection_id.is_none() {
                         collection_name = place_name(iterator).into_owned();
                     }
                 }
@@ -2582,6 +2688,28 @@ fn extract_for_of_parts(init: &ReactiveBlock) -> (String, String) {
             }
         }
     }
+
+    // Resolve temp collection name by finding the instruction that produced it
+    if collection_name == "_"
+        && let Some(cid) = collection_id
+    {
+        for instr in &init.instructions {
+            if let ReactiveInstruction::Instruction(instruction) = instr
+                && instruction.lvalue.identifier.id == cid
+            {
+                match &instruction.value {
+                    InstructionValue::LoadLocal { place, .. }
+                    | InstructionValue::LoadContext { place, .. } => {
+                        collection_name = place_name(place).into_owned();
+                    }
+                    _ => {
+                        collection_name = place_name(&instruction.lvalue).into_owned();
+                    }
+                }
+            }
+        }
+    }
+
     (loop_var_name, collection_name)
 }
 

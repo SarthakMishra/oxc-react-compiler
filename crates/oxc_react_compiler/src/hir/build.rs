@@ -1095,18 +1095,23 @@ impl HIRBuilder {
         let body_block = self.new_block(BlockKind::Loop);
         let fallthrough = self.new_block(BlockKind::Block);
 
-        // Lower the collection expression first
-        let collection = self.lower_expression(&for_in.right);
-        self.emit_terminal(Terminal::Goto { block: init_block });
+        // Emit structured ForIn terminal from the current block
+        self.emit_terminal(Terminal::ForIn {
+            init: init_block,
+            test: test_block,
+            body: body_block,
+            fallthrough,
+        });
 
-        // Init: emit NextPropertyOf
+        // Init: lower collection, emit NextPropertyOf
         self.switch_block(init_block);
+        let collection = self.lower_expression(&for_in.right);
         let next_prop =
             self.emit(InstructionValue::NextPropertyOf { value: collection }, for_in.span);
         self.lower_for_left(&for_in.left, next_prop, for_in.span);
         self.emit_terminal(Terminal::Goto { block: test_block });
 
-        // Test
+        // Test (empty — for-in has no user-provided test expression)
         self.switch_block(test_block);
         self.emit_terminal(Terminal::Goto { block: body_block });
 
@@ -1143,19 +1148,24 @@ impl HIRBuilder {
         let body_block = self.new_block(BlockKind::Loop);
         let fallthrough = self.new_block(BlockKind::Block);
 
-        // Lower the collection
+        // Emit structured ForOf terminal from the current block
+        self.emit_terminal(Terminal::ForOf {
+            init: init_block,
+            test: test_block,
+            body: body_block,
+            fallthrough,
+        });
+
+        // Init: lower collection, get iterator, get next value
+        self.switch_block(init_block);
         let collection = self.lower_expression(&for_of.right);
         let iterator = self.emit(InstructionValue::GetIterator { collection }, for_of.span);
-        self.emit_terminal(Terminal::Goto { block: init_block });
-
-        // Init: get next value
-        self.switch_block(init_block);
         let next_val =
             self.emit(InstructionValue::IteratorNext { iterator, loc: for_of.span }, for_of.span);
         self.lower_for_left(&for_of.left, next_val, for_of.span);
         self.emit_terminal(Terminal::Goto { block: test_block });
 
-        // Test
+        // Test (empty — for-of has no user-provided test expression)
         self.switch_block(test_block);
         self.emit_terminal(Terminal::Goto { block: body_block });
 

@@ -170,8 +170,11 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::ForOf { init, test, body, fallthrough } => {
-                let init_block = build_reactive_block_until(hir, *init, None, visited);
-                let test_block = build_reactive_block_until(hir, *test, None, visited);
+                // Use stop_at to prevent each sub-block from following Gotos
+                // into sibling blocks. Without this, init follows Goto->test->body,
+                // consuming all instructions and leaving test/body empty.
+                let init_block = build_reactive_block_until(hir, *init, Some(*test), visited);
+                let test_block = build_reactive_block_until(hir, *test, Some(*body), visited);
                 let body_block = build_reactive_block_until(hir, *body, None, visited);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::ForOf {
                     init: init_block,
@@ -183,8 +186,8 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::ForIn { init, test, body, fallthrough } => {
-                let init_block = build_reactive_block_until(hir, *init, None, visited);
-                let test_block = build_reactive_block_until(hir, *test, None, visited);
+                let init_block = build_reactive_block_until(hir, *init, Some(*test), visited);
+                let test_block = build_reactive_block_until(hir, *test, Some(*body), visited);
                 let body_block = build_reactive_block_until(hir, *body, None, visited);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::ForIn {
                     init: init_block,
