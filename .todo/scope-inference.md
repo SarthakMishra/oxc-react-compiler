@@ -29,34 +29,31 @@ These issues cause the remaining 76% render failures (19/25 pairs). The common r
 
 ---
 
-## Gap 8: Scope Output Variables Not Produced Inside Scope Body
+## Gap 8: Scope Output Variables Not Produced Inside Scope Body (partially fixed)
 
-**Priority:** P0 -- causes 10+ render failures
+**Priority:** P0 -- causes 8+ render failures (down from 10+)
 
-**Current state:** The most common class of remaining render failure is a variable being listed as a scope's output (declared) but the instruction that produces it lives in a different scope or outside any scope entirely. At runtime, the variable is never assigned inside the scope's `if ($[N] !== ...)` block, so it remains `undefined` when read after the scope.
+**Current state:** Partially addressed by Phase 3b in propagate_dependencies.rs, which catches StoreLocal/StoreContext variables that are unscooped (no reactive scope assigned during InferReactiveScopeVariables) but enclosed by a scope's block range in the HIR CFG. These variables now get declared as scope outputs, enabling hoisting and caching. This fixed the `remaining is not defined` class of errors for the avatar-group fixture.
 
-**Symptoms (from render test errors):**
-- 3x `remaining is not defined` -- variable computed outside its declared scope
-- 3x `Cannot read properties of undefined (reading 'length'/'filter')` -- scope output never assigned, downstream code reads `.length` on undefined
-- 1x `undefined is not iterable` -- scope output used in destructuring/spread but never assigned
-- 1x `editingId is not defined` -- variable missing from scope body
+**Remaining issues:**
+- Destructure instructions (e.g., `[todos, setTodos] = useState(...)`) inside scope bodies: the destructure pattern targets are not properly wired as scope outputs. Adding them causes slot misalignment because the Destructure instruction's temp lvalue is already a declaration. Needs a deeper fix in codegen to replace temp declarations with named pattern targets for Destructure instructions.
+- 3x `Cannot read properties of undefined (reading 'length'/'filter')` -- scope output never assigned (likely Destructure-related)
+- 1x `undefined is not iterable` -- Destructure-in-scope issue
 - 1x `Cannot read properties of undefined (reading 'localeCompare')` -- scope output is undefined
 - 1x `Cannot read properties of undefined (reading '0')` -- array scope output is undefined
 
-**What's needed:**
+**What's still needed:**
 
-- Audit `InferReactiveScopeVariables` -- when a variable is assigned to a scope, verify that the instruction producing it (StoreLocal, Destructure, etc.) is actually inside that scope's mutable range
-- Audit `BuildReactiveFunction` -- when constructing the ReactiveFunction tree, verify that scope bodies contain all instructions that write to scope output variables
-- Check if the scope's `mutable_range` correctly covers the instruction that produces each declared output
-- Compare against upstream `PropagateScopeDependencies` which explicitly validates that scope outputs are produced within the scope
-- May need to add a validation pass that checks: for every scope output variable, the defining instruction is inside the scope body
+- Fix Destructure-in-scope handling: when a Destructure instruction has a scoped lvalue, the codegen should store/load the pattern targets (the actual variables) rather than the meaningless temp lvalue
+- Ensure the scope's cache slot count reflects the actual named outputs, not internal temps
+- Consider adding a pre-codegen pass that rewires Destructure scope declarations
 
 **Upstream files:**
 - `src/ReactiveScopes/InferReactiveScopeVariables.ts`
 - `src/ReactiveScopes/BuildReactiveBlocks.ts`
 - `src/ReactiveScopes/PropagateScopeDependencies.ts`
 
-**Depends on:** None -- this is the highest priority item
+**Depends on:** None -- this remains high priority
 
 ---
 

@@ -2,11 +2,11 @@
 
 > Last updated: 2026-03-18
 
-Render equivalence is at 32% (8/25 pairs). Gap 9 (JSX tag temps) is resolved. The remaining 68% failures stem from scope inference issues -- variables declared as scope outputs but not actually produced inside scope bodies, and control flow issues (return inside scope body produces dead code after it).
+Render equivalence is at 36% (9/25 pairs). Gap 8 partially fixed (unscooped StoreLocal variables in scope boundaries). Gap 9 (JSX tag temps) resolved. The remaining 64% failures stem from Destructure-in-scope issues (useState destructures not wired as scope outputs), and control flow issues (return inside scope body produces dead code).
 
-## P0 -- Scope Output Correctness (Blocks 68% of Renders)
+## P0 -- Scope Output Correctness (Blocks 64% of Renders)
 
-- [ ] Fix scope output variables not produced inside scope body — [scope-inference.md](scope-inference.md)#gap-8-scope-output-variables-not-produced-inside-scope-body
+- [~] Fix scope output variables not produced inside scope body — [scope-inference.md](scope-inference.md)#gap-8-scope-output-variables-not-produced-inside-scope-body-partially-fixed
 - [ ] Fix temporal dead zone / initialization order in scope reload — [scope-inference.md](scope-inference.md)#gap-10-temporal-dead-zone--initialization-order
 
 ## P2 -- Validation & Coverage Gaps

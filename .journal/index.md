@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 86      | 1–86   | Full compiler: HIR foundation → 25.3% conformance. Recent: JSX tag temp resolution (Gap 9, render 28%→32%), test infrastructure, conformance hardening |
+| [001.md](001.md) | 87      | 1–87   | Full compiler: HIR foundation → 25.3% conformance. Recent: unscooped variable declarations (Gap 10, render 32%→36%), JSX tag temp resolution (Gap 9), test infrastructure, conformance hardening |
 
 ## Archive
 
