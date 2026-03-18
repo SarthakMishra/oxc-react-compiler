@@ -16,19 +16,16 @@ compilation output.";
 ///
 /// After reactive scope inference and RF optimization passes, walk the reactive
 /// function in evaluation order. For each manual memoization region (StartMemoize/
-/// FinishMemoize pair), check that the memoized value is covered by a reactive
-/// scope. If it is not, the compiler failed to create a scope for the value.
+/// FinishMemoize pair), check:
 ///
-/// DIVERGENCE: Upstream checks `identifier.scope` on each FinishMemoize operand
-/// to verify it was assigned to a completed scope. Our HIR doesn't populate
-/// `identifier.scope`, so we approximate by tracking whether any reactive scope
-/// was encountered between StartMemoize and FinishMemoize, or whether FinishMemoize
-/// itself is inside a scope. If either is true, the value is considered memoized.
+/// 1. The FinishMemoize is inside a reactive scope (if not, the compiler failed
+///    to create a scope for this memoized value).
+/// 2. The StartMemoize and FinishMemoize are in the same reactive scope (if not,
+///    the compiler split the memo region across scopes).
 ///
-/// Upstream also validates that inferred scope dependencies match the manual
-/// deps from source (`validateInferredDep` + `compareDeps`). We skip that check
-/// because it requires temporaries/dependency normalization infrastructure we
-/// haven't ported yet.
+/// DIVERGENCE: Upstream checks `identifier.scope` on the FinishMemoize.decl, but
+/// our HIR doesn't populate `identifier.scope`. We use the current reactive scope
+/// context instead.
 pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &mut ErrorCollector) {
     let mut memo_scopes: FxHashMap<u32, MemoRegion> = FxHashMap::default();
     walk_reactive_block(&func.body, None, &mut memo_scopes);
@@ -39,30 +36,35 @@ pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &m
             continue;
         }
 
-        // A memo region is preserved if:
-        // 1. The FinishMemoize is inside a reactive scope, OR
-        // 2. A reactive scope was encountered between StartMemoize and FinishMemoize
-        //    (the scope covers the computation even if Start/Finish are outside it).
-        if region.finish_scope.is_some() || region.has_inner_scope {
+        // If the FinishMemoize is outside any reactive scope, the value was
+        // supposed to be memoized but the compiler didn't create a scope for it.
+        if region.finish_scope.is_none() {
+            errors.push(CompilerError::invalid_react_with_kind(
+                region.loc,
+                UNMEMOIZED_ERROR,
+                DiagnosticKind::MemoizationPreservation,
+            ));
             continue;
         }
 
-        errors.push(CompilerError::invalid_react_with_kind(
-            region.loc,
-            UNMEMOIZED_ERROR,
-            DiagnosticKind::MemoizationPreservation,
-        ));
+        // If start and finish are in different scopes, the manual memo region
+        // was split across multiple reactive scopes — the memoization semantics
+        // won't be preserved.
+        if region.start_scope != region.finish_scope {
+            errors.push(CompilerError::invalid_react_with_kind(
+                region.loc,
+                UNMEMOIZED_ERROR,
+                DiagnosticKind::MemoizationPreservation,
+            ));
+        }
     }
 }
 
 /// Tracks the reactive scope context of a StartMemoize/FinishMemoize pair.
 #[derive(Debug)]
 struct MemoRegion {
+    start_scope: Option<ScopeId>,
     finish_scope: Option<ScopeId>,
-    /// Whether a reactive scope was encountered between StartMemoize and FinishMemoize.
-    has_inner_scope: bool,
-    /// Whether the FinishMemoize has been seen yet (region is still open).
-    finished: bool,
     pruned: bool,
     loc: oxc_span::Span,
 }
@@ -79,13 +81,6 @@ fn walk_reactive_block(
                 check_instruction(instr, current_scope, memo_scopes);
             }
             ReactiveInstruction::Scope(scope_block) => {
-                // Mark all active (started but not finished) memo regions as having
-                // an inner scope.
-                for region in memo_scopes.values_mut() {
-                    if !region.finished {
-                        region.has_inner_scope = true;
-                    }
-                }
                 let scope_id = scope_block.scope.id;
                 walk_reactive_block(&scope_block.instructions, Some(scope_id), memo_scopes);
             }
@@ -104,24 +99,24 @@ fn check_instruction(
 ) {
     match &instr.value {
         InstructionValue::StartMemoize { manual_memo_id } => {
-            memo_scopes.entry(*manual_memo_id).or_insert(MemoRegion {
-                finish_scope: None,
-                has_inner_scope: false,
-                finished: false,
-                pruned: false,
-                loc: instr.loc,
-            });
+            memo_scopes
+                .entry(*manual_memo_id)
+                .or_insert(MemoRegion {
+                    start_scope: current_scope,
+                    finish_scope: None,
+                    pruned: false,
+                    loc: instr.loc,
+                })
+                .start_scope = current_scope;
         }
         InstructionValue::FinishMemoize { manual_memo_id, pruned, .. } => {
             let entry = memo_scopes.entry(*manual_memo_id).or_insert(MemoRegion {
+                start_scope: None,
                 finish_scope: current_scope,
-                has_inner_scope: false,
-                finished: true,
                 pruned: *pruned,
                 loc: instr.loc,
             });
             entry.finish_scope = current_scope;
-            entry.finished = true;
             entry.pruned = *pruned;
         }
         _ => {}
