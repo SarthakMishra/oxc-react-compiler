@@ -6,17 +6,19 @@ These issues reduce conformance coverage but do not break the core compilation p
 
 ## Gap 5a: False "Memoization Preservation" Errors (58 fixtures)
 
-**Priority:** P2
+**Priority:** P2 -- BLOCKED on scope inference
 
 **Current state:** 58 conformance fixtures fail because we emit a false `Existing memoization could not be preserved` error and bail out, while upstream compiles them successfully.
 
+**Attempted fix (REVERTED):** In `bbbbc1d`, replaced scope-matching with inner-scope tracking in `validate_preserved_manual_memoization.rs`. This relaxed the validation but caused a net regression: conformance dropped 413->385 (-28), "we compile, they don't" increased 138->171 (+33). The problem: relaxing validation without fixing scope inference means we compile programs incorrectly (wrong memoization) instead of safely bailing out. Reverted in `4a082dc`.
+
 **What's needed:**
-- Audit `ValidatePreservingMemoization` pass against upstream
-- Likely over-conservative scope matching (our scopes don't align with user's `useMemo`/`useCallback` placement)
-- May require fixing scope inference first (if our scopes are wrong, validation will falsely reject)
+- Fix scope inference FIRST (under-memoization root cause: `last_use_map` too wide)
+- Only then revisit validation relaxation -- once scopes are correct, relaxing validation will produce correct output
+- The inner-scope tracking approach may still be valid after scope inference is fixed
 
 **Upstream:** `src/Validation/ValidatePreservingMemoization.ts`
-**Depends on:** Possibly scope inference improvements
+**Depends on:** Scope inference improvements (Gap 11 in scope-inference.md) -- HARD DEPENDENCY proven by failed attempt
 
 ---
 

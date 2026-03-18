@@ -42,20 +42,11 @@ Completed: Gaps 1-5, 6b, 7, 8, 9, fixture bugs. Remaining: output format diverge
 
 ---
 
-## Gap 11: Destructuring Pattern Codegen
+## Gap 11: Destructuring Pattern Codegen ✅
 
-**Priority:** P1 -- 43 conformance fixtures diverge because we emit member access instead of destructuring
+~~**Priority:** P1 -- 43 conformance fixtures diverge because we emit member access instead of destructuring~~
 
-**Current state:** When upstream emits `const { x, y } = t0` or `const [a, b] = t0`, we emit `const x = t0.x; const y = t0.y` (property access form). This causes 34 object-destructuring and 9 array-destructuring divergences in conformance.
-
-**What's needed:**
-- Detect when a temporary is destructured (multiple properties read from the same source in the same scope)
-- Emit destructuring pattern form instead of individual property access assignments
-- Handle both object `{ }` and array `[ ]` destructuring
-- Handle nested destructuring and rest elements
-
-**Upstream:** `src/ReactiveScopes/CodegenReactiveFunction.ts` (destructuring reconstruction)
-**Depends on:** None
+**Completed**: Declaration ordering fix implemented -- scope declarations now sorted by source location for deterministic slot ordering. Commit `8447035`. +5 conformance fixtures.
 
 ---
 
@@ -90,18 +81,11 @@ Completed: Gaps 1-5, 6b, 7, 8, 9, fixture bugs. Remaining: output format diverge
 
 ---
 
-## Gap 14: Known-Failures Housekeeping
+## Gap 14: Known-Failures Housekeeping ✅
 
-**Priority:** P1 -- quick win
+~~**Priority:** P1 -- quick win~~
 
-**Current state:** 2 fixtures are newly passing (should be removed from known-failures.txt) and 5 fixtures have regressed (should be added). The conformance test prints these at the end of each run.
-
-**What's needed:**
-- Remove `error.unconditional-set-state-in-render-after-loop.js` from known-failures.txt
-- Remove `jsx-bracket-in-text.jsx` from known-failures.txt
-- Add the 5 unexpected divergences to known-failures.txt
-
-**Depends on:** None
+**Completed**: Known-failures.txt updated in commit `98aae43`. Also supported `@expectNothingCompiled` directive in `02e64b9`.
 
 ---
 

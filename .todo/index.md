@@ -2,33 +2,37 @@
 
 > Last updated: 2026-03-18
 
-Conformance: **408/1717 (23.8%)**. Render equivalence: **88% (22/25)**. All 196 Rust tests pass, 0 panics.
+Conformance: **413/1717 (24.1%)**. Render equivalence: **88% (22/25)**. All tests pass, 0 panics.
 
-Key breakdown of 1309 diverged fixtures:
-- 247 "both compile, slots match" (output format only)
-- 622 "both compile, slots differ" (scope/memoization divergence)
-- 205 "we bail, they compile" (false bail-outs)
-- 137 "we compile, they don't" (we over-compile -- usually fine)
-- 93 "both no memo, format diff"
-- 5 unexpected regressions (need known-failures update)
+Key breakdown of diverged fixtures:
+- ~247 "both compile, slots match" (output format only)
+- ~622 "both compile, slots differ" (scope/memoization divergence)
+- ~205 "we bail, they compile" (false bail-outs)
+- ~138 "we compile, they don't" (we over-compile -- usually fine)
+- ~93 "both no memo, format diff"
+
+### Lessons learned
+
+- **Validation relaxation without scope fixes causes regressions.** Attempted relaxing `ValidatePreservedManualMemoization` (inner-scope tracking instead of scope-matching) -- conformance dropped 413->385 because we compiled programs incorrectly instead of safely bailing. REVERTED in `4a082dc`. Validation fixes MUST be paired with corresponding scope inference improvements.
+- **Under-memoization root cause identified:** `last_use_map` tracks uses too broadly, preventing scope creation. Fix requires removing `last_use_map` + adding missing passes (e.g., `PropagateScopeDependenciesHIR`). This is foundational work that also unblocks validation relaxation.
 
 ## Active Work
 
 (none)
 
-## P1 -- Conformance: Output Format Divergences (247 fixtures)
+## P1 -- Conformance: Output Format Divergences
 
-- [ ] Destructuring codegen: emit `const { x } = t0` instead of `const x = t0.x` — [codegen-emission.md](codegen-emission.md)#gap-11-destructuring-pattern-codegen
 - [ ] Named variable preservation: use original names instead of temps where upstream does — [codegen-emission.md](codegen-emission.md)#gap-12-named-variable-preservation
 - [ ] `async` function keyword emission — [codegen-emission.md](codegen-emission.md)#gap-13-async-function-emission
-- [ ] Housekeeping: update known-failures.txt (2 newly passing, 5 regressions) — [codegen-emission.md](codegen-emission.md)#gap-14-known-failures-housekeeping
 
-## P1 -- Conformance: Scope/Memoization Divergences (622 fixtures)
+## P1 -- Conformance: Scope/Memoization Divergences (622 fixtures, largest category)
 
-- [ ] Under-memoization: 404 fixtures with fewer slots than upstream (scope merging too aggressive or scopes missing) — [scope-inference.md](scope-inference.md)#gap-11-under-memoization
+- [ ] Under-memoization: 404 fixtures with fewer slots than upstream (root cause: `last_use_map` too wide) — [scope-inference.md](scope-inference.md)#gap-11-under-memoization
 - [ ] Over-memoization: 175 fixtures with more slots than upstream — [scope-inference.md](scope-inference.md)#gap-7-over-memoization-slot-count-divergence
 
-## P2 -- Conformance: False Bail-outs (205 fixtures)
+## P2 -- Conformance: False Bail-outs (205 fixtures) -- BLOCKED on scope inference
+
+> **Note:** Relaxing validation without fixing scope inference causes net regressions (proven by reverted attempt). These items should only be attempted after scope inference improvements land.
 
 - [ ] 58 false "memoization preservation" errors — [validation-gaps.md](validation-gaps.md)#gap-5a-false-memoization-preservation
 - [ ] 63 silent bail-outs (compile but 0 scopes, no error) — [validation-gaps.md](validation-gaps.md)#gap-6-silent-bail-outs

@@ -29,13 +29,11 @@ Completed: Gaps 8, 9, 10. Remaining: under-memoization (biggest category) and ov
 
 ## Gap 11: Under-memoization / Missing Scopes
 
-**Priority:** P1 (404 fixtures have FEWER slots than upstream)
+**Priority:** P1 (404 fixtures have FEWER slots than upstream) -- THIS IS THE FOUNDATIONAL BLOCKER
 
-**Current state:** 404 conformance fixtures produce FEWER cache slots than upstream. Deficit ranges from -1 to -23. This is the single largest category of conformance divergence. It means we're either:
-1. Not creating scopes that upstream creates
-2. Merging scopes too aggressively
-3. Pruning scopes that upstream keeps
-4. Missing reactive value tracking (so values don't trigger scope creation)
+**Root cause identified:** The `last_use_map` in `InferReactiveScopeVariables` tracks uses too broadly, which prevents scope creation for values that should be independently memoized. This was confirmed during the Priority #3 investigation which yielded +1 conformance by fixing `isMutable` checks in operand union (`795e340`).
+
+**Current state:** 404 conformance fixtures produce FEWER cache slots than upstream. Deficit ranges from -1 to -23. This is the single largest category of conformance divergence AND it blocks validation relaxation (proven by the reverted Priority #4 attempt).
 
 **Slot deficit distribution:**
 - -1: 139 fixtures
@@ -44,17 +42,22 @@ Completed: Gaps 8, 9, 10. Remaining: under-memoization (biggest category) and ov
 - -6 to -10: 41 fixtures
 - -11 to -23: 17 fixtures
 
-**What's needed:**
-- Pick a few -1 deficit fixtures and diff our output vs upstream to understand root cause
-- Most likely issues:
-  - Scope dependency tracking misses some reactive values
-  - `AlignReactiveScopesToBlockScopes` prunes scopes upstream would keep
-  - Missing scope creation for certain expression types (optional chaining, template literals, etc.)
+**What's needed (ordered by dependency):**
+1. Remove `last_use_map` mechanism and replace with upstream's approach to scope variable inference
+2. Implement missing `PropagateScopeDependenciesHIR` pass (upstream has this as a separate pre-pass)
+3. Audit `AlignReactiveScopesToBlockScopes` against upstream for over-pruning
+4. Re-validate scope merging logic in `MergeReactiveScopesThatInvalidateTogether`
+
+**Why this unblocks everything:**
+- Fixes the 404 under-memoization fixtures directly
+- Unblocks validation relaxation (Gap 5a) by ensuring correct scopes before we relax checks
+- May also reduce over-memoization (Gap 7) as a side effect
 
 **Upstream:**
 - `src/ReactiveScopes/InferReactiveScopeVariables.ts`
 - `src/ReactiveScopes/AlignReactiveScopesToBlockScopes.ts`
 - `src/ReactiveScopes/PropagateScopeDependencies.ts`
+- `src/ReactiveScopes/PropagateScopeDependenciesHIR.ts`
 
 **Depends on:** None
 
