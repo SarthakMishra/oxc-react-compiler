@@ -2,11 +2,16 @@
 
 > Last updated: 2026-03-18
 
-Render equivalence is at 40% (10/25 pairs). Gap 8 (destructure-in-scope) substantially fixed via codegen hoisting — todo-list now passes. Gap 9 (JSX tag temps) resolved. Gap 10 (unscooped variables) resolved. Remaining failures stem from other scope output issues (useCallback phantom temps), control flow issues (return inside scope body), and remaining destructure edge cases in complex fixtures.
+Render equivalence is at 40% (10/25 pairs). Root cause analysis shows two dominant bugs accounting for nearly all remaining failures: (1) logical/ternary expression flattening destroys short-circuit semantics, and (2) uninitialized scope outputs from variables produced by useMemo/useCallback that are never assigned in the scope's if-branch.
+
+## P0 -- Logical/Ternary Expression Codegen
+
+- [ ] Reconstruct short-circuit expressions from Logical terminals instead of flattening — [codegen-emission.md](codegen-emission.md)#gap-5-logical-expression-flattening
+- [ ] Reconstruct ternary expressions from If terminals with result places — [codegen-emission.md](codegen-emission.md)#gap-6-ternary-expression-reconstruction
 
 ## P0 -- Scope Output Correctness
 
-- [ ] Fix useCallback/useMemo phantom temp scope outputs — remaining fixtures still use phantom temps for non-destructure cases
+- [ ] Fix uninitialized scope outputs for useMemo/useCallback results — [scope-inference.md](scope-inference.md)#gap-8-scope-output-variables-not-produced-inside-scope-body-partially-fixed
 - [ ] Fix temporal dead zone / initialization order in scope reload — [scope-inference.md](scope-inference.md)#gap-10-temporal-dead-zone--initialization-order
 
 ## P2 -- Validation & Coverage Gaps

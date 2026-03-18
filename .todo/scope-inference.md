@@ -1,6 +1,6 @@
 # Scope Inference
 
-These issues cause the remaining 76% render failures (19/25 pairs). The common root cause is scope declarations not matching what is actually computed inside scope bodies -- variables are declared as scope outputs but the producing instruction lives in a different scope (or outside any scope), so the variable is uninitialized or undefined at runtime.
+These issues cause scope output variables to be uninitialized or misaligned at runtime. Many of the "Cannot read properties of undefined" errors are a combination of this bug and the logical expression flattening bug (see codegen-emission.md Gap 5).
 
 ---
 
@@ -25,35 +25,38 @@ These issues cause the remaining 76% render failures (19/25 pairs). The common r
 
 **Evidence:** 9/16 benchmark fixtures show slot count > upstream. The excess slots don't necessarily cause wrong output (over-memoization is correct but wasteful), but they indicate scope inference divergence that may also manifest as correctness issues in edge cases.
 
-**Depends on:** Gap 8 should be investigated first (it causes runtime crashes, not just waste). Gap 9 is resolved.
+**Depends on:** Gap 5 (logical expression flattening) should be fixed first -- it affects scope output analysis.
 
 ---
 
 ## Gap 8: Scope Output Variables Not Produced Inside Scope Body (partially fixed)
 
-**Priority:** P0 -- causes 8+ render failures (down from 10+)
+**Priority:** P0 -- causes 7 partial_error render failures
 
-**Current state:** Partially addressed by Phase 3b in propagate_dependencies.rs, which catches StoreLocal/StoreContext variables that are unscooped (no reactive scope assigned during InferReactiveScopeVariables) but enclosed by a scope's block range in the HIR CFG. These variables now get declared as scope outputs, enabling hoisting and caching. This fixed the `remaining is not defined` class of errors for the avatar-group fixture.
+**Current state:** Partially addressed by multiple fixes:
+- Phase 3b in propagate_dependencies.rs catches unscooped StoreLocal/StoreContext variables
+- Destructure-in-scope hoisting (Phase 88) moves destructure instructions out of scope bodies
+- Phantom scope declaration filter (Phase 89) removes spurious declarations
 
-**Remaining issues:**
-- Destructure instructions (e.g., `[todos, setTodos] = useState(...)`) inside scope bodies: the destructure pattern targets are not properly wired as scope outputs. Adding them causes slot misalignment because the Destructure instruction's temp lvalue is already a declaration. Needs a deeper fix in codegen to replace temp declarations with named pattern targets for Destructure instructions.
-- 3x `Cannot read properties of undefined (reading 'length'/'filter')` -- scope output never assigned (likely Destructure-related)
-- 1x `undefined is not iterable` -- Destructure-in-scope issue
-- 1x `Cannot read properties of undefined (reading 'localeCompare')` -- scope output is undefined
-- 1x `Cannot read properties of undefined (reading '0')` -- array scope output is undefined
+**Remaining issues (updated based on deep analysis):**
+
+Many of the "Cannot read properties of undefined" errors are actually caused by **Gap 5 (logical expression flattening)** rather than scope output misplacement. When `??` and `&&` are flattened, the right-branch value unconditionally overwrites the left-branch value, producing wrong types that then crash on method calls like `.filter()`, `.length`, etc.
+
+After Gap 5 is fixed, the remaining scope output issues to investigate:
+- Variables produced by `useMemo`/`useCallback` return values that are cached in scopes but never assigned in the computation branch (only in the else/reload branch)
+- Example from data-table.oxc.js: `sortedData = t125;` where `t125` is assigned in the `else` branch but not the `if` branch of the scope guard
 
 **What's still needed:**
 
-- Fix Destructure-in-scope handling: when a Destructure instruction has a scoped lvalue, the codegen should store/load the pattern targets (the actual variables) rather than the meaningless temp lvalue
-- Ensure the scope's cache slot count reflects the actual named outputs, not internal temps
-- Consider adding a pre-codegen pass that rewires Destructure scope declarations
+- Fix Gap 5 first (logical flattening), then re-evaluate which "undefined" errors remain
+- For remaining cases: ensure that when a variable is produced by a hook call (useMemo, useCallback) inside a scope, both the computation path and the reload path assign it
 
 **Upstream files:**
 - `src/ReactiveScopes/InferReactiveScopeVariables.ts`
 - `src/ReactiveScopes/BuildReactiveBlocks.ts`
 - `src/ReactiveScopes/PropagateScopeDependencies.ts`
 
-**Depends on:** None -- this remains high priority
+**Depends on:** Gap 5 (logical expression flattening) -- many "undefined" crashes will resolve when short-circuit semantics are restored
 
 ---
 
@@ -86,4 +89,4 @@ These issues cause the remaining 76% render failures (19/25 pairs). The common r
 **Upstream files:**
 - `src/ReactiveScopes/CodegenReactiveFunction.ts`
 
-**Depends on:** Gap 8 (some of these may be caused by the same scope output misplacement issue)
+**Depends on:** Gap 5 (some TDZ errors may be caused by logical expression flattening producing unexpected variable references)
