@@ -25,7 +25,7 @@ These issues cause the remaining 76% render failures (19/25 pairs). The common r
 
 **Evidence:** 9/16 benchmark fixtures show slot count > upstream. The excess slots don't necessarily cause wrong output (over-memoization is correct but wasteful), but they indicate scope inference divergence that may also manifest as correctness issues in edge cases.
 
-**Depends on:** Gap 8 and Gap 9 should be investigated first (they cause runtime crashes, not just waste)
+**Depends on:** Gap 8 should be investigated first (it causes runtime crashes, not just waste). Gap 9 is resolved.
 
 ---
 
@@ -60,27 +60,11 @@ These issues cause the remaining 76% render failures (19/25 pairs). The common r
 
 ---
 
-## Gap 9: JSX Tag Names Using Temporary Identifiers
+## Gap 9: JSX Tag Names Using Temporary Identifiers ✅
 
-**Priority:** P1 -- causes 2 render failures, visible corruption
+~~**Priority:** P1 -- causes 2 render failures, visible corruption~~
 
-**Current state:** Some compiled JSX elements use temporary variable names as tag names (e.g., `<t15>` instead of `<button>`, `<t40>` instead of `<div>`). This happens when the codegen emits the internal temporary identifier for the JSX element's tag instead of the original tag name string.
-
-**Symptoms:**
-- 2x JSX tag using temp name (`<t15>`, `<t40>`) instead of the original HTML element name
-
-**What's needed:**
-
-- Trace how JSX element tag names flow through the HIR: the `JsxElement` instruction should preserve the original tag name (string for intrinsic elements, identifier for components)
-- Check if the tag name is being replaced by a temporary during SSA renaming or instruction lowering
-- The codegen should emit the original tag name for intrinsic elements (`div`, `button`, etc.), not the identifier of the instruction that computed the element
-- Compare against upstream `JsxElement` handling in codegen
-
-**Upstream files:**
-- `src/HIR/HIR.ts` (JsxElement type)
-- `src/ReactiveScopes/CodegenReactiveFunction.ts`
-
-**Depends on:** None -- isolated codegen issue
+**Completed:** Built a global `TagConstantMap` in codegen that recursively walks the entire reactive function tree to find temps assigned `Primitive::String` or `LoadGlobal` values. This map is threaded through all codegen functions (`codegen_block`, `codegen_terminal`, `codegen_scope`, etc.) and consulted during JSX tag resolution in both `codegen_instruction` and the inline `expr_string` path. Fixes `<t15>` → `<button>`, `<t40>` → `<div>`, etc. across all fixtures. Render equivalence improved from 28% (7/25) to 32% (8/25). Rust module: `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs`.
 
 ---
 

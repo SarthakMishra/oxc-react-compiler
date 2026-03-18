@@ -368,6 +368,7 @@ fn is_inlinable(value: &InstructionValue) -> bool {
 fn build_inline_map(
     instructions: &[ReactiveInstruction],
     protected_names: &FxHashSet<String>,
+    tag_constants: &TagConstantMap,
 ) -> InlineMap {
     // Flat counts: only uses at this block level (no recursion into scopes/terminals)
     let flat_counts = count_temp_uses_flat(instructions);
@@ -443,7 +444,7 @@ fn build_inline_map(
             }
         }
         // Generate the RHS expression string
-        if let Some(expr) = expr_string(&instr.value, &inline_map) {
+        if let Some(expr) = expr_string(&instr.value, &inline_map, tag_constants) {
             inline_map.insert(temp_name, expr);
         }
     }
@@ -457,7 +458,11 @@ fn build_inline_map(
 /// Returns `None` if expression generation is not supported for this variant
 /// (should not happen for variants accepted by `is_inlinable`, but acts as a
 /// safety valve).
-fn expr_string(value: &InstructionValue, im: &InlineMap) -> Option<String> {
+fn expr_string(
+    value: &InstructionValue,
+    im: &InlineMap,
+    tag_constants: &TagConstantMap,
+) -> Option<String> {
     let resolve = |p: &Place| -> String {
         if is_temp_place(p) {
             let name = format!("t{}", p.identifier.id.0);
@@ -571,6 +576,13 @@ fn expr_string(value: &InstructionValue, im: &InlineMap) -> Option<String> {
         }
         InstructionValue::JsxExpression { tag, props, children } => {
             let raw_tag = resolve(tag);
+            // Check tag_constants for cross-scope JSX tag resolution
+            let raw_tag = if is_temp_place(tag) && !is_jsx_text_str(&raw_tag) {
+                let temp_name = format!("t{}", tag.identifier.id.0);
+                tag_constants.get(&temp_name).cloned().unwrap_or(raw_tag)
+            } else {
+                raw_tag
+            };
             let tag_name = jsx_tag_name(&raw_tag);
             // Build props string in JSX syntax.
             // NOTE: This duplicates `build_jsx_props_str` because `expr_string`
@@ -629,6 +641,102 @@ fn expr_string(value: &InstructionValue, im: &InlineMap) -> Option<String> {
             Some(format!("new {}({})", callee_name, args_str.join(", ")))
         }
         _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Global JSX tag constant resolution
+// ---------------------------------------------------------------------------
+
+/// A map from temp variable name (e.g. "t15") to the constant expression string
+/// (e.g. `"\"button\""`). Built once per function by scanning all instructions
+/// (recursively into scopes/terminals) for temps assigned `Primitive::String`
+/// or `LoadGlobal` values. Used by JSX codegen to resolve tag temps that are
+/// scope outputs and thus not available in the block-local `InlineMap`.
+type TagConstantMap = FxHashMap<String, String>;
+
+/// Build a map of temp names to their constant expression strings for JSX tag
+/// resolution. This walks the entire reactive tree to find temps assigned
+/// constant values (Primitive::String, LoadGlobal) that may be used as JSX tags
+/// across scope boundaries.
+fn build_tag_constant_map(block: &ReactiveBlock) -> TagConstantMap {
+    let mut map = TagConstantMap::default();
+    collect_tag_constants_from_block(block, &mut map);
+    map
+}
+
+fn collect_tag_constants_from_block(block: &ReactiveBlock, map: &mut TagConstantMap) {
+    for ri in &block.instructions {
+        match ri {
+            ReactiveInstruction::Instruction(instr) => {
+                if !is_temp_place(&instr.lvalue) {
+                    continue;
+                }
+                let temp_name = format!("t{}", instr.lvalue.identifier.id.0);
+                match &instr.value {
+                    InstructionValue::Primitive { value } => {
+                        let s = match value {
+                            Primitive::String(s) => {
+                                format!("\"{}\"", s.replace('\"', "\\\""))
+                            }
+                            _ => continue,
+                        };
+                        map.insert(temp_name, s);
+                    }
+                    InstructionValue::LoadGlobal { binding } => {
+                        map.insert(temp_name, binding.name.clone());
+                    }
+                    _ => {}
+                }
+            }
+            ReactiveInstruction::Scope(scope) => {
+                collect_tag_constants_from_block(&scope.instructions, map);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                collect_tag_constants_from_terminal(terminal, map);
+            }
+        }
+    }
+}
+
+fn collect_tag_constants_from_terminal(terminal: &ReactiveTerminal, map: &mut TagConstantMap) {
+    match terminal {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
+            collect_tag_constants_from_block(consequent, map);
+            collect_tag_constants_from_block(alternate, map);
+        }
+        ReactiveTerminal::Switch { cases, .. } => {
+            for (_, block) in cases {
+                collect_tag_constants_from_block(block, map);
+            }
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { body, test, .. } => {
+            collect_tag_constants_from_block(test, map);
+            collect_tag_constants_from_block(body, map);
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            collect_tag_constants_from_block(init, map);
+            collect_tag_constants_from_block(test, map);
+            collect_tag_constants_from_block(body, map);
+            if let Some(upd) = update {
+                collect_tag_constants_from_block(upd, map);
+            }
+        }
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            collect_tag_constants_from_block(init, map);
+            collect_tag_constants_from_block(test, map);
+            collect_tag_constants_from_block(body, map);
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            collect_tag_constants_from_block(block, map);
+            collect_tag_constants_from_block(handler, map);
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            collect_tag_constants_from_block(block, map);
+        }
+        ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
     }
 }
 
@@ -791,6 +899,10 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     // function scope before the scope guard.
     collect_all_scope_declarations(&rf.body, &mut output, &mut declared, 1);
 
+    // Build a global map of temp → constant expression for JSX tag resolution.
+    // This allows JSX tags assigned in one scope to be resolved in another.
+    let tag_constants = build_tag_constant_map(&rf.body);
+
     // Hoist Destructure instructions that destructure from function parameters
     // (e.g., `const { status } = t0;`) to the top of the function body,
     // before any reactive scope checks that may reference those variables.
@@ -810,6 +922,7 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
                     indent_str,
                     &mut declared,
                     &empty_inline_map,
+                    &tag_constants,
                 );
                 hoisted_indices.insert(i);
             }
@@ -824,6 +937,7 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
         1,
         &mut declared,
         &hoisted_indices,
+        &tag_constants,
     );
 
     output.push_str("}\n");
@@ -836,19 +950,35 @@ fn codegen_block(
     cache_slot: &mut u32,
     indent: usize,
     declared: &mut FxHashSet<String>,
+    tag_constants: &TagConstantMap,
 ) {
-    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default());
+    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default(), tag_constants);
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
                 let indent_str = "  ".repeat(indent);
-                codegen_instruction(instruction, output, &indent_str, declared, &inline_map);
+                codegen_instruction(
+                    instruction,
+                    output,
+                    &indent_str,
+                    declared,
+                    &inline_map,
+                    tag_constants,
+                );
             }
             ReactiveInstruction::Terminal(terminal) => {
-                codegen_terminal(terminal, output, cache_slot, indent, declared, &inline_map);
+                codegen_terminal(
+                    terminal,
+                    output,
+                    cache_slot,
+                    indent,
+                    declared,
+                    &inline_map,
+                    tag_constants,
+                );
             }
             ReactiveInstruction::Scope(scope_block) => {
-                codegen_scope(scope_block, output, cache_slot, indent, declared);
+                codegen_scope(scope_block, output, cache_slot, indent, declared, tag_constants);
             }
         }
     }
@@ -862,8 +992,9 @@ fn codegen_block_skip_hoisted(
     indent: usize,
     declared: &mut FxHashSet<String>,
     hoisted_indices: &FxHashSet<usize>,
+    tag_constants: &TagConstantMap,
 ) {
-    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default());
+    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default(), tag_constants);
     for (i, instr) in block.instructions.iter().enumerate() {
         if hoisted_indices.contains(&i) {
             continue;
@@ -871,13 +1002,28 @@ fn codegen_block_skip_hoisted(
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
                 let indent_str = "  ".repeat(indent);
-                codegen_instruction(instruction, output, &indent_str, declared, &inline_map);
+                codegen_instruction(
+                    instruction,
+                    output,
+                    &indent_str,
+                    declared,
+                    &inline_map,
+                    tag_constants,
+                );
             }
             ReactiveInstruction::Terminal(terminal) => {
-                codegen_terminal(terminal, output, cache_slot, indent, declared, &inline_map);
+                codegen_terminal(
+                    terminal,
+                    output,
+                    cache_slot,
+                    indent,
+                    declared,
+                    &inline_map,
+                    tag_constants,
+                );
             }
             ReactiveInstruction::Scope(scope_block) => {
-                codegen_scope(scope_block, output, cache_slot, indent, declared);
+                codegen_scope(scope_block, output, cache_slot, indent, declared, tag_constants);
             }
         }
     }
@@ -892,8 +1038,9 @@ fn codegen_block_skip_declares(
     indent: usize,
     declared: &mut FxHashSet<String>,
     protected_names: &FxHashSet<String>,
+    tag_constants: &TagConstantMap,
 ) {
-    let inline_map = build_inline_map(&block.instructions, protected_names);
+    let inline_map = build_inline_map(&block.instructions, protected_names, tag_constants);
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
@@ -904,13 +1051,28 @@ fn codegen_block_skip_declares(
                     continue;
                 }
                 let indent_str = "  ".repeat(indent);
-                codegen_instruction(instruction, output, &indent_str, declared, &inline_map);
+                codegen_instruction(
+                    instruction,
+                    output,
+                    &indent_str,
+                    declared,
+                    &inline_map,
+                    tag_constants,
+                );
             }
             ReactiveInstruction::Terminal(terminal) => {
-                codegen_terminal(terminal, output, cache_slot, indent, declared, &inline_map);
+                codegen_terminal(
+                    terminal,
+                    output,
+                    cache_slot,
+                    indent,
+                    declared,
+                    &inline_map,
+                    tag_constants,
+                );
             }
             ReactiveInstruction::Scope(scope_block) => {
-                codegen_scope(scope_block, output, cache_slot, indent, declared);
+                codegen_scope(scope_block, output, cache_slot, indent, declared, tag_constants);
             }
         }
     }
@@ -922,6 +1084,7 @@ fn codegen_instruction(
     indent: &str,
     declared: &mut FxHashSet<String>,
     inline_map: &InlineMap,
+    tag_constants: &TagConstantMap,
 ) {
     let lvalue_name = place_name(&instr.lvalue);
 
@@ -1056,6 +1219,21 @@ fn codegen_instruction(
         }
         InstructionValue::JsxExpression { tag, props, children } => {
             let raw_tag = resolve_place(tag, inline_map);
+            // If the tag didn't resolve via the block-local inline map (still a
+            // temp name like "t15"), check the global tag constants map. This
+            // handles the case where the tag was assigned in a different scope
+            // (e.g. `t15 = "button"` inside a reactive scope body) and thus
+            // isn't in the current block's inline map.
+            let raw_tag = if is_temp_place(tag) && !is_jsx_text_str(&raw_tag) {
+                let temp_name = format!("t{}", tag.identifier.id.0);
+                if let Some(constant_val) = tag_constants.get(&temp_name) {
+                    Cow::Owned(constant_val.clone())
+                } else {
+                    raw_tag
+                }
+            } else {
+                raw_tag
+            };
             let tag_name = jsx_tag_name(&raw_tag);
             // Build JSX props string
             let props_str = build_jsx_props_str(props, inline_map);
@@ -1441,6 +1619,7 @@ fn codegen_terminal(
     indent: usize,
     declared: &mut FxHashSet<String>,
     inline_map: &InlineMap,
+    tag_constants: &TagConstantMap,
 ) {
     let indent_str = "  ".repeat(indent);
 
@@ -1465,10 +1644,10 @@ fn codegen_terminal(
                 indent_str,
                 resolve_place(test, inline_map)
             ));
-            codegen_block(consequent, output, cache_slot, indent + 1, declared);
+            codegen_block(consequent, output, cache_slot, indent + 1, declared, tag_constants);
             if !alternate.instructions.is_empty() {
                 output.push_str(&format!("{indent_str}}} else {{\n"));
-                codegen_block(alternate, output, cache_slot, indent + 1, declared);
+                codegen_block(alternate, output, cache_slot, indent + 1, declared, tag_constants);
             }
             output.push_str(&format!("{indent_str}}}\n"));
         }
@@ -1488,57 +1667,57 @@ fn codegen_terminal(
                 } else {
                     output.push_str(&format!("{indent_str}  default:\n"));
                 }
-                codegen_block(block, output, cache_slot, indent + 2, declared);
+                codegen_block(block, output, cache_slot, indent + 2, declared, tag_constants);
             }
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::While { test, body, .. } => {
             output.push_str(&format!("{indent_str}while (true) {{\n"));
-            codegen_block(test, output, cache_slot, indent + 1, declared);
-            codegen_block(body, output, cache_slot, indent + 1, declared);
+            codegen_block(test, output, cache_slot, indent + 1, declared, tag_constants);
+            codegen_block(body, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::DoWhile { body, test, .. } => {
             output.push_str(&format!("{indent_str}do {{\n"));
-            codegen_block(body, output, cache_slot, indent + 1, declared);
+            codegen_block(body, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}} while (true);\n"));
             // Test block is evaluated inside the loop for condition
             let _ = test;
         }
         ReactiveTerminal::For { init, test, update, body, .. } => {
             output.push_str(&format!("{indent_str}for (;;) {{\n"));
-            codegen_block(init, output, cache_slot, indent + 1, declared);
-            codegen_block(test, output, cache_slot, indent + 1, declared);
-            codegen_block(body, output, cache_slot, indent + 1, declared);
+            codegen_block(init, output, cache_slot, indent + 1, declared, tag_constants);
+            codegen_block(test, output, cache_slot, indent + 1, declared, tag_constants);
+            codegen_block(body, output, cache_slot, indent + 1, declared, tag_constants);
             if let Some(upd) = update {
-                codegen_block(upd, output, cache_slot, indent + 1, declared);
+                codegen_block(upd, output, cache_slot, indent + 1, declared, tag_constants);
             }
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForOf { init, test, body, .. } => {
             let (loop_var, collection) = extract_for_of_parts(init);
             output.push_str(&format!("{indent_str}for (const {loop_var} of {collection}) {{\n"));
-            codegen_block(test, output, cache_slot, indent + 1, declared);
-            codegen_block(body, output, cache_slot, indent + 1, declared);
+            codegen_block(test, output, cache_slot, indent + 1, declared, tag_constants);
+            codegen_block(body, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForIn { init, test, body, .. } => {
             let (loop_var, collection) = extract_for_in_parts(init);
             output.push_str(&format!("{indent_str}for (const {loop_var} in {collection}) {{\n"));
-            codegen_block(test, output, cache_slot, indent + 1, declared);
-            codegen_block(body, output, cache_slot, indent + 1, declared);
+            codegen_block(test, output, cache_slot, indent + 1, declared, tag_constants);
+            codegen_block(body, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Try { block, handler, .. } => {
             output.push_str(&format!("{indent_str}try {{\n"));
-            codegen_block(block, output, cache_slot, indent + 1, declared);
+            codegen_block(block, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}} catch (e) {{\n"));
-            codegen_block(handler, output, cache_slot, indent + 1, declared);
+            codegen_block(handler, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Label { block, label, .. } => {
             output.push_str(&format!("{indent_str}bb{label}: {{\n"));
-            codegen_block(block, output, cache_slot, indent + 1, declared);
+            codegen_block(block, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}}\n"));
         }
     }
@@ -1550,6 +1729,7 @@ fn codegen_scope(
     cache_slot: &mut u32,
     indent: usize,
     declared: &mut FxHashSet<String>,
+    tag_constants: &TagConstantMap,
 ) {
     let indent_str = "  ".repeat(indent);
     let deps = &scope.scope.dependencies;
@@ -1576,7 +1756,14 @@ fn codegen_scope(
             if scope_decl_ids.contains(&lvalue.identifier.id)
                 || scope_decl_ids.contains(&instruction.lvalue.identifier.id)
             {
-                codegen_instruction(instruction, output, &indent_str, declared, &empty_inline_map);
+                codegen_instruction(
+                    instruction,
+                    output,
+                    &indent_str,
+                    declared,
+                    &empty_inline_map,
+                    tag_constants,
+                );
             }
         }
     }
@@ -1629,6 +1816,7 @@ fn codegen_scope(
         indent + 1,
         declared,
         &scope_decl_names,
+        tag_constants,
     );
 
     // Store dep values and declarations into cache slots.
@@ -1719,7 +1907,10 @@ fn codegen_hir_body(hir: &crate::hir::types::HIR, output: &mut String, indent: u
         );
     let mut declared = FxHashSet::default();
     let mut cache_slot = 0u32;
-    codegen_block(&reactive_block, output, &mut cache_slot, indent, &mut declared);
+    // Nested function bodies (lambdas, callbacks) don't have reactive scopes,
+    // so JSX tag constants within them are resolved locally.
+    let tag_constants = build_tag_constant_map(&reactive_block);
+    codegen_block(&reactive_block, output, &mut cache_slot, indent, &mut declared, &tag_constants);
 }
 
 /// Recursively collect all scope declaration names from the reactive block tree
@@ -2456,7 +2647,8 @@ pub fn codegen_function_with_source_map(
         ctx.write(&format!("  const $ = _c({total_slots});\n"));
     }
 
-    codegen_block_with_map(&rf.body, &mut ctx, &mut 0u32, 1, source_text);
+    let tag_constants = build_tag_constant_map(&rf.body);
+    codegen_block_with_map(&rf.body, &mut ctx, &mut 0u32, 1, source_text, &tag_constants);
 
     ctx.write("}\n");
     (ctx.output, ctx.source_map)
@@ -2468,8 +2660,9 @@ fn codegen_block_with_map(
     cache_slot: &mut u32,
     indent: usize,
     source: &str,
+    tag_constants: &TagConstantMap,
 ) {
-    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default());
+    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default(), tag_constants);
     let mut declared = FxHashSet::default();
     for instr in &block.instructions {
         match instr {
@@ -2483,6 +2676,7 @@ fn codegen_block_with_map(
                     &indent_str,
                     &mut declared,
                     &inline_map,
+                    tag_constants,
                 );
                 // Update line/col tracking after codegen_instruction wrote to output.
                 recompute_position(ctx);
@@ -2495,11 +2689,19 @@ fn codegen_block_with_map(
                     indent,
                     &mut declared,
                     &inline_map,
+                    tag_constants,
                 );
                 recompute_position(ctx);
             }
             ReactiveInstruction::Scope(scope_block) => {
-                codegen_scope(scope_block, &mut ctx.output, cache_slot, indent, &mut declared);
+                codegen_scope(
+                    scope_block,
+                    &mut ctx.output,
+                    cache_slot,
+                    indent,
+                    &mut declared,
+                    tag_constants,
+                );
                 recompute_position(ctx);
             }
         }
