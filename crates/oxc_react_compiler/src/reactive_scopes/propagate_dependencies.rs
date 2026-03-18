@@ -628,6 +628,253 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
         }
     }
 
+    // Phase 3b: Catch "unscooped but enclosed" variables.
+    //
+    // Some instructions within a scope's block range don't have a scope assigned
+    // (e.g., primitive computations like `remaining = users.length - max`). These
+    // variables don't get scopes during InferReactiveScopeVariables because they
+    // are non-mutable primitives. However, they end up inside the scope's body in
+    // the ReactiveFunction IR because AlignScopesToBlockBoundaries places them
+    // within the scope's block range. If such a variable is used outside the scope
+    // (e.g., as a dependency of another scope), it must be declared as a scope
+    // output so it gets hoisted to function level and cached.
+    //
+    // DIVERGENCE: Upstream handles this via its HIR→ReactiveIR conversion which
+    // inserts scope declarations for all variables computed within a scope body
+    // that are referenced outside. Our HIR-level Phase 3 only checks instructions
+    // with scope assignments, missing primitives. This extra pass compensates.
+    //
+    // We use the Scope terminals in the HIR to build a block→scope map, then
+    // determine which scope encloses each unscooped instruction.
+    {
+        use crate::hir::types::{BlockId, Terminal};
+
+        // Build block→scope map by walking Scope terminals.
+        // Inner scopes override outer scopes (entry().or_insert avoids overwriting).
+        let mut block_to_scope: FxHashMap<BlockId, ScopeId> = FxHashMap::default();
+
+        fn collect_scope_blocks(
+            hir: &HIR,
+            start: BlockId,
+            stop: BlockId,
+            scope_id: ScopeId,
+            block_to_scope: &mut FxHashMap<BlockId, ScopeId>,
+            visited: &mut FxHashSet<BlockId>,
+        ) {
+            if start == stop || !visited.insert(start) {
+                return;
+            }
+            // Only insert if not already claimed by a tighter (inner) scope
+            block_to_scope.entry(start).or_insert(scope_id);
+
+            let block = match hir.blocks.iter().find(|(id, _)| *id == start).map(|(_, b)| b) {
+                Some(b) => b,
+                None => return,
+            };
+
+            match &block.terminal {
+                Terminal::Scope {
+                    block: inner_block,
+                    fallthrough: inner_ft,
+                    scope: inner_scope,
+                } => {
+                    // Inner scope blocks belong to the inner scope, not us
+                    collect_scope_blocks(
+                        hir,
+                        *inner_block,
+                        *inner_ft,
+                        *inner_scope,
+                        block_to_scope,
+                        visited,
+                    );
+                    // Continue with the inner scope's fallthrough (still in our scope)
+                    collect_scope_blocks(hir, *inner_ft, stop, scope_id, block_to_scope, visited);
+                }
+                Terminal::Goto { block: next } => {
+                    collect_scope_blocks(hir, *next, stop, scope_id, block_to_scope, visited);
+                }
+                Terminal::If { consequent, alternate, fallthrough, .. }
+                | Terminal::Ternary { consequent, alternate, fallthrough, .. } => {
+                    collect_scope_blocks(
+                        hir,
+                        *consequent,
+                        *fallthrough,
+                        scope_id,
+                        block_to_scope,
+                        visited,
+                    );
+                    collect_scope_blocks(
+                        hir,
+                        *alternate,
+                        *fallthrough,
+                        scope_id,
+                        block_to_scope,
+                        visited,
+                    );
+                    collect_scope_blocks(
+                        hir,
+                        *fallthrough,
+                        stop,
+                        scope_id,
+                        block_to_scope,
+                        visited,
+                    );
+                }
+                Terminal::Logical { right, fallthrough, .. }
+                | Terminal::Optional { consequent: right, fallthrough, .. } => {
+                    collect_scope_blocks(
+                        hir,
+                        *right,
+                        *fallthrough,
+                        scope_id,
+                        block_to_scope,
+                        visited,
+                    );
+                    collect_scope_blocks(
+                        hir,
+                        *fallthrough,
+                        stop,
+                        scope_id,
+                        block_to_scope,
+                        visited,
+                    );
+                }
+                Terminal::Sequence { blocks, fallthrough } => {
+                    for bid in blocks {
+                        collect_scope_blocks(
+                            hir,
+                            *bid,
+                            *fallthrough,
+                            scope_id,
+                            block_to_scope,
+                            visited,
+                        );
+                    }
+                    collect_scope_blocks(
+                        hir,
+                        *fallthrough,
+                        stop,
+                        scope_id,
+                        block_to_scope,
+                        visited,
+                    );
+                }
+                Terminal::MaybeThrow { continuation, .. } => {
+                    collect_scope_blocks(
+                        hir,
+                        *continuation,
+                        stop,
+                        scope_id,
+                        block_to_scope,
+                        visited,
+                    );
+                }
+                Terminal::PrunedScope { fallthrough, .. } => {
+                    collect_scope_blocks(
+                        hir,
+                        *fallthrough,
+                        stop,
+                        scope_id,
+                        block_to_scope,
+                        visited,
+                    );
+                }
+                _ => {
+                    // Return, Throw, Switch, loops, etc. — stop recursing
+                }
+            }
+        }
+
+        // Walk all blocks to find Scope terminals
+        for (_, block) in &hir.blocks {
+            if let Terminal::Scope { scope, block: scope_block, fallthrough } = &block.terminal {
+                let mut visited = FxHashSet::default();
+                collect_scope_blocks(
+                    hir,
+                    *scope_block,
+                    *fallthrough,
+                    *scope,
+                    &mut block_to_scope,
+                    &mut visited,
+                );
+            }
+        }
+
+        // For unscooped instructions, check if their block is inside a scope
+        for (block_id, block) in &hir.blocks {
+            let enclosing_scope_id = match block_to_scope.get(block_id) {
+                Some(sid) => *sid,
+                None => continue,
+            };
+
+            for instr in &block.instructions {
+                if instr.lvalue.identifier.scope.is_some() {
+                    continue; // Already handled in Phase 3
+                }
+
+                // Check StoreLocal/StoreContext targets and Destructure bindings
+                match &instr.value {
+                    InstructionValue::StoreLocal { lvalue, .. }
+                    | InstructionValue::StoreContext { lvalue, .. } => {
+                        let target_id = lvalue.identifier.id;
+
+                        // Check if the target is used outside this scope
+                        let target_used_outside =
+                            operand_consumers.get(&target_id).is_some_and(|consumers| {
+                                consumers.iter().any(|cs| *cs != Some(enclosing_scope_id))
+                            }) || lvalue.identifier.declaration_id.is_some_and(|decl_id| {
+                                decl_id_consumers.get(&decl_id).is_some_and(|consumers| {
+                                    consumers.iter().any(|cs| *cs != Some(enclosing_scope_id))
+                                })
+                            });
+
+                        if target_used_outside {
+                            let decls = scope_decls.entry(enclosing_scope_id).or_default();
+                            if !decls.iter().any(|(did, _)| *did == target_id) {
+                                decls.push((
+                                    target_id,
+                                    ReactiveScopeDeclaration {
+                                        identifier: lvalue.identifier.clone(),
+                                        scope: enclosing_scope_id,
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                    InstructionValue::Destructure { lvalue_pattern, .. } => {
+                        // Check each destructured binding
+                        let places = collect_destructure_places(lvalue_pattern);
+                        for place in &places {
+                            let target_id = place.identifier.id;
+                            let target_used_outside =
+                                operand_consumers.get(&target_id).is_some_and(|consumers| {
+                                    consumers.iter().any(|cs| *cs != Some(enclosing_scope_id))
+                                }) || place.identifier.declaration_id.is_some_and(|decl_id| {
+                                    decl_id_consumers.get(&decl_id).is_some_and(|consumers| {
+                                        consumers.iter().any(|cs| *cs != Some(enclosing_scope_id))
+                                    })
+                                });
+
+                            if target_used_outside {
+                                let decls = scope_decls.entry(enclosing_scope_id).or_default();
+                                if !decls.iter().any(|(did, _)| *did == target_id) {
+                                    decls.push((
+                                        target_id,
+                                        ReactiveScopeDeclaration {
+                                            identifier: place.identifier.clone(),
+                                            scope: enclosing_scope_id,
+                                        },
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     // Phase 3.5: Resolve transitive dependencies.
     //
     // When scope A declares `doubled` (computed from `value`) and scope B depends
@@ -1197,4 +1444,50 @@ fn collect_destructure_names(
             }
         }
     }
+}
+
+/// Collect all Place references from a DestructurePattern.
+/// Used by Phase 3b to find destructured bindings that may need to be scope declarations.
+fn collect_destructure_places(
+    pattern: &crate::hir::types::DestructurePattern,
+) -> Vec<crate::hir::types::Place> {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+
+    let mut places = Vec::new();
+
+    fn collect(pattern: &DestructurePattern, places: &mut Vec<crate::hir::types::Place>) {
+        match pattern {
+            DestructurePattern::Object { properties, rest } => {
+                for prop in properties {
+                    match &prop.value {
+                        DestructureTarget::Place(place) => places.push(place.clone()),
+                        DestructureTarget::Pattern(nested) => collect(nested, places),
+                    }
+                }
+                if let Some(rest_place) = rest {
+                    places.push(rest_place.clone());
+                }
+            }
+            DestructurePattern::Array { items, rest } => {
+                for item in items {
+                    match item {
+                        DestructureArrayItem::Value(DestructureTarget::Place(place)) => {
+                            places.push(place.clone());
+                        }
+                        DestructureArrayItem::Value(DestructureTarget::Pattern(nested)) => {
+                            collect(nested, places);
+                        }
+                        DestructureArrayItem::Spread(place) => places.push(place.clone()),
+                        DestructureArrayItem::Hole => {}
+                    }
+                }
+                if let Some(rest_place) = rest {
+                    places.push(rest_place.clone());
+                }
+            }
+        }
+    }
+
+    collect(pattern, &mut places);
+    places
 }
