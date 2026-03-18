@@ -68,22 +68,38 @@ pub fn infer_reactive_scope_variables(
         }
     }
 
-    // Phase 2: Union identifiers that should be in the same scope
+    // Phase 2: Union identifiers that should be in the same scope.
+    //
+    // Upstream uses `isMutable(instr, operand)` to check whether an operand is
+    // still within its mutable range at the current instruction. An operand
+    // whose mutable range has already ended is NOT unioned — it becomes a
+    // dependency of the scope rather than a member.
+    //
+    // `isMutable(instr, place)` ≡ `instr.id >= range.start && instr.id < range.end`
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             let lvalue_id = instr.lvalue.identifier.id;
             let lvalue_range = instr.lvalue.identifier.mutable_range;
+            let instr_id = instr.id;
 
-            // If the lvalue has a non-trivial mutable range, union with mutable operands.
-            // Skip param destructure targets — they must remain outside scopes.
-            if lvalue_range.end.0 > lvalue_range.start.0 + 1 {
+            // If the lvalue has a non-trivial mutable range OR the instruction
+            // allocates, collect mutable operands and union them together.
+            // This matches upstream: `range.end > range.start + 1 || mayAllocate(env, instr)`
+            if lvalue_range.end.0 > lvalue_range.start.0 + 1
+                || is_allocating_instruction(&instr.value)
+            {
                 let operand_ids = collect_operand_ids(&instr.value);
                 for op_id in operand_ids {
                     if param_destructure_target_ids.contains(&op_id) {
                         continue;
                     }
+                    // Upstream: `isMutable(instr, operand) && operand.identifier.mutableRange.start > 0`
+                    // The `start > 0` check excludes globals (which have start = 0 in upstream).
+                    // In our representation, globals typically have trivial ranges (start == end),
+                    // so the isMutable check already excludes them.
                     if let Some(&op_range) = ranges.get(&op_id)
-                        && op_range.end.0 > op_range.start.0 + 1
+                        && instr_id.0 >= op_range.start.0
+                        && instr_id.0 < op_range.end.0
                     {
                         // Both lvalue_id and op_id are registered via make_set in Phase 1
                         let _ = dsu.union(lvalue_id, op_id);
@@ -92,13 +108,18 @@ pub fn infer_reactive_scope_variables(
             }
         }
 
-        // Union phi operands
+        // Union phi operands when the phi's mutable range extends beyond its
+        // definition (matching upstream's condition).
         for phi in &block.phis {
             let phi_id = phi.place.identifier.id;
-            for (_, operand) in &phi.operands {
-                dsu.make_set(operand.identifier.id);
-                // Both phi_id and operand id are registered via make_set
-                let _ = dsu.union(phi_id, operand.identifier.id);
+            let phi_range = phi.place.identifier.mutable_range;
+            // Upstream: phi range is non-trivial AND extends past the first instruction
+            // of the block. We approximate with: range spans more than 1 instruction.
+            if phi_range.end.0 > phi_range.start.0 + 1 {
+                for (_, operand) in &phi.operands {
+                    dsu.make_set(operand.identifier.id);
+                    let _ = dsu.union(phi_id, operand.identifier.id);
+                }
             }
         }
     }
