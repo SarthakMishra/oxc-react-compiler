@@ -2,11 +2,11 @@
 
 > Last updated: 2026-03-18
 
-Render equivalence is at 36% (9/25 pairs). Gap 8 partially fixed (unscooped StoreLocal variables in scope boundaries). Gap 9 (JSX tag temps) resolved. The remaining 64% failures stem from Destructure-in-scope issues (useState destructures not wired as scope outputs), and control flow issues (return inside scope body produces dead code).
+Render equivalence is at 40% (10/25 pairs). Gap 8 (destructure-in-scope) substantially fixed via codegen hoisting — todo-list now passes. Gap 9 (JSX tag temps) resolved. Gap 10 (unscooped variables) resolved. Remaining failures stem from other scope output issues (useCallback phantom temps), control flow issues (return inside scope body), and remaining destructure edge cases in complex fixtures.
 
-## P0 -- Scope Output Correctness (Blocks 64% of Renders)
+## P0 -- Scope Output Correctness
 
-- [~] Fix scope output variables not produced inside scope body — [scope-inference.md](scope-inference.md)#gap-8-scope-output-variables-not-produced-inside-scope-body-partially-fixed
+- [ ] Fix useCallback/useMemo phantom temp scope outputs — remaining fixtures still use phantom temps for non-destructure cases
 - [ ] Fix temporal dead zone / initialization order in scope reload — [scope-inference.md](scope-inference.md)#gap-10-temporal-dead-zone--initialization-order
 
 ## P2 -- Validation & Coverage Gaps
