@@ -2542,7 +2542,9 @@ fn emit_for_of_preamble(
     tag_constants: &TagConstantMap,
 ) {
     let indent_str = "  ".repeat(indent);
-    let inline_map = build_inline_map(&init.instructions, &FxHashSet::default(), tag_constants);
+    // Use empty inline map: preamble instructions must emit all temps explicitly
+    // because the for-header consumes GetIterator/IteratorNext without codegen.
+    let inline_map = InlineMap::default();
     for instr in &init.instructions {
         if let ReactiveInstruction::Instruction(instruction) = instr {
             match &instruction.value {
@@ -2573,7 +2575,7 @@ fn emit_for_in_preamble(
     tag_constants: &TagConstantMap,
 ) {
     let indent_str = "  ".repeat(indent);
-    let inline_map = build_inline_map(&init.instructions, &FxHashSet::default(), tag_constants);
+    let inline_map = InlineMap::default();
     for instr in &init.instructions {
         if let ReactiveInstruction::Instruction(instruction) = instr {
             match &instruction.value {
