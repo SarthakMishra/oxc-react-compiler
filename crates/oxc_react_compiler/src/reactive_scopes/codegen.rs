@@ -412,6 +412,7 @@ fn build_inline_map(
                         | InstructionValue::StoreLocal { .. }
                         | InstructionValue::StoreContext { .. }
                         | InstructionValue::StoreGlobal { .. }
+                        | InstructionValue::Destructure { .. }
                 )
             {
                 inline_map.insert(temp_name, String::new()); // sentinel: skip emission
@@ -782,6 +783,14 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
         })
         .collect();
 
+    // Pre-declare ALL scope declaration variables at function level.
+    // This ensures that any StoreLocal targeting a scope output uses bare
+    // assignment instead of `const`/`let`, preventing "Assignment to constant
+    // variable" errors and duplicate declarations. This matches the upstream
+    // compiler's approach where scope outputs are always `let`-declared at
+    // function scope before the scope guard.
+    collect_all_scope_declarations(&rf.body, &mut output, &mut declared, 1);
+
     // Hoist Destructure instructions that destructure from function parameters
     // (e.g., `const { status } = t0;`) to the top of the function body,
     // before any reactive scope checks that may reference those variables.
@@ -926,8 +935,9 @@ fn codegen_instruction(
     }
 
     // If the lvalue was already declared (by DeclareLocal or scope pre-declaration),
-    // use bare assignment; otherwise use `const`.
-    let decl_keyword = if declared.contains(lvalue_name.as_ref()) { "" } else { "const " };
+    // use bare assignment; otherwise use `let` (not `const`) so the compiler's
+    // scope reload logic can reassign variables without "Assignment to constant variable" errors.
+    let decl_keyword = if declared.contains(lvalue_name.as_ref()) { "" } else { "let " };
 
     match &instr.value {
         InstructionValue::Primitive { value } => {
@@ -954,16 +964,24 @@ fn codegen_instruction(
             let keyword = if already_declared {
                 ""
             } else {
-                match type_ {
+                // Use `let` for all declaration kinds (including original `const`)
+                // because the compiler's scope logic may reassign these variables
+                // in scope reload branches. `var` is preserved for hoisting semantics.
+                let kw = match type_ {
                     Some(
                         crate::hir::types::InstructionKind::Const
-                        | crate::hir::types::InstructionKind::HoistedConst,
-                    ) => "const ",
-                    Some(crate::hir::types::InstructionKind::Let) => "let ",
+                        | crate::hir::types::InstructionKind::HoistedConst
+                        | crate::hir::types::InstructionKind::Let
+                        | crate::hir::types::InstructionKind::HoistedFunction,
+                    ) => "let ",
                     Some(crate::hir::types::InstructionKind::Var) => "var ",
-                    Some(crate::hir::types::InstructionKind::HoistedFunction) => "const ",
                     Some(crate::hir::types::InstructionKind::Reassign) | None => "",
+                };
+                // Register the variable as declared so later scopes don't re-declare it
+                if !kw.is_empty() {
+                    declared.insert(target_name.to_string());
                 }
+                kw
             };
             output.push_str(&format!("{indent}{keyword}{target_name} = {value_name};\n"));
         }
@@ -1188,12 +1206,15 @@ fn codegen_instruction(
             // Check if any of the pattern's top-level names are already declared
             let any_declared = pattern_has_declared_names(lvalue_pattern, declared);
             if any_declared {
-                // Bare assignment — variables were declared by DeclareLocal
+                // Bare assignment — variables were declared by DeclareLocal or scope pre-declaration
                 output.push_str(&format!("{indent}("));
                 codegen_destructure_pattern(lvalue_pattern, output);
                 output.push_str(&format!(" = {value_name});\n"));
             } else {
-                output.push_str(&format!("{indent}const "));
+                // Use `let` instead of `const` so destructured names can be reassigned
+                // by scope reload logic (else branches). `const` would create block-scoped
+                // variables inside scope guard `if` blocks that can't be accessed outside.
+                output.push_str(&format!("{indent}let "));
                 codegen_destructure_pattern(lvalue_pattern, output);
                 output.push_str(&format!(" = {value_name};\n"));
                 // Register destructured names so later DeclareLocal/scopes don't re-declare
@@ -1699,6 +1720,86 @@ fn codegen_hir_body(hir: &crate::hir::types::HIR, output: &mut String, indent: u
     let mut declared = FxHashSet::default();
     let mut cache_slot = 0u32;
     codegen_block(&reactive_block, output, &mut cache_slot, indent, &mut declared);
+}
+
+/// Recursively collect all scope declaration names from the reactive block tree
+/// and emit `let` declarations for them at the current indent level.
+/// This ensures scope output variables are always declared before any scope
+/// guard or StoreLocal can reference them.
+fn collect_all_scope_declarations(
+    block: &ReactiveBlock,
+    output: &mut String,
+    declared: &mut FxHashSet<String>,
+    indent: usize,
+) {
+    let indent_str = "  ".repeat(indent);
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Scope(scope) => {
+                // Sort declarations by source location for deterministic ordering
+                let mut sorted_decls: Vec<_> = scope.scope.declarations.iter().collect();
+                sorted_decls.sort_by_key(|(_, decl)| decl.identifier.loc.start);
+
+                for (_, decl) in &sorted_decls {
+                    let decl_name = identifier_display_name(&decl.identifier);
+                    if !declared.contains(decl_name.as_ref()) {
+                        declared.insert(decl_name.to_string());
+                        output.push_str(&format!("{indent_str}let {decl_name};\n"));
+                    }
+                }
+                // Recurse into scope body for nested scopes
+                collect_all_scope_declarations(&scope.instructions, output, declared, indent);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                collect_scope_declarations_in_terminal(terminal, output, declared, indent);
+            }
+            ReactiveInstruction::Instruction(_) => {}
+        }
+    }
+}
+
+/// Recurse into terminal branches to find nested scopes.
+fn collect_scope_declarations_in_terminal(
+    terminal: &ReactiveTerminal,
+    output: &mut String,
+    declared: &mut FxHashSet<String>,
+    indent: usize,
+) {
+    match terminal {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
+            collect_all_scope_declarations(consequent, output, declared, indent);
+            collect_all_scope_declarations(alternate, output, declared, indent);
+        }
+        ReactiveTerminal::Switch { cases, .. } => {
+            for (_, block) in cases {
+                collect_all_scope_declarations(block, output, declared, indent);
+            }
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            collect_all_scope_declarations(init, output, declared, indent);
+            collect_all_scope_declarations(test, output, declared, indent);
+            if let Some(update) = update {
+                collect_all_scope_declarations(update, output, declared, indent);
+            }
+            collect_all_scope_declarations(body, output, declared, indent);
+        }
+        ReactiveTerminal::ForOf { body, .. } | ReactiveTerminal::ForIn { body, .. } => {
+            collect_all_scope_declarations(body, output, declared, indent);
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { test, body, .. } => {
+            collect_all_scope_declarations(test, output, declared, indent);
+            collect_all_scope_declarations(body, output, declared, indent);
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            collect_all_scope_declarations(block, output, declared, indent);
+            collect_all_scope_declarations(handler, output, declared, indent);
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            collect_all_scope_declarations(block, output, declared, indent);
+        }
+        ReactiveTerminal::Return { .. } | ReactiveTerminal::Throw { .. } => {}
+    }
 }
 
 /// Returns `true` if the reactive function has any cache slots to memoize.

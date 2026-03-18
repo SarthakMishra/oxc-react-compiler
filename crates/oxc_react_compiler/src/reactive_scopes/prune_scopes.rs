@@ -2412,7 +2412,9 @@ pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
         let hook_id_set: FxHashSet<IdentifierId> = hook_ids.iter().copied().collect();
 
         for (_, block) in &mut hir.blocks {
-            let mut in_scope = false;
+            // Track whether we've seen a hook in this scope within this block.
+            // Once set, ALL subsequent instructions with this scope ID get
+            // reassigned — even if there are non-scoped instructions in between.
             let mut past_hook = false;
             let mut current_new_scope_id = None;
 
@@ -2421,16 +2423,10 @@ pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
                     instr.lvalue.identifier.scope.as_ref().is_some_and(|s| s.id == *scope_id);
 
                 if !is_this_scope {
-                    if in_scope {
-                        // Left the scope — reset
-                        in_scope = false;
-                        past_hook = false;
-                        current_new_scope_id = None;
-                    }
+                    // Don't reset past_hook — a gap in scope membership
+                    // doesn't mean we haven't seen a hook yet.
                     continue;
                 }
-
-                in_scope = true;
 
                 if hook_id_set.contains(&instr.lvalue.identifier.id) {
                     // This IS the hook instruction — remove its scope

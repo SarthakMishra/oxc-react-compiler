@@ -8,9 +8,10 @@ diagnostics: 0
 import { c as _c } from "react/compiler-runtime";
 function Toggle(t0) {
   const $ = _c(2);
-  const { isOn } = t0;
+  let t6;
+  let t9;
+  let { isOn } = t0;
   if (isOn) {
-    let t6;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
       t6 = (
         <div>
@@ -23,7 +24,6 @@ function Toggle(t0) {
     }
     return t6;
   }
-  let t9;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     t9 = (
       <div>
