@@ -2038,6 +2038,7 @@ fn create_rename_assignment(
             name: Some(name.to_string()),
             type_: Type::Poly,
             mutable_range: zero_range,
+            last_use: InstructionId(0),
             scope: None,
             loc: zero_loc,
         },

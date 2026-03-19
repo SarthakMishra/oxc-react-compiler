@@ -161,6 +161,9 @@ pub fn run_pipeline(
     // Pass 20: infer_mutation_aliasing_ranges
     crate::inference::infer_mutation_aliasing_ranges::infer_mutation_aliasing_ranges(hir);
 
+    // Pass 20.5: annotate_last_use (stamps identifier.last_use for scope inference)
+    crate::inference::infer_mutation_aliasing_ranges::annotate_last_use(hir);
+
     // Pass 21: validate_locals_not_reassigned_after_render
     crate::validation::validate_locals_not_reassigned_after_render::validate_locals_not_reassigned_after_render(hir, errors);
 

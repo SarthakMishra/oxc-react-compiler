@@ -219,6 +219,10 @@ pub struct Identifier {
     pub declaration_id: Option<DeclarationId>,
     pub name: Option<String>,
     pub mutable_range: MutableRange,
+    /// The last instruction where this identifier is used as an operand.
+    /// Populated by `annotate_last_use()` after `infer_mutation_aliasing_ranges`.
+    /// Used by scope inference to decide if a call result escapes its definition site.
+    pub last_use: InstructionId,
     pub scope: Option<Box<ReactiveScope>>,
     pub type_: Type,
     pub loc: SourceLocation,

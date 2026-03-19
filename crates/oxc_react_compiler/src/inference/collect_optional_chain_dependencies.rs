@@ -126,6 +126,7 @@ mod tests {
                 declaration_id: None,
                 name: Some(name.to_string()),
                 mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
+                last_use: InstructionId(0),
                 scope: None,
                 type_: Type::default(),
                 loc: Span::default(),

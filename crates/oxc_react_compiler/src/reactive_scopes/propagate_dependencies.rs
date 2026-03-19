@@ -299,6 +299,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                     start: crate::hir::types::InstructionId(0),
                     end: crate::hir::types::InstructionId(0),
                 },
+                last_use: crate::hir::types::InstructionId(0),
                 scope: None,
                 type_: crate::hir::types::Type::default(),
                 loc: self.root_loc,

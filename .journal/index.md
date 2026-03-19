@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 96      | 1–96   | Full compiler: HIR foundation → 25.3% conformance. Recent: MethodCall receiver MutateTransitiveConditionally effect, call-as-allocating mutable-range refinement (+5 conformance, 404->409), call-as-allocating sentinel scopes (silent bail-outs 63->38), scope inference isMutable fix, structured ForOf/ForIn loop terminals, logical expression short-circuit fix (Gap 5, render 40%→68%), phantom scope declaration filter + destructure defaults (Gap 11/12) |
+| [001.md](001.md) | 97      | 1–97   | Full compiler: HIR foundation → 25.3% conformance. Recent: scope inference architecture rewrite (separate last_use from mutable_range), MethodCall receiver MutateTransitiveConditionally effect, call-as-allocating mutable-range refinement (+5 conformance, 404->409) |
 
 ## Archive
 

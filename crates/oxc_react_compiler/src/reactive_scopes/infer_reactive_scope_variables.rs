@@ -48,18 +48,23 @@ pub fn infer_reactive_scope_variables(
         }
     }
 
+    // Map from identifier to its last_use instruction (for effective range computation)
+    let mut last_use_map: FxHashMap<IdentifierId, InstructionId> = FxHashMap::default();
+
     // Phase 1: Collect all identifiers and their mutable ranges
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             let id = instr.lvalue.identifier.id;
             dsu.make_set(id);
             ranges.insert(id, instr.lvalue.identifier.mutable_range);
+            last_use_map.insert(id, instr.lvalue.identifier.last_use);
             is_reactive.insert(id, instr.lvalue.reactive);
             if is_allocating_instruction(
                 &instr.value,
                 &instr.lvalue.identifier.type_,
                 &id_to_name,
-                instr.lvalue.identifier.mutable_range,
+                instr.lvalue.identifier.last_use,
+                instr.id,
             ) {
                 is_allocating_id.insert(id);
             }
@@ -107,15 +112,28 @@ pub fn infer_reactive_scope_variables(
             let lvalue_range = instr.lvalue.identifier.mutable_range;
             let instr_id = instr.id;
 
-            // If the lvalue has a non-trivial mutable range OR the instruction
-            // allocates, collect mutable operands and union them together.
+            // Compute the "effective range end" for the lvalue: the max of
+            // mutable_range.end and last_use + 1. This combines mutation reach
+            // (narrow BFS) with usage reach (last_use annotation).
+            let lvalue_last_use = instr.lvalue.identifier.last_use;
+            let lvalue_effective_end = lvalue_range
+                .end
+                .0
+                .max(if lvalue_last_use > InstructionId(0) { lvalue_last_use.0 + 1 } else { 0 });
+
+            // If the lvalue has a non-trivial effective range OR the instruction
+            // allocates, collect live operands and union them together.
             // This matches upstream: `range.end > range.start + 1 || mayAllocate(env, instr)`
-            if lvalue_range.end.0 > lvalue_range.start.0 + 1
+            // DIVERGENCE: We use the effective range (mutation + last_use) rather
+            // than mutable_range alone, because our mutable_range is mutation-only
+            // while upstream's includes usage extension.
+            if lvalue_effective_end > lvalue_range.start.0 + 1
                 || is_allocating_instruction(
                     &instr.value,
                     &instr.lvalue.identifier.type_,
                     &id_to_name,
-                    instr.lvalue.identifier.mutable_range,
+                    instr.lvalue.identifier.last_use,
+                    instr.id,
                 )
             {
                 let operand_ids = collect_operand_ids(&instr.value);
@@ -123,16 +141,22 @@ pub fn infer_reactive_scope_variables(
                     if param_destructure_target_ids.contains(&op_id) {
                         continue;
                     }
-                    // Upstream: `isMutable(instr, operand) && operand.identifier.mutableRange.start > 0`
-                    // The `start > 0` check excludes globals (which have start = 0 in upstream).
-                    // In our representation, globals typically have trivial ranges (start == end),
-                    // so the isMutable check already excludes them.
-                    if let Some(&op_range) = ranges.get(&op_id)
-                        && instr_id.0 >= op_range.start.0
-                        && instr_id.0 < op_range.end.0
-                    {
-                        // Both lvalue_id and op_id are registered via make_set in Phase 1
-                        let _ = dsu.union(lvalue_id, op_id);
+                    // Check if the operand is still "live" at this instruction.
+                    // Use effective range (mutation + last_use) for the liveness check.
+                    // Upstream's isMutable uses the full range which includes usage extension.
+                    if let Some(&op_range) = ranges.get(&op_id) {
+                        let op_last_use =
+                            last_use_map.get(&op_id).copied().unwrap_or(InstructionId(0));
+                        let op_effective_end =
+                            op_range.end.0.max(if op_last_use > InstructionId(0) {
+                                op_last_use.0 + 1
+                            } else {
+                                0
+                            });
+                        if instr_id.0 >= op_range.start.0 && instr_id.0 < op_effective_end {
+                            // Both lvalue_id and op_id are registered via make_set in Phase 1
+                            let _ = dsu.union(lvalue_id, op_id);
+                        }
                     }
                 }
             }
@@ -170,8 +194,16 @@ pub fn infer_reactive_scope_variables(
 
         for &member in &members {
             if let Some(&range) = ranges.get(&member) {
+                // Use effective range (mutation + last_use) for scope boundaries
+                let member_last_use =
+                    last_use_map.get(&member).copied().unwrap_or(InstructionId(0));
+                let effective_end = range.end.0.max(if member_last_use > InstructionId(0) {
+                    member_last_use.0 + 1
+                } else {
+                    0
+                });
                 merged_range.start = InstructionId(merged_range.start.0.min(range.start.0));
-                merged_range.end = InstructionId(merged_range.end.0.max(range.end.0));
+                merged_range.end = InstructionId(merged_range.end.0.max(effective_end));
             }
             if is_reactive.get(&member).copied().unwrap_or(false) {
                 any_reactive = true;
@@ -290,7 +322,8 @@ fn is_allocating_instruction(
     value: &InstructionValue,
     lvalue_type: &Type,
     id_to_name: &FxHashMap<IdentifierId, String>,
-    lvalue_range: MutableRange,
+    last_use: InstructionId,
+    instr_id: InstructionId,
 ) -> bool {
     match value {
         InstructionValue::ObjectExpression { .. }
@@ -326,8 +359,8 @@ fn is_allocating_instruction(
             if name.is_some_and(|n| n.starts_with("use") && n.len() > 3) {
                 return false;
             }
-            // Only allocating if the result escapes (non-trivial mutable range)
-            lvalue_range.end.0 > lvalue_range.start.0 + 1
+            // Only allocating if the result escapes (used after its definition)
+            last_use > instr_id
         }
         // Method calls: check both return type and hook pattern (React.useXxx)
         InstructionValue::MethodCall { property, .. } => {
@@ -338,15 +371,15 @@ fn is_allocating_instruction(
             if property.starts_with("use") && property.len() > 3 {
                 return false;
             }
-            // Only allocating if the result escapes (non-trivial mutable range)
-            lvalue_range.end.0 > lvalue_range.start.0 + 1
+            // Only allocating if the result escapes (used after its definition)
+            last_use > instr_id
         }
         InstructionValue::TaggedTemplateExpression { .. } => {
             if matches!(lvalue_type, Type::Primitive(_)) {
                 return false;
             }
-            // Only allocating if the result escapes (non-trivial mutable range)
-            lvalue_range.end.0 > lvalue_range.start.0 + 1
+            // Only allocating if the result escapes (used after its definition)
+            last_use > instr_id
         }
         _ => false,
     }

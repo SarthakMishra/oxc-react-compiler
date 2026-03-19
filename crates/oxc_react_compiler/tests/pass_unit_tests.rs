@@ -26,6 +26,7 @@ fn make_identifier(ids: &mut IdGenerator, name: &str) -> Identifier {
         declaration_id: Some(ids.next_declaration_id()),
         name: Some(name.to_string()),
         mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
+        last_use: InstructionId(0),
         scope: None,
         type_: Type::Poly,
         loc: dummy_span(),

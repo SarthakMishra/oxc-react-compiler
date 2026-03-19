@@ -144,6 +144,7 @@ mod tests {
                 declaration_id: None,
                 name: Some(format!("v{id}")),
                 mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
+                last_use: InstructionId(0),
                 scope: None,
                 type_: crate::hir::types::Type::default(),
                 loc: Span::default(),

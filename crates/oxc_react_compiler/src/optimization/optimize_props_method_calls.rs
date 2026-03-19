@@ -64,6 +64,7 @@ pub fn optimize_props_method_calls(hir: &mut HIR) {
                         start: load_instr_id,
                         end: InstructionId(load_instr_id.0 + 1),
                     },
+                    last_use: InstructionId(0),
                     scope: None,
                     type_: Type::Function,
                     loc: instr.loc,

@@ -319,7 +319,6 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
     let mut ranges: FxHashMap<IdentifierId, MutableRange> = FxHashMap::default();
     let mut mutations: Vec<PendingMutation> = Vec::new();
     let mut creation_map: FxHashMap<IdentifierId, InstructionId> = FxHashMap::default();
-    let mut last_use_map: FxHashMap<IdentifierId, InstructionId> = FxHashMap::default();
 
     // Pending phi operands for back-edges (predecessor block not yet visited)
     let mut pending_phis: FxHashMap<BlockId, Vec<(u32, IdentifierId, IdentifierId)>> =
@@ -359,15 +358,6 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
             let lv_id = instr.lvalue.identifier.id;
             ranges.entry(lv_id).or_insert(instr.lvalue.identifier.mutable_range);
             creation_map.entry(lv_id).or_insert(instr.id);
-
-            // Track last-use sites for range extension
-            let operand_ids = collect_operand_ids(&instr.value);
-            for op_id in operand_ids {
-                let entry = last_use_map.entry(op_id).or_insert(instr.id);
-                if instr.id > *entry {
-                    *entry = instr.id;
-                }
-            }
 
             if let Some(ref effects) = instr.effects {
                 for effect in effects {
@@ -513,26 +503,6 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
             }
         }
 
-        // Track terminal uses for last_use_map
-        let terminal_id = InstructionId(block.instructions.last().map_or(0, |i| i.id.0) + 1);
-        match &block.terminal {
-            crate::hir::types::Terminal::Return { value }
-            | crate::hir::types::Terminal::Throw { value } => {
-                let entry = last_use_map.entry(value.identifier.id).or_insert(terminal_id);
-                if terminal_id > *entry {
-                    *entry = terminal_id;
-                }
-            }
-            crate::hir::types::Terminal::If { test, .. }
-            | crate::hir::types::Terminal::Branch { test, .. } => {
-                let entry = last_use_map.entry(test.identifier.id).or_insert(terminal_id);
-                if terminal_id > *entry {
-                    *entry = terminal_id;
-                }
-            }
-            _ => {}
-        }
-
         // Process deferred phi operands for this block (back-edges from later blocks)
         if let Some(pending) = pending_phis.remove(block_id) {
             for (phi_index, from_id, into_id) in pending {
@@ -567,15 +537,71 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
                 end = range.end;
             }
 
-            // Extend to last use
-            if let Some(&last_use) = last_use_map.get(&id) {
-                let use_end = InstructionId(last_use.0 + 1);
-                if use_end > end {
-                    end = use_end;
+            instr.lvalue.identifier.mutable_range = MutableRange { start, end };
+        }
+    }
+}
+
+/// Stamp `identifier.last_use` on every lvalue identifier in the HIR.
+///
+/// For each identifier that appears as an operand in some instruction, this
+/// records the maximum instruction ID at which it is used. This is separate
+/// from `mutable_range` (which tracks only mutation propagation) and is used
+/// by scope inference to decide whether a call result escapes its definition
+/// site (i.e., is used somewhere after the instruction that creates it).
+///
+/// Must run after `infer_mutation_aliasing_ranges` (which computes narrow
+/// mutation-only `mutable_range`) and before `infer_reactive_scope_variables`
+/// (which reads `last_use`).
+pub fn annotate_last_use(hir: &mut HIR) {
+    let mut last_use_map: FxHashMap<IdentifierId, InstructionId> = FxHashMap::default();
+
+    // Collect last-use sites from instructions and terminals
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            let operand_ids = collect_operand_ids(&instr.value);
+            for op_id in operand_ids {
+                let entry = last_use_map.entry(op_id).or_insert(instr.id);
+                if instr.id > *entry {
+                    *entry = instr.id;
                 }
             }
+        }
 
-            instr.lvalue.identifier.mutable_range = MutableRange { start, end };
+        // Track terminal uses
+        let terminal_id = InstructionId(block.instructions.last().map_or(0, |i| i.id.0) + 1);
+        match &block.terminal {
+            crate::hir::types::Terminal::Return { value }
+            | crate::hir::types::Terminal::Throw { value } => {
+                let entry = last_use_map.entry(value.identifier.id).or_insert(terminal_id);
+                if terminal_id > *entry {
+                    *entry = terminal_id;
+                }
+            }
+            crate::hir::types::Terminal::If { test, .. }
+            | crate::hir::types::Terminal::Branch { test, .. } => {
+                let entry = last_use_map.entry(test.identifier.id).or_insert(terminal_id);
+                if terminal_id > *entry {
+                    *entry = terminal_id;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Write last_use back to lvalue identifiers
+    for (_, block) in &mut hir.blocks {
+        for instr in &mut block.instructions {
+            let id = instr.lvalue.identifier.id;
+            if let Some(&last_use) = last_use_map.get(&id) {
+                instr.lvalue.identifier.last_use = last_use;
+            }
+        }
+        for phi in &mut block.phis {
+            let id = phi.place.identifier.id;
+            if let Some(&last_use) = last_use_map.get(&id) {
+                phi.place.identifier.last_use = last_use;
+            }
         }
     }
 }
