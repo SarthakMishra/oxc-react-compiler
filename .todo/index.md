@@ -16,6 +16,12 @@ Key breakdown of diverged fixtures:
 - **Validation relaxation without scope fixes causes regressions.** Attempted relaxing `ValidatePreservedManualMemoization` (inner-scope tracking instead of scope-matching) -- conformance dropped 413->385 because we compiled programs incorrectly instead of safely bailing. REVERTED in `4a082dc`. Validation fixes MUST be paired with corresponding scope inference improvements.
 - **Under-memoization root cause identified:** `last_use_map` tracks uses too broadly, preventing scope creation. Fix requires removing `last_use_map` + adding missing passes (e.g., `PropagateScopeDependenciesHIR`). This is foundational work that also unblocks validation relaxation.
 
+## Do NOT Attempt (until prerequisites are met)
+
+- **Gap 5a: Memoization preservation validation** — proven to cause -28 conformance regression without scope inference fixes. BLOCKED on Gap 11 (under-memoization).
+- **Gap 7: Over-memoization** — may self-resolve as a side effect of fixing under-memoization (Gap 11). Investigate after Gap 11 lands.
+- **Gap 6 codegen: Ternary reconstruction** — P4 cosmetic only, no conformance or correctness impact.
+
 ## Active Work
 
 (none)
@@ -25,16 +31,17 @@ Key breakdown of diverged fixtures:
 - [ ] Under-memoization: 404 fixtures with fewer slots than upstream (root cause: `last_use_map` too wide) — [scope-inference.md](scope-inference.md)#gap-11-under-memoization
 - [ ] Over-memoization: 175 fixtures with more slots than upstream — [scope-inference.md](scope-inference.md)#gap-7-over-memoization-slot-count-divergence
 
-## P2 -- Conformance: False Bail-outs (205 fixtures) -- BLOCKED on scope inference
+## P2 -- Conformance: False Bail-outs (205 fixtures)
 
-> **Note:** Relaxing validation without fixing scope inference causes net regressions (proven by reverted attempt). These items should only be attempted after scope inference improvements land.
-
+### Safe to attempt (independent of scope inference):
 - [ ] 63 silent bail-outs (compile but 0 scopes, no error) — [validation-gaps.md](validation-gaps.md)#gap-6-silent-bail-outs
-- [ ] 58 false "memoization preservation" errors — [validation-gaps.md](validation-gaps.md)#gap-5a-false-memoization-preservation
 - [ ] 26 false "frozen mutation" errors — [validation-gaps.md](validation-gaps.md)#gap-5b-false-frozen-mutation
 - [ ] 16 false "reassigned after render" errors — [validation-gaps.md](validation-gaps.md)#gap-5c-false-reassigned-after-render
 - [ ] 14 false "ref access in render" errors — [validation-gaps.md](validation-gaps.md)#gap-5d-false-ref-access-in-render
 - [ ] 28 other false bail-outs (variable reassignment, hooks, setState) — [validation-gaps.md](validation-gaps.md)#gap-5e-other-false-bail-outs
+
+### BLOCKED on scope inference (do not attempt):
+- [ ] 58 false "memoization preservation" errors — [validation-gaps.md](validation-gaps.md)#gap-5a-false-memoization-preservation — REVERTED attempt caused -28 regression
 
 ## P2 -- Conformance: Output Format Divergences
 
