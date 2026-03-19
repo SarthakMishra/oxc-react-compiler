@@ -1157,7 +1157,6 @@ switch-with-fallthrough.js
 switch-with-only-default.js
 switch.js
 tagged-template-in-hook.js
-tagged-template-literal.js
 template-literal.js
 temporary-accessed-outside-scope.js
 temporary-at-start-of-value-block.js
@@ -1202,7 +1201,6 @@ try-catch.js
 ts-as-expression-default-value.tsx
 ts-enum-inline.tsx
 ts-instantiation-default-param.tsx
-ts-instantiation-expression.tsx
 ts-non-null-expression-default-value.tsx
 type-alias-used-as-annotation.ts
 type-alias-used-as-annotation_.flow.js

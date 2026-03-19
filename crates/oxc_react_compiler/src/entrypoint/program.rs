@@ -134,7 +134,9 @@ fn compile_program_inner_with_config(
     }
 
     // Check for module-level opt-out directives: 'use no memo' / 'use no forget'
-    if has_opt_out_directive(Some(parser_ret.program.directives.as_slice())) {
+    if !options.ignore_use_no_forget
+        && has_opt_out_directive(Some(parser_ret.program.directives.as_slice()))
+    {
         return CompileResult {
             code: source.to_string(),
             transformed: false,
@@ -395,6 +397,7 @@ fn try_compile_wrapper_call<'a>(
     call: &'a CallExpression<'a>,
     name: &str,
     fn_type: ReactFunctionType,
+    options: &PluginOptions,
     config: &EnvironmentConfig,
     source_text: &str,
     generate_source_map: bool,
@@ -418,7 +421,9 @@ fn try_compile_wrapper_call<'a>(
 
     match inner {
         Expression::ArrowFunctionExpression(arrow) => {
-            if has_opt_out_directive(Some(arrow.body.directives.as_slice())) {
+            if !options.ignore_use_no_forget
+                && has_opt_out_directive(Some(arrow.body.directives.as_slice()))
+            {
                 return;
             }
             let builder = HIRBuilder::new(config.clone());
@@ -461,6 +466,7 @@ fn try_compile_wrapper_call<'a>(
                 inner_call,
                 name,
                 fn_type,
+                options,
                 config,
                 source_text,
                 generate_source_map,
@@ -580,6 +586,7 @@ fn compile_statement<'a>(
                     call,
                     &name,
                     fn_type,
+                    options,
                     config,
                     source_text,
                     generate_source_map,
@@ -684,7 +691,9 @@ fn compile_variable_declaration<'a>(
             match init.without_parentheses() {
                 Expression::ArrowFunctionExpression(arrow) => {
                     // Check for "use no memo" directive in arrow body
-                    if has_opt_out_directive(Some(arrow.body.directives.as_slice())) {
+                    if !options.ignore_use_no_forget
+                        && has_opt_out_directive(Some(arrow.body.directives.as_slice()))
+                    {
                         continue;
                     }
                     let builder = HIRBuilder::new(config.clone());
@@ -728,6 +737,7 @@ fn compile_variable_declaration<'a>(
                         call,
                         &name,
                         fn_type,
+                        options,
                         config,
                         source_text,
                         generate_source_map,
@@ -971,8 +981,8 @@ fn should_compile(
     options: &PluginOptions,
     param_count: usize,
 ) -> bool {
-    // Check for opt-out
-    if has_opt_out_directive(directives) {
+    // Check for opt-out (unless @ignoreUseNoForget is set)
+    if !options.ignore_use_no_forget && has_opt_out_directive(directives) {
         return false;
     }
 
@@ -1028,7 +1038,13 @@ fn has_opt_out_directive(directives: Option<&[Directive<'_>]>) -> bool {
 }
 
 fn has_memo_directive(directives: Option<&[Directive<'_>]>) -> bool {
-    directives.is_some_and(|dirs| dirs.iter().any(|d| d.directive.as_str() == "use memo"))
+    directives.is_some_and(|dirs| {
+        dirs.iter().any(|d| {
+            let s = d.directive.as_str();
+            // "use memo" is the current name; "use forget" is the legacy name.
+            s == "use memo" || s == "use forget"
+        })
+    })
 }
 
 /// Known-incompatible module sources that should cause compilation to bail.

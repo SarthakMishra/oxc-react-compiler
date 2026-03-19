@@ -7,6 +7,9 @@ pub struct PluginOptions {
     pub gating: Option<GatingConfig>,
     pub panic_threshold: PanicThreshold,
     pub sources: Option<SourceFilter>,
+    /// When true, ignore `'use no forget'` / `'use no memo'` opt-out directives
+    /// and compile the function anyway. Upstream uses this for migration testing.
+    pub ignore_use_no_forget: bool,
 }
 
 impl Default for PluginOptions {
@@ -18,6 +21,7 @@ impl Default for PluginOptions {
             gating: None,
             panic_threshold: PanicThreshold::CriticalErrors,
             sources: None,
+            ignore_use_no_forget: false,
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::hir::types::{
     DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId, InstructionId,
-    InstructionValue, MutableRange, ReactiveScope, ScopeId, SourceLocation,
+    InstructionValue, MutableRange, ReactiveScope, ScopeId, SourceLocation, Type,
 };
 use crate::utils::disjoint_set::DisjointSet;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -28,6 +28,26 @@ pub fn infer_reactive_scope_variables(
     let mut is_reactive: FxHashMap<IdentifierId, bool> = FxHashMap::default();
     let mut is_allocating_id: FxHashSet<IdentifierId> = FxHashSet::default();
     let mut is_mutable_id: FxHashSet<IdentifierId> = FxHashSet::default();
+
+    // Build id-to-name map for resolving callee names through LoadGlobal/LoadLocal.
+    // This is needed to determine if a CallExpression is a hook call.
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadGlobal { binding } => {
+                    id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                }
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name {
+                        id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Phase 1: Collect all identifiers and their mutable ranges
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -35,7 +55,8 @@ pub fn infer_reactive_scope_variables(
             dsu.make_set(id);
             ranges.insert(id, instr.lvalue.identifier.mutable_range);
             is_reactive.insert(id, instr.lvalue.reactive);
-            if is_allocating_instruction(&instr.value) {
+            if is_allocating_instruction(&instr.value, &instr.lvalue.identifier.type_, &id_to_name)
+            {
                 is_allocating_id.insert(id);
             }
             if is_mutable_instruction(&instr.value) {
@@ -86,7 +107,11 @@ pub fn infer_reactive_scope_variables(
             // allocates, collect mutable operands and union them together.
             // This matches upstream: `range.end > range.start + 1 || mayAllocate(env, instr)`
             if lvalue_range.end.0 > lvalue_range.start.0 + 1
-                || is_allocating_instruction(&instr.value)
+                || is_allocating_instruction(
+                    &instr.value,
+                    &instr.lvalue.identifier.type_,
+                    &id_to_name,
+                )
             {
                 let operand_ids = collect_operand_ids(&instr.value);
                 for op_id in operand_ids {
@@ -248,17 +273,55 @@ pub fn infer_reactive_scope_variables(
 /// Returns true if an instruction value creates a new heap allocation.
 /// Used for sentinel scope detection: allocating expressions get scopes
 /// even without reactive deps (for identity memoization).
-fn is_allocating_instruction(value: &InstructionValue) -> bool {
-    matches!(
-        value,
+///
+/// Matches upstream's `mayAllocate(env, instruction)` which checks:
+/// 1. The instruction kind (objects, arrays, calls, etc.)
+/// 2. The result type -- if the type is known to be primitive, the call
+///    does NOT allocate (e.g., `Math.max(1, 2)` returns a number).
+///
+/// Hook calls (useXxx) are excluded: they execute every render and their
+/// return values are reactive inputs, not allocating values.
+fn is_allocating_instruction(
+    value: &InstructionValue,
+    lvalue_type: &Type,
+    id_to_name: &FxHashMap<IdentifierId, String>,
+) -> bool {
+    match value {
         InstructionValue::ObjectExpression { .. }
-            | InstructionValue::ArrayExpression { .. }
-            | InstructionValue::JsxExpression { .. }
-            | InstructionValue::JsxFragment { .. }
-            | InstructionValue::NewExpression { .. }
-            | InstructionValue::FunctionExpression { .. }
-            | InstructionValue::ObjectMethod { .. }
-    )
+        | InstructionValue::ArrayExpression { .. }
+        | InstructionValue::JsxExpression { .. }
+        | InstructionValue::JsxFragment { .. }
+        | InstructionValue::NewExpression { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. } => true,
+        // Calls may allocate unless the return type is known to be primitive
+        // or the callee is a hook (hooks are reactive inputs, not allocations).
+        InstructionValue::CallExpression { callee, .. } => {
+            if matches!(lvalue_type, Type::Primitive(_)) {
+                return false;
+            }
+            // Resolve callee name through LoadGlobal/LoadLocal for temporaries
+            let name = callee
+                .identifier
+                .name
+                .as_deref()
+                .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+            // Hook calls (useXxx) are reactive inputs, not allocations
+            !name.is_some_and(|n| n.starts_with("use") && n.len() > 3)
+        }
+        // Method calls: check both return type and hook pattern (React.useXxx)
+        InstructionValue::MethodCall { property, .. } => {
+            if matches!(lvalue_type, Type::Primitive(_)) {
+                return false;
+            }
+            // Hook methods like React.useState, React.useRef
+            !(property.starts_with("use") && property.len() > 3)
+        }
+        InstructionValue::TaggedTemplateExpression { .. } => {
+            !matches!(lvalue_type, Type::Primitive(_))
+        }
+        _ => false,
+    }
 }
 
 /// Returns true if an instruction value produces a potentially mutable value

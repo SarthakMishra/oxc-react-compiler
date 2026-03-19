@@ -592,6 +592,11 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig, boo
             });
         }
 
+        // @ignoreUseNoForget — compile despite 'use no forget' directives
+        if find_directive_bool(comment, "ignoreUseNoForget").unwrap_or(false) {
+            opts.ignore_use_no_forget = true;
+        }
+
         if let Some(v) = find_directive_bool(comment, "enablePreserveExistingMemoizationGuarantees")
         {
             env.enable_preserve_existing_memoization_guarantees = v;

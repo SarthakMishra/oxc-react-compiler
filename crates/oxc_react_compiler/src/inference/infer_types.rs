@@ -43,7 +43,7 @@ pub fn infer_types(hir: &mut HIR) {
     // Pass 1: Infer instruction types and identify hook call returns
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            let inferred = infer_instruction_type(&instr.value);
+            let inferred = infer_instruction_type(&instr.value, &id_to_name);
             instr.lvalue.identifier.type_ = inferred;
 
             // Track hook return value identifiers.
@@ -120,7 +120,10 @@ pub fn infer_types(hir: &mut HIR) {
     }
 }
 
-fn infer_instruction_type(value: &InstructionValue) -> Type {
+fn infer_instruction_type(
+    value: &InstructionValue,
+    id_to_name: &FxHashMap<IdentifierId, String>,
+) -> Type {
     match value {
         InstructionValue::Primitive { value } => match value {
             Primitive::Null => Type::Primitive(PrimitiveType::Null),
@@ -179,7 +182,82 @@ fn infer_instruction_type(value: &InstructionValue) -> Type {
             Type::Function
         }
 
+        // Method calls on known globals with primitive return types
+        InstructionValue::MethodCall { property, receiver, .. } => {
+            let receiver_name = receiver
+                .identifier
+                .name
+                .as_deref()
+                .or_else(|| id_to_name.get(&receiver.identifier.id).map(String::as_str));
+            if let Some(recv) = receiver_name {
+                infer_method_call_type(recv, property)
+            } else {
+                Type::Poly
+            }
+        }
+
+        // Call expressions: resolve callee to check for known primitive-returning globals
+        InstructionValue::CallExpression { callee, .. } => {
+            let callee_name = callee
+                .identifier
+                .name
+                .as_deref()
+                .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+            if let Some(name) = callee_name { infer_global_call_type(name) } else { Type::Poly }
+        }
+
         // For most other instructions, we don't know the type without more context
+        _ => Type::Poly,
+    }
+}
+
+/// Infer the return type of a method call on a known global object.
+///
+/// Matches upstream's global type registry: Math methods return numbers,
+/// String methods return strings/booleans, Object.keys returns arrays, etc.
+fn infer_method_call_type(receiver: &str, method: &str) -> Type {
+    match receiver {
+        "Math" => match method {
+            "abs" | "acos" | "acosh" | "asin" | "asinh" | "atan" | "atan2" | "atanh" | "cbrt"
+            | "ceil" | "clz32" | "cos" | "cosh" | "exp" | "expm1" | "floor" | "fround"
+            | "hypot" | "imul" | "log" | "log10" | "log1p" | "log2" | "max" | "min" | "pow"
+            | "random" | "round" | "sign" | "sin" | "sinh" | "sqrt" | "tan" | "tanh" | "trunc" => {
+                Type::Primitive(PrimitiveType::Number)
+            }
+            _ => Type::Poly,
+        },
+        "Number" => match method {
+            "isFinite" | "isInteger" | "isNaN" | "isSafeInteger" => {
+                Type::Primitive(PrimitiveType::Boolean)
+            }
+            "parseFloat" | "parseInt" => Type::Primitive(PrimitiveType::Number),
+            _ => Type::Poly,
+        },
+        "JSON" => match method {
+            "stringify" => Type::Primitive(PrimitiveType::String),
+            _ => Type::Poly, // JSON.parse returns unknown
+        },
+        // console methods all return undefined
+        "console" => Type::Primitive(PrimitiveType::Undefined),
+        // React.useState/useReducer/useRef etc. are handled by the hook
+        // detection in infer_types (Pass 1) which overrides the type.
+        // For mayAllocate purposes, we don't need special handling here
+        // because the hook type inference pass runs first.
+        _ => Type::Poly,
+    }
+}
+
+/// Infer the return type of a call to a known global function.
+fn infer_global_call_type(name: &str) -> Type {
+    match name {
+        "parseInt" | "parseFloat" => Type::Primitive(PrimitiveType::Number),
+        "isNaN" | "isFinite" => Type::Primitive(PrimitiveType::Boolean),
+        "String" => Type::Primitive(PrimitiveType::String),
+        "Number" => Type::Primitive(PrimitiveType::Number),
+        "Boolean" => Type::Primitive(PrimitiveType::Boolean),
+        "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" => {
+            Type::Primitive(PrimitiveType::String)
+        }
         _ => Type::Poly,
     }
 }
