@@ -1,12 +1,12 @@
 # Backlog Index
 
-> Last updated: 2026-03-18
+> Last updated: 2026-03-19
 
-Conformance: **413/1717 (24.1%)**. Render equivalence: **88% (22/25)**. All tests pass, 0 panics.
+Conformance: **413/1717 (24.1%)**. Render equivalence: **88% (22/25)**. All 196 tests pass, 0 panics. Correctness: 93.8%.
 
 Key breakdown of diverged fixtures:
-- ~247 "both compile, slots match" (output format only)
-- ~622 "both compile, slots differ" (scope/memoization divergence)
+- ~248 "both compile, slots match" (output format only)
+- ~621 "both compile, slots differ" (scope/memoization divergence)
 - ~205 "we bail, they compile" (false bail-outs)
 - ~138 "we compile, they don't" (we over-compile -- usually fine)
 - ~93 "both no memo, format diff"
@@ -20,12 +20,7 @@ Key breakdown of diverged fixtures:
 
 (none)
 
-## P1 -- Conformance: Output Format Divergences
-
-- [ ] Named variable preservation: use original names instead of temps where upstream does — [codegen-emission.md](codegen-emission.md)#gap-12-named-variable-preservation
-- [ ] `async` function keyword emission — [codegen-emission.md](codegen-emission.md)#gap-13-async-function-emission
-
-## P1 -- Conformance: Scope/Memoization Divergences (622 fixtures, largest category)
+## P1 -- Conformance: Scope/Memoization Divergences (621 fixtures, largest category)
 
 - [ ] Under-memoization: 404 fixtures with fewer slots than upstream (root cause: `last_use_map` too wide) — [scope-inference.md](scope-inference.md)#gap-11-under-memoization
 - [ ] Over-memoization: 175 fixtures with more slots than upstream — [scope-inference.md](scope-inference.md)#gap-7-over-memoization-slot-count-divergence
@@ -34,12 +29,16 @@ Key breakdown of diverged fixtures:
 
 > **Note:** Relaxing validation without fixing scope inference causes net regressions (proven by reverted attempt). These items should only be attempted after scope inference improvements land.
 
-- [ ] 58 false "memoization preservation" errors — [validation-gaps.md](validation-gaps.md)#gap-5a-false-memoization-preservation
 - [ ] 63 silent bail-outs (compile but 0 scopes, no error) — [validation-gaps.md](validation-gaps.md)#gap-6-silent-bail-outs
+- [ ] 58 false "memoization preservation" errors — [validation-gaps.md](validation-gaps.md)#gap-5a-false-memoization-preservation
 - [ ] 26 false "frozen mutation" errors — [validation-gaps.md](validation-gaps.md)#gap-5b-false-frozen-mutation
 - [ ] 16 false "reassigned after render" errors — [validation-gaps.md](validation-gaps.md)#gap-5c-false-reassigned-after-render
 - [ ] 14 false "ref access in render" errors — [validation-gaps.md](validation-gaps.md)#gap-5d-false-ref-access-in-render
 - [ ] 28 other false bail-outs (variable reassignment, hooks, setState) — [validation-gaps.md](validation-gaps.md)#gap-5e-other-false-bail-outs
+
+## P2 -- Conformance: Output Format Divergences
+
+- [ ] Named variable preservation: use original names instead of temps where upstream does — [codegen-emission.md](codegen-emission.md)#gap-12-named-variable-preservation
 
 ## P3 -- Render Divergences (3 remaining)
 

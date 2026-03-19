@@ -2,7 +2,7 @@
 
 Scope inference issues in reactive scope creation, merging, and pruning passes.
 
-Completed: Gaps 8, 9, 10. Remaining: under-memoization (biggest category) and over-memoization.
+Completed: Gaps 8, 9, 10 (plus isMutable fix in Phase 93). Remaining: Gap 7 (over-memoization, 175 fixtures) and Gap 11 (under-memoization, 404 fixtures -- foundational blocker).
 
 ---
 

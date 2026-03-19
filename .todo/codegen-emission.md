@@ -2,7 +2,7 @@
 
 Issues in `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs` and `crates/oxc_react_compiler/src/reactive_scopes/build_reactive_function.rs`.
 
-Completed: Gaps 1-5, 6b, 7, 8, 9, fixture bugs. Remaining: output format divergences, render divergences, ternary reconstruction.
+Completed: Gaps 1-5, 6b, 7, 8, 9, 11, 13, 14, fixture bugs. Remaining: Gap 6 (ternary reconstruction), Gap 12 (named variable preservation), Gap 15 (3 render divergences).
 
 ---
 
@@ -66,18 +66,11 @@ Completed: Gaps 1-5, 6b, 7, 8, 9, fixture bugs. Remaining: output format diverge
 
 ---
 
-## Gap 13: Async Function Emission
+## Gap 13: Async/Generator Function Emission ✅
 
-**Priority:** P2 -- ~1 fixture diverges because we drop `async` keyword
+~~**Priority:** P2 -- ~1 fixture diverges because we drop `async` keyword~~
 
-**Current state:** At least 1 conformance fixture has `ours=[function]` vs `exp=[async]`, indicating we don't preserve the `async` keyword on function declarations.
-
-**What's needed:**
-- Check if `async` flag is preserved through HIR lowering
-- Emit `async function` when the original was async
-
-**Upstream:** `src/ReactiveScopes/CodegenReactiveFunction.ts`
-**Depends on:** None
+**Completed**: Async and generator keywords now emitted on top-level function declarations. Commit `565d39e`.
 
 ---
 

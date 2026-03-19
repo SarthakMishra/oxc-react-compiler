@@ -2,6 +2,8 @@
 
 These issues reduce conformance coverage but do not break the core compilation pipeline for patterns we do handle.
 
+**Status summary:** Gap 5a is BLOCKED on scope inference (proven by reverted attempt). Gaps 5b-5e are independently addressable validation audits. Gap 6 (silent bail-outs) is mostly HIR lowering gaps, also independently addressable.
+
 ---
 
 ## Gap 5a: False "Memoization Preservation" Errors (58 fixtures)
