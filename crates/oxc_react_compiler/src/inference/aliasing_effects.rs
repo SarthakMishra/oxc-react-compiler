@@ -1,8 +1,8 @@
 use rustc_hash::FxHashMap;
 
 use crate::hir::types::{
-    AliasingEffect, ArrayElement, FreezeReason, FunctionSignature, IdentifierId, InstructionValue,
-    Place, ValueKind, ValueReason,
+    AliasingEffect, ArrayElement, DestructureArrayItem, DestructurePattern, DestructureTarget,
+    FreezeReason, FunctionSignature, IdentifierId, InstructionValue, Place, ValueKind, ValueReason,
 };
 
 /// Compute the aliasing effects for a single instruction.
@@ -218,8 +218,13 @@ pub fn compute_instruction_effects(
             });
         }
 
-        InstructionValue::Destructure { value, .. } => {
-            effects.push(AliasingEffect::CreateFrom { from: value.clone(), into: lvalue.clone() });
+        InstructionValue::Destructure { lvalue_pattern, value } => {
+            // Emit per-pattern-item effects matching upstream behavior:
+            // - Each identifier target: CreateFrom { from: value, into: item_place }
+            // - Each spread target: Create(Mutable) + Capture { from: value, into: spread_place }
+            // - Instruction lvalue: Assign { from: value, into: lvalue }
+            collect_destructure_pattern_effects(lvalue_pattern, value, &mut effects);
+            effects.push(AliasingEffect::Assign { from: value.clone(), into: lvalue.clone() });
         }
 
         InstructionValue::PrefixUpdate { lvalue: target, .. }
@@ -305,4 +310,84 @@ pub fn compute_instruction_effects(
     }
 
     effects
+}
+
+/// Recursively collect per-item aliasing effects from a destructure pattern.
+///
+/// Upstream emits a `CreateFrom` for each identifier target and
+/// `Create(Mutable) + Capture` for spread targets. This replaces the old
+/// single `CreateFrom` that only covered the instruction lvalue.
+fn collect_destructure_pattern_effects(
+    pattern: &DestructurePattern,
+    value: &Place,
+    effects: &mut Vec<AliasingEffect>,
+) {
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                collect_destructure_target_effects(&prop.value, value, effects);
+            }
+            if let Some(rest_place) = rest {
+                // Spread in object destructure: Create(Mutable) + Capture
+                effects.push(AliasingEffect::Create {
+                    into: rest_place.clone(),
+                    value: ValueKind::Mutable,
+                    reason: ValueReason::Other,
+                });
+                effects.push(AliasingEffect::Capture {
+                    from: value.clone(),
+                    into: rest_place.clone(),
+                });
+            }
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Hole => {}
+                    DestructureArrayItem::Value(target) => {
+                        collect_destructure_target_effects(target, value, effects);
+                    }
+                    DestructureArrayItem::Spread(spread_place) => {
+                        // Spread in array destructure: Create(Mutable) + Capture
+                        effects.push(AliasingEffect::Create {
+                            into: spread_place.clone(),
+                            value: ValueKind::Mutable,
+                            reason: ValueReason::Other,
+                        });
+                        effects.push(AliasingEffect::Capture {
+                            from: value.clone(),
+                            into: spread_place.clone(),
+                        });
+                    }
+                }
+            }
+            if let Some(rest_place) = rest {
+                effects.push(AliasingEffect::Create {
+                    into: rest_place.clone(),
+                    value: ValueKind::Mutable,
+                    reason: ValueReason::Other,
+                });
+                effects.push(AliasingEffect::Capture {
+                    from: value.clone(),
+                    into: rest_place.clone(),
+                });
+            }
+        }
+    }
+}
+
+/// Process a single destructure target — either a place or a nested pattern.
+fn collect_destructure_target_effects(
+    target: &DestructureTarget,
+    value: &Place,
+    effects: &mut Vec<AliasingEffect>,
+) {
+    match target {
+        DestructureTarget::Place(place) => {
+            effects.push(AliasingEffect::CreateFrom { from: value.clone(), into: place.clone() });
+        }
+        DestructureTarget::Pattern(nested_pattern) => {
+            collect_destructure_pattern_effects(nested_pattern, value, effects);
+        }
+    }
 }

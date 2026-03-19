@@ -621,7 +621,7 @@ fn refine_effects(effects: &[AliasingEffect], heap: &AbstractHeap) -> Vec<Aliasi
 
     for effect in effects {
         match effect {
-            AliasingEffect::Apply { args, into, signature, .. } => {
+            AliasingEffect::Apply { receiver, args, into, signature, .. } => {
                 // Resolve Apply into concrete effects
                 if let Some(sig) = signature {
                     // Signature-aware resolution: use per-parameter effects
@@ -669,16 +669,54 @@ fn refine_effects(effects: &[AliasingEffect], heap: &AbstractHeap) -> Vec<Aliasi
                     // No signature: conservative fallback
                     // Create a mutable value for the return
                     // MutateTransitiveConditionally each arg
+                    // MaybeAlias each arg to return value
+                    // Cross-arg Capture (each arg may be stored into each other arg)
                     refined.push(AliasingEffect::Create {
                         into: into.clone(),
                         value: ValueKind::Mutable,
                         reason: crate::hir::types::ValueReason::Other,
                     });
+
+                    // Build the full operand set: receiver (if non-trivial) + args
+                    let mut operands: Vec<&Place> = Vec::new();
+                    let receiver_kind = heap.value_kind(receiver.identifier.id);
+                    if !matches!(receiver_kind, ValueKind::Primitive | ValueKind::Global) {
+                        operands.push(receiver);
+                    }
+                    for arg in args {
+                        let kind = heap.value_kind(arg.identifier.id);
+                        if !matches!(kind, ValueKind::Primitive | ValueKind::Global) {
+                            operands.push(arg);
+                        }
+                    }
+
+                    // MutateTransitiveConditionally for each arg (not receiver)
                     for arg in args {
                         let kind = heap.value_kind(arg.identifier.id);
                         if !matches!(kind, ValueKind::Primitive | ValueKind::Global) {
                             refined.push(AliasingEffect::MutateTransitiveConditionally {
                                 value: arg.clone(),
+                            });
+                        }
+                    }
+
+                    // MaybeAlias: each operand may alias the return value
+                    for operand in &operands {
+                        refined.push(AliasingEffect::MaybeAlias {
+                            from: (*operand).clone(),
+                            into: into.clone(),
+                        });
+                    }
+
+                    // Cross-arg Capture: each operand may be captured into each other operand
+                    for (i, operand) in operands.iter().enumerate() {
+                        for (j, other) in operands.iter().enumerate() {
+                            if i == j {
+                                continue;
+                            }
+                            refined.push(AliasingEffect::Capture {
+                                from: (*operand).clone(),
+                                into: (*other).clone(),
                             });
                         }
                     }
