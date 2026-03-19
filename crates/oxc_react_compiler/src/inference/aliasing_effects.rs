@@ -98,6 +98,9 @@ pub fn compute_instruction_effects(
                 into: lvalue.clone(),
                 signature: None,
             });
+            // The receiver itself may be mutated by the method call.
+            // refine_effects filters this out when the receiver is Frozen.
+            effects.push(AliasingEffect::MutateTransitiveConditionally { value: receiver.clone() });
         }
 
         InstructionValue::PropertyLoad { object, .. }
