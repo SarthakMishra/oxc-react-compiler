@@ -37,10 +37,18 @@ pub fn compute_instruction_effects(
             effects.push(AliasingEffect::Alias { from: place.clone(), into: lvalue.clone() });
         }
 
-        InstructionValue::StoreLocal { lvalue: store_lvalue, value, .. }
-        | InstructionValue::StoreContext { lvalue: store_lvalue, value } => {
+        InstructionValue::StoreLocal { lvalue: store_lvalue, value, .. } => {
             effects
                 .push(AliasingEffect::Assign { from: value.clone(), into: store_lvalue.clone() });
+            effects.push(AliasingEffect::Assign { from: value.clone(), into: lvalue.clone() });
+        }
+
+        InstructionValue::StoreContext { lvalue: store_lvalue, value } => {
+            effects
+                .push(AliasingEffect::Assign { from: value.clone(), into: store_lvalue.clone() });
+            effects
+                .push(AliasingEffect::Capture { from: value.clone(), into: store_lvalue.clone() });
+            effects.push(AliasingEffect::Assign { from: value.clone(), into: lvalue.clone() });
         }
 
         InstructionValue::ObjectExpression { properties } => {
@@ -182,7 +190,13 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::Await { value } => {
-            effects.push(AliasingEffect::CreateFrom { from: value.clone(), into: lvalue.clone() });
+            effects.push(AliasingEffect::Create {
+                into: lvalue.clone(),
+                value: ValueKind::Mutable,
+                reason: ValueReason::Other,
+            });
+            effects.push(AliasingEffect::MutateTransitiveConditionally { value: value.clone() });
+            effects.push(AliasingEffect::Capture { from: value.clone(), into: lvalue.clone() });
         }
 
         InstructionValue::NewExpression { callee, args } => {
@@ -226,10 +240,14 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::GetIterator { collection } => {
-            effects.push(AliasingEffect::CreateFrom {
-                from: collection.clone(),
+            effects.push(AliasingEffect::Create {
                 into: lvalue.clone(),
+                value: ValueKind::Mutable,
+                reason: ValueReason::Other,
             });
+            effects.push(AliasingEffect::Alias { from: collection.clone(), into: lvalue.clone() });
+            effects
+                .push(AliasingEffect::MutateTransitiveConditionally { value: collection.clone() });
         }
 
         InstructionValue::IteratorNext { iterator, .. } => {

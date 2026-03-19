@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 97      | 1–97   | Full compiler: HIR foundation → 25.3% conformance. Recent: scope inference architecture rewrite (separate last_use from mutable_range), MethodCall receiver MutateTransitiveConditionally effect, call-as-allocating mutable-range refinement (+5 conformance, 404->409) |
+| [001.md](001.md) | 99      | 1–99   | Full compiler: HIR foundation → 25.3% conformance. Recent: aliasing effects upstream fidelity (StoreLocal/StoreContext dual-assign, Await, GetIterator), scope inference architecture rewrite, call-as-allocating mutable-range refinement |
 
 ## Archive
 
