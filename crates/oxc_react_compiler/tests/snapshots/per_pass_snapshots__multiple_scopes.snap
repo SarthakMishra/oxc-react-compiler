@@ -7,18 +7,14 @@ import { c as _c } from "react/compiler-runtime";
 function Summary(t0) {
   const $ = _c(4);
   let { items, threshold } = t0;
+  let t16;
+  let t19;
+  let t24;
   let count;
-  let t26;
-  if ($[0] !== items.length || $[1] !== threshold) {
-    count = items.length;
-    let hasMany = (count > threshold);
-    $[0] = items.length;
-    $[1] = threshold;
-    $[2] = count;
-  } else {
-    count = $[2];
-  }
-  let label = t26;
+  count = items.length;
+  let hasMany;
+  hasMany = (count > threshold);
+  let label;
   let t13;
   if (hasMany) {
     t13 = "Many items";
@@ -26,5 +22,30 @@ function Summary(t0) {
     t13 = "Few items";
   }
   label = t13;
-  return <div><span>{label}</span><span>({count})</span></div>;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    t16 = "div";
+    $[0] = t16;
+  } else {
+    t16 = $[0];
+  }
+  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
+    t19 = <span>{label}</span>;
+    $[1] = t19;
+  } else {
+    t19 = $[1];
+  }
+  if ($[2] !== count) {
+    t24 = (
+      <span>
+        (
+        {count}
+        )
+      </span>
+    );
+    $[2] = count;
+    $[3] = t24;
+  } else {
+    t24 = $[3];
+  }
+  return <div>{t19}{t24}</div>;
 }

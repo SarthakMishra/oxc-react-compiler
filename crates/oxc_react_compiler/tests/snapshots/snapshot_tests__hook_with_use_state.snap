@@ -5,26 +5,38 @@ expression: result.code
 import { c as _c } from "react/compiler-runtime";
 
 function useToggle(initial) {
-  const $ = _c(4);
+  const $ = _c(7);
+  let t13;
   let t12;
   let t4 = useState(initial);
   let value;
   let setValue;
   ([value, setValue] = t4);
   if ($[0] !== t4) {
+    $[0] = t4;
+    $[1] = value;
+    $[2] = setValue;
+  } else {
+    value = $[1];
+    setValue = $[2];
+  }
+  if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
     let t9 = () => {
       return setValue(!value);
     };
-    let toggle = t9;
-    t12 = [value, toggle];
-    $[0] = t4;
-    $[1] = t12;
-    $[2] = value;
-    $[3] = setValue;
+    t13 = t9;
+    $[3] = t13;
   } else {
-    t12 = $[1];
-    value = $[2];
-    setValue = $[3];
+    t13 = $[3];
+  }
+  let toggle = t13;
+  if ($[4] !== toggle || $[5] !== value) {
+    t12 = [value, toggle];
+    $[4] = toggle;
+    $[5] = value;
+    $[6] = t12;
+  } else {
+    t12 = $[6];
   }
   return t12;
 }
