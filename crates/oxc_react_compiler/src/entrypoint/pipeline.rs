@@ -272,11 +272,6 @@ pub fn run_pipeline(
         hir, param_ids,
     );
 
-    // Pass 33.5: propagate_scope_dependencies_hir_prepass
-    // Pull unscoped temporaries into their consuming scope's membership.
-    // Must run after infer_reactive_scope_variables and before downstream scope passes.
-    crate::reactive_scopes::propagate_dependencies::propagate_scope_dependencies_hir_prepass(hir);
-
     // Pass 34: memoize_fbt_and_macro_operands_in_same_scope
     crate::reactive_scopes::prune_scopes::memoize_fbt_and_macro_operands_in_same_scope(hir);
 

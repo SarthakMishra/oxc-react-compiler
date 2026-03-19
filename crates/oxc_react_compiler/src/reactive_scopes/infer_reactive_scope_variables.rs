@@ -381,7 +381,7 @@ fn is_mutable_instruction(value: &InstructionValue) -> bool {
 }
 
 /// Collect all identifier IDs referenced as operands in an instruction value.
-pub fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
+fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
     let mut ids = Vec::new();
 
     match value {
