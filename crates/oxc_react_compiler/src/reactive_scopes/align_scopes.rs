@@ -53,18 +53,19 @@ pub fn align_reactive_scopes_to_block_scopes_hir(hir: &mut HIR) {
         }
     }
 
-    // For each block, clamp the START of any instruction's scope range to the block boundary.
-    // DIVERGENCE: Previously we clamped both start and end, but upstream only clamps the start.
-    // End-clamping was too aggressive and prevented scopes from spanning across blocks
-    // (e.g., when a scope's mutable range legitimately extends past the current block).
+    // For each block, clamp any instruction's scope range to the block boundaries
     for (_, block) in &mut hir.blocks {
         let block_start = block.instructions.first().map_or(0, |i| i.id.0);
+        let block_end = block.instructions.last().map_or(0, |i| i.id.0 + 1);
 
         for instr in &mut block.instructions {
             if let Some(ref mut scope) = instr.lvalue.identifier.scope {
-                // Clamp scope start to not precede the block
+                // Clamp scope range to not exceed the block
                 if scope.range.start.0 < block_start {
                     scope.range.start.0 = block_start;
+                }
+                if scope.range.end.0 > block_end {
+                    scope.range.end.0 = block_end;
                 }
             }
         }
