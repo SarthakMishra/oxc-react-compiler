@@ -2,7 +2,7 @@
 
 > Last updated: 2026-03-19
 
-Conformance: **413/1717 (24.1%)**. Render equivalence: **88% (22/25)**. All 196 tests pass, 0 panics. Correctness: 93.8%.
+Conformance: **409/1717 (23.8%)**. Render equivalence: **88% (22/25)**. All 196 tests pass, 0 panics.
 
 Key breakdown of diverged fixtures:
 - ~248 "both compile, slots match" (output format only)
@@ -15,6 +15,7 @@ Key breakdown of diverged fixtures:
 
 - **Validation relaxation without scope fixes causes regressions.** Attempted relaxing `ValidatePreservedManualMemoization` (inner-scope tracking instead of scope-matching) -- conformance dropped 413->385 because we compiled programs incorrectly instead of safely bailing. REVERTED in `4a082dc`. Validation fixes MUST be paired with corresponding scope inference improvements.
 - **Under-memoization root cause identified:** `last_use_map` tracks uses too broadly, preventing scope creation. Fix requires removing `last_use_map` + adding missing passes (e.g., `PropagateScopeDependenciesHIR`). This is foundational work that also unblocks validation relaxation.
+- **Frozen mutation + reassignment-after-render relaxation also regresses.** Attempted relaxing both validations (locally-created object exemption for frozen mutations, render-time function exemption for reassignment) -- both caused net conformance drops because we compile programs incorrectly without proper scope inference. Same root cause as validation lesson #1.
 
 ## Do NOT Attempt (until prerequisites are met)
 

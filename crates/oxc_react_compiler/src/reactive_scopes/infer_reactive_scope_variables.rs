@@ -55,8 +55,12 @@ pub fn infer_reactive_scope_variables(
             dsu.make_set(id);
             ranges.insert(id, instr.lvalue.identifier.mutable_range);
             is_reactive.insert(id, instr.lvalue.reactive);
-            if is_allocating_instruction(&instr.value, &instr.lvalue.identifier.type_, &id_to_name)
-            {
+            if is_allocating_instruction(
+                &instr.value,
+                &instr.lvalue.identifier.type_,
+                &id_to_name,
+                instr.lvalue.identifier.mutable_range,
+            ) {
                 is_allocating_id.insert(id);
             }
             if is_mutable_instruction(&instr.value) {
@@ -111,6 +115,7 @@ pub fn infer_reactive_scope_variables(
                     &instr.value,
                     &instr.lvalue.identifier.type_,
                     &id_to_name,
+                    instr.lvalue.identifier.mutable_range,
                 )
             {
                 let operand_ids = collect_operand_ids(&instr.value);
@@ -285,6 +290,7 @@ fn is_allocating_instruction(
     value: &InstructionValue,
     lvalue_type: &Type,
     id_to_name: &FxHashMap<IdentifierId, String>,
+    lvalue_range: MutableRange,
 ) -> bool {
     match value {
         InstructionValue::ObjectExpression { .. }
@@ -296,6 +302,16 @@ fn is_allocating_instruction(
         | InstructionValue::ObjectMethod { .. } => true,
         // Calls may allocate unless the return type is known to be primitive
         // or the callee is a hook (hooks are reactive inputs, not allocations).
+        //
+        // DIVERGENCE: Upstream's `mayAllocate` unconditionally returns true for
+        // calls with non-primitive return types, and relies on downstream passes
+        // (PropagateScopeDependenciesHIR, PruneNonEscapingScopes) to prune
+        // unnecessary sentinel scopes. We lack those passes, so we apply a
+        // heuristic: only treat a call as allocating if its result has a
+        // non-trivial mutable range (end > start + 1), meaning the value is
+        // used beyond the instruction that creates it. Calls whose results are
+        // immediately consumed (trivial range) don't benefit from identity
+        // memoization and shouldn't create sentinel scopes.
         InstructionValue::CallExpression { callee, .. } => {
             if matches!(lvalue_type, Type::Primitive(_)) {
                 return false;
@@ -307,7 +323,11 @@ fn is_allocating_instruction(
                 .as_deref()
                 .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
             // Hook calls (useXxx) are reactive inputs, not allocations
-            !name.is_some_and(|n| n.starts_with("use") && n.len() > 3)
+            if name.is_some_and(|n| n.starts_with("use") && n.len() > 3) {
+                return false;
+            }
+            // Only allocating if the result escapes (non-trivial mutable range)
+            lvalue_range.end.0 > lvalue_range.start.0 + 1
         }
         // Method calls: check both return type and hook pattern (React.useXxx)
         InstructionValue::MethodCall { property, .. } => {
@@ -315,10 +335,18 @@ fn is_allocating_instruction(
                 return false;
             }
             // Hook methods like React.useState, React.useRef
-            !(property.starts_with("use") && property.len() > 3)
+            if property.starts_with("use") && property.len() > 3 {
+                return false;
+            }
+            // Only allocating if the result escapes (non-trivial mutable range)
+            lvalue_range.end.0 > lvalue_range.start.0 + 1
         }
         InstructionValue::TaggedTemplateExpression { .. } => {
-            !matches!(lvalue_type, Type::Primitive(_))
+            if matches!(lvalue_type, Type::Primitive(_)) {
+                return false;
+            }
+            // Only allocating if the result escapes (non-trivial mutable range)
+            lvalue_range.end.0 > lvalue_range.start.0 + 1
         }
         _ => false,
     }

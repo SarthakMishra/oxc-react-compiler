@@ -179,6 +179,24 @@ pub fn validate_no_mutation_after_freeze(
         }
     }
 
+    // Collect IDs of FunctionExpressions that are immediately invoked (IIFEs).
+    // IIFEs execute during render (same as inline code), so mutations inside
+    // them should NOT be flagged as frozen mutations. Complex IIFEs that capture
+    // outer variables are not inlined by Pass 6, so we must detect them here.
+    let mut iife_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for i in 1..block.instructions.len() {
+            if let InstructionValue::CallExpression { callee, .. } = &block.instructions[i].value {
+                let prev = &block.instructions[i - 1];
+                if callee.identifier.id == prev.lvalue.identifier.id
+                    && matches!(prev.value, InstructionValue::FunctionExpression { .. })
+                {
+                    iife_ids.insert(prev.lvalue.identifier.id);
+                }
+            }
+        }
+    }
+
     // Collect function IDs passed to effect/callback hooks. Mutations inside
     // these lambdas happen after render (effect time / event time) and are safe.
     // Upstream's type system handles this via function effect signatures; we use
@@ -398,9 +416,12 @@ pub fn validate_no_mutation_after_freeze(
             // Check 4: Mutations inside nested function bodies on frozen outer variables.
             // Skip lambdas passed to effect/callback hooks — those execute after render,
             // so mutations inside them (e.g., ref.current = x in useEffect) are safe.
+            // Skip IIFEs — they execute during render (same as inline code), so
+            // their mutations are checked by the normal instruction-level checks.
             if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
                 && (!frozen_ids.is_empty() || !frozen_names.is_empty())
                 && !effect_callback_ids.contains(&instr.lvalue.identifier.id)
+                && !iife_ids.contains(&instr.lvalue.identifier.id)
                 && has_mutation_on_frozen(&lowered_func.body, &frozen_ids, &frozen_names)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
@@ -416,6 +437,11 @@ pub fn validate_no_mutation_after_freeze(
             // For call instructions (CallExpression, MethodCall, NewExpression), only
             // check definite mutations — conditional ones come from Apply fallback and
             // cause false positives on frozen params passed to functions.
+            //
+            // Skip PrefixUpdate/PostfixUpdate: these are variable reassignments (a++),
+            // not object mutations. The aliasing pass generates Mutate effects for them,
+            // but reassigning a param is a local operation that doesn't modify the
+            // original value (especially for primitives).
             if let Some(ref effects) = instr.effects {
                 let is_call = matches!(
                     instr.value,
@@ -423,27 +449,33 @@ pub fn validate_no_mutation_after_freeze(
                         | InstructionValue::MethodCall { .. }
                         | InstructionValue::NewExpression { .. }
                 );
-                for effect in effects {
-                    let mutated_frozen = match effect {
-                        AliasingEffect::Mutate { value }
-                        | AliasingEffect::MutateTransitive { value } => {
-                            is_ssa_frozen(&value.identifier, &frozen_ids)
+                let is_update = matches!(
+                    instr.value,
+                    InstructionValue::PrefixUpdate { .. } | InstructionValue::PostfixUpdate { .. }
+                );
+                if !is_update {
+                    for effect in effects {
+                        let mutated_frozen = match effect {
+                            AliasingEffect::Mutate { value }
+                            | AliasingEffect::MutateTransitive { value } => {
+                                is_ssa_frozen(&value.identifier, &frozen_ids)
+                            }
+                            AliasingEffect::MutateConditionally { value }
+                            | AliasingEffect::MutateTransitiveConditionally { value }
+                                if !is_call =>
+                            {
+                                is_ssa_frozen(&value.identifier, &frozen_ids)
+                            }
+                            _ => false,
+                        };
+                        if mutated_frozen {
+                            errors.push(CompilerError::invalid_react_with_kind(
+                                instr.loc,
+                                FROZEN_MUTATION_ERROR,
+                                DiagnosticKind::ImmutabilityViolation,
+                            ));
+                            return;
                         }
-                        AliasingEffect::MutateConditionally { value }
-                        | AliasingEffect::MutateTransitiveConditionally { value }
-                            if !is_call =>
-                        {
-                            is_ssa_frozen(&value.identifier, &frozen_ids)
-                        }
-                        _ => false,
-                    };
-                    if mutated_frozen {
-                        errors.push(CompilerError::invalid_react_with_kind(
-                            instr.loc,
-                            FROZEN_MUTATION_ERROR,
-                            DiagnosticKind::ImmutabilityViolation,
-                        ));
-                        return;
                     }
                 }
             }
