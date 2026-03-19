@@ -141,12 +141,19 @@ pub fn compute_instruction_effects(
                     value: attr.value.clone(),
                     reason: FreezeReason::FrozenByValue,
                 });
+                // Capture prop into JSX element (matches upstream: Freeze + Capture)
+                effects.push(AliasingEffect::Capture {
+                    from: attr.value.clone(),
+                    into: lvalue.clone(),
+                });
             }
             for child in children {
                 effects.push(AliasingEffect::Freeze {
                     value: child.clone(),
                     reason: FreezeReason::FrozenByValue,
                 });
+                // Capture child into JSX element (matches upstream: Freeze + Capture)
+                effects.push(AliasingEffect::Capture { from: child.clone(), into: lvalue.clone() });
             }
         }
 
@@ -161,6 +168,8 @@ pub fn compute_instruction_effects(
                     value: child.clone(),
                     reason: FreezeReason::FrozenByValue,
                 });
+                // Capture child into fragment (matches upstream: Freeze + Capture)
+                effects.push(AliasingEffect::Capture { from: child.clone(), into: lvalue.clone() });
             }
         }
 
