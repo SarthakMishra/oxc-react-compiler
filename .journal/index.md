@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 99      | 1–99   | Full compiler: HIR foundation → 25.3% conformance. Recent: aliasing effects upstream fidelity (StoreLocal/StoreContext dual-assign, Await, GetIterator), scope inference architecture rewrite, call-as-allocating mutable-range refinement |
+| [001.md](001.md) | 100     | 1–100  | Full compiler: HIR foundation → 25.3% conformance. Recent: Context capture refinement in refine_effects, aliasing effects upstream fidelity, scope inference architecture rewrite |
 
 ## Archive
 

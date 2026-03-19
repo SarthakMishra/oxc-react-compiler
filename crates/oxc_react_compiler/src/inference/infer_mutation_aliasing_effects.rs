@@ -783,8 +783,8 @@ fn refine_effects(effects: &[AliasingEffect], heap: &AbstractHeap) -> Vec<Aliasi
             }
 
             AliasingEffect::Capture { from, into } => {
-                let kind = heap.value_kind(from.identifier.id);
-                match kind {
+                let from_kind = heap.value_kind(from.identifier.id);
+                match from_kind {
                     ValueKind::Primitive | ValueKind::Global => {
                         // Capturing a primitive/global is a no-op
                     }
@@ -795,7 +795,25 @@ fn refine_effects(effects: &[AliasingEffect], heap: &AbstractHeap) -> Vec<Aliasi
                             into: into.clone(),
                         });
                     }
-                    ValueKind::Mutable | ValueKind::Context => {
+                    ValueKind::Context => {
+                        // Upstream: when `from` is Context, upgrade Capture to
+                        // MaybeAlias if `into` is Mutable/MaybeFrozen/Context.
+                        // Context values may reference the same underlying state,
+                        // so capturing into a mutable container creates an alias.
+                        let into_kind = heap.value_kind(into.identifier.id);
+                        if matches!(
+                            into_kind,
+                            ValueKind::Mutable | ValueKind::MaybeFrozen | ValueKind::Context
+                        ) {
+                            refined.push(AliasingEffect::MaybeAlias {
+                                from: from.clone(),
+                                into: into.clone(),
+                            });
+                        } else {
+                            refined.push(effect.clone());
+                        }
+                    }
+                    ValueKind::Mutable => {
                         refined.push(effect.clone());
                     }
                 }
