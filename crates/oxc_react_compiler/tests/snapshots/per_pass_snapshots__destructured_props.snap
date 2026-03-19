@@ -5,49 +5,24 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function UserCard(t0) {
-  const $ = _c(7);
+  const $ = _c(4);
   let { name, age, role } = t0;
   if (role === undefined) { role = "member"; }
-  let t6;
-  let t9;
-  let t13;
-  let t17;
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t6 = "div";
-    $[0] = t6;
-  } else {
-    t6 = $[0];
-  }
-  if ($[1] !== name) {
-    t9 = <h2>{name}</h2>;
+  let t18;
+  if ($[0] !== age || $[1] !== name || $[2] !== role) {
+    t18 = (
+      <div>
+        <h2>{name}</h2>
+        <p>Age: {age}</p>
+        <p>Role: {role}</p>
+      </div>
+    );
+    $[0] = age;
     $[1] = name;
-    $[2] = t9;
+    $[2] = role;
+    $[3] = t18;
   } else {
-    t9 = $[2];
+    t18 = $[3];
   }
-  if ($[3] !== age) {
-    t13 = (
-      <p>
-        Age: 
-        {age}
-      </p>
-    );
-    $[3] = age;
-    $[4] = t13;
-  } else {
-    t13 = $[4];
-  }
-  if ($[5] !== role) {
-    t17 = (
-      <p>
-        Role: 
-        {role}
-      </p>
-    );
-    $[5] = role;
-    $[6] = t17;
-  } else {
-    t17 = $[6];
-  }
-  return <div>{t9}{t13}{t17}</div>;
+  return t18;
 }

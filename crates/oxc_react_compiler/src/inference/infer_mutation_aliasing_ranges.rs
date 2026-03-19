@@ -12,7 +12,9 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::VecDeque;
 
-use crate::hir::types::{AliasingEffect, BlockId, HIR, IdentifierId, InstructionId, MutableRange};
+use crate::hir::types::{
+    AliasingEffect, BlockId, HIR, IdentifierId, InstructionId, InstructionValue, MutableRange,
+};
 
 // ---------------------------------------------------------------------------
 // MutationKind — ordered so we can skip re-visits with weaker kinds
@@ -317,6 +319,7 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
     let mut ranges: FxHashMap<IdentifierId, MutableRange> = FxHashMap::default();
     let mut mutations: Vec<PendingMutation> = Vec::new();
     let mut creation_map: FxHashMap<IdentifierId, InstructionId> = FxHashMap::default();
+    let mut last_use_map: FxHashMap<IdentifierId, InstructionId> = FxHashMap::default();
 
     // Pending phi operands for back-edges (predecessor block not yet visited)
     let mut pending_phis: FxHashMap<BlockId, Vec<(u32, IdentifierId, IdentifierId)>> =
@@ -356,6 +359,15 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
             let lv_id = instr.lvalue.identifier.id;
             ranges.entry(lv_id).or_insert(instr.lvalue.identifier.mutable_range);
             creation_map.entry(lv_id).or_insert(instr.id);
+
+            // Track last-use sites for range extension
+            let operand_ids = collect_operand_ids(&instr.value);
+            for op_id in operand_ids {
+                let entry = last_use_map.entry(op_id).or_insert(instr.id);
+                if instr.id > *entry {
+                    *entry = instr.id;
+                }
+            }
 
             if let Some(ref effects) = instr.effects {
                 for effect in effects {
@@ -501,6 +513,26 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
             }
         }
 
+        // Track terminal uses for last_use_map
+        let terminal_id = InstructionId(block.instructions.last().map_or(0, |i| i.id.0) + 1);
+        match &block.terminal {
+            crate::hir::types::Terminal::Return { value }
+            | crate::hir::types::Terminal::Throw { value } => {
+                let entry = last_use_map.entry(value.identifier.id).or_insert(terminal_id);
+                if terminal_id > *entry {
+                    *entry = terminal_id;
+                }
+            }
+            crate::hir::types::Terminal::If { test, .. }
+            | crate::hir::types::Terminal::Branch { test, .. } => {
+                let entry = last_use_map.entry(test.identifier.id).or_insert(terminal_id);
+                if terminal_id > *entry {
+                    *entry = terminal_id;
+                }
+            }
+            _ => {}
+        }
+
         // Process deferred phi operands for this block (back-edges from later blocks)
         if let Some(pending) = pending_phis.remove(block_id) {
             for (phi_index, from_id, into_id) in pending {
@@ -516,7 +548,7 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
     }
 
     // Phase 3: Write mutable ranges back to HIR lvalue identifiers
-    // Use creation_map for start, BFS-propagated ranges for end
+    // Use creation_map for start, and extend end to cover last_use + BFS mutations
     for (_, block) in &mut hir.blocks {
         for phi in &mut block.phis {
             if let Some(&range) = ranges.get(&phi.place.identifier.id) {
@@ -535,7 +567,148 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
                 end = range.end;
             }
 
+            // Extend to last use
+            if let Some(&last_use) = last_use_map.get(&id) {
+                let use_end = InstructionId(last_use.0 + 1);
+                if use_end > end {
+                    end = use_end;
+                }
+            }
+
             instr.lvalue.identifier.mutable_range = MutableRange { start, end };
         }
     }
+}
+
+/// Collect operand identifier IDs from an instruction value (for last-use tracking).
+fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
+    let mut ids = Vec::new();
+    match value {
+        InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+            ids.push(place.identifier.id);
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. }
+        | InstructionValue::StoreContext { lvalue, value } => {
+            ids.push(lvalue.identifier.id);
+            ids.push(value.identifier.id);
+        }
+        InstructionValue::DeclareLocal { lvalue, .. }
+        | InstructionValue::DeclareContext { lvalue } => {
+            ids.push(lvalue.identifier.id);
+        }
+        InstructionValue::Destructure { value, .. } => {
+            ids.push(value.identifier.id);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            ids.push(left.identifier.id);
+            ids.push(right.identifier.id);
+        }
+        InstructionValue::UnaryExpression { value, .. } => {
+            ids.push(value.identifier.id);
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            ids.push(lvalue.identifier.id);
+        }
+        InstructionValue::CallExpression { callee, args }
+        | InstructionValue::NewExpression { callee, args } => {
+            ids.push(callee.identifier.id);
+            for arg in args {
+                ids.push(arg.identifier.id);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            ids.push(receiver.identifier.id);
+            for arg in args {
+                ids.push(arg.identifier.id);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => {
+            ids.push(object.identifier.id);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            ids.push(object.identifier.id);
+            ids.push(value.identifier.id);
+        }
+        InstructionValue::ComputedLoad { object, property }
+        | InstructionValue::ComputedDelete { object, property } => {
+            ids.push(object.identifier.id);
+            ids.push(property.identifier.id);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            ids.push(object.identifier.id);
+            ids.push(property.identifier.id);
+            ids.push(value.identifier.id);
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                ids.push(prop.value.identifier.id);
+                if let crate::hir::types::ObjectPropertyKey::Computed(p) = &prop.key {
+                    ids.push(p.identifier.id);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    crate::hir::types::ArrayElement::Expression(p)
+                    | crate::hir::types::ArrayElement::Spread(p) => ids.push(p.identifier.id),
+                    crate::hir::types::ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            ids.push(tag.identifier.id);
+            for attr in props {
+                ids.push(attr.value.identifier.id);
+            }
+            for child in children {
+                ids.push(child.identifier.id);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                ids.push(child.identifier.id);
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                ids.push(sub.identifier.id);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            ids.push(tag.identifier.id);
+            for sub in &value.subexpressions {
+                ids.push(sub.identifier.id);
+            }
+        }
+        InstructionValue::Await { value }
+        | InstructionValue::StoreGlobal { value, .. }
+        | InstructionValue::NextPropertyOf { value }
+        | InstructionValue::TypeCastExpression { value, .. } => {
+            ids.push(value.identifier.id);
+        }
+        InstructionValue::GetIterator { collection } => {
+            ids.push(collection.identifier.id);
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            ids.push(iterator.identifier.id);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            ids.push(decl.identifier.id);
+            for dep in deps {
+                ids.push(dep.identifier.id);
+            }
+        }
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. } => {}
+    }
+    ids
 }

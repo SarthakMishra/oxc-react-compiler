@@ -8,11 +8,10 @@ function Doubler(t0) {
   const $ = _c(2);
   let { value } = t0;
   let t9;
-  let doubled;
-  doubled = (value * 2);
-  if ($[0] !== doubled) {
+  if ($[0] !== value) {
+    let doubled = (value * 2);
     t9 = <span>{doubled}</span>;
-    $[0] = doubled;
+    $[0] = value;
     $[1] = t9;
   } else {
     t9 = $[1];

@@ -5,34 +5,32 @@ expression: code
 import { c as _c } from "react/compiler-runtime";
 
 function Counter() {
-  const $ = _c(3);
+  const $ = _c(4);
   let t2;
-  let t11;
-  let t12;
+  let t14;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = 0;
     $[0] = t2;
   } else {
     t2 = $[0];
   }
+  let t3 = useState(t2);
   let count;
   let setCount;
-  ([count, setCount] = useState(t2));
-  let next;
-  next = (count + 1);
+  ([count, setCount] = t3);
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t11 = "button";
-    $[1] = t11;
-  } else {
-    t11 = $[1];
-  }
-  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t12 = () => {
+    let next = (count + 1);
+    let t12 = () => {
       return setCount(next);
     };
-    $[2] = t12;
+    t14 = <button onClick={t12}>{count}</button>;
+    $[1] = t14;
+    $[2] = count;
+    $[3] = setCount;
   } else {
-    t12 = $[2];
+    t14 = $[1];
+    count = $[2];
+    setCount = $[3];
   }
-  return <button onClick={t12}>{count}</button>;
+  return t14;
 }
