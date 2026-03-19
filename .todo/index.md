@@ -15,13 +15,16 @@ Key breakdown of diverged fixtures:
 
 - **Validation relaxation without scope fixes causes regressions.** Attempted relaxing `ValidatePreservedManualMemoization` (inner-scope tracking instead of scope-matching) -- conformance dropped 413->385 because we compiled programs incorrectly instead of safely bailing. REVERTED in `4a082dc`. Validation fixes MUST be paired with corresponding scope inference improvements.
 - **Under-memoization root cause identified:** `last_use_map` tracks uses too broadly, preventing scope creation. Fix requires removing `last_use_map` + adding missing passes (e.g., `PropagateScopeDependenciesHIR`). This is foundational work that also unblocks validation relaxation.
+- **last_use_map removal causes catastrophic render regression.** Attempted 3-step approach: (1) remove end-clamping in align_scopes, (2) add PropagateScopeDependenciesHIR pre-pass, (3) remove last_use_map. Render dropped 88%→24% (22/25→6/25). REVERTED all 3 commits. The codegen and scope inference are deeply coupled to the wide ranges produced by last_use_map — narrowing ranges breaks scope body construction, destructure hoisting, and cache slot generation. This is NOT incrementally fixable with the current architecture.
 - **Frozen mutation + reassignment-after-render relaxation also regresses.** Attempted relaxing both validations (locally-created object exemption for frozen mutations, render-time function exemption for reassignment) -- both caused net conformance drops because we compile programs incorrectly without proper scope inference. Same root cause as validation lesson #1.
 
 ## Do NOT Attempt (until prerequisites are met)
 
-- **Gap 5a: Memoization preservation validation** — proven to cause -28 conformance regression without scope inference fixes. BLOCKED on Gap 11 (under-memoization).
-- **Gap 7: Over-memoization** — may self-resolve as a side effect of fixing under-memoization (Gap 11). Investigate after Gap 11 lands.
-- **Gap 6 codegen: Ternary reconstruction** — P4 cosmetic only, no conformance or correctness impact.
+- **Gap 11: last_use_map removal** — proven to cause 88%→24% render regression. The entire codegen/scope pipeline depends on wide ranges. NOT incrementally fixable — requires full architecture rework matching upstream's pass structure.
+- **Gap 5a: Memoization preservation validation** — proven to cause -28 conformance regression without scope inference fixes. BLOCKED on Gap 11.
+- **Gap 5b-5e: All validation relaxation** — frozen mutation, reassignment-after-render both regressed. Same root cause.
+- **Gap 7: Over-memoization** — may self-resolve as side effect of Gap 11. Investigate after.
+- **Gap 6 codegen: Ternary reconstruction** — P4 cosmetic only, no impact.
 
 ## Active Work
 
