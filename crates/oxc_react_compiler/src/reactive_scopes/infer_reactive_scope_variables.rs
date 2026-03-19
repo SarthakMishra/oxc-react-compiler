@@ -307,6 +307,160 @@ pub fn infer_reactive_scope_variables(
     scopes
 }
 
+/// Pull unscoped instructions into their consuming scope.
+///
+/// After `infer_reactive_scope_variables` assigns scopes based on mutable ranges,
+/// some instructions that produce values consumed exclusively within one scope
+/// are NOT members of that scope. This pass pulls those "orphan" instructions
+/// into their consuming scope.
+///
+/// Algorithm:
+///   loop until no changes:
+///     for each instruction I with scope = None:
+///       consumers = all instructions that use I.lvalue.identifier.id as an operand
+///       if consumers is empty: skip
+///       consumer_scopes = unique set of scope IDs from consumers (ignoring None)
+///       if consumer_scopes has exactly 1 scope S:
+///         I.lvalue.identifier.scope = Some(S)
+///         changed = true
+///
+/// Key constraints:
+/// - Only pull into a scope if ALL consumers with scopes are in that SAME scope
+/// - If consumers are in different scopes, the instruction stays unscoped
+/// - NEVER override an existing scope assignment
+///
+/// Upstream: PropagateScopeDependenciesHIR (scope membership propagation aspect)
+pub fn propagate_scope_membership_hir(hir: &mut HIR) {
+    // Phase 1: Build a map from IdentifierId → ScopeId for all currently-scoped identifiers.
+    // Also collect a ReactiveScope clone per ScopeId so we can assign it to newly-scoped IDs.
+    let mut id_to_scope_id: FxHashMap<IdentifierId, ScopeId> = FxHashMap::default();
+    let mut scope_by_id: FxHashMap<ScopeId, ReactiveScope> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let Some(ref scope) = instr.lvalue.identifier.scope {
+                id_to_scope_id.insert(instr.lvalue.identifier.id, scope.id);
+                scope_by_id.entry(scope.id).or_insert_with(|| (**scope).clone());
+            }
+        }
+        for phi in &block.phis {
+            if let Some(ref scope) = phi.place.identifier.scope {
+                id_to_scope_id.insert(phi.place.identifier.id, scope.id);
+                scope_by_id.entry(scope.id).or_insert_with(|| (**scope).clone());
+            }
+        }
+    }
+
+    // Phase 2: Build a consumer map: producer_id → set of consumer lvalue IDs.
+    // A "consumer" of producer P is any instruction whose operands include P.
+    let mut consumers: FxHashMap<IdentifierId, Vec<IdentifierId>> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            let consumer_id = instr.lvalue.identifier.id;
+            let operand_ids = collect_operand_ids(&instr.value);
+            for op_id in operand_ids {
+                consumers.entry(op_id).or_default().push(consumer_id);
+            }
+        }
+        // Terminal operands are also consumers. Terminals don't have lvalues,
+        // so we use a sentinel: if a terminal consumes an ID, that consumer
+        // has scope = None (terminals are not scoped instructions).
+        // We don't need to track terminal consumers explicitly -- if an ID
+        // is only consumed by a terminal and nothing else, it has no scoped
+        // consumers, so it stays unscoped. If it's consumed by both a terminal
+        // and a scoped instruction, the terminal adds a "None" consumer which
+        // means the scopes won't be unanimous -> stays unscoped. This is correct.
+    }
+
+    // Phase 3: Fixed-point iteration to propagate scope membership.
+    loop {
+        let mut changed = false;
+
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                let id = instr.lvalue.identifier.id;
+
+                // Skip if already scoped
+                if id_to_scope_id.contains_key(&id) {
+                    continue;
+                }
+
+                // Get all consumers of this instruction's lvalue
+                let Some(consumer_ids) = consumers.get(&id) else {
+                    continue;
+                };
+
+                if consumer_ids.is_empty() {
+                    continue;
+                }
+
+                // Collect unique scope IDs from consumers (ignoring unscoped consumers)
+                let mut unique_scope: Option<ScopeId> = None;
+                let mut has_unscoped_consumer = false;
+                let mut multiple_scopes = false;
+
+                for consumer_id in consumer_ids {
+                    match id_to_scope_id.get(consumer_id) {
+                        Some(&scope_id) => match unique_scope {
+                            None => unique_scope = Some(scope_id),
+                            Some(existing) if existing == scope_id => {} // same scope
+                            Some(_) => {
+                                multiple_scopes = true;
+                                break;
+                            }
+                        },
+                        None => {
+                            has_unscoped_consumer = true;
+                        }
+                    }
+                }
+
+                // Only assign if ALL consumers that have scopes agree on the same scope,
+                // there is at least one scoped consumer, and no unscoped consumers remain.
+                //
+                // DIVERGENCE: We use a conservative approach -- only pull in
+                // when ALL consumers are scoped AND agree on the same scope.
+                // This avoids premature assignment that could be wrong if
+                // unscoped consumers later get assigned to a different scope.
+                if !multiple_scopes
+                    && !has_unscoped_consumer
+                    && let Some(scope_id) = unique_scope
+                {
+                    id_to_scope_id.insert(id, scope_id);
+                    changed = true;
+                }
+            }
+        }
+
+        if !changed {
+            break;
+        }
+    }
+
+    // Phase 4: Write back scope assignments to the HIR.
+    for (_, block) in &mut hir.blocks {
+        for instr in &mut block.instructions {
+            let id = instr.lvalue.identifier.id;
+            if instr.lvalue.identifier.scope.is_none()
+                && let Some(&scope_id) = id_to_scope_id.get(&id)
+                && let Some(scope) = scope_by_id.get(&scope_id)
+            {
+                instr.lvalue.identifier.scope = Some(Box::new(scope.clone()));
+            }
+        }
+        for phi in &mut block.phis {
+            let id = phi.place.identifier.id;
+            if phi.place.identifier.scope.is_none()
+                && let Some(&scope_id) = id_to_scope_id.get(&id)
+                && let Some(scope) = scope_by_id.get(&scope_id)
+            {
+                phi.place.identifier.scope = Some(Box::new(scope.clone()));
+            }
+        }
+    }
+}
+
 /// Returns true if an instruction value creates a new heap allocation.
 /// Used for sentinel scope detection: allocating expressions get scopes
 /// even without reactive deps (for identity memoization).

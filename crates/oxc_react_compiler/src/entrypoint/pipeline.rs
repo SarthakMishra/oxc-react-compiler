@@ -275,6 +275,12 @@ pub fn run_pipeline(
         hir, param_ids,
     );
 
+    // Pass 33.5: propagate_scope_membership_hir
+    // Pull unscoped instructions into their consuming scope when ALL consumers
+    // are in the same scope. This ensures instructions that produce values used
+    // exclusively within one scope become members of that scope.
+    crate::reactive_scopes::infer_reactive_scope_variables::propagate_scope_membership_hir(hir);
+
     // Pass 34: memoize_fbt_and_macro_operands_in_same_scope
     crate::reactive_scopes::prune_scopes::memoize_fbt_and_macro_operands_in_same_scope(hir);
 
