@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 91      | 1–91   | Full compiler: HIR foundation → 25.3% conformance. Recent: structured ForOf/ForIn loop terminals (for-of loops now work in lambda bodies), logical expression short-circuit fix (Gap 5, render 40%→68%), phantom scope declaration filter + destructure defaults (Gap 11/12), destructure-in-scope hoisting (Gap 8), unscooped variable declarations (Gap 10) |
+| [001.md](001.md) | 94      | 1–94   | Full compiler: HIR foundation → 25.3% conformance. Recent: call-as-allocating sentinel scopes (silent bail-outs 63->38), scope inference isMutable fix, structured ForOf/ForIn loop terminals, logical expression short-circuit fix (Gap 5, render 40%→68%), phantom scope declaration filter + destructure defaults (Gap 11/12) |
 
 ## Archive
 
