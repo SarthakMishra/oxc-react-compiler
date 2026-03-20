@@ -5,8 +5,8 @@
 Conformance: **445/1717 (25.9%)**. Render equivalence: **96% (24/25)**. Correctness: **93.8%**. All 196 tests pass, 0 panics.
 
 Key breakdown of diverged fixtures:
-- ~240 "both compile, slots match" (output format only)
-- ~622 "both compile, slots differ" (scope/memoization divergence)
+- ~250 "both compile, slots match" (output format only)
+- ~628 "both compile, slots differ" (scope/memoization divergence)
 - ~158 "we bail, they compile" (false bail-outs, down from 174)
 - ~147 "we compile, they don't" (we over-compile -- usually fine)
 - ~89 "both no memo, format diff"
@@ -17,7 +17,7 @@ Key breakdown of diverged fixtures:
 - **Validation relaxation without scope fixes causes regressions.** Attempted relaxing `ValidatePreservedManualMemoization` -- conformance dropped 413->385 because we compiled programs incorrectly instead of safely bailing. REVERTED in `4a082dc`. Validation fixes MUST be paired with corresponding scope inference improvements.
 - **Under-memoization root cause identified:** BFS mutation propagation produces narrower ranges than upstream's abstract interpreter. Our `effective_range` approximation compensates. Fixing requires porting upstream's full abstract interpreter state machine.
 - **Narrow mutable ranges require upstream's full effect inference.** Attempted 4 times, all reverted (96%→36% render regression each time).
-- **Validation false positives share a common root cause:** Both `validate_no_ref_access_in_render` and `validate_locals_not_reassigned_after_render` have broken "render-only function" detection. The fix is to use a shared `collect_post_render_fn_ids` utility with transitive fixpoint expansion. See [validation-gaps.md](validation-gaps.md)#shared-root-cause.
+- **Validation false positives:** Reassignment validator FIXED via `function_context.rs` (16 fewer bail-outs). Ref-access validator partially investigated — fix requires per-body `directly_called` computation to avoid 3 `error.*` regressions. See [validation-gaps.md](validation-gaps.md).
 
 ## Do NOT Attempt (until prerequisites are met)
 
@@ -49,7 +49,7 @@ Reassignment validator rewritten with ID-based alias tracking (`function_context
 
 ## P2 -- Conformance: Output Format Divergences
 
-- [ ] Named variable preservation: ~56 remaining fixtures after partial fix in Phase 106 (+8 from `is_last_assignment_in_scope`) — [codegen-emission.md](codegen-emission.md)#gap-12
+- [ ] Named variable preservation: ~34 remaining fixtures (root cause: codegen `build_inline_map`, not `rename_variables`) — [codegen-emission.md](codegen-emission.md)#gap-12
 - [ ] Optional chaining in codegen: 15 fixtures (HIR lacks `optional` flag) — [codegen-emission.md](codegen-emission.md)#gap-16
 
 ## P3 -- Render Divergences (1 remaining — BLOCKED)
