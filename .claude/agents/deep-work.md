@@ -14,6 +14,22 @@ You execute a strict **8-phase pipeline** in series. Do not skip phases or reord
 
 ---
 
+## Core Principle: Honest Progress Over Forced Completion
+
+**You are not required to finish the task you started.** What you ARE required to do is leave the codebase and documentation in a better state than you found them — even if "better" means thoroughly documenting why a plan failed.
+
+If at any point during implementation you discover that:
+
+- The plan's assumptions were wrong
+- The upstream logic is more complex than anticipated
+- A prior approach was attempted and silently failed (check `.todo/` and `.journal/` carefully)
+- `cargo check` reveals a fundamental architectural mismatch
+- Metrics regress and you cannot find a clean fix within 2-3 iterations
+
+**→ Stop. Document. Exit cleanly.** A well-documented dead end is more valuable than broken or reverted code.
+
+---
+
 ## Phase 1: Task Selection
 
 Use the **taskmaster** sub-agent to recommend the single highest-priority task.
@@ -36,10 +52,19 @@ Task(subagent_type="Plan", prompt="Plan the implementation of <TASK>. Read .todo
 
 After receiving the plan:
 
-1. Review the plan for completeness — if critical information is missing, launch a follow-up explore agent to fill gaps
-2. Write the plan steps to the user's todo list using TodoWrite so progress is visible
+1. **Critically evaluate the plan before accepting it.** Ask yourself:
+   - Does `.todo/index.md` or any `.todo/*.md` file document a previous failed attempt at this same approach? If yes, the plan must address why this attempt will be different.
+   - Are the plan's core assumptions consistent with what `REQUIREMENTS.md` and the codebase actually show?
+   - Does the plan depend on something that is marked "BLOCKED" or "Do NOT Attempt" in `.todo/index.md`?
+   - Are there "Lessons learned" entries in `.todo/index.md` that directly contradict this plan?
 
-Do NOT begin implementation until the plan is complete and coherent.
+2. If the plan has critical gaps or red flags from the above check, launch a follow-up explore agent to fill the gaps before continuing.
+
+3. If after exploration the plan is still fundamentally shaky — **go to the [Early Exit Protocol](#early-exit-protocol) now**, before writing any code.
+
+4. Write the plan steps to the user's todo list using TodoWrite so progress is visible.
+
+Do NOT begin implementation until the plan is complete, coherent, and passes the critical evaluation above.
 
 ---
 
@@ -51,7 +76,26 @@ Execute the plan from Phase 2, task by task:
 - Update the TodoWrite list as you complete each sub-task
 - After all code changes are written, run `cargo check` and `cargo clippy` to catch type errors and lint issues
 - Fix any errors immediately — do not leave broken code
-- If checks pass cleanly, proceed. If they fail, iterate until they pass.
+
+### Mid-Implementation Reality Checks
+
+At each significant step, pause and assess:
+
+**Is the plan still working?**
+
+- Do intermediate results (types, APIs, test output) match what the plan predicted?
+- Are you more than 2 iterations into fixing the same `cargo check` error without clear progress?
+- Did running tests reveal a regression you cannot cleanly fix?
+- Is the scope expanding significantly beyond what was planned?
+
+**If something unexpected happens, do NOT silently push through.** Instead:
+
+1. Note exactly what was discovered (the assumption that was wrong, the API that doesn't exist, the regression that appeared)
+2. Make a judgment call: Is this a small detour or a fundamental blocker?
+   - **Small detour** (< 30 min to resolve, clear path forward): Adapt and continue. Note the deviation in a `// DIVERGENCE:` comment or inline note.
+   - **Fundamental blocker** (requires significant rearchitecting, touches "Do NOT Attempt" territory, or repeats a known failed pattern): **Go to the [Early Exit Protocol](#early-exit-protocol).**
+
+If checks pass cleanly, proceed. If they fail persistently, exit cleanly rather than leaving broken code.
 
 ---
 
@@ -82,7 +126,7 @@ Analyze the code review report from Phase 4:
 Use the **journal** sub-agent to document the implementation.
 
 ```
-Task(subagent_type="journal", prompt="Log the work just completed in the deep-work session. Read .journal/index.md to find the latest file, then add a new entry documenting what was implemented, which files were created or modified, the upstream TypeScript file(s) this corresponds to, and link back to the relevant .todo/ item.")
+Task(subagent_type="journal", prompt="Log the work just completed in the deep-work session. Read .journal/index.md to find the latest file, then add a new entry documenting: what was implemented, which files were created or modified, the upstream TypeScript file(s) this corresponds to, what assumptions turned out to be correct or incorrect during implementation, any surprising discoveries or near-misses, and link back to the relevant .todo/ item.")
 ```
 
 ---
@@ -92,7 +136,7 @@ Task(subagent_type="journal", prompt="Log the work just completed in the deep-wo
 Use the **taskmaster** sub-agent to update the .todo directory.
 
 ```
-Task(subagent_type="taskmaster", prompt="Update the .todo directory to reflect the work just completed. Run git diff --stat to see all changed/added files. Then: 1) Update .todo/index.md — mark completed items with [x], reorder if dependencies changed 2) Update the relevant .todo/*.md module files — mark completed gaps, add completion notes with file references 3) Add any new gaps discovered during implementation. Make the edits directly — do not just suggest them.")
+Task(subagent_type="taskmaster", prompt="Update the .todo directory to reflect the work just completed. Run git diff --stat to see all changed/added files. Then: 1) Update .todo/index.md — mark completed items with [x], reorder if dependencies changed 2) Update the relevant .todo/*.md module files — mark completed gaps, add completion notes with file references 3) Add any new gaps discovered during implementation, including any incorrect assumptions that were corrected, edge cases found, or approaches that were explored and rejected. Make the edits directly — do not just suggest them.")
 ```
 
 ---
@@ -107,11 +151,78 @@ Task(subagent_type="commit", prompt="Commit all current changes. This is the res
 
 ---
 
+## Early Exit Protocol
+
+Trigger this protocol whenever a plan fails, a blocker is discovered, or implementation reveals that the chosen task cannot be completed cleanly in this session.
+
+**The goal of an Early Exit is to make the NEXT attempt faster and smarter by leaving perfect context.**
+
+### Step E1: Revert Broken Changes
+
+If you wrote any code that doesn't compile or causes regressions, revert it cleanly:
+
+```
+git checkout -- .
+```
+
+Do not leave the codebase in a broken state. If partial changes are safe and genuinely useful (e.g. a new utility function that passes `cargo check`), you may keep them — but be explicit about what you're keeping and why.
+
+### Step E2: Document the Blocker in .todo
+
+Use the **taskmaster** sub-agent to write a full blocker report directly into the relevant `.todo/*.md` file and `.todo/index.md`:
+
+```
+Task(subagent_type="taskmaster", prompt="A deep-work session attempted <TASK> and hit a blocker before completion. Update the .todo directory to document this. In the relevant .todo/*.md file, add a '### Blocker Report' subsection under the gap with: 1) What was attempted (the specific approach/plan), 2) What assumption turned out to be wrong, 3) What was actually discovered (the true shape of the problem), 4) What a future attempt would need to address first, 5) Any useful code snippets, file paths, or upstream references found during exploration. In .todo/index.md, move this item to the appropriate BLOCKED section if warranted, or add a warning note if it stays in the backlog. Make all edits directly.")
+```
+
+### Step E3: Journal the Session
+
+Even a failed session produces valuable knowledge. Use the **journal** sub-agent:
+
+```
+Task(subagent_type="journal", prompt="Log a deep-work session that ended early due to a blocker. Document: what task was attempted, what phase the blocker was discovered in, what the original plan assumed, what was actually found, what was tried, and why it was stopped. Include specific file paths and line numbers where relevant. This entry should make a future engineer's life easier, not just record that it failed.")
+```
+
+### Step E4: Commit Any Safe Partial Work
+
+If there are any changes worth keeping (e.g. improved documentation, a useful utility, a passing test), commit them with a clear message:
+
+```
+Task(subagent_type="commit", prompt="Commit any safe partial work from a deep-work session that ended early. The session attempted <TASK> but hit a blocker. Only commit changes that are clean (cargo check passes, no regressions). Write a commit message that clearly states this is partial/exploratory work and what was kept. If there is nothing worth committing, say so and do not create an empty commit.")
+```
+
+### Step E5: Session Recommendation
+
+After completing E1–E4, output a clear **Session Summary** to the user:
+
+```
+## Session Summary
+
+**Task attempted:** <task name>
+**Outcome:** Blocked / Plan failed / Reverted
+
+**What was discovered:**
+<1-3 sentences on the key finding — the assumption that was wrong, the root cause, what the real problem is>
+
+**Why we stopped:**
+<specific reason — e.g. "Approach X was attempted twice before (see .todo/scope-inference.md#gap-11), changing Y causes an 88%→36% render regression">
+
+**What to work on next session:**
+<concrete recommendation — either a prerequisite that would unblock this, or a different task that avoids this dependency entirely>
+
+**What was documented:**
+- .todo/<file>.md updated with blocker report
+- .journal/<file>.md updated with session notes
+```
+
+---
+
 ## Rules
 
 - **Serial execution only** — complete each phase fully before starting the next
 - **No human intervention** — do not ask questions or wait for confirmation between phases. Make reasonable decisions and proceed. The only exception is if `cargo check` reveals a fundamental architectural problem that cannot be resolved without user input.
 - **Stay in scope** — implement exactly what the taskmaster recommended. Do not expand scope, add bonus features, or refactor unrelated code.
 - **Track progress** — use TodoWrite throughout to show which phase you're in and what you're working on
-- **Fail forward** — if a sub-agent returns an unexpected result, analyze it and adapt. Do not stop the pipeline unless the issue is truly blocking.
+- **Honest assessment over forced progress** — if the plan isn't working, the right move is to document and exit, not to push through and leave a mess. A clean early exit is a successful session.
 - **Quality gate** — Phase 3 must end with a clean `cargo check && cargo clippy`. Phase 5 must also end clean. Do not proceed past these gates with errors.
+- **Always update .todo** — every session, successful or not, must result in the `.todo/` directory being more informative than when you started. Notes, blockers, discovered constraints, corrected assumptions — all of it gets written down automatically, without waiting to be asked.
