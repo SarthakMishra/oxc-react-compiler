@@ -54,14 +54,22 @@ The shared module provides:
 
 **Priority:** P2
 
-**Current state:** ~29 fixtures bail with frozen mutation errors. Recent fixes: SSA-versioned keys (`ca2374d`), IIFE detection, PrefixUpdate exemption, effect/callback hook lambda exemptions.
+**Current state:** ~29 fixtures bail with frozen mutation errors. Prior fixes: SSA-versioned keys (`ca2374d`), IIFE detection, PrefixUpdate exemption, effect/callback hook lambda exemptions.
 
-**What's needed:**
-- Audit remaining false positives against upstream `ValidateFrozenValues`
-- Check if mutable range computation is still too narrow for remaining cases
+**Investigation (Phase 106):** The 29 fixtures have diverse root causes across 5 different check paths in the validator. Not a single-category fix. Attempted unfreezing rest/spread destructure elements — correct in principle but didn't fix any fixtures (the freeze comes from different paths than `collect_frozen_ids_from_destructure`).
+
+**Key patterns:**
+- 6x IIFE capture/alias patterns — IIFE detection works but aliasing effects on outer variables still trigger
+- 4x switch fall-through — mutation after JSX in switch cases with fall-through
+- 3x new-mutability — transitive mutation through identity/propertyload functions
+- 2x method call results — `props.object.makeObject()` result wrongly inherits frozen status
+- 2x rest/spread allocations — `{...rest}` or `[...arr]` creates new object, shouldn't be frozen
+- 12x misc patterns (ref callbacks, loop collections, parameter mutations, etc.)
+
+**What's needed:** Each fixture needs individual diagnosis to determine WHICH of the 5 checks (MutateFrozen effect, Freeze effect propagation, MethodCall on frozen, PropertyStore on frozen, Mutate effect on frozen) is triggering, then targeted exemption.
 
 **Upstream:** `src/Validation/ValidateFrozenValues.ts`
-**Depends on:** None
+**Depends on:** None, but requires per-fixture investigation
 
 ---
 
