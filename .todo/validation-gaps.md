@@ -35,7 +35,19 @@ These issues reduce conformance coverage but do not break the core compilation p
 - Return values escape and are post-render
 - Async functions remain handled separately (always post-render, existing logic)
 
-**Risk:** LOW-MEDIUM. May regress 1-2 `error.*` fixtures (where upstream flags patterns requiring value-flow analysis beyond our capability). Must verify with conformance tests.
+**Implementation attempt findings (Phase 106):**
+- ID-based forward alias tracking (`collect_directly_called_fe_ids`) correctly identifies directly-called FEs where name-based tracking fails
+- Using this, 17 fixtures moved from "we bail" to "we compile" — confirming the approach works
+- However, the edge cases are tricky: exempting directly-called FEs from checking causes 2-3 `error.*` regressions where upstream expects errors for nested/chained reassignment patterns
+- The ref validator should keep its narrower `collect_non_render_callback_ids` — `useReducer`/`useState` initializers run during render, so marking ALL hook args as post-render causes 3 ref-access regressions
+- Net result: -3 conformance when attempted. More careful exemption logic needed.
+
+**Key remaining challenges:**
+1. Functions returned from other functions (`mk_reassignlocal()` returning `reassignLocal`) — the inner FE's reassignment must still be flagged even though the outer function is "directly called"
+2. JSX callback props with non-standard names (`handler`, `callback`) — these should be treated as escaping but aren't caught by `onXxx` pattern matching
+3. Chained closure patterns (`invoke(fn2)` where `fn2` calls `fn1`) — both should be flagged
+
+**Risk:** MEDIUM. Requires careful handling of edge cases. Must verify with both `error.*` fixtures (should keep erroring) and normal fixtures (should stop erroring).
 
 **Upstream:**
 - `src/Validation/ValidateLocalsNotReassignedAfterRender.ts`
