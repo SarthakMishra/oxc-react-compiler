@@ -713,8 +713,6 @@ optional-member-expression-single-with-unconditional.js
 optional-member-expression-single.js
 optional-member-expression-with-optional-member-expr-as-property.js
 optional-member-expression.js
-optional-receiver-method-call.js
-optional-receiver-optional-method.js
 original-reactive-scopes-fork/capture-ref-for-later-mutation.tsx
 outlined-destructured-params.js
 outlined-helper.js

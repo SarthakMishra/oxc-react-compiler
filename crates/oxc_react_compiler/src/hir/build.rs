@@ -1908,10 +1908,16 @@ impl HIRBuilder {
                 let receiver = self.lower_expression(&member.object);
                 let property = member.property.name.to_string();
                 let args = self.lower_arguments(&call.arguments);
-                // The optional flag applies to the call itself, not the member access.
-                // member.optional is for the `.` in `a?.b()` — that's on the PropertyLoad.
-                // call.optional (our `optional` param) is for the `()` in `a.b?.()`.
-                self.emit(InstructionValue::MethodCall { receiver, property, args, optional }, loc)
+                self.emit(
+                    InstructionValue::MethodCall {
+                        receiver,
+                        property,
+                        args,
+                        optional,
+                        optional_receiver: member.optional,
+                    },
+                    loc,
+                )
             }
             Expression::ComputedMemberExpression(member) => {
                 let object = self.lower_expression(&member.object);

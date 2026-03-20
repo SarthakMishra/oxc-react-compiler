@@ -891,11 +891,19 @@ fn expr_string(
             let args_str: Vec<String> = args.iter().map(&resolve).collect();
             Some(format!("{}{}({})", callee_name, call_op, args_str.join(", ")))
         }
-        InstructionValue::MethodCall { receiver, property, args, optional } => {
+        InstructionValue::MethodCall { receiver, property, args, optional, optional_receiver } => {
             let receiver_name = resolve(receiver);
+            let member_op = if *optional_receiver { "?." } else { "." };
             let call_op = if *optional { "?." } else { "" };
             let args_str: Vec<String> = args.iter().map(&resolve).collect();
-            Some(format!("{}.{}{}({})", receiver_name, property, call_op, args_str.join(", ")))
+            Some(format!(
+                "{}{}{}{}({})",
+                receiver_name,
+                member_op,
+                property,
+                call_op,
+                args_str.join(", ")
+            ))
         }
         InstructionValue::NewExpression { callee, args } => {
             let callee_name = resolve(callee);
@@ -1552,27 +1560,30 @@ fn codegen_instruction(
                 ));
             }
         }
-        InstructionValue::MethodCall { receiver, property, args, optional } => {
+        InstructionValue::MethodCall { receiver, property, args, optional, optional_receiver } => {
             let receiver_name = resolve_place(receiver, inline_map);
+            let member_op = if *optional_receiver { "?." } else { "." };
             let call_op = if *optional { "?." } else { "" };
             let args_str: Vec<Cow<'_, str>> =
                 args.iter().map(|a| resolve_place(a, inline_map)).collect();
             if is_stmt_only {
                 output.push_str(&format!(
-                    "{}{}.{}{}({});\n",
+                    "{}{}{}{}{}({});\n",
                     indent,
                     receiver_name,
+                    member_op,
                     property,
                     call_op,
                     args_str.join(", ")
                 ));
             } else {
                 output.push_str(&format!(
-                    "{}{}{} = {}.{}{}({});\n",
+                    "{}{}{} = {}{}{}{}({});\n",
                     indent,
                     decl_keyword,
                     lvalue_name,
                     receiver_name,
+                    member_op,
                     property,
                     call_op,
                     args_str.join(", ")

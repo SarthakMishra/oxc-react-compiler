@@ -329,7 +329,10 @@ pub enum InstructionValue {
         receiver: Place,
         property: String,
         args: Vec<Place>,
+        /// Optional call: `x.method?.(args)` — the `?.` is on the call
         optional: bool,
+        /// Optional member access: `x?.method(args)` — the `?.` is on the receiver
+        optional_receiver: bool,
     },
     NewExpression {
         callee: Place,
