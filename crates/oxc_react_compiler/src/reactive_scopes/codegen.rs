@@ -20,6 +20,10 @@ use crate::hir::types::{
 /// is substituted directly at the use-site.
 type InlineMap = FxHashMap<String, String>;
 
+/// Sentinel value in `InlineMap` indicating that a side-effecting call should
+/// be emitted as a bare statement (`foo();`) without a `let tN =` prefix.
+const STMT_ONLY_SENTINEL: &str = "\x01STMT";
+
 /// Returns `true` when the identifier corresponds to a compiler-generated
 /// temporary (unnamed, printed as `tN`).
 fn is_temp_place(place: &Place) -> bool {
@@ -630,26 +634,34 @@ fn build_inline_map(
         // Check total use count (across all nested blocks)
         let total_count = total_counts.get(&temp_name).copied().unwrap_or(0);
         if total_count == 0 {
-            // Dead temp — mark for removal by inserting empty sentinel
-            // But NOT if it's a scope output (used in cache storage/else branch)
-            // And NOT if it has side effects
-            if !scope_output_temps.contains(&temp_name)
-                && !protected_names.contains(&temp_name)
-                && !matches!(
-                    &instr.value,
-                    InstructionValue::CallExpression { .. }
-                        | InstructionValue::MethodCall { .. }
-                        | InstructionValue::NewExpression { .. }
-                        | InstructionValue::PropertyStore { .. }
-                        | InstructionValue::ComputedStore { .. }
-                        | InstructionValue::StoreLocal { .. }
-                        | InstructionValue::StoreContext { .. }
-                        | InstructionValue::StoreGlobal { .. }
-                        | InstructionValue::Destructure { .. }
-                )
-            {
-                inline_map.insert(temp_name, String::new()); // sentinel: skip emission
+            if scope_output_temps.contains(&temp_name) || protected_names.contains(&temp_name) {
+                // Scope outputs / protected names must always be emitted.
+                continue;
             }
+            // Dead call/method/new temps: emit as bare statement (no `let tN =`)
+            if matches!(
+                &instr.value,
+                InstructionValue::CallExpression { .. }
+                    | InstructionValue::MethodCall { .. }
+                    | InstructionValue::NewExpression { .. }
+            ) {
+                inline_map.insert(temp_name, STMT_ONLY_SENTINEL.to_string());
+                continue;
+            }
+            // Other side-effecting instructions must be emitted normally
+            if matches!(
+                &instr.value,
+                InstructionValue::PropertyStore { .. }
+                    | InstructionValue::ComputedStore { .. }
+                    | InstructionValue::StoreLocal { .. }
+                    | InstructionValue::StoreContext { .. }
+                    | InstructionValue::StoreGlobal { .. }
+                    | InstructionValue::Destructure { .. }
+            ) {
+                continue;
+            }
+            // Pure dead temp — mark for removal by inserting empty sentinel
+            inline_map.insert(temp_name, String::new()); // sentinel: skip emission
             continue;
         }
         if total_count != 1 {
@@ -1433,12 +1445,21 @@ fn codegen_instruction(
 
     // If this instruction's lvalue has been selected for inlining, skip emitting it —
     // the expression will be substituted at its single use site.
-    if is_temp_place(&instr.lvalue) {
+    // Exception: STMT_ONLY_SENTINEL means "emit as bare statement without lvalue".
+    let is_stmt_only = if is_temp_place(&instr.lvalue) {
         let temp_name = format!("t{}", instr.lvalue.identifier.id.0);
-        if inline_map.contains_key(&temp_name) {
-            return;
+        if let Some(mapped) = inline_map.get(&temp_name) {
+            if mapped == STMT_ONLY_SENTINEL {
+                true // fall through to emit as bare statement
+            } else {
+                return; // inlined or dead — skip emission
+            }
+        } else {
+            false
         }
-    }
+    } else {
+        false
+    };
 
     // If the lvalue was already declared (by DeclareLocal or scope pre-declaration),
     // use bare assignment; otherwise use `let` (not `const`) so the compiler's
@@ -1483,9 +1504,9 @@ fn codegen_instruction(
             let keyword = if already_declared {
                 ""
             } else {
-                // Use `let` for all declaration kinds (including original `const`)
-                // because the compiler's scope logic may reassign these variables
-                // in scope reload branches. `var` is preserved for hoisting semantics.
+                // Use `let` for Const/HoistedConst/Let/HoistedFunction because the
+                // compiler's scope logic may reassign these variables in scope
+                // reload branches. `var` is preserved for hoisting semantics.
                 let kw = match type_ {
                     Some(
                         crate::hir::types::InstructionKind::Const
@@ -1508,28 +1529,42 @@ fn codegen_instruction(
             let callee_name = resolve_place(callee, inline_map);
             let args_str: Vec<Cow<'_, str>> =
                 args.iter().map(|a| resolve_place(a, inline_map)).collect();
-            output.push_str(&format!(
-                "{}{}{} = {}({});\n",
-                indent,
-                decl_keyword,
-                lvalue_name,
-                callee_name,
-                args_str.join(", ")
-            ));
+            if is_stmt_only {
+                output.push_str(&format!("{}{}({});\n", indent, callee_name, args_str.join(", ")));
+            } else {
+                output.push_str(&format!(
+                    "{}{}{} = {}({});\n",
+                    indent,
+                    decl_keyword,
+                    lvalue_name,
+                    callee_name,
+                    args_str.join(", ")
+                ));
+            }
         }
         InstructionValue::MethodCall { receiver, property, args } => {
             let receiver_name = resolve_place(receiver, inline_map);
             let args_str: Vec<Cow<'_, str>> =
                 args.iter().map(|a| resolve_place(a, inline_map)).collect();
-            output.push_str(&format!(
-                "{}{}{} = {}.{}({});\n",
-                indent,
-                decl_keyword,
-                lvalue_name,
-                receiver_name,
-                property,
-                args_str.join(", ")
-            ));
+            if is_stmt_only {
+                output.push_str(&format!(
+                    "{}{}.{}({});\n",
+                    indent,
+                    receiver_name,
+                    property,
+                    args_str.join(", ")
+                ));
+            } else {
+                output.push_str(&format!(
+                    "{}{}{} = {}.{}({});\n",
+                    indent,
+                    decl_keyword,
+                    lvalue_name,
+                    receiver_name,
+                    property,
+                    args_str.join(", ")
+                ));
+            }
         }
         InstructionValue::PropertyLoad { object, property } => {
             output.push_str(&format!(
@@ -1738,14 +1773,23 @@ fn codegen_instruction(
             let callee_name = resolve_place(callee, inline_map);
             let args_str: Vec<Cow<'_, str>> =
                 args.iter().map(|a| resolve_place(a, inline_map)).collect();
-            output.push_str(&format!(
-                "{}{}{} = new {}({});\n",
-                indent,
-                decl_keyword,
-                lvalue_name,
-                callee_name,
-                args_str.join(", ")
-            ));
+            if is_stmt_only {
+                output.push_str(&format!(
+                    "{}new {}({});\n",
+                    indent,
+                    callee_name,
+                    args_str.join(", ")
+                ));
+            } else {
+                output.push_str(&format!(
+                    "{}{}{} = new {}({});\n",
+                    indent,
+                    decl_keyword,
+                    lvalue_name,
+                    callee_name,
+                    args_str.join(", ")
+                ));
+            }
         }
         InstructionValue::Await { value } => {
             output.push_str(&format!(
