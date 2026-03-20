@@ -6,10 +6,10 @@ import { c as _c } from "react/compiler-runtime";
 
 function Doubler(t0) {
   const $ = _c(2);
-  const { value } = t0;
+  let { value } = t0;
   let t9;
   if ($[0] !== value) {
-    const doubled = (value * 2);
+    let doubled = (value * 2);
     t9 = <span>{doubled}</span>;
     $[0] = value;
     $[1] = t9;

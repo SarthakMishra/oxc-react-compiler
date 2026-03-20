@@ -20,11 +20,6 @@ use crate::hir::types::{
 /// is substituted directly at the use-site.
 type InlineMap = FxHashMap<String, String>;
 
-/// Sentinel value in the inline map indicating that a call/new expression's
-/// result is unused (dead). The instruction should be emitted as a bare
-/// statement (e.g., `foo();`) without assigning the result to a temp.
-const STMT_ONLY_SENTINEL: &str = "\x00STMT_ONLY";
-
 /// Returns `true` when the identifier corresponds to a compiler-generated
 /// temporary (unnamed, printed as `tN`).
 fn is_temp_place(place: &Place) -> bool {
@@ -637,28 +632,22 @@ fn build_inline_map(
         if total_count == 0 {
             // Dead temp — mark for removal by inserting empty sentinel
             // But NOT if it's a scope output (used in cache storage/else branch)
-            if scope_output_temps.contains(&temp_name) || protected_names.contains(&temp_name) {
-                continue;
-            }
-            // Side-effecting instructions (calls, stores) must still be emitted
-            // as statements, but without assigning the result to a temp.
-            // Mark them with STMT_ONLY sentinel so codegen emits just the RHS.
-            if matches!(
-                &instr.value,
-                InstructionValue::CallExpression { .. }
-                    | InstructionValue::MethodCall { .. }
-                    | InstructionValue::NewExpression { .. }
-            ) {
-                inline_map.insert(temp_name, STMT_ONLY_SENTINEL.to_string());
-            } else if !matches!(
-                &instr.value,
-                InstructionValue::PropertyStore { .. }
-                    | InstructionValue::ComputedStore { .. }
-                    | InstructionValue::StoreLocal { .. }
-                    | InstructionValue::StoreContext { .. }
-                    | InstructionValue::StoreGlobal { .. }
-                    | InstructionValue::Destructure { .. }
-            ) {
+            // And NOT if it has side effects
+            if !scope_output_temps.contains(&temp_name)
+                && !protected_names.contains(&temp_name)
+                && !matches!(
+                    &instr.value,
+                    InstructionValue::CallExpression { .. }
+                        | InstructionValue::MethodCall { .. }
+                        | InstructionValue::NewExpression { .. }
+                        | InstructionValue::PropertyStore { .. }
+                        | InstructionValue::ComputedStore { .. }
+                        | InstructionValue::StoreLocal { .. }
+                        | InstructionValue::StoreContext { .. }
+                        | InstructionValue::StoreGlobal { .. }
+                        | InstructionValue::Destructure { .. }
+                )
+            {
                 inline_map.insert(temp_name, String::new()); // sentinel: skip emission
             }
             continue;
@@ -1238,10 +1227,13 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
         }
     }
 
-    // NOTE: Scope output declarations are now emitted at the scope level
-    // (in codegen_scope) rather than at function level. This avoids hoisting
-    // `let` declarations above non-scope instructions (like hook calls) that
-    // come before the scope guard, matching upstream ordering.
+    // Pre-declare ALL scope declaration variables at function level.
+    // This ensures that any StoreLocal targeting a scope output uses bare
+    // assignment instead of `const`/`let`, preventing "Assignment to constant
+    // variable" errors and duplicate declarations. This matches the upstream
+    // compiler's approach where scope outputs are always `let`-declared at
+    // function scope before the scope guard.
+    collect_all_scope_declarations(&rf.body, &mut output, &mut declared, 1);
 
     // Generate body, skipping hoisted instructions
     codegen_block_skip_hoisted(
@@ -1441,51 +1433,9 @@ fn codegen_instruction(
 
     // If this instruction's lvalue has been selected for inlining, skip emitting it —
     // the expression will be substituted at its single use site.
-    // Exception: STMT_ONLY sentinel means the call result is unused — emit as bare statement.
     if is_temp_place(&instr.lvalue) {
         let temp_name = format!("t{}", instr.lvalue.identifier.id.0);
-        if let Some(sentinel) = inline_map.get(&temp_name) {
-            if sentinel == STMT_ONLY_SENTINEL {
-                // Emit the call as a bare statement (no assignment)
-                match &instr.value {
-                    InstructionValue::CallExpression { callee, args } => {
-                        let callee_name = resolve_place(callee, inline_map);
-                        let args_str: Vec<Cow<'_, str>> =
-                            args.iter().map(|a| resolve_place(a, inline_map)).collect();
-                        output.push_str(&format!(
-                            "{}{}({});\n",
-                            indent,
-                            callee_name,
-                            args_str.join(", ")
-                        ));
-                    }
-                    InstructionValue::MethodCall { receiver, property, args } => {
-                        let receiver_name = resolve_place(receiver, inline_map);
-                        let args_str: Vec<Cow<'_, str>> =
-                            args.iter().map(|a| resolve_place(a, inline_map)).collect();
-                        output.push_str(&format!(
-                            "{}{}.{}({});\n",
-                            indent,
-                            receiver_name,
-                            property,
-                            args_str.join(", ")
-                        ));
-                    }
-                    InstructionValue::NewExpression { callee, args } => {
-                        let callee_name = resolve_place(callee, inline_map);
-                        let args_str: Vec<Cow<'_, str>> =
-                            args.iter().map(|a| resolve_place(a, inline_map)).collect();
-                        output.push_str(&format!(
-                            "{}new {}({});\n",
-                            indent,
-                            callee_name,
-                            args_str.join(", ")
-                        ));
-                    }
-                    _ => {} // non-call STMT_ONLY — shouldn't happen, but safe to skip
-                }
-            }
-            // For other sentinels (empty string = dead, inlined expression), skip emission
+        if inline_map.contains_key(&temp_name) {
             return;
         }
     }
@@ -1533,19 +1483,14 @@ fn codegen_instruction(
             let keyword = if already_declared {
                 ""
             } else {
-                // Preserve `const` for variables that were originally declared as
-                // `const` in the source. This is safe because scope output variables
-                // are pre-declared with `let` and are already in `declared`, so they
-                // take the `already_declared` branch above (bare assignment).
-                // Variables reaching here are local to their scope body and never
-                // reassigned in an else-branch reload.
+                // Use `let` for all declaration kinds (including original `const`)
+                // because the compiler's scope logic may reassign these variables
+                // in scope reload branches. `var` is preserved for hoisting semantics.
                 let kw = match type_ {
                     Some(
                         crate::hir::types::InstructionKind::Const
-                        | crate::hir::types::InstructionKind::HoistedConst,
-                    ) => "const ",
-                    Some(
-                        crate::hir::types::InstructionKind::Let
+                        | crate::hir::types::InstructionKind::HoistedConst
+                        | crate::hir::types::InstructionKind::Let
                         | crate::hir::types::InstructionKind::HoistedFunction,
                     ) => "let ",
                     Some(crate::hir::types::InstructionKind::Var) => "var ",
@@ -1821,13 +1766,10 @@ fn codegen_instruction(
                 codegen_destructure_pattern(lvalue_pattern, output);
                 output.push_str(&format!(" = {value_name});\n"));
             } else {
-                // Use `const` for non-scope-output destructure declarations.
-                // Scope outputs are pre-declared with `let` and already in `declared`,
-                // so they take the `any_declared` branch above (bare assignment).
-                // Variables reaching here are local to their scope body and never
-                // reassigned in an else-branch reload. Upstream overwhelmingly uses
-                // `const` for destructure patterns in scope bodies.
-                output.push_str(&format!("{indent}const "));
+                // Use `let` instead of `const` so destructured names can be reassigned
+                // by scope reload logic (else branches). `const` would create block-scoped
+                // variables inside scope guard `if` blocks that can't be accessed outside.
+                output.push_str(&format!("{indent}let "));
                 codegen_destructure_pattern(lvalue_pattern, output);
                 output.push_str(&format!(" = {value_name};\n"));
                 // Register destructured names so later DeclareLocal/scopes don't re-declare

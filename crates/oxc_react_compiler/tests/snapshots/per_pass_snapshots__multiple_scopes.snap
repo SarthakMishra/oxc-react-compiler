@@ -6,14 +6,14 @@ import { c as _c } from "react/compiler-runtime";
 
 function Summary(t0) {
   const $ = _c(5);
-  const { items, threshold } = t0;
+  let { items, threshold } = t0;
   let count;
   let label;
   let t13;
   let t25;
   if ($[0] !== items.length || $[1] !== threshold) {
     count = items.length;
-    const hasMany = (count > threshold);
+    let hasMany = (count > threshold);
     if (hasMany) {
       t13 = "Many items";
     } else {

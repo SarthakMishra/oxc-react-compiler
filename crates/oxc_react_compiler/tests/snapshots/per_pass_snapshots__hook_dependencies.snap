@@ -7,6 +7,7 @@ import { c as _c } from "react/compiler-runtime";
 function Counter() {
   const $ = _c(4);
   let t2;
+  let t14;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = 0;
     $[0] = t2;
@@ -17,9 +18,8 @@ function Counter() {
   let count;
   let setCount;
   ([count, setCount] = t3);
-  let t14;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    const next = (count + 1);
+    let next = (count + 1);
     let t12 = () => {
       return setCount(next);
     };

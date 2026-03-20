@@ -6,7 +6,7 @@ import { c as _c } from "react/compiler-runtime";
 
 function Card(t0) {
   const $ = _c(3);
-  const { title, children } = t0;
+  let { title, children } = t0;
   let t13;
   if ($[0] !== children || $[1] !== title) {
     t13 = <div className="card"><h3>{title}</h3><div className="body">{children}</div></div>;
