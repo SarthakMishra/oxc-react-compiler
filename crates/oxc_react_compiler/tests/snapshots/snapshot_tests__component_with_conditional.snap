@@ -11,11 +11,7 @@ function Toggle(t0) {
   let t9;
   if (isOn) {
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-      t6 = (
-        <div>
-          ON
-        </div>
-      );
+      t6 = <div>ON</div>;
       $[0] = t6;
     } else {
       t6 = $[0];
@@ -23,11 +19,7 @@ function Toggle(t0) {
     return t6;
   }
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t9 = (
-      <div>
-        OFF
-      </div>
-    );
+    t9 = <div>OFF</div>;
     $[1] = t9;
   } else {
     t9 = $[1];

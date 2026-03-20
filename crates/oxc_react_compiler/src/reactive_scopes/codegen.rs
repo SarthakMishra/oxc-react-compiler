@@ -852,12 +852,15 @@ fn jsx_tag_name(resolved: &str) -> &str {
 }
 
 /// Format a JSX child for embedding in a JSX element body.
-/// - String literals → raw text (strip quotes)
+/// - String literals → raw text (strip quotes, unescape JS string escapes)
 /// - Nested JSX elements (starts with `<`) → embed directly (no `{}` wrapper)
 /// - Everything else → wrap in `{expr}`
 fn jsx_child_str(resolved: &str) -> String {
     if is_jsx_text_str(resolved) {
-        strip_string_quotes(resolved).to_string()
+        // Strip surrounding quotes and unescape JS string escapes back to raw text.
+        // e.g., `"\"foo\""` → `"foo"` (literal quotes in JSX text)
+        let raw = strip_string_quotes(resolved);
+        raw.replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n").replace("\\r", "\r")
     } else if resolved.starts_with('<') {
         // Nested JSX element — embed directly without {} wrapper
         resolved.to_string()
@@ -1385,22 +1388,34 @@ fn codegen_instruction(
                 output.push_str(&format!(
                     "{indent}{decl_keyword}{lvalue_name} = <{tag_name}{props_str} />;\n"
                 ));
-            } else if resolved_children.len() == 1 && !is_jsx_text_str(&resolved_children[0]) {
-                // Single expression child inline: <Tag props>{child}</Tag>
-                let child = jsx_child_str(&resolved_children[0]);
-                output.push_str(&format!(
-                    "{indent}{decl_keyword}{lvalue_name} = <{tag_name}{props_str}>{child}</{tag_name}>;\n"
-                ));
             } else {
-                // Multi-line: wrap in parens with indented children
-                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = (\n"));
-                output.push_str(&format!("{indent}  <{tag_name}{props_str}>\n"));
+                // Build inline children string to determine if we can fit on one line
+                let mut children_inline = String::new();
                 for child in &resolved_children {
-                    let child_str = jsx_child_str(child);
-                    output.push_str(&format!("{indent}    {child_str}\n"));
+                    children_inline.push_str(&jsx_child_str(child));
                 }
-                output.push_str(&format!("{indent}  </{tag_name}>\n"));
-                output.push_str(&format!("{indent});\n"));
+                // Use inline format when the total line length is reasonable,
+                // matching upstream's behavior of keeping JSX on a single line.
+                let total_len = indent.len() + decl_keyword.len() + lvalue_name.len()
+                    + 3 /* " = " */ + 1 /* < */ + tag_name.len() + props_str.len()
+                    + 1 /* > */ + children_inline.len() + 2 /* </ */ + tag_name.len()
+                    + 2 /* >; */;
+                if total_len <= 120 && !children_inline.contains('\n') {
+                    // Inline: <Tag props>children</Tag>
+                    output.push_str(&format!(
+                        "{indent}{decl_keyword}{lvalue_name} = <{tag_name}{props_str}>{children_inline}</{tag_name}>;\n"
+                    ));
+                } else {
+                    // Multi-line: wrap in parens with indented children
+                    output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = (\n"));
+                    output.push_str(&format!("{indent}  <{tag_name}{props_str}>\n"));
+                    for child in &resolved_children {
+                        let child_str = jsx_child_str(child);
+                        output.push_str(&format!("{indent}    {child_str}\n"));
+                    }
+                    output.push_str(&format!("{indent}  </{tag_name}>\n"));
+                    output.push_str(&format!("{indent});\n"));
+                }
             }
         }
         InstructionValue::JsxFragment { children } => {
@@ -1409,18 +1424,27 @@ fn codegen_instruction(
 
             if resolved_children.is_empty() {
                 output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = <></>;\n"));
-            } else if resolved_children.len() == 1 && !is_jsx_text_str(&resolved_children[0]) {
-                let child = jsx_child_str(&resolved_children[0]);
-                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = <>{child}</>;\n"));
             } else {
-                output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = (\n"));
-                output.push_str(&format!("{indent}  <>\n"));
+                let mut children_inline = String::new();
                 for child in &resolved_children {
-                    let child_str = jsx_child_str(child);
-                    output.push_str(&format!("{indent}    {child_str}\n"));
+                    children_inline.push_str(&jsx_child_str(child));
                 }
-                output.push_str(&format!("{indent}  </>\n"));
-                output.push_str(&format!("{indent});\n"));
+                let total_len = indent.len() + decl_keyword.len() + lvalue_name.len()
+                    + 3 /* " = " */ + 2 /* <> */ + children_inline.len() + 3 /* </>; */;
+                if total_len <= 120 && !children_inline.contains('\n') {
+                    output.push_str(&format!(
+                        "{indent}{decl_keyword}{lvalue_name} = <>{children_inline}</>;\n"
+                    ));
+                } else {
+                    output.push_str(&format!("{indent}{decl_keyword}{lvalue_name} = (\n"));
+                    output.push_str(&format!("{indent}  <>\n"));
+                    for child in &resolved_children {
+                        let child_str = jsx_child_str(child);
+                        output.push_str(&format!("{indent}    {child_str}\n"));
+                    }
+                    output.push_str(&format!("{indent}  </>\n"));
+                    output.push_str(&format!("{indent});\n"));
+                }
             }
         }
         InstructionValue::ObjectExpression { properties } => {

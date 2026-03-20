@@ -9,12 +9,7 @@ function Card(t0) {
   let { title, children } = t0;
   let t13;
   if ($[0] !== children || $[1] !== title) {
-    t13 = (
-      <div className="card">
-        <h3>{title}</h3>
-        <div className="body">{children}</div>
-      </div>
-    );
+    t13 = <div className="card"><h3>{title}</h3><div className="body">{children}</div></div>;
     $[0] = children;
     $[1] = title;
     $[2] = t13;

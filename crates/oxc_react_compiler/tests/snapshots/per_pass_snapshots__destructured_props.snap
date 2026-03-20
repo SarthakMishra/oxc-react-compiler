@@ -10,13 +10,7 @@ function UserCard(t0) {
   if (role === undefined) { role = "member"; }
   let t18;
   if ($[0] !== age || $[1] !== name || $[2] !== role) {
-    t18 = (
-      <div>
-        <h2>{name}</h2>
-        <p>Age: {age}</p>
-        <p>Role: {role}</p>
-      </div>
-    );
+    t18 = <div><h2>{name}</h2><p>Age: {age}</p><p>Role: {role}</p></div>;
     $[0] = age;
     $[1] = name;
     $[2] = role;

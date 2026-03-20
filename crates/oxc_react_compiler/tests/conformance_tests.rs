@@ -485,6 +485,8 @@ struct FixtureResult {
     expected_slots: u32,
     /// First diff context (for debugging): "our_token | expected_token @ position"
     first_diff: String,
+    /// Total number of differing tokens (for "how close" analysis).
+    total_diffs: usize,
     /// First diagnostic/error message (for bail-out categorization).
     first_error: String,
 }
@@ -708,6 +710,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
             our_slots: 0,
             expected_slots: 0,
             first_diff: String::new(),
+            total_diffs: 0,
             first_error: String::new(),
         };
     };
@@ -727,6 +730,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
             let our_transformed = compile_result.transformed;
             let our_slots = count_slots(&compile_result.code);
             let mut first_diff = String::new();
+            let mut total_diffs: usize = 0;
             let (matches_expected, expected_has_memo, expected_slots) = if expected_path.exists() {
                 let expected = std::fs::read_to_string(&expected_path).unwrap_or_default();
                 let exp_has_memo = expected.contains("_c(");
@@ -759,12 +763,16 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                     let our_tokens = tokenize(&our_normalized);
                     let expected_tokens = tokenize(&expected_normalized);
                     let matches = our_tokens == expected_tokens;
-                    let first_diff_str = if matches {
-                        String::new()
+                    let (first_diff_str, total_diff_count) = if matches {
+                        (String::new(), 0)
                     } else {
-                        find_first_diff(&our_tokens, &expected_tokens)
+                        (
+                            find_first_diff(&our_tokens, &expected_tokens),
+                            count_total_diffs(&our_tokens, &expected_tokens),
+                        )
                     };
                     first_diff = first_diff_str;
+                    total_diffs = total_diff_count;
                     (Some(matches), exp_has_memo, exp_slots)
                 }
             } else {
@@ -787,6 +795,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
                 our_slots,
                 expected_slots,
                 first_diff,
+                total_diffs,
                 first_error,
             }
         }
@@ -799,6 +808,7 @@ fn run_fixture(fixture_path: &Path, fixtures_dir: &Path) -> FixtureResult {
             our_slots: 0,
             expected_slots: 0,
             first_diff: String::new(),
+            total_diffs: 0,
             first_error: String::new(),
             known_failure: false,
             _diagnostic_count: 0,
@@ -821,6 +831,21 @@ fn find_first_diff(ours: &[String], expected: &[String]) -> String {
         return format!("len: ours={} exp={}", ours.len(), expected.len());
     }
     String::new()
+}
+
+/// Count the total number of differing tokens between two token lists.
+/// Uses a simple LCS-like approach: count positions where tokens differ.
+fn count_total_diffs(ours: &[String], expected: &[String]) -> usize {
+    let mut diffs = 0;
+    let min_len = ours.len().min(expected.len());
+    for i in 0..min_len {
+        if ours[i] != expected[i] {
+            diffs += 1;
+        }
+    }
+    // Extra tokens on either side count as diffs
+    diffs += ours.len().abs_diff(expected.len());
+    diffs
 }
 
 /// Count total memoization slots in code (sum of all _c(N) arguments).
@@ -1169,7 +1194,10 @@ fn upstream_conformance() {
         for r in &known_diverged {
             let we_memo = r.our_transformed && r.our_slots > 0;
             if we_memo && r.expected_has_memo && r.our_slots == r.expected_slots {
-                println!("  [{} slots] {} | {}", r.our_slots, r.relative_path, r.first_diff);
+                println!(
+                    "  [{} slots, {} diffs] {} | {}",
+                    r.our_slots, r.total_diffs, r.relative_path, r.first_diff
+                );
             }
         }
         println!();

@@ -547,7 +547,6 @@ jsx-local-memberexpr-tag.js
 jsx-local-tag-in-lambda.js
 jsx-lowercase-localvar-memberexpr-in-lambda.jsx
 jsx-lowercase-localvar-memberexpr.jsx
-jsx-lowercase-memberexpr.jsx
 jsx-memberexpr-tag-in-lambda.js
 jsx-outlining-child-stored-in-id.js
 jsx-outlining-dup-key-diff-value.js
@@ -602,7 +601,6 @@ method-call-fn-call.js
 method-call.js
 mixedreadonly-mutating-map.js
 module-scoped-bindings.js
-multi-directive.js
 multiple-calls-to-hoisted-callback-from-other-callback.js
 mutable-lifetime-loops.js
 mutable-lifetime-with-aliasing.js
@@ -1248,7 +1246,6 @@ update-expression.ts
 update-global-in-callback.tsx
 use-callback-simple.js
 use-effect-cleanup-reassigns.js
-use-memo-simple.js
 use-operator-call-expression.js
 use-operator-conditional.js
 use-operator-method-call.js
