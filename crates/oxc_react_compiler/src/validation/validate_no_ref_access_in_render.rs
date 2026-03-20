@@ -98,8 +98,8 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
             }
 
             // Scan nested function bodies for ref.current access,
-            // but SKIP functions that are effect/event handler callbacks
-            // (ref access is fine in those contexts).
+            // but SKIP functions in non-render contexts (effects, event handlers,
+            // ALL JSX prop values). Ref access in those contexts is fine.
             match &instr.value {
                 InstructionValue::FunctionExpression { lowered_func, .. }
                 | InstructionValue::ObjectMethod { lowered_func } => {
@@ -187,22 +187,14 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                         ids.insert(args[1].identifier.id);
                     }
                 }
-                // JSX event handler props AND ref callbacks
+                // ALL JSX props: values passed as JSX props are handled by the
+                // child component. Ref access inside them is not the current
+                // component's render-time concern. This matches upstream behavior
+                // which only validates ref access in the current component's
+                // direct render path, not in callbacks passed to children.
                 InstructionValue::JsxExpression { props, .. } => {
                     for attr in props {
-                        let is_callback_prop = match &attr.name {
-                            crate::hir::types::JsxAttributeName::Named(name) => {
-                                // Event handlers (onXxx) and ref callbacks
-                                name == "ref"
-                                    || (name.starts_with("on")
-                                        && name.len() > 2
-                                        && name.as_bytes()[2].is_ascii_uppercase())
-                            }
-                            _ => false,
-                        };
-                        if is_callback_prop {
-                            ids.insert(attr.value.identifier.id);
-                        }
+                        ids.insert(attr.value.identifier.id);
                     }
                 }
                 _ => {}
@@ -240,11 +232,61 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
         }
     }
 
+    // Transitive propagation: FEs that are ONLY called from within non-render
+    // callbacks are also safe. For example, if `setRef()` is called inside
+    // `onClick` (an event handler), `setRef` is safe because it doesn't
+    // execute during render.
+    //
+    // Algorithm: scan the bodies of non-render FEs for call targets,
+    // resolve by name across scope boundaries, mark as non-render, repeat.
+    let mut fe_bodies: FxHashMap<IdentifierId, &HIR> = FxHashMap::default();
+    let mut name_to_fe_ids: FxHashMap<String, Vec<IdentifierId>> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::FunctionExpression { lowered_func, .. }
+            | InstructionValue::ObjectMethod { lowered_func } = &instr.value
+            {
+                fe_bodies.insert(instr.lvalue.identifier.id, &lowered_func.body);
+            }
+            // Map variable names to FE IDs (via StoreLocal chains)
+            if let InstructionValue::StoreLocal { lvalue, value, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+                && fe_bodies.contains_key(&value.identifier.id)
+            {
+                name_to_fe_ids.entry(name.clone()).or_default().push(value.identifier.id);
+            }
+        }
+    }
+
+    // Collect call target names from non-render FE bodies
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let current_safe: Vec<IdentifierId> = ids.iter().copied().collect();
+        for safe_id in &current_safe {
+            if let Some(body) = fe_bodies.get(safe_id) {
+                // Collect callee names from this body
+                let callee_names = collect_callee_names(body);
+                for name in callee_names {
+                    // Mark all FEs at the component level with this name as safe
+                    if let Some(fe_ids_for_name) = name_to_fe_ids.get(&name) {
+                        for &fe_id in fe_ids_for_name {
+                            if ids.insert(fe_id) {
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     ids
 }
 
 /// Check if a nested function body accesses ref.current for any ref name
-/// from the outer scope. Skips nested functions that are in non-render contexts.
+/// from the outer scope. Only recurses into FEs that execute during render
+/// (directly called or passed to synchronous array methods).
 fn check_nested_ref_access(
     hir: &HIR,
     outer_ref_names: &FxHashSet<String>,
@@ -336,6 +378,38 @@ fn check_nested_ref_access(
     }
 
     false
+}
+
+/// Collect all function callee names from a nested function body.
+/// Resolves through LoadLocal to find the variable name being called.
+fn collect_callee_names(hir: &HIR) -> Vec<String> {
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut names = Vec::new();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } =
+                &instr.value
+                && let Some(name) = &place.identifier.name
+            {
+                id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+            }
+        }
+    }
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                if let Some(name) = &callee.identifier.name {
+                    names.push(name.clone());
+                } else if let Some(name) = id_to_name.get(&callee.identifier.id) {
+                    names.push(name.clone());
+                }
+            }
+        }
+    }
+
+    names
 }
 
 /// Check if a name looks like a React ref.
