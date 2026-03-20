@@ -1,6 +1,7 @@
 pub mod assert_valid_mutable_ranges;
 pub mod assert_well_formed_break_targets;
 pub mod drop_manual_memoization;
+pub mod function_context;
 pub mod validate_blocklisted_imports;
 pub mod validate_context_variable_lvalues;
 pub mod validate_exhaustive_dependencies;
