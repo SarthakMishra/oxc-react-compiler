@@ -48,16 +48,8 @@ Only 4 of the 34 have the `} ; const t0` post-scope rename pattern. The other 30
 
 ---
 
-## Gap 16: Optional Chaining in Codegen (15 fixtures)
+## Gap 16: Optional Chaining — PARTIALLY DONE
 
-**Priority:** P2 — 15 conformance fixtures diverge
+**Progress:** Added `optional: bool` to `CallExpression`, `PropertyLoad`, `ComputedLoad`. Added dual flags to `MethodCall` (`optional` for `x.method?.()`, `optional_receiver` for `x?.method()`). Propagated from OXC AST. Codegen emits `?.` in both main path and inline expression builder. Result: +6 conformance.
 
-**Current state:** Our HIR doesn't carry an `optional: bool` flag on `CallExpression`, `MethodCall`, or `PropertyLoad`. So `foo?.bar` is emitted as `foo.bar` and `foo?.(args)` is emitted as `foo(args)`.
-
-**What's needed:**
-- Add `optional: bool` to `CallExpression`, `MethodCall`, `PropertyLoad`, and `ComputedLoad` in HIR types
-- Propagate the optional flag from OXC AST during HIR building
-- Use it in codegen to emit `?.` syntax
-
-**Upstream:** The upstream React compiler decomposes optional chains into branches but re-synthesizes `?.` in codegen output.
-**Depends on:** None (structural HIR change)
+**Remaining (9 fixtures):** These involve optional member access in scope dependency paths (e.g., `a?.b` as a reactive dependency). The `dependency_display_name` in codegen already handles `?.` for dependencies, but the remaining fixtures have mismatches in how the optional flag propagates through reactive scope dependency collection, not codegen emission.
