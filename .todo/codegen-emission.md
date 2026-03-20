@@ -1,21 +1,16 @@
 # Codegen Emission Gaps
 
-Issues in `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs` and `crates/oxc_react_compiler/src/reactive_scopes/build_reactive_function.rs`.
+Issues in `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs` and related files.
 
-Completed: Gaps 1-5, 6b, 7, 8, 9, 9b, 11, 13, 14. Remaining: Gap 6 (ternary reconstruction, P4), Gap 12 (named variable preservation), Gap 15 (1 render divergence).
+Completed: Gaps 1-5, 6b, 7, 8, 9, 9b, 11, 13, 14. Remaining: Gap 6 (ternary reconstruction, P4), Gap 12 (named variable preservation, partially fixed), Gap 15 (1 render divergence), Gap 16 (optional chaining).
 
 ---
 
 ## Gap 6: Ternary Expression Reconstruction
 
-**Priority:** P4 -- functionally correct but produces `if/else` instead of `?:` for expression-position ternaries
+**Priority:** P4 — functionally correct but produces `if/else` instead of `?:` for expression-position ternaries
 
-**Current state:** `Terminal::Ternary` is converted to `ReactiveTerminal::If` and emitted as `if/else`. This is functionally correct but diverges from upstream output form. The `result: Option<Place>` field (which indicates expression-position ternaries that should emit `test ? consequent : alternate`) is ignored.
-
-**What's needed:**
-- Preserve the `result` place when converting `Terminal::Ternary` to `ReactiveTerminal::If` (or create a `ReactiveTerminal::Ternary` variant)
-- In codegen, when a ternary has a result place, emit conditional expression form
-- When no result place (statement position), keep `if/else` form
+**Current state:** `Terminal::Ternary` is converted to `ReactiveTerminal::If` and emitted as `if/else`. The `result: Option<Place>` field is ignored.
 
 **Upstream:** `src/ReactiveScopes/CodegenReactiveFunction.ts`
 **Depends on:** None
@@ -24,28 +19,45 @@ Completed: Gaps 1-5, 6b, 7, 8, 9, 9b, 11, 13, 14. Remaining: Gap 6 (ternary reco
 
 ## Gap 12: Named Variable Preservation
 
-**Priority:** P2 -- ~80+ conformance fixtures diverge because we use temp names where upstream preserves original names
+**Priority:** P2 — ~56 remaining fixtures after Phase 106 partial fix
 
-**Current state:** Our codegen assigns temporary names (`t0`, `t1`, ...) to intermediate values. The upstream compiler preserves original variable names from the source when possible (e.g., `const x = ...` instead of `const t0 = ...`). After normalization, temp names are canonicalized, but the divergence appears when the expected output uses a named variable and we use a temp in its place.
+**Progress (Phase 106):** Added `is_last_assignment_in_scope` check to `can_rename_scope_decl` in `prune_scopes.rs`. This prevents `rename_variables` from renaming scope declaration outputs when other instructions follow the assignment in the scope body. Result: +8 conformance.
+
+**Remaining (~56 fixtures):** The `rename_variables` pass now correctly handles scope-level naming, but many temp names come from:
+1. Function expression intermediaries (codegen inlines function expressions through temps)
+2. Codegen temp allocation for expressions that upstream assigns to named variables
+3. The `promote_used_temporaries` pass assigning `tN` names to unnamed temps
 
 **What's needed:**
-- Investigate how upstream `CodegenReactiveFunction.ts` decides when to use original names vs temps
-- Preserve the original identifier name from the HIR when emitting declarations
-- Likely requires carrying the original name through the reactive scope tree
+- Further study of upstream's `CodegenReactiveFunction.ts` naming logic
+- Broader changes to how codegen handles intermediate values
 
 **Upstream:** `src/ReactiveScopes/CodegenReactiveFunction.ts`
-**Depends on:** None
 
 ---
 
 ## Gap 15: Remaining Render Divergence (1 fixture)
 
-**Priority:** P3 -- minor visual difference in E2E benchmark
+**Priority:** P3 — last render correctness gap
 
-**Current state:** 1 of 25 benchmark fixtures shows render divergence (down from 3). The 24/25 render equivalence rate (96%) represents significant progress. The remaining fixture likely has a scope/memoization root cause rather than a pure codegen bug.
+**Current state:** canvas-sidebar (1/25 benchmark fixtures) shows render divergence. Phase 101 notes "9 undeclared temps" as the symptom.
 
 **What's needed:**
-- Identify which fixture still diverges and diff OXC vs Babel compiled output
-- Likely a symptom of scope inference issues rather than codegen
+- Diff OXC vs Babel compiled output for canvas-sidebar
+- Fix declaration collection in `codegen.rs`
 
-**Depends on:** Possibly scope inference fixes (Gap 7/11 in scope-inference.md)
+---
+
+## Gap 16: Optional Chaining in Codegen (15 fixtures)
+
+**Priority:** P2 — 15 conformance fixtures diverge
+
+**Current state:** Our HIR doesn't carry an `optional: bool` flag on `CallExpression`, `MethodCall`, or `PropertyLoad`. So `foo?.bar` is emitted as `foo.bar` and `foo?.(args)` is emitted as `foo(args)`.
+
+**What's needed:**
+- Add `optional: bool` to `CallExpression`, `MethodCall`, `PropertyLoad`, and `ComputedLoad` in HIR types
+- Propagate the optional flag from OXC AST during HIR building
+- Use it in codegen to emit `?.` syntax
+
+**Upstream:** The upstream React compiler decomposes optional chains into branches but re-synthesizes `?.` in codegen output.
+**Depends on:** None (structural HIR change)
