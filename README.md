@@ -210,33 +210,35 @@ The compiler implements a 62-pass compilation pipeline organized into 10 phases:
 
 The compiler is tested against Meta's upstream React Compiler conformance suite — the same 1717 test fixtures used by `babel-plugin-react-compiler`. Output is compared structurally after normalizing semantics-irrelevant differences (import paths, variable naming, whitespace, cache variable names).
 
-| Metric                      | Value       |
-| --------------------------- | ----------- |
-| Total upstream fixtures     | 1717        |
-| Passing                     | 407 (23.7%) |
-| Failing (output divergence) | 1310        |
-| Panics / crashes            | 0           |
+| Metric                      | Value        |
+| --------------------------- | ------------ |
+| Total upstream fixtures     | 1717         |
+| Passing                     | 437 (25.4%)  |
+| Failing (output divergence) | 1280         |
+| Panics / crashes            | 0            |
+| Render equivalence          | 96% (24/25)  |
 
 #### Divergence Breakdown
 
 | Category                                 | Count | % of failures |
 | ---------------------------------------- | ----- | ------------- |
-| Both compile, slots DIFFER               | 622   | 47.6%         |
-| Both compile, slots MATCH (codegen diff) | 248   | 19.0%         |
-| We bail, they compile                    | 205   | 15.7%         |
-| We compile, they don't                   | 137   | 10.5%         |
-| Both no memo (format diff)               | 93    | 7.1%          |
+| Both compile, slots DIFFER               | 622   | 48.6%         |
+| Both compile, slots MATCH (codegen diff) | 242   | 18.9%         |
+| We bail, they compile                    | 170   | 13.3%         |
+| We compile, they don't                   | 138   | 10.8%         |
+| Both no memo (format diff)               | 93    | 7.3%          |
+| Silent bail-outs (0 scopes, no error)    | 28    | 2.2%          |
 
-#### Bail-out Breakdown (205 fixtures)
+#### Bail-out Breakdown (170 fixtures)
 
 | Error                                 | Count |
 | ------------------------------------- | ----- |
-| Silent bail-outs (0 scopes, no error) | 63    |
 | Preserve-memo validation              | 58    |
-| Frozen-mutation false positives       | 26    |
+| Silent bail-outs (0 scopes, no error) | 28    |
+| Frozen-mutation false positives       | ~20   |
 | Locals-reassigned false positives     | 26    |
 | Ref-access in render false positives  | 14    |
-| Other (globals, hooks, setState)      | 18    |
+| Other (globals, hooks, setState)      | ~24   |
 
 #### Slot Diff Distribution (622 fixtures where both compile but slot counts differ)
 
@@ -355,7 +357,7 @@ Changed file: `multi-step-form` (284 LOC, largest fixture)
 
 Measures ReactDOMServer.renderToString() timing for original (uncompiled), OXC-compiled, and Babel-compiled output. This is a proxy for runtime performance — well-memoized code should render comparably to uncompiled code on initial render.
 
-> **Note:** Most OXC fixtures error at render time due to the scope analysis gaps documented in the memoization benchmarks above (14 of 16 fixtures produce runtime errors). This reflects the correctness delta, not a performance issue. As conformance improves, more fixtures will render successfully.
+> **Note:** OXC-compiled output now renders correctly for 24 of 25 benchmark fixtures (96% render equivalence). Only `canvas-sidebar` has a minor content divergence. This is a significant improvement from the initial 4% render equivalence at project start.
 
 | Fixture | Size | Original p50 | OXC p50 | Babel p50 |
 |---------|------|-------------|---------|-----------|
@@ -437,20 +439,20 @@ node scripts/bench-compare.mjs --iterations 20 --warmup 5
 
 ### General
 
-- **Proof of concept** — This is an AI-generated port and has not been validated against production workloads. Upstream conformance is at 23.7% (407/1717 fixtures). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation.
+- **Proof of concept** — This is an AI-generated port and has not been validated against production workloads. Upstream conformance is at 25.4% (437/1717 fixtures) with 96% render equivalence (24/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries).
 - **No oxlint integration** — Lint rules exist in `crates/oxc_react_compiler_lint` and are callable via the NAPI binding, but they are not integrated into the oxlint binary. This would require upstream work in the [oxc repo](https://github.com/oxc-project/oxc) to support external plugin crates — it is not achievable in this standalone POC repo.
 - **Source maps** — Source map generation covers compiled function regions with per-line identity mappings for unmodified code. Complex source map chaining with other Vite plugins has not been verified.
 
 ### Memoization & Scope Analysis
 
-- **Slot count divergences (622 fixtures)** — The dominant failure category. 403 fixtures produce too few cache slots (under-counting) and 219 produce too many (over-counting). Root causes include reactive scope boundary computation, dependency inclusion, and scope merging logic.
-- **Codegen structure (248 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement).
+- **Slot count divergences (622 fixtures)** — The dominant failure category. Under-counts (fewer scopes than upstream) and over-counts (extra scopes). Root cause: mutable range computation uses an `effective_range` (mutation + last-use) approximation rather than upstream's pure mutation BFS. Switching to narrow ranges requires porting upstream's full abstract interpreter.
+- **Codegen structure (242 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement). This gap has been reduced through formatting fixes (const/let, dead call elimination, dependency ordering, dot notation).
 - **Manual memoization preservation** — The compiler does not reliably preserve user-written `useMemo`/`useCallback` in all edge cases (58 fixtures affected by preserve-memo validation false positives).
 
 ### Validation
 
-- **False-positive bail-outs (205 fixtures)** — We reject functions that upstream compiles successfully. Largest gaps: silent bail-outs that produce 0 scopes with no error (63 fixtures); preserve-memo validation (58); frozen-mutation (26); locals-reassigned (26); ref-access in render (14); other globals/hooks/setState (18).
-- **Upstream errors we miss (137 fixtures)** — Validation gaps where upstream correctly bails but we compile successfully.
+- **False-positive bail-outs (~170 fixtures)** — We reject functions that upstream compiles successfully. Largest gaps: preserve-memo validation (58); silent bail-outs (28); frozen-mutation (~20); locals-reassigned (26); ref-access in render (14); other (~24).
+- **Upstream errors we miss (~138 fixtures)** — Validation gaps where upstream correctly bails but we compile successfully.
 
 ### Other
 

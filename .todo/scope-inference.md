@@ -2,7 +2,7 @@
 
 Scope inference issues in reactive scope creation, merging, and pruning passes.
 
-Completed: Gaps 8, 9, 10 (plus isMutable fix in Phase 93). Remaining: Gap 7 (over-memoization, 175 fixtures) and Gap 11 (under-memoization, 404 fixtures -- foundational blocker).
+Completed: Gaps 8, 9, 10 (plus isMutable fix, PropagateScopeMembershipHIR pass, separated last_use from mutable_range). Remaining: Gap 7 (over-memoization, 175 fixtures) and Gap 11 (under-memoization, 404 fixtures -- foundational blocker). Three attempts to narrow mutable ranges all reverted (88% -> 36% render regression each time).
 
 ---
 

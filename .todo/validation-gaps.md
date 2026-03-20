@@ -2,7 +2,7 @@
 
 These issues reduce conformance coverage but do not break the core compilation pipeline for patterns we do handle.
 
-**Status summary:** Gap 5a is BLOCKED on scope inference (proven by reverted attempt). Gaps 5b-5e are independently addressable validation audits. Gap 6 (silent bail-outs) is mostly HIR lowering gaps, also independently addressable.
+**Status summary:** Gap 5a is BLOCKED on scope inference (proven by reverted attempt). Gaps 5b-5e are independently addressable validation audits. Gap 6 (silent bail-outs) reduced from 63 to 28 via triage and fixes.
 
 ---
 
@@ -24,15 +24,15 @@ These issues reduce conformance coverage but do not break the core compilation p
 
 ---
 
-## Gap 5b: False "Frozen Mutation" Errors (26 fixtures)
+## Gap 5b: False "Frozen Mutation" Errors (~20 fixtures)
 
 **Priority:** P2
 
-**Current state:** 26 fixtures fail with false `This value cannot be modified` errors. Recent fix in `ca2374d` (SSA-versioned keys) may have addressed some but likely not all.
+**Current state:** Down from 26 to ~20 fixtures after hardening in this session. Recent fixes: SSA-versioned keys for tracking (`ca2374d`), IIFE detection exemption, PrefixUpdate exemption, effect/callback hook lambda exemptions.
 
 **What's needed:**
 - Audit remaining false positives against upstream `ValidateFrozenValues`
-- Check if mutable range computation is too narrow
+- Check if mutable range computation is still too narrow for remaining cases
 
 **Upstream:** `src/Validation/ValidateFrozenValues.ts`
 **Depends on:** None
@@ -85,17 +85,14 @@ These issues reduce conformance coverage but do not break the core compilation p
 
 ---
 
-## Gap 6: Silent Bail-outs (63 fixtures)
+## Gap 6: Silent Bail-outs (28 fixtures)
 
 **Priority:** P2
 
-**Current state:** 63 conformance fixtures produce compiled output but with 0 reactive scopes and no error message, while upstream successfully compiles them with memoization. Categories likely include:
-- Try/catch blocks not fully lowered into HIR
-- Sequence expressions (comma operator) not handled
-- Other HIR lowering gaps
+**Current state:** Reduced from 63 to 28 via triage and fixes this session. These 28 conformance fixtures produce compiled output but with 0 reactive scopes and no error message, while upstream successfully compiles them with memoization.
 
 **What's needed:**
-- Categorize the 63 silent failures by looking at the input patterns
-- Fix the most common HIR lowering gap first
+- Categorize the remaining 28 silent failures by input patterns
+- Fix the most common remaining HIR lowering gap
 
 **Depends on:** None

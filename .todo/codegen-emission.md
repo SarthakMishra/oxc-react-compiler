@@ -2,19 +2,9 @@
 
 Issues in `crates/oxc_react_compiler/src/reactive_scopes/codegen.rs` and `crates/oxc_react_compiler/src/reactive_scopes/build_reactive_function.rs`.
 
-Completed: Gaps 1-5, 6b, 7, 8, 9, 11, 13, 14, fixture bugs. Remaining: Gap 6 (ternary reconstruction), Gap 12 (named variable preservation), Gap 15 (3 render divergences).
+Completed: Gaps 1-5, 6b, 7, 8, 9, 9b, 11, 13, 14. Remaining: Gap 6 (ternary reconstruction, P4), Gap 12 (named variable preservation), Gap 15 (1 render divergence).
 
 ---
-
-## Gap 1: Duplicate Declarations in `codegen_scope` -- COMPLETED
-
-## Gap 2: Hook Destructuring Codegen -- COMPLETED
-
-## Gap 3: Variable Ordering / Use-Before-Declare -- COMPLETED
-
-## Gap 4: Assignment vs Re-declaration -- COMPLETED
-
-## Gap 5: Logical Expression Flattening -- COMPLETED
 
 ## Gap 6: Ternary Expression Reconstruction
 
@@ -32,27 +22,9 @@ Completed: Gaps 1-5, 6b, 7, 8, 9, 11, 13, 14, fixture bugs. Remaining: Gap 6 (te
 
 ---
 
-## Gap 6b: ForOf/ForIn Loop Codegen -- COMPLETED
-
-## Gap 7: availability-schedule Arithmetic -- COMPLETED
-
-## Gap 8: canvas-sidebar Missing Return -- COMPLETED
-
-## Gap 9b: booking-list localeCompare -- COMPLETED (fixture bug)
-
----
-
-## Gap 11: Destructuring Pattern Codegen ✅
-
-~~**Priority:** P1 -- 43 conformance fixtures diverge because we emit member access instead of destructuring~~
-
-**Completed**: Declaration ordering fix implemented -- scope declarations now sorted by source location for deterministic slot ordering. Commit `8447035`. +5 conformance fixtures.
-
----
-
 ## Gap 12: Named Variable Preservation
 
-**Priority:** P1 -- ~80+ conformance fixtures diverge because we use temp names where upstream preserves original names
+**Priority:** P2 -- ~80+ conformance fixtures diverge because we use temp names where upstream preserves original names
 
 **Current state:** Our codegen assigns temporary names (`t0`, `t1`, ...) to intermediate values. The upstream compiler preserves original variable names from the source when possible (e.g., `const x = ...` instead of `const t0 = ...`). After normalization, temp names are canonicalized, but the divergence appears when the expected output uses a named variable and we use a temp in its place.
 
@@ -66,33 +38,14 @@ Completed: Gaps 1-5, 6b, 7, 8, 9, 11, 13, 14, fixture bugs. Remaining: Gap 6 (te
 
 ---
 
-## Gap 13: Async/Generator Function Emission ✅
+## Gap 15: Remaining Render Divergence (1 fixture)
 
-~~**Priority:** P2 -- ~1 fixture diverges because we drop `async` keyword~~
+**Priority:** P3 -- minor visual difference in E2E benchmark
 
-**Completed**: Async and generator keywords now emitted on top-level function declarations. Commit `565d39e`.
-
----
-
-## Gap 14: Known-Failures Housekeeping ✅
-
-~~**Priority:** P1 -- quick win~~
-
-**Completed**: Known-failures.txt updated in commit `98aae43`. Also supported `@expectNothingCompiled` directive in `02e64b9`.
-
----
-
-## Gap 15: Remaining Render Divergences (3 fixtures)
-
-**Priority:** P3 -- minor visual differences in E2E benchmarks
-
-**Current state:** 3 of 25 benchmark fixtures show `semantic_divergence`:
-1. **command-menu**: Active item class styling differs (likely conditional logic in compiled output)
-2. **canvas-sidebar**: Minor content differences (possibly JSX text whitespace edge case)
-3. **multi-step-form**: Shows "0/0 fields" instead of "0/1 fields" (field count logic difference)
+**Current state:** 1 of 25 benchmark fixtures shows render divergence (down from 3). The 24/25 render equivalence rate (96%) represents significant progress. The remaining fixture likely has a scope/memoization root cause rather than a pure codegen bug.
 
 **What's needed:**
-- Diff the OXC vs Babel compiled output for each to find the specific codegen difference
-- These are likely symptoms of scope/memoization issues rather than pure codegen bugs
+- Identify which fixture still diverges and diff OXC vs Babel compiled output
+- Likely a symptom of scope inference issues rather than codegen
 
 **Depends on:** Possibly scope inference fixes (Gap 7/11 in scope-inference.md)
