@@ -1428,6 +1428,8 @@ fn scan_max_in_block(block: &ReactiveBlock, max: &mut u32) {
 /// - It is a reassignment of an outer-scope variable
 /// - It is MUTATED inside the scope (PropertyStore, ComputedStore, MethodCall,
 ///   PrefixUpdate, PostfixUpdate — these modify the value's properties/state)
+/// - There are other instructions in the scope body AFTER the variable's
+///   assignment (upstream keeps original names in complex scope bodies)
 ///
 /// PropertyLoad reads (e.g., `x.b`) do NOT prevent renaming — they're
 /// scope-internal property access, and upstream renames regardless.
@@ -1446,7 +1448,36 @@ fn can_rename_scope_decl(name: &str, scope_body: &ReactiveBlock) -> bool {
     // `read_count` tracks mutations (PropertyStore, MethodCall, etc.) and
     // other meaningful uses (function args, return values).
     // With named lvalues, `lvalue_count` tracks writes (StoreLocal).
-    !is_reassign && lvalue_count <= 1 && read_count == 0
+    if is_reassign || lvalue_count > 1 || read_count > 0 {
+        return false;
+    }
+    // Upstream only renames when the variable's assignment is the last
+    // meaningful instruction in the scope body. If there are other
+    // instructions after it (even if they don't reference this variable),
+    // upstream keeps the original name.
+    is_last_assignment_in_scope(name, scope_body)
+}
+
+/// Check if the named variable's assignment is the last meaningful instruction
+/// in the scope body (no other instructions follow it at the top level).
+fn is_last_assignment_in_scope(name: &str, scope_body: &ReactiveBlock) -> bool {
+    let mut found_assignment = false;
+    for instr in &scope_body.instructions {
+        if found_assignment {
+            // There's an instruction after the assignment — don't rename
+            return false;
+        }
+        if let ReactiveInstruction::Instruction(i) = instr
+            && i.lvalue.identifier.name.as_deref() == Some(name)
+            && !matches!(
+                i.value,
+                InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. }
+            )
+        {
+            found_assignment = true;
+        }
+    }
+    found_assignment
 }
 
 fn check_rename_eligibility(

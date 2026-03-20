@@ -5,14 +5,10 @@
 # Format: <relative-path-from-upstream-fixtures/>
 # Known upstream fixtures that our compiler does not yet match.
 # One fixture filename per line. Lines starting with '#' are comments.
-alias-capture-in-method-receiver-and-mutate.js
 alias-capture-in-method-receiver.js
-alias-computed-load.js
-alias-nested-member-path-mutate.js
 alias-nested-member-path.js
 alias-while.js
 aliased-nested-scope-fn-expr.tsx
-aliased-nested-scope-truncated-dep.tsx
 align-scope-starts-within-cond.ts
 align-scopes-iife-return-modified-later-logical.ts
 align-scopes-nested-block-structure.ts
@@ -50,8 +46,6 @@ allow-ref-type-cast-in-render.js
 array-access-assignment.js
 array-at-closure.js
 array-at-effect.js
-array-at-mutate-after-capture.js
-array-concat-should-capture.ts
 array-from-arg1-captures-arg0.js
 array-from-captures-arg0.js
 array-from-maybemutates-arg0.js
@@ -68,12 +62,10 @@ array-pattern-spread-creates-array.js
 array-properties.js
 array-property-call.js
 array-push-effect.js
-array-spread-later-mutated.js
 arrow-expr-directive.js
 arrow-function-one-line-directive.js
 assignment-expression-computed.js
 assignment-in-nested-if.js
-assignment-variations-complex-lvalue-array.js
 assignment-variations.js
 await-side-effecting-promise.js
 await.js
@@ -162,7 +154,6 @@ component.js
 computed-call-evaluation-order.js
 computed-call-spread.js
 computed-load-primitive-as-dependency.js
-computed-store-alias.js
 concise-arrow-expr.js
 conditional-break-labeled.js
 conditional-early-return.js
@@ -542,11 +533,9 @@ invalid-useMemo-return-empty.js
 inverted-if-else.js
 inverted-if.js
 issue852.js
-issue933-disjoint-set-infinite-loop.js
 jsx-attribute-with-jsx-element-value.js
 jsx-attribute-with-jsx-fragment-value.flow.js
 jsx-fragment.js
-jsx-freeze.js
 jsx-local-memberexpr-tag-conditional.js
 jsx-local-memberexpr-tag.js
 jsx-local-tag-in-lambda.js
@@ -596,7 +585,6 @@ merge-consecutive-nested-scopes.js
 merge-consecutive-scopes-deps-subset-of-decls.js
 merge-consecutive-scopes-objects.js
 merge-consecutive-scopes.js
-merge-nested-scopes-with-same-inputs.js
 meta-isms/repro-cx-assigned-to-temporary.js
 meta-isms/repro-cx-namespace-assigned-to-temporary.js
 meta-isms/repro-cx-namespace-nesting.js
@@ -611,8 +599,6 @@ mutable-lifetime-with-aliasing.js
 mutable-liverange-loop.js
 mutate-captured-arg-separately.js
 mutate-outer-scope-within-value-block.ts
-mutation-during-jsx-construction.js
-mutation-within-capture-and-mutablerange.tsx
 mutation-within-jsx-and-break.tsx
 mutation-within-jsx.tsx
 name-anonymous-functions-outline.js
@@ -624,7 +610,6 @@ nested-optional-member-expr.js
 nested-scopes-begin-same-instr-valueblock.ts
 nested-scopes-hook-call.js
 new-does-not-mutate-class.ts
-new-mutability/aliased-nested-scope-truncated-dep.tsx
 new-mutability/array-filter.js
 new-mutability/array-map-captures-receiver-noAlias.js
 new-mutability/array-map-named-callback-cross-context.js
@@ -645,7 +630,6 @@ new-mutability/mutate-through-identity-function-expression.js
 new-mutability/mutate-through-identity.js
 new-mutability/mutate-through-propertyload.js
 new-mutability/nullable-objects-assume-invoked-direct-call.js
-new-mutability/object-expression-computed-key-object-mutated-later.js
 new-mutability/object-expression-computed-member.js
 new-mutability/potential-mutation-in-function-expression.js
 new-mutability/reactive-ref.js
@@ -692,13 +676,10 @@ object-expression-captures-function-with-global-mutation.js
 object-expression-computed-key-constant-number.js
 object-expression-computed-key-constant-string.js
 object-expression-computed-key-modified-during-after-construction-sequence-expr.js
-object-expression-computed-key-modified-during-after-construction.js
 object-expression-computed-key-mutate-key-while-constructing-object.js
 object-expression-computed-key-non-reactive.js
-object-expression-computed-key-object-mutated-later.js
 object-expression-computed-key.js
 object-expression-computed-member.js
-object-expression-member-expr-call.js
 object-keys.js
 object-literal-method-call-in-ternary-test.js
 object-literal-method-derived-in-ternary-consequent.js
@@ -907,10 +888,8 @@ reactive-control-dependency-while-test.js
 reactive-dependencies-non-optional-properties-inside-optional-chain.js
 reactive-dependency-fixpoint.js
 reactive-dependency-nonreactive-captured-with-reactive.js
-reactive-dependency-object-captured-with-reactive-mutated.js
 reactive-ref-param.tsx
 reactive-ref.tsx
-reactive-scope-grouping.js
 reactive-scopes-if.js
 reactive-scopes.js
 reactivity-analysis-interleaved-reactivity.js
@@ -1119,11 +1098,6 @@ ssa-property-alias-alias-mutate-if.js
 ssa-property-alias-if.js
 ssa-property-alias-mutate-if.js
 ssa-property-alias-mutate-inside-if.js
-ssa-property-alias-mutate.js
-ssa-property-call.js
-ssa-property-mutate-2.js
-ssa-property-mutate-alias.js
-ssa-property-mutate.js
 ssa-reassign-in-rval.js
 ssa-reassign.js
 ssa-renaming-ternary-destruction-with-mutation.js
@@ -1151,8 +1125,6 @@ ssr/ssr-infer-event-handlers-from-setState.js
 ssr/ssr-infer-event-handlers-from-startTransition.js
 ssr/ssr-use-reducer-initializer.js
 ssr/ssr-use-reducer.js
-store-via-call.js
-store-via-new.js
 switch-non-final-default.js
 switch-with-fallthrough.js
 switch-with-only-default.js
@@ -1172,7 +1144,6 @@ todo-optional-call-chain-in-optional.ts
 todo.memoize-loops-that-produce-memoizeable-values.js
 todo.unnecessary-lambda-memoization.js
 transitive-alias-fields.js
-transitive-freeze-array.js
 transitive-freeze-function-expressions.js
 try-catch-alias-try-values.js
 try-catch-empty-try.js
