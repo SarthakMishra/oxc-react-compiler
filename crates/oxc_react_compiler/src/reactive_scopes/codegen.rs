@@ -704,6 +704,80 @@ fn build_inline_map(
     inline_map
 }
 
+/// Build a map of temp names → user variable names for "name promotion".
+///
+/// When a non-inlinable temp (e.g., FunctionExpression) is assigned and then
+/// immediately stored to a named variable via StoreLocal, we promote the temp's
+/// name to the user variable name. The codegen emits the temp instruction using
+/// the user name directly and skips the redundant StoreLocal.
+///
+/// Pattern: `t5 = FunctionExpression(...)` followed by `x = StoreLocal(value: t5)`
+/// → promote `t5` to `x`, skip the StoreLocal.
+fn build_name_promotion_map(
+    instructions: &[ReactiveInstruction],
+    inline_map: &InlineMap,
+) -> FxHashMap<String, String> {
+    let mut promotions: FxHashMap<String, String> = FxHashMap::default();
+
+    for window in instructions.windows(2) {
+        let (
+            ReactiveInstruction::Instruction(temp_instr),
+            ReactiveInstruction::Instruction(store_instr),
+        ) = (&window[0], &window[1])
+        else {
+            continue;
+        };
+
+        if !is_temp_place(&temp_instr.lvalue) {
+            continue;
+        }
+        let temp_name = format!("t{}", temp_instr.lvalue.identifier.id.0);
+
+        if inline_map.contains_key(&temp_name) {
+            continue;
+        }
+
+        if let InstructionValue::StoreLocal { lvalue, value, .. } = &store_instr.value
+            && let Some(n) = &lvalue.identifier.name
+            && !n.is_empty()
+            && is_temp_place(value)
+            && value.identifier.id == temp_instr.lvalue.identifier.id
+        {
+            promotions.insert(temp_name, n.clone());
+        }
+    }
+
+    promotions
+}
+
+/// Check if a StoreLocal instruction should be skipped because its value
+/// temp has been name-promoted (the temp's defining instruction will use
+/// the promoted name directly).
+fn should_skip_for_promotion(
+    instr: &crate::hir::types::Instruction,
+    promotions: &FxHashMap<String, String>,
+) -> bool {
+    if promotions.is_empty() {
+        return false;
+    }
+    if let InstructionValue::StoreLocal { value, .. } = &instr.value
+        && is_temp_place(value)
+    {
+        let temp_name = format!("t{}", value.identifier.id.0);
+        return promotions.contains_key(&temp_name);
+    }
+    false
+}
+
+/// Get the promoted name for a temp place, if one exists.
+fn get_promoted_name(place: &Place, promotions: &FxHashMap<String, String>) -> Option<String> {
+    if promotions.is_empty() || !is_temp_place(place) {
+        return None;
+    }
+    let temp_name = format!("t{}", place.identifier.id.0);
+    promotions.get(&temp_name).cloned()
+}
+
 /// Generate the RHS expression string for an inlinable instruction value,
 /// resolving any operand temps via `inline_map`.
 ///
@@ -1286,18 +1360,37 @@ fn codegen_block(
     let mut phantom = FxHashSet::default();
     collect_scope_temps_recursive(&block.instructions, &mut scope_temps, &mut phantom);
     let inline_map = build_inline_map(&block.instructions, &scope_temps, tag_constants);
+    let name_promotions = build_name_promotion_map(&block.instructions, &inline_map);
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
+                // Skip StoreLocal whose value temp has been name-promoted
+                if should_skip_for_promotion(instruction, &name_promotions) {
+                    continue;
+                }
                 let indent_str = "  ".repeat(indent);
-                codegen_instruction(
-                    instruction,
-                    output,
-                    &indent_str,
-                    declared,
-                    &inline_map,
-                    tag_constants,
-                );
+                // Apply name promotion: emit with user variable name instead of temp
+                if let Some(promoted) = get_promoted_name(&instruction.lvalue, &name_promotions) {
+                    let mut promoted_instr = instruction.clone();
+                    promoted_instr.lvalue.identifier.name = Some(promoted);
+                    codegen_instruction(
+                        &promoted_instr,
+                        output,
+                        &indent_str,
+                        declared,
+                        &inline_map,
+                        tag_constants,
+                    );
+                } else {
+                    codegen_instruction(
+                        instruction,
+                        output,
+                        &indent_str,
+                        declared,
+                        &inline_map,
+                        tag_constants,
+                    );
+                }
             }
             ReactiveInstruction::Terminal(terminal) => {
                 codegen_terminal(
@@ -1401,6 +1494,7 @@ fn codegen_block_skip_declares_and_ids(
     skip_lvalue_ids: &FxHashSet<IdentifierId>,
 ) {
     let inline_map = build_inline_map(&block.instructions, protected_names, tag_constants);
+    let name_promotions = build_name_promotion_map(&block.instructions, &inline_map);
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
@@ -1415,15 +1509,33 @@ fn codegen_block_skip_declares_and_ids(
                 if skip_lvalue_ids.contains(&instruction.lvalue.identifier.id) {
                     continue;
                 }
+                // Skip StoreLocal whose value temp has been name-promoted
+                if should_skip_for_promotion(instruction, &name_promotions) {
+                    continue;
+                }
                 let indent_str = "  ".repeat(indent);
-                codegen_instruction(
-                    instruction,
-                    output,
-                    &indent_str,
-                    declared,
-                    &inline_map,
-                    tag_constants,
-                );
+                // Apply name promotion
+                if let Some(promoted) = get_promoted_name(&instruction.lvalue, &name_promotions) {
+                    let mut promoted_instr = instruction.clone();
+                    promoted_instr.lvalue.identifier.name = Some(promoted);
+                    codegen_instruction(
+                        &promoted_instr,
+                        output,
+                        &indent_str,
+                        declared,
+                        &inline_map,
+                        tag_constants,
+                    );
+                } else {
+                    codegen_instruction(
+                        instruction,
+                        output,
+                        &indent_str,
+                        declared,
+                        &inline_map,
+                        tag_constants,
+                    );
+                }
             }
             ReactiveInstruction::Terminal(terminal) => {
                 codegen_terminal(

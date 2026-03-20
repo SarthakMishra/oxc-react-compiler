@@ -12,10 +12,9 @@ function useToggle(initial) {
   let setValue;
   ([value, setValue] = t4);
   if ($[0] !== t4) {
-    let t9 = () => {
+    let toggle = () => {
       return setValue(!value);
     };
-    let toggle = t9;
     t12 = [value, toggle];
     $[0] = t4;
     $[1] = t12;
