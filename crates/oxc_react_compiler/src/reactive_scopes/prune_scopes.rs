@@ -1577,10 +1577,12 @@ fn count_reads_in_value(
 
     match value {
         InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
-            // With named lvalues, LoadLocal for a scope-declared variable is just
-            // "loading the scope's output". This shouldn't prevent renaming.
-            // Only count reads from OTHER instruction types (PropertyLoad, Call args, etc.)
-            let _ = place;
+            // LoadLocal/LoadContext of a scope-declared variable means the variable
+            // is used within the scope (e.g., passed to a function call, used in an
+            // expression). This prevents renaming to keep the original name.
+            if is_name(place) {
+                *read_count += 1;
+            }
         }
         InstructionValue::StoreLocal { lvalue, value, .. }
         | InstructionValue::StoreContext { lvalue, value } => {
