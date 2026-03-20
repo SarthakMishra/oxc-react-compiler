@@ -57,7 +57,7 @@ benchmarks/                         -- render comparison, babel diff, E2E builds
 | Category | Count | Description |
 |----------|-------|-------------|
 | both compile, slots DIFFER | ~621 | Scope/memoization divergence (biggest bucket) |
-| both compile, slots MATCH | ~248 | Output format only (easiest to fix) |
+| both compile, slots MATCH | ~242 | Output format only (easiest to fix) |
 | we bail, they compile | ~170 | False bail-outs |
 | we compile, they don't | ~138 | We over-compile (usually fine) |
 | both no memo, format diff | ~93 | Format-only |
@@ -73,7 +73,7 @@ File: `crates/oxc_react_compiler/src/reactive_scopes/infer_reactive_scope_variab
 
 Scope grouping uses `effective_range = max(mutable_range.end, last_use + 1)` instead of upstream's pure `mutable_range`. This compensates for our BFS mutation propagation producing narrower ranges than upstream's full abstract interpreter.
 
-**Switching to narrow `mutable_range` has been tried 4 TIMES and ALWAYS causes render to drop from 96% to ~36%.** Each attempt used different compensating passes (none, PropagateScopeMembership, PropagateScopeMembership + JSX Capture edges). The root cause: upstream's abstract interpreter produces wider mutation ranges through more complete aliasing effects. Our `effective_range` approximation compensates.
+**Switching to narrow `mutable_range` has been tried 4 TIMES and ALWAYS causes render to drop from 96% to ~36%.** Each attempt used different compensating passes: (1) none, (2) PropagateScopeMembership, (3) PropagateScopeMembership + JSX Capture edges, (4) full aliasing effect pipeline Steps 1-6. The root cause: upstream's abstract interpreter produces wider mutation ranges through more complete state tracking. Our `effective_range` approximation compensates.
 
 DO NOT attempt narrowing ranges without first porting upstream's full abstract interpreter state machine from `src/Inference/InferMutationAliasingEffects.ts`.
 

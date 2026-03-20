@@ -5,17 +5,18 @@
 Conformance: **437/1717 (25.4%)**. Render equivalence: **96% (24/25)**. Correctness: **93.8%**. All 196 tests pass, 0 panics.
 
 Key breakdown of diverged fixtures:
-- ~248 "both compile, slots match" (output format only)
-- ~621 "both compile, slots differ" (scope/memoization divergence)
+- ~242 "both compile, slots match" (output format only)
+- ~622 "both compile, slots differ" (scope/memoization divergence)
 - ~170 "we bail, they compile" (false bail-outs, down from ~205)
 - ~138 "we compile, they don't" (we over-compile -- usually fine)
 - ~93 "both no memo, format diff"
+- 28 silent bail-outs (compile but 0 scopes, no error)
 
 ### Lessons learned
 
 - **Validation relaxation without scope fixes causes regressions.** Attempted relaxing `ValidatePreservedManualMemoization` (inner-scope tracking instead of scope-matching) -- conformance dropped 413->385 because we compiled programs incorrectly instead of safely bailing. REVERTED in `4a082dc`. Validation fixes MUST be paired with corresponding scope inference improvements.
 - **Under-memoization root cause identified:** `last_use_map` tracks uses too broadly, preventing scope creation. Fix requires removing `last_use_map` + adding missing passes (e.g., `PropagateScopeDependenciesHIR`). This is foundational work that also unblocks validation relaxation.
-- **Narrow mutable ranges require upstream's full effect inference.** Attempted switching union condition from `effective_range` (mutation+last_use) to `mutable_range` (mutation-only) 3 times with different prerequisites: (1) without compensating passes, (2) with PropagateScopeMembership, (3) with PropagateScopeMembership + JSX Capture edges -- all 3 caused 88%->36% render regression. The root cause: upstream's BFS produces wider mutation ranges through more complete aliasing effects than ours. Our `effective_range` approximation compensates for missing aliasing effects. Fixing this requires porting upstream's full effect inference pipeline.
+- **Narrow mutable ranges require upstream's full effect inference.** Attempted switching union condition from `effective_range` (mutation+last_use) to `mutable_range` (mutation-only) 4 times with different prerequisites: (1) without compensating passes → 88%→40%, (2) with PropagateScopeMembership → 88%→36%, (3) with PropagateScopeMembership + JSX Capture edges → 88%→36%, (4) with full aliasing effect pipeline Steps 1-6 → 96%→36%. All reverted. The root cause: upstream's BFS produces wider mutation ranges through more complete aliasing effects than ours. Our `effective_range` approximation compensates for missing aliasing effects. Fixing this requires porting upstream's full effect inference pipeline.
 
 ## Do NOT Attempt (until prerequisites are met)
 
@@ -57,3 +58,4 @@ Key breakdown of diverged fixtures:
 ## P4 -- Code Quality
 
 - [ ] Ternary expression reconstruction (if/else instead of `?:`) — [codegen-emission.md](codegen-emission.md)#gap-6-ternary-expression-reconstruction
+
