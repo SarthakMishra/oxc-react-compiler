@@ -6,16 +6,16 @@ import { c as _c } from "react/compiler-runtime";
 
 function useToggle(initial) {
   const $ = _c(4);
-  let t12;
   let t4 = useState(initial);
   let value;
   let setValue;
   ([value, setValue] = t4);
+  let t12;
   if ($[0] !== t4) {
     let t9 = () => {
       return setValue(!value);
     };
-    let toggle = t9;
+    const toggle = t9;
     t12 = [value, toggle];
     $[0] = t4;
     $[1] = t12;

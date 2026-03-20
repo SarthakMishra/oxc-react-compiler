@@ -8,7 +8,7 @@ diagnostics: 0
 import { c as _c } from "react/compiler-runtime";
 function Header(t0) {
   const $ = _c(2);
-  let { title } = t0;
+  const { title } = t0;
   let t5;
   if ($[0] !== title) {
     t5 = <h1>{title}</h1>;
@@ -23,7 +23,7 @@ function Header(t0) {
 
 function Footer(t0) {
   const $ = _c(2);
-  let { text } = t0;
+  const { text } = t0;
   let t5;
   if ($[0] !== text) {
     t5 = <footer>{text}</footer>;

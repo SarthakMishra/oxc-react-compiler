@@ -1,15 +1,15 @@
 # Backlog Index
 
-> Last updated: 2026-03-19
+> Last updated: 2026-03-20
 
-Conformance: **409/1717 (23.8%)**. Render equivalence: **88% (22/25)**. All 196 tests pass, 0 panics.
+Conformance: **443/1717 (25.8%)**. Render equivalence: **96% (24/25)**. All tests pass, 0 panics.
 
 Key breakdown of diverged fixtures:
-- ~248 "both compile, slots match" (output format only)
-- ~621 "both compile, slots differ" (scope/memoization divergence)
-- ~205 "we bail, they compile" (false bail-outs)
+- ~242 "both compile, slots match" (output format only)
+- ~622 "both compile, slots differ" (scope/memoization divergence)
+- ~28 silent bail-outs (compile but 0 scopes)
+- ~174 "we bail, they compile" (false bail-outs)
 - ~138 "we compile, they don't" (we over-compile -- usually fine)
-- ~93 "both no memo, format diff"
 
 ### Lessons learned
 

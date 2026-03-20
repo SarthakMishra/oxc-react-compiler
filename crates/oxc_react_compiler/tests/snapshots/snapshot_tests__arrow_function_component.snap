@@ -6,7 +6,7 @@ import { c as _c } from "react/compiler-runtime";
 
 const Button = (t0) => {
   const $ = _c(3);
-  let { onClick, label } = t0;
+  const { onClick, label } = t0;
   let t7;
   if ($[0] !== label || $[1] !== onClick) {
     t7 = <button onClick={onClick}>{label}</button>;
