@@ -550,8 +550,25 @@ impl HIRBuilder {
         let mut result = Vec::new();
         // Collect destructured params to emit after all params are registered.
         let mut destructures: Vec<(Place, &BindingPattern<'_>, Span)> = Vec::new();
+        // Collect default param desugaring to emit after all params are registered.
+        // Each entry: (param_temp, default_expr, target_name, target_span)
+        let mut defaults: Vec<(Place, &ast::Expression<'_>, &str, Span)> = Vec::new();
 
         for param in &params.items {
+            // Check for default value: OXC stores defaults in `param.initializer`,
+            // NOT in the BindingPattern as AssignmentPattern.
+            // Simple identifier with default: `function f(x = defaultVal)`
+            if let Some(init) = &param.initializer
+                && let BindingPattern::BindingIdentifier(id) = &param.pattern
+            {
+                let place = self.make_temp(param.span);
+                result.push(Param::Identifier(place.clone()));
+                defaults.push((place, init.as_ref(), &id.name, id.span));
+                continue;
+            }
+            // TODO: Destructured param with default: `function f({x} = defaultVal)`
+            // For now, fall through to normal destructure handling (ignoring default)
+
             match &param.pattern {
                 BindingPattern::BindingIdentifier(id) => {
                     let place = self.make_declared_place(&id.name, id.span);
@@ -575,6 +592,28 @@ impl HIRBuilder {
                 result.push(Param::Spread(place.clone()));
                 destructures.push((place, &rest.rest.argument, rest.span));
             }
+        }
+
+        // Emit default parameter conditionals: `x = param === undefined ? defaultVal : param`
+        for (param_place, default_expr, name, span) in &defaults {
+            let effective_value =
+                self.emit_default_value_check(param_place.clone(), default_expr, *span);
+            let lvalue = self.make_declared_place(name, *span);
+            self.emit(
+                InstructionValue::DeclareLocal {
+                    lvalue: lvalue.clone(),
+                    type_: InstructionKind::Const,
+                },
+                *span,
+            );
+            self.emit(
+                InstructionValue::StoreLocal {
+                    lvalue,
+                    value: effective_value,
+                    type_: Some(InstructionKind::Const),
+                },
+                *span,
+            );
         }
 
         // Emit Destructure instructions for destructured params at the top of the
@@ -602,8 +641,12 @@ impl HIRBuilder {
                 self.emit(InstructionValue::Destructure { lvalue_pattern, value }, span);
             }
             BindingPattern::ArrayPattern(arr_pat) => {
-                let lvalue_pattern = self.lower_array_binding_pattern(arr_pat, kind);
-                self.emit(InstructionValue::Destructure { lvalue_pattern, value }, span);
+                if Self::array_pattern_has_defaults(arr_pat) {
+                    self.emit_array_destructure_with_defaults(arr_pat, value, kind, span);
+                } else {
+                    let lvalue_pattern = self.lower_array_binding_pattern(arr_pat, kind);
+                    self.emit(InstructionValue::Destructure { lvalue_pattern, value }, span);
+                }
             }
             BindingPattern::AssignmentPattern(assign_pat) => {
                 // Default parameter value: `function f({ x } = defaultVal)`
@@ -615,6 +658,76 @@ impl HIRBuilder {
                 // but handle gracefully as a no-op.
             }
         }
+    }
+
+    /// Emit `param === undefined ? defaultExpr : param` and return the result place.
+    /// Used for desugaring default parameter values.
+    fn emit_default_value_check(
+        &mut self,
+        param_place: Place,
+        default_expr: &ast::Expression<'_>,
+        loc: Span,
+    ) -> Place {
+        // Emit: param === undefined
+        let undef = self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc);
+        let test = self.emit(
+            InstructionValue::BinaryExpression {
+                op: BinaryOp::StrictEq,
+                left: param_place.clone(),
+                right: undef,
+            },
+            loc,
+        );
+
+        // Create ternary: test ? defaultExpr : param
+        let consequent_block = self.new_block(BlockKind::Value);
+        let alternate_block = self.new_block(BlockKind::Value);
+        let fallthrough = self.new_block(BlockKind::Block);
+
+        let result_place = self.make_temp(loc);
+        self.emit(
+            InstructionValue::DeclareLocal {
+                lvalue: result_place.clone(),
+                type_: InstructionKind::Let,
+            },
+            loc,
+        );
+
+        self.emit_terminal(Terminal::Ternary {
+            test,
+            consequent: consequent_block,
+            alternate: alternate_block,
+            fallthrough,
+            result: Some(result_place.clone()),
+        });
+
+        // Consequent: evaluate default expression
+        self.switch_block(consequent_block);
+        let default_val = self.lower_expression(default_expr);
+        self.emit(
+            InstructionValue::StoreLocal {
+                lvalue: result_place.clone(),
+                value: default_val,
+                type_: Some(InstructionKind::Reassign),
+            },
+            loc,
+        );
+        self.emit_terminal(Terminal::Goto { block: fallthrough });
+
+        // Alternate: use original param value
+        self.switch_block(alternate_block);
+        self.emit(
+            InstructionValue::StoreLocal {
+                lvalue: result_place.clone(),
+                value: param_place,
+                type_: Some(InstructionKind::Reassign),
+            },
+            loc,
+        );
+        self.emit_terminal(Terminal::Goto { block: fallthrough });
+
+        self.switch_block(fallthrough);
+        result_place
     }
 
     // ------------------------------------------------------------------
@@ -789,11 +902,15 @@ impl HIRBuilder {
                         decl.span,
                     )
                 };
-                let pattern = self.lower_array_binding_pattern(arr_pat, kind);
-                self.emit(
-                    InstructionValue::Destructure { lvalue_pattern: pattern, value },
-                    decl.span,
-                );
+                if Self::array_pattern_has_defaults(arr_pat) {
+                    self.emit_array_destructure_with_defaults(arr_pat, value, kind, decl.span);
+                } else {
+                    let pattern = self.lower_array_binding_pattern(arr_pat, kind);
+                    self.emit(
+                        InstructionValue::Destructure { lvalue_pattern: pattern, value },
+                        decl.span,
+                    );
+                }
             }
             BindingPattern::AssignmentPattern(assign_pat) => {
                 // `let x = default_val` with destructure default -- unusual at top level
@@ -882,6 +999,115 @@ impl HIRBuilder {
             _ => self.make_temp(r.span),
         });
         DestructurePattern::Array { items, rest }
+    }
+
+    /// Check if an array pattern has any elements with defaults (`[x = val]`).
+    fn array_pattern_has_defaults(pat: &ast::ArrayPattern<'_>) -> bool {
+        pat.elements.iter().any(|elem| matches!(elem, Some(BindingPattern::AssignmentPattern(_))))
+    }
+
+    /// Emit an array destructure with default value desugaring.
+    ///
+    /// For `[x = defaultVal, y] = arr`, emits:
+    ///   1. `[t0, y] = arr`  (destructure with temp for default elements)
+    ///   2. `x = t0 === undefined ? defaultVal : t0`  (conditional for each default)
+    fn emit_array_destructure_with_defaults(
+        &mut self,
+        pat: &ast::ArrayPattern<'_>,
+        value: Place,
+        kind: InstructionKind,
+        span: Span,
+    ) {
+        // Phase 1: Build pattern with temps for default elements, track which have defaults
+        let mut items = Vec::new();
+        let mut default_indices: Vec<usize> = Vec::new();
+        for (i, elem) in pat.elements.iter().enumerate() {
+            match elem {
+                Some(BindingPattern::AssignmentPattern(assign)) => {
+                    let temp = self.make_temp(assign.span);
+                    items.push(DestructureArrayItem::Value(DestructureTarget::Place(temp)));
+                    default_indices.push(i);
+                }
+                Some(binding) => {
+                    let target = self.lower_binding_pattern_to_target(binding, kind);
+                    items.push(DestructureArrayItem::Value(target));
+                }
+                None => {
+                    items.push(DestructureArrayItem::Hole);
+                }
+            }
+        }
+        let rest = pat.rest.as_ref().map(|r| match &r.argument {
+            BindingPattern::BindingIdentifier(id) => {
+                let place = self.make_declared_place(&id.name, id.span);
+                self.emit(
+                    InstructionValue::DeclareLocal { lvalue: place.clone(), type_: kind },
+                    id.span,
+                );
+                place
+            }
+            _ => self.make_temp(r.span),
+        });
+
+        // Emit the destructure instruction
+        let pattern = DestructurePattern::Array { items: items.clone(), rest };
+        self.emit(InstructionValue::Destructure { lvalue_pattern: pattern, value }, span);
+
+        // Phase 2: Emit conditionals for each default element
+        for idx in default_indices {
+            if let Some(Some(BindingPattern::AssignmentPattern(assign))) = pat.elements.get(idx) {
+                // Get the temp place we stored in phase 1
+                let temp =
+                    if let DestructureArrayItem::Value(DestructureTarget::Place(p)) = &items[idx] {
+                        p.clone()
+                    } else {
+                        continue;
+                    };
+
+                let effective = self.emit_default_value_check(temp, &assign.right, assign.span);
+
+                // Assign to the actual target
+                self.emit_default_target_assign(&assign.left, effective, kind, assign.span);
+            }
+        }
+    }
+
+    /// Assign a default-checked value to the actual target pattern.
+    fn emit_default_target_assign(
+        &mut self,
+        target: &BindingPattern<'_>,
+        value: Place,
+        kind: InstructionKind,
+        span: Span,
+    ) {
+        match target {
+            BindingPattern::BindingIdentifier(id) => {
+                let lvalue = self.make_declared_place(&id.name, id.span);
+                self.emit(
+                    InstructionValue::DeclareLocal { lvalue: lvalue.clone(), type_: kind },
+                    id.span,
+                );
+                self.emit(InstructionValue::StoreLocal { lvalue, value, type_: Some(kind) }, span);
+            }
+            BindingPattern::ArrayPattern(arr) => {
+                if Self::array_pattern_has_defaults(arr) {
+                    self.emit_array_destructure_with_defaults(arr, value, kind, span);
+                } else {
+                    let pattern = self.lower_array_binding_pattern(arr, kind);
+                    self.emit(
+                        InstructionValue::Destructure { lvalue_pattern: pattern, value },
+                        span,
+                    );
+                }
+            }
+            BindingPattern::ObjectPattern(obj) => {
+                let pattern = self.lower_object_binding_pattern(obj, kind);
+                self.emit(InstructionValue::Destructure { lvalue_pattern: pattern, value }, span);
+            }
+            BindingPattern::AssignmentPattern(_) => {
+                // Shouldn't occur at this level
+            }
+        }
     }
 
     fn lower_binding_pattern_to_target(
@@ -2085,17 +2311,22 @@ impl HIRBuilder {
                         },
                         loc,
                     );
-                    // ast::AssignmentTargetMaybeDefault → extract the inner AssignmentTarget
-                    let inner_target = match element {
-                        ast::AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(with_default) => {
-                            &with_default.binding
-                        }
-                        _ => element.as_assignment_target().unwrap_or_else(|| {
-                            // Fallback: treat as simple target
+                    // ast::AssignmentTargetMaybeDefault → handle default values
+                    if let ast::AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(
+                        with_default,
+                    ) = element
+                    {
+                        // Has default: `[x] = ['default']` in `[[x] = ['default']] = arr`
+                        // Emit: effective = item === undefined ? default : item
+                        let effective =
+                            self.emit_default_value_check(item, &with_default.init, loc);
+                        self.lower_assignment_target_store(&with_default.binding, effective, loc);
+                    } else {
+                        let inner_target = element.as_assignment_target().unwrap_or_else(|| {
                             unreachable!("ast::AssignmentTargetMaybeDefault should be AssignmentTarget or WithDefault")
-                        }),
-                    };
-                    self.lower_assignment_target_store(inner_target, item, loc);
+                        });
+                        self.lower_assignment_target_store(inner_target, item, loc);
+                    }
                 }
                 // Handle rest element
                 if let Some(rest) = &array_target.rest {
