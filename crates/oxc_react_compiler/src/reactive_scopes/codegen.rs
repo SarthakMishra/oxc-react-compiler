@@ -79,6 +79,22 @@ fn count_temp_uses_in_slice(
                 visit_terminal_child_blocks(terminal, counts);
             }
             ReactiveInstruction::Scope(scope_block) => {
+                // Count uses from scope dependencies (these become `$[N] !== dep`
+                // checks in codegen). Without this, temps used only as scope
+                // dependencies would be incorrectly marked as dead.
+                for dep in &scope_block.scope.dependencies {
+                    if dep.identifier.name.is_none() {
+                        let name = format!("t{}", dep.identifier.id.0);
+                        *counts.entry(name).or_insert(0) += 1;
+                    }
+                }
+                // Count uses from scope declarations (stored/reloaded in cache)
+                for (_, decl) in &scope_block.scope.declarations {
+                    if decl.identifier.name.is_none() {
+                        let name = format!("t{}", decl.identifier.id.0);
+                        *counts.entry(name).or_insert(0) += 1;
+                    }
+                }
                 count_temp_uses_in_slice(&scope_block.instructions.instructions, counts);
             }
         }
@@ -389,6 +405,174 @@ fn is_inlinable(value: &InstructionValue) -> bool {
     )
 }
 
+/// Recursively collect scope-related temp identifiers from the instruction
+/// subtree. Adds scope declaration temps and scope dependency temps to
+/// `scope_output_temps`, and destructure-phantom temps to
+/// `phantom_destructure_temps`. This is used to protect these temps from
+/// being inlined or dead-code-eliminated by `build_inline_map`.
+fn collect_scope_temps_recursive(
+    instructions: &[ReactiveInstruction],
+    scope_output_temps: &mut FxHashSet<String>,
+    phantom_destructure_temps: &mut FxHashSet<String>,
+) {
+    for ri in instructions {
+        match ri {
+            ReactiveInstruction::Scope(scope_block) => {
+                let destructured_declare_ids = find_destructured_declare_ids(scope_block);
+                for (id, decl) in &scope_block.scope.declarations {
+                    let decl_name = identifier_display_name(&decl.identifier);
+                    if destructured_declare_ids.contains(id) {
+                        phantom_destructure_temps.insert(decl_name.to_string());
+                    } else {
+                        scope_output_temps.insert(decl_name.to_string());
+                    }
+                }
+                // Scope dependencies are also critical — they appear in
+                // `$[N] !== dep` guard checks. Without protecting them,
+                // the inline map may remove or inline the producing
+                // instruction, leaving the dependency name undefined.
+                for dep in &scope_block.scope.dependencies {
+                    if dep.identifier.name.is_none() {
+                        let dep_name = format!("t{}", dep.identifier.id.0);
+                        scope_output_temps.insert(dep_name);
+                    }
+                }
+                // Recurse into scope body for nested scopes
+                collect_scope_temps_recursive(
+                    &scope_block.instructions.instructions,
+                    scope_output_temps,
+                    phantom_destructure_temps,
+                );
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                visit_terminal_for_scope_temps(
+                    terminal,
+                    scope_output_temps,
+                    phantom_destructure_temps,
+                );
+            }
+            ReactiveInstruction::Instruction(_) => {}
+        }
+    }
+}
+
+/// Recurse into terminal child blocks to find nested scopes for
+/// `collect_scope_temps_recursive`.
+fn visit_terminal_for_scope_temps(
+    terminal: &ReactiveTerminal,
+    scope_output_temps: &mut FxHashSet<String>,
+    phantom_destructure_temps: &mut FxHashSet<String>,
+) {
+    match terminal {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
+            collect_scope_temps_recursive(
+                &consequent.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+            collect_scope_temps_recursive(
+                &alternate.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+        }
+        ReactiveTerminal::Switch { cases, .. } => {
+            for (_, block) in cases {
+                collect_scope_temps_recursive(
+                    &block.instructions,
+                    scope_output_temps,
+                    phantom_destructure_temps,
+                );
+            }
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            collect_scope_temps_recursive(
+                &init.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+            collect_scope_temps_recursive(
+                &test.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+            if let Some(update) = update {
+                collect_scope_temps_recursive(
+                    &update.instructions,
+                    scope_output_temps,
+                    phantom_destructure_temps,
+                );
+            }
+            collect_scope_temps_recursive(
+                &body.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+        }
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            collect_scope_temps_recursive(
+                &init.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+            collect_scope_temps_recursive(
+                &test.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+            collect_scope_temps_recursive(
+                &body.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { test, body, .. } => {
+            collect_scope_temps_recursive(
+                &test.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+            collect_scope_temps_recursive(
+                &body.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            collect_scope_temps_recursive(
+                &block.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+            collect_scope_temps_recursive(
+                &handler.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            collect_scope_temps_recursive(
+                &block.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+        }
+        ReactiveTerminal::Logical { right, .. } => {
+            collect_scope_temps_recursive(
+                &right.instructions,
+                scope_output_temps,
+                phantom_destructure_temps,
+            );
+        }
+        ReactiveTerminal::Return { .. }
+        | ReactiveTerminal::Throw { .. }
+        | ReactiveTerminal::Continue { .. }
+        | ReactiveTerminal::Break { .. } => {}
+    }
+}
+
 /// Build the inline map for a flat block of instructions.
 ///
 /// Algorithm:
@@ -430,19 +614,11 @@ fn build_inline_map(
     // would store undefined.
     let mut scope_output_temps: FxHashSet<String> = FxHashSet::default();
     let mut phantom_destructure_temps: FxHashSet<String> = FxHashSet::default();
-    for ri in instructions {
-        if let ReactiveInstruction::Scope(scope_block) = ri {
-            let destructured_declare_ids = find_destructured_declare_ids(scope_block);
-            for (id, decl) in &scope_block.scope.declarations {
-                let decl_name = identifier_display_name(&decl.identifier);
-                if destructured_declare_ids.contains(id) {
-                    phantom_destructure_temps.insert(decl_name.to_string());
-                } else {
-                    scope_output_temps.insert(decl_name.to_string());
-                }
-            }
-        }
-    }
+    collect_scope_temps_recursive(
+        instructions,
+        &mut scope_output_temps,
+        &mut phantom_destructure_temps,
+    );
     for ri in instructions {
         let ReactiveInstruction::Instruction(instr) = ri else { continue };
         let lvalue = &instr.lvalue;
@@ -1054,7 +1230,12 @@ fn codegen_block(
     declared: &mut FxHashSet<String>,
     tag_constants: &TagConstantMap,
 ) {
-    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default(), tag_constants);
+    // Collect scope-related temps from the entire subtree so they're
+    // protected from inlining/dead-code elimination by build_inline_map.
+    let mut scope_temps = FxHashSet::default();
+    let mut phantom = FxHashSet::default();
+    collect_scope_temps_recursive(&block.instructions, &mut scope_temps, &mut phantom);
+    let inline_map = build_inline_map(&block.instructions, &scope_temps, tag_constants);
     for instr in &block.instructions {
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
@@ -1096,7 +1277,12 @@ fn codegen_block_skip_hoisted(
     hoisted_indices: &FxHashSet<usize>,
     tag_constants: &TagConstantMap,
 ) {
-    let inline_map = build_inline_map(&block.instructions, &FxHashSet::default(), tag_constants);
+    // Collect scope-related temps from the entire subtree so they're
+    // protected from inlining/dead-code elimination.
+    let mut scope_temps = FxHashSet::default();
+    let mut phantom = FxHashSet::default();
+    collect_scope_temps_recursive(&block.instructions, &mut scope_temps, &mut phantom);
+    let inline_map = build_inline_map(&block.instructions, &scope_temps, tag_constants);
     for (i, instr) in block.instructions.iter().enumerate() {
         if hoisted_indices.contains(&i) {
             continue;
