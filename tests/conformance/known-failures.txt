@@ -28,7 +28,6 @@ allow-global-mutation-unused-usecallback.js
 allow-global-reassignment-in-effect-indirect.js
 allow-global-reassignment-in-effect.js
 allow-merge-refs-pattern.js
-allow-modify-global-in-callback-jsx.js
 allow-mutate-global-in-effect-fixpoint.js
 allow-mutating-ref-in-callback-passed-to-jsx-indirect.tsx
 allow-mutating-ref-in-callback-passed-to-jsx.tsx

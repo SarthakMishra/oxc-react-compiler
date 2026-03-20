@@ -100,11 +100,8 @@ const EFFECT_HOOKS: &[&str] = &["useEffect", "useLayoutEffect", "useInsertionEff
 ///
 /// Global mutations inside these functions are allowed because they don't execute
 /// during render — they run in effects or in response to user events.
-fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
-    let mut safe_ids: FxHashSet<IdentifierId> = FxHashSet::default();
-
-    // Build id-to-name map to resolve callee identifiers
-    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+/// Recursively collect id-to-name mappings from all blocks including nested functions.
+fn collect_id_names_recursive(hir: &HIR, id_to_name: &mut FxHashMap<IdentifierId, String>) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -116,6 +113,10 @@ fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                         id_to_name.insert(instr.lvalue.identifier.id, name.clone());
                     }
                 }
+                InstructionValue::FunctionExpression { lowered_func, .. }
+                | InstructionValue::ObjectMethod { lowered_func, .. } => {
+                    collect_id_names_recursive(&lowered_func.body, id_to_name);
+                }
                 _ => {}
             }
             if let Some(name) = &instr.lvalue.identifier.name {
@@ -123,11 +124,17 @@ fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
             }
         }
     }
+}
 
+/// Recursively collect safe callback IDs from all blocks including nested functions.
+fn collect_safe_ids_recursive(
+    hir: &HIR,
+    id_to_name: &FxHashMap<IdentifierId, String>,
+    safe_ids: &mut FxHashSet<IdentifierId>,
+) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
-                // useEffect(callback, deps) — callback is safe
                 InstructionValue::CallExpression { callee, args, .. } => {
                     let callee_name = callee
                         .identifier
@@ -140,7 +147,6 @@ fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                     {
                         safe_ids.insert(args[0].identifier.id);
                     }
-                    // useCallback(callback) — callback body is a non-render context
                     if let Some(name) = callee_name
                         && name == "useCallback"
                         && !args.is_empty()
@@ -148,7 +154,6 @@ fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                         safe_ids.insert(args[0].identifier.id);
                     }
                 }
-                // React.useEffect(callback) — method call form
                 InstructionValue::MethodCall { property, args, .. } => {
                     if EFFECT_HOOKS.contains(&property.as_str()) && !args.is_empty() {
                         safe_ids.insert(args[0].identifier.id);
@@ -157,9 +162,6 @@ fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                         safe_ids.insert(args[0].identifier.id);
                     }
                 }
-                // JSX event handler props: <div onClick={handler}> — handler is safe
-                // We filter to props that look like event handlers (onXxx) since
-                // other prop values (className, value, etc.) are not callbacks.
                 InstructionValue::JsxExpression { props, .. } => {
                     for attr in props {
                         let is_event_handler = match &attr.name {
@@ -175,32 +177,59 @@ fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                         }
                     }
                 }
+                // Recurse into nested function bodies to find JSX event handlers
+                // and effect callbacks inside useMemo/useCallback/etc.
+                InstructionValue::FunctionExpression { lowered_func, .. }
+                | InstructionValue::ObjectMethod { lowered_func, .. } => {
+                    collect_safe_ids_recursive(&lowered_func.body, id_to_name, safe_ids);
+                }
                 _ => {}
             }
         }
     }
+}
+
+/// Recursively collect id alias mappings from all blocks including nested functions.
+fn collect_id_aliases_recursive(hir: &HIR, id_aliases: &mut FxHashMap<IdentifierId, IdentifierId>) {
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    id_aliases.insert(instr.lvalue.identifier.id, place.identifier.id);
+                }
+                InstructionValue::StoreLocal { lvalue, value, .. }
+                | InstructionValue::StoreContext { lvalue, value } => {
+                    id_aliases.insert(lvalue.identifier.id, value.identifier.id);
+                }
+                InstructionValue::FunctionExpression { lowered_func, .. }
+                | InstructionValue::ObjectMethod { lowered_func, .. } => {
+                    collect_id_aliases_recursive(&lowered_func.body, id_aliases);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
+    let mut safe_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+
+    // Build id-to-name map to resolve callee identifiers.
+    // Also recurse into nested function bodies to catch patterns like
+    // `useMemo(() => <div onClick={handler}>)` where the JSX event handler
+    // is inside a nested function.
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    collect_id_names_recursive(hir, &mut id_to_name);
+
+    // Scan all blocks (including nested function bodies) for safe callback patterns.
+    collect_safe_ids_recursive(hir, &id_to_name, &mut safe_ids);
 
     // Propagate safety through LoadLocal/StoreLocal chains:
     // If `const cb = () => { ... }; useEffect(cb)`, then cb's function expr
     // ID differs from the ID passed to useEffect. We need to trace through
     // StoreLocal → LoadLocal chains.
     let mut id_aliases: FxHashMap<IdentifierId, IdentifierId> = FxHashMap::default();
-    for (_, block) in &hir.blocks {
-        for instr in &block.instructions {
-            match &instr.value {
-                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
-                    // lvalue.id aliases place.id
-                    id_aliases.insert(instr.lvalue.identifier.id, place.identifier.id);
-                }
-                InstructionValue::StoreLocal { lvalue, value, .. }
-                | InstructionValue::StoreContext { lvalue, value } => {
-                    // lvalue.id aliases value.id
-                    id_aliases.insert(lvalue.identifier.id, value.identifier.id);
-                }
-                _ => {}
-            }
-        }
-    }
+    collect_id_aliases_recursive(hir, &mut id_aliases);
 
     // Walk alias chains: if a safe ID maps back to a function expression,
     // also mark the function expression's lvalue as safe
@@ -218,7 +247,44 @@ fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
         }
     }
 
+    // Also collect safe callback NAMES for cross-scope matching.
+    // When a safe ID corresponds to a LoadLocal of a named variable, that name
+    // identifies a function that's safe. We resolve names from all safe IDs.
+    let mut safe_names: FxHashSet<String> = FxHashSet::default();
+    for id in &safe_ids {
+        if let Some(name) = id_to_name.get(id) {
+            safe_names.insert(name.clone());
+        }
+    }
+
     safe_ids
+}
+
+/// Collect names of functions that are safe callbacks (event handlers, effects).
+/// This supplements the ID-based safe_callback_ids for cross-scope matching.
+fn collect_safe_callback_names(hir: &HIR) -> FxHashSet<String> {
+    let safe_ids = collect_safe_callback_ids(hir);
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    collect_id_names_recursive(hir, &mut id_to_name);
+
+    let mut names = FxHashSet::default();
+    for id in &safe_ids {
+        if let Some(name) = id_to_name.get(id) {
+            names.insert(name.clone());
+        }
+    }
+    // Also collect names from StoreLocal targets that alias safe IDs
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::StoreLocal { lvalue, value, .. } = &instr.value
+                && safe_ids.contains(&value.identifier.id)
+                && let Some(name) = &lvalue.identifier.name
+            {
+                names.insert(name.clone());
+            }
+        }
+    }
+    names
 }
 
 /// Check all blocks in an HIR for global/outer-scope reassignments,
@@ -228,6 +294,23 @@ fn check_blocks(hir: &HIR, component_locals: &FxHashSet<String>, errors: &mut Er
     // JSX event handlers. We collect IDs of function expressions used in safe
     // contexts and skip global mutation checks inside those functions.
     let safe_callback_ids = collect_safe_callback_ids(hir);
+    // Also collect names for cross-scope matching (handles cases where the
+    // safe callback is referenced across function boundaries with different IDs).
+    let safe_callback_names = collect_safe_callback_names(hir);
+
+    // Build a mapping from temp IDs to their assigned variable names.
+    // When a FunctionExpression's lvalue is a temp that's stored to a named
+    // variable, this lets us check if the variable name is a safe callback.
+    let mut id_to_assigned_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::StoreLocal { lvalue, value, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+            {
+                id_to_assigned_name.insert(value.identifier.id, name.clone());
+            }
+        }
+    }
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -275,7 +358,17 @@ fn check_blocks(hir: &HIR, component_locals: &FxHashSet<String>, errors: &mut Er
             match &instr.value {
                 InstructionValue::FunctionExpression { lowered_func, .. }
                 | InstructionValue::ObjectMethod { lowered_func, .. } => {
-                    if !safe_callback_ids.contains(&instr.lvalue.identifier.id) {
+                    let id = instr.lvalue.identifier.id;
+                    let is_safe_by_id = safe_callback_ids.contains(&id);
+                    // Also check by name: if the variable this FE is stored to
+                    // has a name in the safe callbacks set, skip it.
+                    // Check both the lvalue's own name and the name it's assigned to.
+                    let assigned_name = id_to_assigned_name.get(&id);
+                    let lvalue_name = instr.lvalue.identifier.name.as_ref();
+                    let is_safe_by_name = assigned_name
+                        .or(lvalue_name)
+                        .is_some_and(|n| safe_callback_names.contains(n));
+                    if !is_safe_by_id && !is_safe_by_name {
                         check_nested_for_outer_scope_stores(
                             lowered_func,
                             component_locals,
