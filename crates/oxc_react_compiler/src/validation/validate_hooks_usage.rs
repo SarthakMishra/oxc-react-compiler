@@ -46,9 +46,21 @@ pub fn validate_hooks_usage(
                 id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
             }
 
-            // Track callee IDs for Rule 3
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
-                hook_callee_ids.insert(callee.identifier.id);
+            // Track callee IDs for Rule 3 — IDs used in valid hook contexts:
+            // - CallExpression callee (hook is being called)
+            // - PropertyLoad object (accessing hook.name, hook.length, etc.)
+            // - MethodCall receiver (hook.bind(), etc.)
+            match &instr.value {
+                InstructionValue::CallExpression { callee, .. } => {
+                    hook_callee_ids.insert(callee.identifier.id);
+                }
+                InstructionValue::PropertyLoad { object, .. } => {
+                    hook_callee_ids.insert(object.identifier.id);
+                }
+                InstructionValue::MethodCall { receiver, .. } => {
+                    hook_callee_ids.insert(receiver.identifier.id);
+                }
+                _ => {}
             }
         }
     }
