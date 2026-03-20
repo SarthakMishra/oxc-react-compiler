@@ -736,7 +736,12 @@ fn expr_string(
             Some(format!("{}.{}", resolve(object), property))
         }
         InstructionValue::ComputedLoad { object, property } => {
-            Some(format!("{}[{}]", resolve(object), resolve(property)))
+            let prop_str = resolve(property);
+            if is_dotable_string_literal(&prop_str) {
+                Some(format!("{}.{}", resolve(object), extract_dotable_id(&prop_str)))
+            } else {
+                Some(format!("{}[{}]", resolve(object), prop_str))
+            }
         }
         InstructionValue::BinaryExpression { op, left, right } => {
             // Wrap in parens so that when this expression is inlined into another
@@ -1065,6 +1070,29 @@ fn build_jsx_props_str(
         }
     }
     s
+}
+
+/// Returns `true` if `s` is a quoted string literal whose content is a valid
+/// JavaScript identifier (so `obj["foo"]` can be emitted as `obj.foo`).
+fn is_dotable_string_literal(s: &str) -> bool {
+    if s.len() < 3 || !s.starts_with('"') || !s.ends_with('"') {
+        return false;
+    }
+    let inner = &s[1..s.len() - 1];
+    if inner.is_empty() {
+        return false;
+    }
+    let mut chars = inner.chars();
+    let first = chars.next().unwrap();
+    if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+/// Extract the unquoted identifier from a dotable string literal.
+fn extract_dotable_id(s: &str) -> &str {
+    &s[1..s.len() - 1]
 }
 
 /// Resolve a place's name, substituting the inline expression if available.
@@ -1800,19 +1828,38 @@ fn codegen_instruction(
             output.push_str(&format!("{indent}{name} = {};\n", resolve_place(value, inline_map)));
         }
         InstructionValue::ComputedLoad { object, property } => {
-            output.push_str(&format!(
-                "{indent}{decl_keyword}{lvalue_name} = {}[{}];\n",
-                resolve_place(object, inline_map),
-                resolve_place(property, inline_map)
-            ));
+            let prop_str = resolve_place(property, inline_map);
+            if is_dotable_string_literal(&prop_str) {
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = {}.{};\n",
+                    resolve_place(object, inline_map),
+                    extract_dotable_id(&prop_str)
+                ));
+            } else {
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = {}[{}];\n",
+                    resolve_place(object, inline_map),
+                    prop_str
+                ));
+            }
         }
         InstructionValue::ComputedStore { object, property, value } => {
-            output.push_str(&format!(
-                "{indent}{}[{}] = {};\n",
-                resolve_place(object, inline_map),
-                resolve_place(property, inline_map),
-                resolve_place(value, inline_map)
-            ));
+            let prop_str = resolve_place(property, inline_map);
+            if is_dotable_string_literal(&prop_str) {
+                output.push_str(&format!(
+                    "{indent}{}.{} = {};\n",
+                    resolve_place(object, inline_map),
+                    extract_dotable_id(&prop_str),
+                    resolve_place(value, inline_map)
+                ));
+            } else {
+                output.push_str(&format!(
+                    "{indent}{}[{}] = {};\n",
+                    resolve_place(object, inline_map),
+                    prop_str,
+                    resolve_place(value, inline_map)
+                ));
+            }
         }
         InstructionValue::PropertyDelete { object, property } => {
             output.push_str(&format!(
@@ -1822,11 +1869,20 @@ fn codegen_instruction(
             ));
         }
         InstructionValue::ComputedDelete { object, property } => {
-            output.push_str(&format!(
-                "{indent}{decl_keyword}{lvalue_name} = delete {}[{}];\n",
-                resolve_place(object, inline_map),
-                resolve_place(property, inline_map)
-            ));
+            let prop_str = resolve_place(property, inline_map);
+            if is_dotable_string_literal(&prop_str) {
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = delete {}.{};\n",
+                    resolve_place(object, inline_map),
+                    extract_dotable_id(&prop_str)
+                ));
+            } else {
+                output.push_str(&format!(
+                    "{indent}{decl_keyword}{lvalue_name} = delete {}[{}];\n",
+                    resolve_place(object, inline_map),
+                    prop_str
+                ));
+            }
         }
         InstructionValue::TypeCastExpression { value, .. } => {
             // Type casts are erased at runtime — just pass through the value

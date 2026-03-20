@@ -81,7 +81,12 @@ fn compile_program_inner_with_config(
     generate_source_map: bool,
 ) -> CompileResult {
     let allocator = Allocator::default();
-    let source_type = SourceType::from_path(filename).unwrap_or_default().with_jsx(true);
+    // Always enable TypeScript and JSX parsing regardless of file extension.
+    // Many upstream fixtures use `.js` extension but contain TypeScript or Flow
+    // type annotations. OXC's TypeScript parser tolerates plain JS gracefully,
+    // so enabling it unconditionally is safe and avoids silent parse failures.
+    let source_type =
+        SourceType::from_path(filename).unwrap_or_default().with_jsx(true).with_typescript(true);
     let parser_ret = Parser::new(&allocator, source, source_type).parse();
 
     if parser_ret.panicked {
@@ -1042,7 +1047,11 @@ fn has_memo_directive(directives: Option<&[Directive<'_>]>) -> bool {
         dirs.iter().any(|d| {
             let s = d.directive.as_str();
             // "use memo" is the current name; "use forget" is the legacy name.
-            s == "use memo" || s == "use forget"
+            // "use memo if(condition)" is a conditional compilation variant.
+            s == "use memo"
+                || s == "use forget"
+                || s.starts_with("use memo if(")
+                || s.starts_with("use forget if(")
         })
     })
 }

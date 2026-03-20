@@ -52,7 +52,6 @@ array-at-closure.js
 array-at-effect.js
 array-at-mutate-after-capture.js
 array-concat-should-capture.ts
-array-expression-spread.js
 array-from-arg1-captures-arg0.js
 array-from-captures-arg0.js
 array-from-maybemutates-arg0.js
@@ -268,10 +267,12 @@ early-return.js
 empty-catch-statement.ts
 error.assign-ref-in-effect-hint.js
 error.bug-invariant-codegen-methodcall.js
+error.call-args-destructuring-asignment-complex.js
 error.bug-invariant-couldnt-find-binding-for-decl.js
 error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-unnamed-temporary.js
 error.default-param-accesses-local.js
+error.dont-hoist-inline-reference.js
 error.hoisting-simple-function-declaration.js
 error.invalid-hoisting-setstate.js
 error.invalid-jsx-captures-context-variable.js
@@ -296,11 +297,13 @@ error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency
 error.todo-for-loop-with-context-variable-iterator.js
 error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
+error.todo-hoist-function-decls.js
 error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hoisting-simple-var-declaration.js
 error.todo-hook-call-spreads-mutable-iterator.js
 error.todo-kitchensink.js
 error.todo-missing-source-locations.js
+error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-valid-functiondecl-hoisting.tsx
 error.todo.try-catch-with-throw.js
 error.unconditional-set-state-nested-function-expressions.js
@@ -506,7 +509,9 @@ infer-nested-object-method.jsx
 infer-no-component-annot.ts
 infer-no-component-nested-jsx.js
 infer-no-component-obj-return.js
+infer-property-delete.js
 infer-sequential-optional-chain-nonnull.ts
+infer-skip-components-without-hooks-or-jsx.js
 infer-types-through-type-cast.flow.js
 inner-function/nullable-objects/array-map-named-callback-cross-context.js
 inner-function/nullable-objects/array-map-named-callback.js
@@ -560,7 +565,6 @@ jsx-outlining-with-non-jsx-children.js
 jsx-preserve-whitespace.tsx
 jsx-reactive-local-variable-member-expr.tsx
 jsx-spread.js
-jsx-string-attribute-expression-container.js
 jsx-string-attribute-non-ascii.js
 jsx-tag-evaluation-order-non-global.js
 jsx-tag-evaluation-order.tsx
@@ -976,7 +980,6 @@ reduce-reactive-deps/superpath-order2.js
 reduce-reactive-deps/todo-infer-function-uncond-optionals-hoisted.tsx
 reduce-reactive-deps/todo-merge-ssa-phi-access-nodes.ts
 reduce-reactive-deps/uncond-access-in-mutable-range.js
-reduce-reactive-deps/uncond-nonoverlap-descendant.js
 ref-current-aliased-no-added-to-dep.js
 ref-current-aliased-not-added-to-dep-2.js
 ref-current-field-not-added-to-dep.js
@@ -1204,7 +1207,6 @@ type-alias-used-as-annotation.ts
 type-alias-used-as-annotation_.flow.js
 type-alias-used-as-variable-annotation.ts
 type-alias-used-as-variable-annotation_.flow.js
-type-alias.flow.js
 type-args-test-binary-operator.js
 type-binary-operator.js
 type-cast-expression.flow.js

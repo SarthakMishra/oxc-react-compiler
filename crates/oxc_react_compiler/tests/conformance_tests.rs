@@ -380,10 +380,19 @@ fn tokenize(code: &str) -> Vec<String> {
     // Babel and our compiler use different numbering schemes for temporary
     // variables (Babel counts from 0, ours uses HIR instruction IDs).
     // Renaming sequentially by first-occurrence eliminates this difference.
+    // We reset the counter at each function boundary so that temps in nested
+    // functions don't shift due to differences in the enclosing function.
     let mut temp_remap: HashMap<String, String> = HashMap::new();
     let mut temp_counter = 0u32;
     let mut final_tokens = Vec::with_capacity(result.len());
     for token in &result {
+        // Reset temp counter at function boundaries: when we see `function`
+        // followed by an identifier or `(`, we're starting a new function scope.
+        if token == "function" {
+            temp_remap.clear();
+            temp_counter = 0;
+        }
+
         if is_temp_token(token) {
             let remapped = temp_remap.entry(token.clone()).or_insert_with(|| {
                 let name = format!("t{temp_counter}");

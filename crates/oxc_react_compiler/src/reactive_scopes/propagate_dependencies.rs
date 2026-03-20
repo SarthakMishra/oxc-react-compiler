@@ -970,15 +970,18 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
         }
     }
 
-    // Sort dependencies by identifier name (alphabetical) to match upstream ordering.
-    // Babel's PropagateScopeDependencies outputs deps in a stable name-based order,
-    // while our insertion-order walk depends on HIR instruction sequence.
+    // Sort dependencies by full path (identifier name + property path) to match
+    // upstream ordering. Babel's PropagateScopeDependencies outputs deps in a
+    // stable name-based order using the full dependency path string (e.g.
+    // "props.bar" sorts before "props.foo"), while our insertion-order walk
+    // depends on HIR instruction sequence.
     for deps in scope_deps.values_mut() {
         deps.sort_by(|a, b| {
             let a_name = a.identifier.name.as_deref().unwrap_or("");
             let b_name = b.identifier.name.as_deref().unwrap_or("");
             a_name
                 .cmp(b_name)
+                .then_with(|| a.path.cmp(&b.path))
                 .then_with(|| a.identifier.declaration_id.cmp(&b.identifier.declaration_id))
         });
     }
