@@ -217,7 +217,7 @@ fn visit_instr_uses(value: &InstructionValue, counts: &mut FxHashMap<String, u32
             bump_temp(left, counts);
             bump_temp(right, counts);
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             bump_temp(callee, counts);
             for a in args {
                 bump_temp(a, counts);
@@ -243,7 +243,7 @@ fn visit_instr_uses(value: &InstructionValue, counts: &mut FxHashMap<String, u32
             bump_temp(object, counts);
             bump_temp(value, counts);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             bump_temp(object, counts);
             bump_temp(property, counts);
         }
@@ -744,10 +744,10 @@ fn expr_string(
         | InstructionValue::LoadContext { place }
         | InstructionValue::TypeCastExpression { value: place, .. } => Some(resolve(place)),
         InstructionValue::LoadGlobal { binding } => Some(binding.name.clone()),
-        InstructionValue::PropertyLoad { object, property } => {
+        InstructionValue::PropertyLoad { object, property, .. } => {
             Some(format!("{}.{}", resolve(object), property))
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             let prop_str = resolve(property);
             if is_dotable_string_literal(&prop_str) {
                 Some(format!("{}.{}", resolve(object), extract_dotable_id(&prop_str)))
@@ -885,15 +885,17 @@ fn expr_string(
                 Some(format!("<>{children_str}</>"))
             }
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, optional } => {
             let callee_name = resolve(callee);
+            let call_op = if *optional { "?." } else { "" };
             let args_str: Vec<String> = args.iter().map(&resolve).collect();
-            Some(format!("{}({})", callee_name, args_str.join(", ")))
+            Some(format!("{}{}({})", callee_name, call_op, args_str.join(", ")))
         }
-        InstructionValue::MethodCall { receiver, property, args } => {
+        InstructionValue::MethodCall { receiver, property, args, optional } => {
             let receiver_name = resolve(receiver);
+            let call_op = if *optional { "?." } else { "" };
             let args_str: Vec<String> = args.iter().map(&resolve).collect();
-            Some(format!("{}.{}({})", receiver_name, property, args_str.join(", ")))
+            Some(format!("{}.{}{}({})", receiver_name, property, call_op, args_str.join(", ")))
         }
         InstructionValue::NewExpression { callee, args } => {
             let callee_name = resolve(callee);
@@ -1525,54 +1527,67 @@ fn codegen_instruction(
             };
             output.push_str(&format!("{indent}{keyword}{target_name} = {value_name};\n"));
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, optional } => {
             let callee_name = resolve_place(callee, inline_map);
+            let call_op = if *optional { "?." } else { "" };
             let args_str: Vec<Cow<'_, str>> =
                 args.iter().map(|a| resolve_place(a, inline_map)).collect();
             if is_stmt_only {
-                output.push_str(&format!("{}{}({});\n", indent, callee_name, args_str.join(", ")));
+                output.push_str(&format!(
+                    "{}{}{}({});\n",
+                    indent,
+                    callee_name,
+                    call_op,
+                    args_str.join(", ")
+                ));
             } else {
                 output.push_str(&format!(
-                    "{}{}{} = {}({});\n",
+                    "{}{}{} = {}{}({});\n",
                     indent,
                     decl_keyword,
                     lvalue_name,
                     callee_name,
+                    call_op,
                     args_str.join(", ")
                 ));
             }
         }
-        InstructionValue::MethodCall { receiver, property, args } => {
+        InstructionValue::MethodCall { receiver, property, args, optional } => {
             let receiver_name = resolve_place(receiver, inline_map);
+            let call_op = if *optional { "?." } else { "" };
             let args_str: Vec<Cow<'_, str>> =
                 args.iter().map(|a| resolve_place(a, inline_map)).collect();
             if is_stmt_only {
                 output.push_str(&format!(
-                    "{}{}.{}({});\n",
+                    "{}{}.{}{}({});\n",
                     indent,
                     receiver_name,
                     property,
+                    call_op,
                     args_str.join(", ")
                 ));
             } else {
                 output.push_str(&format!(
-                    "{}{}{} = {}.{}({});\n",
+                    "{}{}{} = {}.{}{}({});\n",
                     indent,
                     decl_keyword,
                     lvalue_name,
                     receiver_name,
                     property,
+                    call_op,
                     args_str.join(", ")
                 ));
             }
         }
-        InstructionValue::PropertyLoad { object, property } => {
+        InstructionValue::PropertyLoad { object, property, optional } => {
+            let access_op = if *optional { "?." } else { "." };
             output.push_str(&format!(
-                "{}{}{} = {}.{};\n",
+                "{}{}{} = {}{}{};\n",
                 indent,
                 decl_keyword,
                 lvalue_name,
                 resolve_place(object, inline_map),
+                access_op,
                 property
             ));
         }
@@ -1871,7 +1886,7 @@ fn codegen_instruction(
         InstructionValue::StoreGlobal { name, value } => {
             output.push_str(&format!("{indent}{name} = {};\n", resolve_place(value, inline_map)));
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             let prop_str = resolve_place(property, inline_map);
             if is_dotable_string_literal(&prop_str) {
                 output.push_str(&format!(

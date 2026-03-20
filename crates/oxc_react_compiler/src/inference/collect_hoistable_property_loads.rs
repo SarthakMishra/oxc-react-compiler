@@ -59,7 +59,7 @@ pub fn collect_hoistable_property_loads(
         }
 
         for instr in &block.instructions {
-            if let InstructionValue::PropertyLoad { object, property } = &instr.value {
+            if let InstructionValue::PropertyLoad { object, property, .. } = &instr.value {
                 let (root_id, mut path) =
                     if let Some((root, existing_path)) = id_to_path.get(&object.identifier.id) {
                         (*root, existing_path.clone())
@@ -139,6 +139,7 @@ mod tests {
                         InstructionValue::PropertyLoad {
                             object: make_place(1, "props"),
                             property: "name".to_string(),
+                            optional: false,
                         },
                     )],
                     terminal: Terminal::Return { value: make_place(0, "undefined") },
@@ -179,6 +180,7 @@ mod tests {
                             InstructionValue::PropertyLoad {
                                 object: make_place(1, "props"),
                                 property: "a".to_string(),
+                                optional: false,
                             },
                         ),
                         make_instr(
@@ -187,6 +189,7 @@ mod tests {
                             InstructionValue::PropertyLoad {
                                 object: make_place(10, "t10"),
                                 property: "b".to_string(),
+                                optional: false,
                             },
                         ),
                     ],
@@ -242,6 +245,7 @@ mod tests {
                             InstructionValue::PropertyLoad {
                                 object: make_place(1, "props"),
                                 property: "name".to_string(),
+                                optional: false,
                             },
                         )],
                         terminal: Terminal::Return { value: make_place(0, "undefined") },

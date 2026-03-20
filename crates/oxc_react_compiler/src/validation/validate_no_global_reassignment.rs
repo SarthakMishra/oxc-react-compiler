@@ -128,7 +128,7 @@ fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
         for instr in &block.instructions {
             match &instr.value {
                 // useEffect(callback, deps) — callback is safe
-                InstructionValue::CallExpression { callee, args } => {
+                InstructionValue::CallExpression { callee, args, .. } => {
                     let callee_name = callee
                         .identifier
                         .name

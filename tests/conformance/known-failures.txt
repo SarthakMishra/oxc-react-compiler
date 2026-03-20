@@ -703,10 +703,7 @@ object-values.js
 optional-call-chain-in-ternary.ts
 optional-call-chained.js
 optional-call-logical.js
-optional-call-simple.js
-optional-call-with-independently-memoizable-arg.js
 optional-call-with-optional-property-load.js
-optional-call.js
 optional-computed-member-expression.js
 optional-member-expression-as-memo-dep.js
 optional-member-expression-call-as-property.js
@@ -716,7 +713,6 @@ optional-member-expression-single-with-unconditional.js
 optional-member-expression-single.js
 optional-member-expression-with-optional-member-expr-as-property.js
 optional-member-expression.js
-optional-method-call.js
 optional-receiver-method-call.js
 optional-receiver-optional-method.js
 original-reactive-scopes-fork/capture-ref-for-later-mutation.tsx

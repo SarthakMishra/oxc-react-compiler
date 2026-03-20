@@ -47,7 +47,7 @@ pub fn validate_exhaustive_dependencies(
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, args } = &instr.value {
+            if let InstructionValue::CallExpression { callee, args, .. } = &instr.value {
                 let name = callee
                     .identifier
                     .name

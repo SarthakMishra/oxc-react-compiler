@@ -64,7 +64,7 @@ fn collect_memo_wrapped_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
         for instr in &block.instructions {
             match &instr.value {
                 // React.memo(Component) or memo(Component)
-                InstructionValue::CallExpression { callee, args } => {
+                InstructionValue::CallExpression { callee, args, .. } => {
                     if let Some(name) = callee.identifier.name.as_deref()
                         && (name == "memo" || name == "forwardRef")
                         && !args.is_empty()

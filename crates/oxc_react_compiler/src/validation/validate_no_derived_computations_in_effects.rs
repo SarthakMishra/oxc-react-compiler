@@ -16,7 +16,7 @@ pub fn validate_no_derived_computations_in_effects(hir: &HIR, errors: &mut Error
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, args } = &instr.value {
+            if let InstructionValue::CallExpression { callee, args, .. } = &instr.value {
                 let name = callee
                     .identifier
                     .name
@@ -66,6 +66,7 @@ fn check_effect_callback_for_derived_state(
                         if let InstructionValue::CallExpression {
                             callee: inner_callee,
                             args: inner_args,
+                            ..
                         } = &inner_instr.value
                             && (is_set_state_call(inner_callee, &inner_name_map)
                                 || set_state_ids.contains(&inner_callee.identifier.id))

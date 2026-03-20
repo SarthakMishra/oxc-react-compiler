@@ -77,7 +77,7 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             let is_ref_current = match &instr.value {
-                InstructionValue::PropertyLoad { object, property } => {
+                InstructionValue::PropertyLoad { object, property, .. } => {
                     property == "current" && ref_ids.contains(&object.identifier.id)
                 }
                 InstructionValue::PropertyStore { object, property, .. } => {
@@ -157,7 +157,7 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
-                InstructionValue::CallExpression { callee, args } => {
+                InstructionValue::CallExpression { callee, args, .. } => {
                     let callee_name = callee
                         .identifier
                         .name
@@ -304,7 +304,7 @@ fn check_nested_ref_access(
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             let is_ref_current = match &instr.value {
-                InstructionValue::PropertyLoad { object, property } => {
+                InstructionValue::PropertyLoad { object, property, .. } => {
                     property == "current" && local_ref_ids.contains(&object.identifier.id)
                 }
                 InstructionValue::PropertyStore { object, property, .. } => {

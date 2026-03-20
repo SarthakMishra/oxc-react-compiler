@@ -45,7 +45,7 @@ pub fn collect_optional_chain_dependencies(hir: &HIR) -> OptionalChainDependenci
     // First pass: collect all property loads and their chain relationships
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::PropertyLoad { object, property } = &instr.value {
+            if let InstructionValue::PropertyLoad { object, property, .. } = &instr.value {
                 let (root_id, mut path) =
                     if let Some((root, existing_path)) = id_to_path.get(&object.identifier.id) {
                         (*root, existing_path.clone())
@@ -78,7 +78,9 @@ pub fn collect_optional_chain_dependencies(hir: &HIR) -> OptionalChainDependenci
                 // Find property loads in the consequent block that chain from the test
                 if let Some((_, cons_block)) = hir.blocks.iter().find(|(id, _)| id == consequent) {
                     for instr in &cons_block.instructions {
-                        if let InstructionValue::PropertyLoad { object, property } = &instr.value {
+                        if let InstructionValue::PropertyLoad { object, property, .. } =
+                            &instr.value
+                        {
                             // Check if this load chains from the optional test
                             if object.identifier.id == test.identifier.id
                                 || id_to_path
@@ -187,6 +189,7 @@ mod tests {
                             InstructionValue::PropertyLoad {
                                 object: make_place(1, "a"),
                                 property: "b".to_string(),
+                                optional: false,
                             },
                         )],
                         terminal: Terminal::Goto { block: BlockId(2) },

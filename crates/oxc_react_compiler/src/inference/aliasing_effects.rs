@@ -84,7 +84,7 @@ pub fn compute_instruction_effects(
             }
         }
 
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             let sig = fn_signatures.get(&callee.identifier.id).cloned();
             effects.push(AliasingEffect::Apply {
                 receiver: callee.clone(),

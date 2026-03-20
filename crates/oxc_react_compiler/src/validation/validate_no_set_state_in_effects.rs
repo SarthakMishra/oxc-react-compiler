@@ -15,7 +15,7 @@ pub fn validate_no_set_state_in_effects(hir: &HIR, errors: &mut ErrorCollector) 
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, args } = &instr.value {
+            if let InstructionValue::CallExpression { callee, args, .. } = &instr.value {
                 let name = callee
                     .identifier
                     .name

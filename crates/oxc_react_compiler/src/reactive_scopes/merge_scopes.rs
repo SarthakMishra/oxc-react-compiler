@@ -136,7 +136,7 @@ fn visit_instruction_read_places(value: &InstructionValue, instr_id: u32, map: &
                 record_place_usage(sub, instr_id, map);
             }
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             record_place_usage(callee, instr_id, map);
             for arg in args {
                 record_place_usage(arg, instr_id, map);
@@ -161,7 +161,7 @@ fn visit_instruction_read_places(value: &InstructionValue, instr_id: u32, map: &
             record_place_usage(object, instr_id, map);
             record_place_usage(value, instr_id, map);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             record_place_usage(object, instr_id, map);
             record_place_usage(property, instr_id, map);
         }

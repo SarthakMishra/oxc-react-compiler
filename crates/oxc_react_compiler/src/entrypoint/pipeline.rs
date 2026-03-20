@@ -525,7 +525,7 @@ fn substitute_operands(
     match value {
         InstructionValue::StoreLocal { value, .. }
         | InstructionValue::StoreContext { value, .. } => sub(value),
-        InstructionValue::CallExpression { callee, args }
+        InstructionValue::CallExpression { callee, args, .. }
         | InstructionValue::NewExpression { callee, args } => {
             sub(callee);
             for arg in args {
@@ -544,7 +544,7 @@ fn substitute_operands(
             sub(object);
             sub(value);
         }
-        InstructionValue::ComputedLoad { object, property }
+        InstructionValue::ComputedLoad { object, property, .. }
         | InstructionValue::ComputedDelete { object, property } => {
             sub(object);
             sub(property);

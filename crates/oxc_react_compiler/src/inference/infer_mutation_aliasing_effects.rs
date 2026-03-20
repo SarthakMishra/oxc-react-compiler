@@ -431,7 +431,7 @@ fn pre_freeze_params(hir: &HIR, heap: &mut AbstractHeap, param_names: &[String])
                 | InstructionValue::DeclareContext { lvalue } => {
                     freeze_if_param(lvalue, heap);
                 }
-                InstructionValue::CallExpression { callee, args }
+                InstructionValue::CallExpression { callee, args, .. }
                 | InstructionValue::NewExpression { callee, args } => {
                     freeze_if_param(callee, heap);
                     for arg in args {
@@ -456,7 +456,7 @@ fn pre_freeze_params(hir: &HIR, heap: &mut AbstractHeap, param_names: &[String])
                     freeze_if_param(object, heap);
                     freeze_if_param(value, heap);
                 }
-                InstructionValue::ComputedLoad { object, property }
+                InstructionValue::ComputedLoad { object, property, .. }
                 | InstructionValue::ComputedDelete { object, property } => {
                     freeze_if_param(object, heap);
                     freeze_if_param(property, heap);
@@ -951,7 +951,7 @@ fn set_operand_effects(value: &mut crate::hir::types::InstructionValue, heap: &A
         InstructionValue::PropertyDelete { object, .. } => {
             update_place(object, heap);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             update_place(object, heap);
             update_place(property, heap);
         }
@@ -964,7 +964,7 @@ fn set_operand_effects(value: &mut crate::hir::types::InstructionValue, heap: &A
             update_place(object, heap);
             update_place(property, heap);
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             update_place(callee, heap);
             for arg in args.iter_mut() {
                 update_place(arg, heap);

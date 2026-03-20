@@ -1674,6 +1674,7 @@ impl HIRBuilder {
                     InstructionValue::PropertyLoad {
                         object,
                         property: member.property.name.to_string(),
+                        optional: false,
                     },
                     loc,
                 )
@@ -1681,7 +1682,7 @@ impl HIRBuilder {
             Expression::ComputedMemberExpression(member) => {
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
-                self.emit(InstructionValue::ComputedLoad { object, property }, loc)
+                self.emit(InstructionValue::ComputedLoad { object, property, optional: false }, loc)
             }
             Expression::PrivateFieldExpression(member) => {
                 let object = self.lower_expression(&member.object);
@@ -1689,6 +1690,7 @@ impl HIRBuilder {
                     InstructionValue::PropertyLoad {
                         object,
                         property: format!("#{}", member.field.name),
+                        optional: false,
                     },
                     loc,
                 )
@@ -1786,7 +1788,14 @@ impl HIRBuilder {
                     },
                     loc,
                 );
-                self.emit(InstructionValue::CallExpression { callee, args: vec![source] }, loc)
+                self.emit(
+                    InstructionValue::CallExpression {
+                        callee,
+                        args: vec![source],
+                        optional: false,
+                    },
+                    loc,
+                )
             }
 
             // Chain expression (optional chaining)
@@ -1858,6 +1867,15 @@ impl HIRBuilder {
     // ------------------------------------------------------------------
 
     fn lower_call_expression(&mut self, call: &ast::CallExpression<'_>, loc: Span) -> Place {
+        self.lower_call_expression_with_optional(call, false, loc)
+    }
+
+    fn lower_call_expression_with_optional(
+        &mut self,
+        call: &ast::CallExpression<'_>,
+        optional: bool,
+        loc: Span,
+    ) -> Place {
         // Detect useMemo / useCallback for manual memoization markers
         if let Some(callee_name) = extract_callee_name(&call.callee)
             && (callee_name == "useMemo" || callee_name == "useCallback")
@@ -1865,12 +1883,12 @@ impl HIRBuilder {
             let memo_id = self.next_memo_id;
             self.next_memo_id += 1;
             self.emit(InstructionValue::StartMemoize { manual_memo_id: memo_id }, loc);
-            // Lower the call normally
             let callee = self.lower_expression(&call.callee);
             let args = self.lower_arguments(&call.arguments);
-            let result =
-                self.emit(InstructionValue::CallExpression { callee, args: args.clone() }, loc);
-            // The deps array is the second argument, if present
+            let result = self.emit(
+                InstructionValue::CallExpression { callee, args: args.clone(), optional },
+                loc,
+            );
             let deps = if args.len() > 1 { vec![args[1].clone()] } else { Vec::new() };
             self.emit(
                 InstructionValue::FinishMemoize {
@@ -1890,21 +1908,28 @@ impl HIRBuilder {
                 let receiver = self.lower_expression(&member.object);
                 let property = member.property.name.to_string();
                 let args = self.lower_arguments(&call.arguments);
-                self.emit(InstructionValue::MethodCall { receiver, property, args }, loc)
+                // The optional flag applies to the call itself, not the member access.
+                // member.optional is for the `.` in `a?.b()` — that's on the PropertyLoad.
+                // call.optional (our `optional` param) is for the `()` in `a.b?.()`.
+                self.emit(InstructionValue::MethodCall { receiver, property, args, optional }, loc)
             }
             Expression::ComputedMemberExpression(member) => {
-                // Computed method call: obj[prop](args)
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
-                let computed_access =
-                    self.emit(InstructionValue::ComputedLoad { object, property }, loc);
+                let computed_access = self.emit(
+                    InstructionValue::ComputedLoad { object, property, optional: false },
+                    loc,
+                );
                 let args = self.lower_arguments(&call.arguments);
-                self.emit(InstructionValue::CallExpression { callee: computed_access, args }, loc)
+                self.emit(
+                    InstructionValue::CallExpression { callee: computed_access, args, optional },
+                    loc,
+                )
             }
             _ => {
                 let callee = self.lower_expression(&call.callee);
                 let args = self.lower_arguments(&call.arguments);
-                self.emit(InstructionValue::CallExpression { callee, args }, loc)
+                self.emit(InstructionValue::CallExpression { callee, args, optional }, loc)
             }
         }
     }
@@ -1973,6 +1998,7 @@ impl HIRBuilder {
                     InstructionValue::PropertyLoad {
                         object,
                         property: member.property.name.to_string(),
+                        optional: false,
                     },
                     loc,
                 )
@@ -1980,7 +2006,7 @@ impl HIRBuilder {
             AssignmentTarget::ComputedMemberExpression(member) => {
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
-                self.emit(InstructionValue::ComputedLoad { object, property }, loc)
+                self.emit(InstructionValue::ComputedLoad { object, property, optional: false }, loc)
             }
             _ => self.emit(
                 InstructionValue::UnsupportedNode { node: "AssignmentTargetLoad".to_string() },
@@ -2046,7 +2072,11 @@ impl HIRBuilder {
                         loc,
                     );
                     let item = self.emit(
-                        InstructionValue::ComputedLoad { object: value.clone(), property: idx },
+                        InstructionValue::ComputedLoad {
+                            object: value.clone(),
+                            property: idx,
+                            optional: false,
+                        },
                         loc,
                     );
                     // ast::AssignmentTargetMaybeDefault → extract the inner AssignmentTarget
@@ -2080,6 +2110,7 @@ impl HIRBuilder {
                                 InstructionValue::PropertyLoad {
                                     object: value.clone(),
                                     property: key_name.clone(),
+                                    optional: false,
                                 },
                                 loc,
                             );
@@ -2114,6 +2145,7 @@ impl HIRBuilder {
                                 InstructionValue::PropertyLoad {
                                     object: value.clone(),
                                     property: key_name,
+                                    optional: false,
                                 },
                                 loc,
                             );
@@ -2156,6 +2188,7 @@ impl HIRBuilder {
                     InstructionValue::PropertyLoad {
                         object,
                         property: member.property.name.to_string(),
+                        optional: false,
                     },
                     loc,
                 )
@@ -2163,7 +2196,7 @@ impl HIRBuilder {
             SimpleAssignmentTarget::ComputedMemberExpression(member) => {
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
-                self.emit(InstructionValue::ComputedLoad { object, property }, loc)
+                self.emit(InstructionValue::ComputedLoad { object, property, optional: false }, loc)
             }
             _ => self.make_temp(loc),
         }
@@ -2457,7 +2490,11 @@ impl HIRBuilder {
             ),
         };
         self.emit(
-            InstructionValue::PropertyLoad { object, property: member.property.name.to_string() },
+            InstructionValue::PropertyLoad {
+                object,
+                property: member.property.name.to_string(),
+                optional: false,
+            },
             loc,
         )
     }
@@ -2578,9 +2615,7 @@ impl HIRBuilder {
         use ast::ChainElement;
         match &chain.expression {
             ChainElement::CallExpression(call) => {
-                // a?.b() — lower as regular call for now
-                // In a full implementation we'd emit Optional terminal
-                self.lower_call_expression(call, loc)
+                self.lower_call_expression_with_optional(call, call.optional, loc)
             }
             ChainElement::StaticMemberExpression(member) => {
                 let object = self.lower_expression(&member.object);
@@ -2588,6 +2623,7 @@ impl HIRBuilder {
                     InstructionValue::PropertyLoad {
                         object,
                         property: member.property.name.to_string(),
+                        optional: member.optional,
                     },
                     loc,
                 )
@@ -2595,7 +2631,10 @@ impl HIRBuilder {
             ChainElement::ComputedMemberExpression(member) => {
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
-                self.emit(InstructionValue::ComputedLoad { object, property }, loc)
+                self.emit(
+                    InstructionValue::ComputedLoad { object, property, optional: member.optional },
+                    loc,
+                )
             }
             ChainElement::PrivateFieldExpression(member) => {
                 let object = self.lower_expression(&member.object);
@@ -2603,6 +2642,7 @@ impl HIRBuilder {
                     InstructionValue::PropertyLoad {
                         object,
                         property: format!("#{}", member.field.name),
+                        optional: member.optional,
                     },
                     loc,
                 )

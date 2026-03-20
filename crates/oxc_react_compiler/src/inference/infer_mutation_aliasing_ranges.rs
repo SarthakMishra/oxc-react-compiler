@@ -636,7 +636,7 @@ fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
         | InstructionValue::PostfixUpdate { lvalue, .. } => {
             ids.push(lvalue.identifier.id);
         }
-        InstructionValue::CallExpression { callee, args }
+        InstructionValue::CallExpression { callee, args, .. }
         | InstructionValue::NewExpression { callee, args } => {
             ids.push(callee.identifier.id);
             for arg in args {
@@ -657,7 +657,7 @@ fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
             ids.push(object.identifier.id);
             ids.push(value.identifier.id);
         }
-        InstructionValue::ComputedLoad { object, property }
+        InstructionValue::ComputedLoad { object, property, .. }
         | InstructionValue::ComputedDelete { object, property } => {
             ids.push(object.identifier.id);
             ids.push(property.identifier.id);

@@ -75,7 +75,7 @@ fn collect_used_in_instruction_value(value: &InstructionValue, used: &mut FxHash
         InstructionValue::UnaryExpression { value, .. } => add(value),
         InstructionValue::PrefixUpdate { lvalue, .. } => add(lvalue),
         InstructionValue::PostfixUpdate { lvalue, .. } => add(lvalue),
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             add(callee);
             for arg in args {
                 add(arg);
@@ -98,7 +98,7 @@ fn collect_used_in_instruction_value(value: &InstructionValue, used: &mut FxHash
             add(object);
             add(value);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             add(object);
             add(property);
         }

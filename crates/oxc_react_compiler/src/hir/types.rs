@@ -323,11 +323,13 @@ pub enum InstructionValue {
     CallExpression {
         callee: Place,
         args: Vec<Place>,
+        optional: bool,
     },
     MethodCall {
         receiver: Place,
         property: String,
         args: Vec<Place>,
+        optional: bool,
     },
     NewExpression {
         callee: Place,
@@ -338,6 +340,7 @@ pub enum InstructionValue {
     PropertyLoad {
         object: Place,
         property: String,
+        optional: bool,
     },
     PropertyStore {
         object: Place,
@@ -347,6 +350,7 @@ pub enum InstructionValue {
     ComputedLoad {
         object: Place,
         property: Place,
+        optional: bool,
     },
     ComputedStore {
         object: Place,

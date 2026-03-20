@@ -191,7 +191,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                     // stable module object. Hook calls are excluded because their return
                     // values (state, refs, etc.) are reactive even when the hook itself
                     // is a non-reactive import — e.g., useState(0) returns reactive state.
-                    InstructionValue::CallExpression { callee, args } => {
+                    InstructionValue::CallExpression { callee, args, .. } => {
                         let is_hook = id_to_name.get(&callee.identifier.id).is_some_and(|n| {
                             n.starts_with("use")
                                 && n.len() > 3
@@ -343,7 +343,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                         );
                     }
                 }
-                InstructionValue::PropertyLoad { object, property } => {
+                InstructionValue::PropertyLoad { object, property, .. } => {
                     // PropertyLoad { object: temp, property: "x" } → temp2
                     // Resolve temp → root, then temp2 → (root, path ++ ["x"])
                     if let Some(resolved) = temp_map.get(&object.identifier.id) {
@@ -1064,7 +1064,7 @@ fn collect_read_operand_places(value: &InstructionValue) -> Vec<&crate::hir::typ
             // These read AND write the lvalue — include as read
             places.push(lvalue);
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             places.push(callee);
             for arg in args {
                 places.push(arg);
@@ -1090,7 +1090,7 @@ fn collect_read_operand_places(value: &InstructionValue) -> Vec<&crate::hir::typ
             places.push(object);
             places.push(value);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             places.push(object);
             places.push(property);
         }
@@ -1277,7 +1277,7 @@ fn collect_operand_places(value: &InstructionValue) -> Vec<&crate::hir::types::P
         | InstructionValue::PostfixUpdate { lvalue, .. } => {
             places.push(lvalue);
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             places.push(callee);
             for arg in args {
                 places.push(arg);
@@ -1303,7 +1303,7 @@ fn collect_operand_places(value: &InstructionValue) -> Vec<&crate::hir::types::P
             places.push(object);
             places.push(value);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             places.push(object);
             places.push(property);
         }

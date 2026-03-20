@@ -200,12 +200,12 @@ fn has_reactive_operand(
         InstructionValue::UnaryExpression { value, .. } => check(value),
         InstructionValue::PropertyLoad { object, .. }
         | InstructionValue::PropertyDelete { object, .. } => check(object),
-        InstructionValue::ComputedLoad { object, property }
+        InstructionValue::ComputedLoad { object, property, .. }
         | InstructionValue::ComputedDelete { object, property } => check(object) || check(property),
         InstructionValue::ComputedStore { object, property, value } => {
             check(object) || check(property) || check(value)
         }
-        InstructionValue::CallExpression { callee, args }
+        InstructionValue::CallExpression { callee, args, .. }
         | InstructionValue::NewExpression { callee, args } => {
             check(callee) || args.iter().any(check)
         }

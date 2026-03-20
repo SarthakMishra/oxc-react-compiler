@@ -394,7 +394,7 @@ fn rename_instruction_value_uses(
         | InstructionValue::PostfixUpdate { lvalue, .. } => {
             rename_place_use(lvalue, stacks);
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             rename_place_use(callee, stacks);
             for arg in args {
                 rename_place_use(arg, stacks);
@@ -419,7 +419,7 @@ fn rename_instruction_value_uses(
             rename_place_use(object, stacks);
             rename_place_use(value, stacks);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             rename_place_use(object, stacks);
             rename_place_use(property, stacks);
         }

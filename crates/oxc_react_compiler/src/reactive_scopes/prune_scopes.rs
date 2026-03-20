@@ -101,7 +101,7 @@ fn collect_instruction_operand_ids(value: &InstructionValue, used: &mut FxHashSe
         }
 
         // Calls
-        InstructionValue::CallExpression { callee, args }
+        InstructionValue::CallExpression { callee, args, .. }
         | InstructionValue::NewExpression { callee, args } => {
             insert_place(callee, used);
             for arg in args {
@@ -124,7 +124,7 @@ fn collect_instruction_operand_ids(value: &InstructionValue, used: &mut FxHashSe
             insert_place(object, used);
             insert_place(value, used);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             insert_place(object, used);
             insert_place(property, used);
         }
@@ -855,7 +855,7 @@ fn substitute_places_in_value(value: &mut InstructionValue, subs: &FxHashMap<Ide
         | InstructionValue::PostfixUpdate { lvalue, .. } => {
             substitute_place(lvalue, subs);
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             substitute_place(callee, subs);
             for arg in args {
                 substitute_place(arg, subs);
@@ -880,7 +880,7 @@ fn substitute_places_in_value(value: &mut InstructionValue, subs: &FxHashMap<Ide
             substitute_place(object, subs);
             substitute_place(value, subs);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             substitute_place(object, subs);
             substitute_place(property, subs);
         }
@@ -1149,7 +1149,7 @@ fn promote_places_in_value(value: &mut InstructionValue) {
         | InstructionValue::PostfixUpdate { lvalue, .. } => {
             promote_place(lvalue);
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             promote_place(callee);
             for arg in args {
                 promote_place(arg);
@@ -1174,7 +1174,7 @@ fn promote_places_in_value(value: &mut InstructionValue) {
             promote_place(object);
             promote_place(value);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             promote_place(object);
             promote_place(property);
         }
@@ -1600,7 +1600,7 @@ fn count_reads_in_value(
             // Same as StoreLocal: inner lvalue is the same as instr.lvalue
             let _ = lvalue;
         }
-        InstructionValue::CallExpression { callee, args }
+        InstructionValue::CallExpression { callee, args, .. }
         | InstructionValue::NewExpression { callee, args } => {
             if is_name(callee) {
                 *read_count += 1;
@@ -1658,7 +1658,7 @@ fn count_reads_in_value(
                 *read_count += 1;
             }
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             if is_name(object) {
                 *read_count += 1;
             }
@@ -1931,7 +1931,7 @@ fn apply_renames_to_value(value: &mut InstructionValue, renames: &[(String, Stri
         InstructionValue::Destructure { value, .. } => {
             apply_renames_to_place(value, renames);
         }
-        InstructionValue::CallExpression { callee, args }
+        InstructionValue::CallExpression { callee, args, .. }
         | InstructionValue::NewExpression { callee, args } => {
             apply_renames_to_place(callee, renames);
             for arg in args {
@@ -1960,7 +1960,7 @@ fn apply_renames_to_value(value: &mut InstructionValue, renames: &[(String, Stri
             apply_renames_to_place(object, renames);
             apply_renames_to_place(value, renames);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             apply_renames_to_place(object, renames);
             apply_renames_to_place(property, renames);
         }

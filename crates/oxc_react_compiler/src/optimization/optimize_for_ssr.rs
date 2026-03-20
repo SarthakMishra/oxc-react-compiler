@@ -41,7 +41,7 @@ fn strip_operand_reactivity(value: &mut InstructionValue) {
         | InstructionValue::PropertyLoad { object: place, .. } => {
             place.reactive = false;
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             callee.reactive = false;
             for arg in args {
                 arg.reactive = false;

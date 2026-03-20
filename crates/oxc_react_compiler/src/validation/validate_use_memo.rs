@@ -18,7 +18,7 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
             // Extract hook name and args from either CallExpression or MethodCall.
             // CallExpression handles `useMemo(...)`, MethodCall handles `React.useMemo(...)`.
             let (hook_name, args) = match &instr.value {
-                InstructionValue::CallExpression { callee, args } => {
+                InstructionValue::CallExpression { callee, args, .. } => {
                     let name = callee
                         .identifier
                         .name

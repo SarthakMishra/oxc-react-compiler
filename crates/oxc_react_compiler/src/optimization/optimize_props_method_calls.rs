@@ -84,6 +84,7 @@ pub fn optimize_props_method_calls(hir: &mut HIR) {
                     value: InstructionValue::PropertyLoad {
                         object: receiver.clone(),
                         property: property.clone(),
+                        optional: false,
                     },
                     loc: instr.loc,
                     effects: None,
@@ -94,7 +95,11 @@ pub fn optimize_props_method_calls(hir: &mut HIR) {
                     &mut instr.value,
                     InstructionValue::Primitive { value: crate::hir::types::Primitive::Undefined },
                 ) {
-                    instr.value = InstructionValue::CallExpression { callee: temp_place, args };
+                    instr.value = InstructionValue::CallExpression {
+                        callee: temp_place,
+                        args,
+                        optional: false,
+                    };
                 }
 
                 insertions.push((idx, load_instr));

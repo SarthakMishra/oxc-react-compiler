@@ -204,7 +204,7 @@ pub fn validate_no_mutation_after_freeze(
     let mut effect_callback_ids: FxHashSet<IdentifierId> = FxHashSet::default();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, args } = &instr.value {
+            if let InstructionValue::CallExpression { callee, args, .. } = &instr.value {
                 let callee_name = id_to_name
                     .get(&callee.identifier.id)
                     .copied()
@@ -340,7 +340,7 @@ pub fn validate_no_mutation_after_freeze(
             // Skip effect/callback hooks — their callbacks execute after render,
             // so we should not freeze their captures or check their bodies for
             // frozen mutations.
-            if let InstructionValue::CallExpression { callee, args } = &instr.value {
+            if let InstructionValue::CallExpression { callee, args, .. } = &instr.value {
                 let callee_name = resolve_name(
                     callee.identifier.id,
                     &id_to_name,

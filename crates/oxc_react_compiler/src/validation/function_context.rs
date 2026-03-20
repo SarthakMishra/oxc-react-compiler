@@ -192,7 +192,7 @@ pub fn collect_post_render_fn_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
-                InstructionValue::CallExpression { callee, args } => {
+                InstructionValue::CallExpression { callee, args, .. } => {
                     let callee_name = callee
                         .identifier
                         .name

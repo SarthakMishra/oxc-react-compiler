@@ -169,7 +169,7 @@ fn replace_in_instruction_value(
         | InstructionValue::PostfixUpdate { lvalue, .. } => {
             replace_in_place(lvalue, replacements);
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             replace_in_place(callee, replacements);
             for arg in args {
                 replace_in_place(arg, replacements);
@@ -194,7 +194,7 @@ fn replace_in_instruction_value(
             replace_in_place(object, replacements);
             replace_in_place(value, replacements);
         }
-        InstructionValue::ComputedLoad { object, property } => {
+        InstructionValue::ComputedLoad { object, property, .. } => {
             replace_in_place(object, replacements);
             replace_in_place(property, replacements);
         }

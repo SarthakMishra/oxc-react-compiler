@@ -69,7 +69,7 @@ fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
             ids.push(object.identifier.id);
             ids.push(value.identifier.id);
         }
-        InstructionValue::CallExpression { callee, args } => {
+        InstructionValue::CallExpression { callee, args, .. } => {
             ids.push(callee.identifier.id);
             for a in args {
                 ids.push(a.identifier.id);
