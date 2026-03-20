@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 100     | 1–100  | Full compiler: HIR foundation → 25.3% conformance. Recent: Context capture refinement in refine_effects, aliasing effects upstream fidelity, scope inference architecture rewrite |
+| [001.md](001.md) | 106     | 1–106  | Full compiler: HIR foundation → 25.9% conformance. Recent: rename_variables accuracy fix, conformance analysis (validation false positives, optional chaining, silent bail-outs) |
 
 ## Archive
 
