@@ -36,15 +36,13 @@ Completed: Gaps 1-5, 6b, 7, 8, 9, 9b, 11, 13, 14. Remaining: Gap 6 (ternary reco
 
 ---
 
-## Gap 15: Remaining Render Divergence (1 fixture)
+## Gap 15: Remaining Render Divergence (1 fixture) — BLOCKED
 
-**Priority:** P3 — last render correctness gap
+**Priority:** P3 — BLOCKED on scope inference (Gap 11)
 
-**Current state:** canvas-sidebar (1/25 benchmark fixtures) shows render divergence. Phase 101 notes "9 undeclared temps" as the symptom.
+**Current state:** canvas-sidebar (1/25) shows render divergence. Investigation confirmed this is a scope inference issue, NOT a codegen bug: OXC produces 64 cache slots with sentinel checks while Babel produces 70 slots with dependency-based checks. The memoization strategy is fundamentally different.
 
-**What's needed:**
-- Diff OXC vs Babel compiled output for canvas-sidebar
-- Fix declaration collection in `codegen.rs`
+**Depends on:** Gap 11 (under-memoization / full abstract interpreter port)
 
 ---
 
