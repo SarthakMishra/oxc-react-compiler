@@ -1,6 +1,6 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-21 (post Phase 108)
+> Last updated: 2026-03-21 (post Phase 109)
 > Conformance: **451/1717 (26.3%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
 
 ---
@@ -51,23 +51,23 @@ cd benchmarks && npm run e2e:quick                    # E2E Vite builds
 |----------|-------|-------------|
 | Both compile, slots DIFFER | ~642 | Scope/memoization divergence (biggest) |
 | Both compile, slots MATCH | ~249 | Output format only |
-| We bail, they compile | ~138 | False bail-outs |
+| We bail, they compile | ~135 | False bail-outs |
 | We compile, they don't | ~149 | Over-compile (usually fine) |
 | Both no memo, format diff | ~87 | Format-only |
 | Silent bail-outs | 23 | 0 scopes, no error |
 
-### Bail-out error breakdown (138 fixtures)
+### Bail-out error breakdown (135 fixtures)
 ```
 58x  Existing memoization could not be preserved  ← BLOCKED on scope inference
-23x  Frozen mutation                               ← was 29, -6 from instruction ordering fix; 19 false bail-outs remain
+23x  Frozen mutation                               ← 19 false bail-outs; Check 1 (aliasing) is 13 of those
 23x  (silent, no error)                            ← HIR lowering gaps
+ 8x  Reassigned after render                       ← was 10, -2 from sync callback method fix
  7x  Cannot reassign outside component             ← cross-scope IdentifierId blocker
- 6x  Ref access in render                          ← was 14; 8 false bail-outs remain
-10x  Reassigned after render (x/y/count/myVar)
- 3x  Hooks referenced as values
+ 6x  Ref access in render                          ← 8 false bail-outs remain
+ 3x  Hooks referenced as values                    ← 1 fixed (property access), 2 remain
  3x  Cannot call setState during render
  2x  setState in useEffect
- 3x  Other
+ 2x  Other
 ```
 
 ---
@@ -109,7 +109,7 @@ Name promotion map (`build_name_promotion_map`) fixes 6 non-inlinable temp patte
 | Cannot reassign outside component | 7 | Cross-scope `IdentifierId` blocker; transitive safe callback works for direct chains only |
 | Ref access in render | 8 | Each remaining is a distinct pattern (Flow type casts, `useEffectEvent`, multi-indirection aliases) |
 | Hooks referenced as values | 2 | 1 fixed (property access), 1 needs `@enableNameAnonymousFunctions` support |
-| Reassigned after render | 10 | Some may benefit from per-body `directly_called` |
+| Reassigned after render | 8 | was 10; sync method callbacks (.forEach/.map) now recognized as render-time |
 | setState in render | 3 | Matched upstream (both no-memo), not actual false bail-outs |
 | setState in useEffect | 2 | Need investigation |
 
