@@ -818,13 +818,17 @@ fn expr_string(
         | InstructionValue::LoadContext { place }
         | InstructionValue::TypeCastExpression { value: place, .. } => Some(resolve(place)),
         InstructionValue::LoadGlobal { binding } => Some(binding.name.clone()),
-        InstructionValue::PropertyLoad { object, property, .. } => {
-            Some(format!("{}.{}", resolve(object), property))
+        InstructionValue::PropertyLoad { object, property, optional } => {
+            let access = if *optional { "?." } else { "." };
+            Some(format!("{}{access}{}", resolve(object), property))
         }
-        InstructionValue::ComputedLoad { object, property, .. } => {
+        InstructionValue::ComputedLoad { object, property, optional } => {
             let prop_str = resolve(property);
             if is_dotable_string_literal(&prop_str) {
-                Some(format!("{}.{}", resolve(object), extract_dotable_id(&prop_str)))
+                let access = if *optional { "?." } else { "." };
+                Some(format!("{}{access}{}", resolve(object), extract_dotable_id(&prop_str)))
+            } else if *optional {
+                Some(format!("{}?.[{}]", resolve(object), prop_str))
             } else {
                 Some(format!("{}[{}]", resolve(object), prop_str))
             }

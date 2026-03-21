@@ -801,8 +801,6 @@ propagate-scope-deps-hir-fork/partial-early-return-within-reactive-scope.js
 propagate-scope-deps-hir-fork/phi-type-inference-array-push-consecutive-phis.js
 propagate-scope-deps-hir-fork/phi-type-inference-array-push.js
 propagate-scope-deps-hir-fork/phi-type-inference-property-store.js
-propagate-scope-deps-hir-fork/reactive-dependencies-non-optional-properties-inside-optional-chain.js
-propagate-scope-deps-hir-fork/reduce-reactive-deps/conditional-member-expr.js
 propagate-scope-deps-hir-fork/reduce-reactive-deps/infer-function-cond-access-local-var.tsx
 propagate-scope-deps-hir-fork/reduce-reactive-deps/infer-function-cond-access-not-hoisted.tsx
 propagate-scope-deps-hir-fork/reduce-reactive-deps/infer-function-uncond-access-hoisted.tsx
@@ -878,7 +876,6 @@ reactive-control-dependency-switch-condition.js
 reactive-control-dependency-via-mutation-if.js
 reactive-control-dependency-via-mutation-switch.js
 reactive-control-dependency-while-test.js
-reactive-dependencies-non-optional-properties-inside-optional-chain.js
 reactive-dependency-fixpoint.js
 reactive-dependency-nonreactive-captured-with-reactive.js
 reactive-ref-param.tsx
@@ -919,7 +916,6 @@ reduce-reactive-deps/cfg-switch-exhaustive.js
 reduce-reactive-deps/cfg-switch-missing-case.js
 reduce-reactive-deps/cfg-switch-missing-default.js
 reduce-reactive-deps/cond-scope.js
-reduce-reactive-deps/conditional-member-expr.js
 reduce-reactive-deps/context-var-granular-dep.js
 reduce-reactive-deps/edge-case-merge-uncond-optional-chain-and-cond.ts
 reduce-reactive-deps/hoist-deps-diff-ssa-instance.tsx
@@ -1028,7 +1024,6 @@ repro-returned-inner-fn-reassigns-context.js
 repro-scope-missing-mutable-range.js
 repro-separate-memoization-due-to-callback-capturing.js
 repro-separate-scopes-for-divs.js
-repro-slow-validate-preserve-memo.ts
 repro-stale-closure-forward-reference.js
 repro-undefined-expression-of-jsxexpressioncontainer.js
 repro-unmerged-fbt-call-merge-overlapping-reactive-scopes.js
