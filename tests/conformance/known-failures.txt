@@ -1,7 +1,8 @@
 #
 # (Uses corrected .expected files extracted from upstream .expect.md)
 # 298 upstream error fixtures excluded from comparison
-# Baseline: 74/1419 pass (5.2%), 0 panics, 1345 divergences
+# Re-baselined: 2026-03-21 against upstream main (facebook/react)
+# Baseline: 456/1717 pass (26.6%), 0 panics, 1261 divergences
 # Format: <relative-path-from-upstream-fixtures/>
 # Known upstream fixtures that our compiler does not yet match.
 # One fixture filename per line. Lines starting with '#' are comments.
@@ -28,6 +29,7 @@ allow-global-mutation-unused-usecallback.js
 allow-global-reassignment-in-effect-indirect.js
 allow-global-reassignment-in-effect.js
 allow-merge-refs-pattern.js
+allow-modify-global-in-callback-jsx.js
 allow-mutate-global-in-effect-fixpoint.js
 allow-mutating-ref-in-callback-passed-to-jsx-indirect.tsx
 allow-mutating-ref-in-callback-passed-to-jsx.tsx

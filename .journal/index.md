@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 106     | 1–106  | Full compiler: HIR foundation → 25.9% conformance. Recent: rename_variables accuracy fix, conformance analysis (validation false positives, optional chaining, silent bail-outs) |
+| [001.md](001.md) | 111     | 1–111  | Full compiler: HIR foundation → 26.6% conformance. Recent: re-baseline against upstream main, upstream alignment planning |
 
 ## Archive
 

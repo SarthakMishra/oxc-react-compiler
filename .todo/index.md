@@ -1,8 +1,8 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-21 (post Phase 110)
+> Last updated: 2026-03-21 (post Phase 111, re-baseline complete)
 > Conformance: **456/1717 (26.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
-> **IMPORTANT:** Upstream fixtures and architecture have changed significantly since our port was created. The aliasing/mutation model was completely replaced in June 2025. We must re-baseline before continuing conformance work.
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. 1 new divergence (allow-modify-global-in-callback-jsx.js).
 
 ---
 
@@ -10,18 +10,12 @@
 
 The upstream React Compiler has undergone major architectural changes since our port was created (early 2025). Our code is based on the OLD architecture that has been **deleted upstream**. This section plans the full alignment port.
 
-### Port Phase 0: Re-baseline Fixtures & Conformance
+### Port Phase 0: Re-baseline Fixtures & Conformance ✅
 
-**Effort:** 1 session
-**Risk:** LOW — no compiler changes
+~~**Effort:** 1 session~~
+~~**Risk:** LOW — no compiler changes~~
 
-1. Re-download upstream conformance fixtures: `./tests/conformance/download-upstream.sh`
-2. Re-generate expected outputs: `node tests/conformance/run-upstream.mjs` (uses current `babel-plugin-react-compiler@latest`)
-3. Re-run conformance with new fixtures — conformance number WILL change (possibly lower since upstream expectations changed)
-4. Rebuild `known-failures.txt` from the new baseline
-5. Commit the new baseline before any compiler changes
-
-**Why first:** Everything else depends on having correct expected outputs. The current fixtures may have stale expectations from 2024.
+**Completed:** 2026-03-21. Re-downloaded upstream fixtures from facebook/react main via tarball. 3437 files extracted (1446 .js, 97 .tsx, 165 .ts, 9 .jsx, 1718 .expect.md). Regenerated 1718 .expected files (1420 with code, 298 upstream errors). Conformance unchanged at 456/1717 (26.6%). 1 new divergence added to known-failures.txt (allow-modify-global-in-callback-jsx.js). 0 panics. All tests pass.
 
 ---
 
