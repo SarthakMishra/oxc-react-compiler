@@ -343,14 +343,15 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                         );
                     }
                 }
-                InstructionValue::PropertyLoad { object, property, .. } => {
-                    // PropertyLoad { object: temp, property: "x" } → temp2
+                InstructionValue::PropertyLoad { object, property, optional } => {
+                    // PropertyLoad { object: temp, property: "x", optional } → temp2
                     // Resolve temp → root, then temp2 → (root, path ++ ["x"])
+                    // Propagate the optional flag so dependency paths preserve `?.`
                     if let Some(resolved) = temp_map.get(&object.identifier.id) {
                         let mut new_path = resolved.path.clone();
                         new_path.push(DependencyPathEntry {
                             property: property.clone(),
-                            optional: false,
+                            optional: *optional,
                         });
                         temp_map.insert(
                             instr.lvalue.identifier.id,
@@ -375,7 +376,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                                 root_loc: object.identifier.loc,
                                 path: vec![DependencyPathEntry {
                                     property: property.clone(),
-                                    optional: false,
+                                    optional: *optional,
                                 }],
                             },
                         );

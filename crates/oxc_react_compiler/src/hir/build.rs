@@ -1900,7 +1900,7 @@ impl HIRBuilder {
                     InstructionValue::PropertyLoad {
                         object,
                         property: member.property.name.to_string(),
-                        optional: false,
+                        optional: member.optional,
                     },
                     loc,
                 )
@@ -1908,7 +1908,10 @@ impl HIRBuilder {
             Expression::ComputedMemberExpression(member) => {
                 let object = self.lower_expression(&member.object);
                 let property = self.lower_expression(&member.expression);
-                self.emit(InstructionValue::ComputedLoad { object, property, optional: false }, loc)
+                self.emit(
+                    InstructionValue::ComputedLoad { object, property, optional: member.optional },
+                    loc,
+                )
             }
             Expression::PrivateFieldExpression(member) => {
                 let object = self.lower_expression(&member.object);
