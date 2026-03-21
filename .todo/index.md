@@ -22,16 +22,16 @@ Pre-declares ALL scope output variables at function level. Removing it causes re
 ### `rename_variables` is load-bearing for 17 fixtures
 File: `src/reactive_scopes/prune_scopes.rs`
 
-Disabling `rename_variables` entirely causes 451→434 (-17 regressions). These 17 fixtures NEED the temp rename + post-scope assignment pattern to match upstream. The remaining 28 "const t0 vs const name" divergences need selective skip.
+Disabling `rename_variables` entirely causes 456→439 (-17 regressions). These 17 fixtures NEED the temp rename + post-scope assignment pattern. The remaining 28 "const t0 vs const name" divergences need selective skip.
 
 ### OXC stores default params in `FormalParameter.initializer`
 NOT in `BindingPattern::AssignmentPattern`. The `AssignmentPattern` variant in `BindingPattern` is only for destructure defaults in variable declarations.
 
 ### Block iteration order ≠ source order for loops
-The HIR blocks are stored in creation order, but for-loop constructs create blocks out of source order (the after-loop block can appear before loop body blocks). The frozen mutation validator now uses `frozen_at` instruction ID tracking to enforce source ordering. Any new validator that walks blocks linearly must account for this.
+The HIR blocks are stored in creation order, but for-loop constructs create blocks out of source order. The frozen mutation validator uses `frozen_at` instruction ID tracking to enforce source ordering. Any new validator that walks blocks linearly must account for this.
 
 ### Cross-scope `IdentifierId` mismatch
-Nested function bodies have their own `IdentifierId` numbering. A variable captured from an outer scope (e.g., `onClick` defined in the component, referenced inside `useMemo` callback) has DIFFERENT `IdentifierId`s at each scope level. Name-based resolution is needed for cross-scope tracking.
+Nested function bodies have their own `IdentifierId` numbering. A variable captured from an outer scope has DIFFERENT `IdentifierId`s at each scope level. Name-based resolution is needed for cross-scope tracking. This blocks 7 global-reassign + parts of 8 ref-access validators.
 
 ### Build & test
 ```bash
@@ -49,11 +49,11 @@ cd benchmarks && npm run e2e:quick                    # E2E Vite builds
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Both compile, slots DIFFER | ~642 | Scope/memoization divergence (biggest) |
-| Both compile, slots MATCH | ~249 | Output format only |
+| Both compile, slots DIFFER | ~649 | Scope/memoization divergence (biggest) |
+| Both compile, slots MATCH | ~240 | Output format only |
 | We bail, they compile | ~135 | False bail-outs |
 | We compile, they don't | ~149 | Over-compile (usually fine) |
-| Both no memo, format diff | ~87 | Format-only |
+| Both no memo, format diff | ~87 | Format-only — **all 87 produce identical raw text** |
 | Silent bail-outs | 23 | 0 scopes, no error |
 
 ### Bail-out error breakdown (135 fixtures)
@@ -61,10 +61,10 @@ cd benchmarks && npm run e2e:quick                    # E2E Vite builds
 58x  Existing memoization could not be preserved  ← BLOCKED on scope inference
 23x  Frozen mutation                               ← 19 false bail-outs; Check 1 (aliasing) is 13 of those
 23x  (silent, no error)                            ← HIR lowering gaps
- 8x  Reassigned after render                       ← was 10, -2 from sync callback method fix
+ 8x  Reassigned after render                       ← sync method callbacks fixed; remaining need invoke() pattern
  7x  Cannot reassign outside component             ← cross-scope IdentifierId blocker
  6x  Ref access in render                          ← 8 false bail-outs remain
- 3x  Hooks referenced as values                    ← 1 fixed (property access), 2 remain
+ 3x  Hooks referenced as values
  3x  Cannot call setState during render
  2x  setState in useEffect
  2x  Other
@@ -72,71 +72,114 @@ cd benchmarks && npm run e2e:quick                    # E2E Vite builds
 
 ---
 
-## Step 1: Frozen Mutation — Remaining (19 false bail-outs, HARD)
+## Next Steps (Prioritized)
 
-**Impact:** Up to +19 conformance
-**Files:** `src/validation/validate_no_mutation_after_freeze.rs`, `src/inference/infer_mutation_aliasing_effects.rs`
+### Step 1: "Both No Memo" Normalization Fix (87 fixtures, QUICK WIN)
 
-**Instrumented triage (23 total false bail-outs → 19 after instruction ordering fix):**
+**Impact:** Up to **+87 conformance** (456→543)
+**Files:** `tests/conformance_tests.rs` (normalization logic)
+**Risk:** LOW — only changes test comparison, not compiler code
+**Confidence:** HIGH — all 87 fixtures produce identical raw text
 
-| Check | Count | Root Cause | Fix |
-|-------|-------|-----------|-----|
-| Check 1 (MutateFrozen from aliasing) | 13 | Aliasing pass over-propagates freeze — IIFE captures, method call results inherit frozen from receiver | Needs `infer_mutation_aliasing_effects.rs` changes. Touches BLOCKED infrastructure. |
-| Check 2 (MethodCall on frozen) | 1 | `repro-missing-dependency-if-within-while.js` — while-loop ordering issue not fixed by instruction ID check | Needs deeper loop analysis |
-| Check 4 (Nested FE mutation) | 3 | FEs that mutate outer variables flagged even when outer var freshly created | Need to track local allocation |
-| Unknown path | 2 | `hook-ref-callback.js`, `useMemo-multiple-returns.js` | Need investigation |
+**The finding:** All 87 "both no memo" fixtures produce raw text IDENTICAL to the expected output. They diverge only after the `normalize_via_oxc` step (OXC parse→transform→print roundtrip). This means the OXC transformer processes our output and the expected output slightly differently — likely due to: import statement reformatting, JSX transform differences, semicolon insertion, or expression statement normalization.
 
-**Blocker:** 13/19 come from Check 1 which is in the aliasing pass. Fixing method call result freeze propagation in `infer_mutation_aliasing_effects.rs` would address the `repro-mutate-result-of-method-call-*` and `capturing-func-alias-*-iife` patterns but risks render regression (same infrastructure as the BLOCKED Gap 11).
+**Approach:**
+1. Pick 3 fixtures and dump pre/post normalization for both sides to identify the exact normalization divergence
+2. If the divergence is in the normalizer (e.g., OXC transformer changes import ordering or adds semicolons), fix the `normalize_output` function to compensate
+3. If the divergence is in the OXC transformer itself (e.g., JSX lowering produces different code for semantically identical input), add targeted normalization rules
+
+**Why this is the #1 priority:** The largest single batch of potential conformance gains. No compiler changes needed. Pure test infrastructure fix.
 
 ---
 
-## Step 2: Named Variable Preservation (28 fixtures, HARD)
+### Step 2: Named Variable Preservation — Conditional Rename (28 fixtures, MEDIUM)
 
 **Impact:** Up to +28 conformance
-**Files:** `src/reactive_scopes/codegen.rs` (`build_inline_map`, `rename_variables`)
-**Risk:** HIGH — `rename_variables` is load-bearing for 17 fixtures
+**Files:** `src/reactive_scopes/prune_scopes.rs` (`can_rename_scope_decl`)
+**Risk:** MEDIUM — must not regress the 17 rename-dependent fixtures
 
-Name promotion map (`build_name_promotion_map`) fixes 6 non-inlinable temp patterns. Remaining 28 are from `rename_variables` scope output renames. Two approaches investigated:
-- (a) Clone+mutate scope in `codegen_scope_with_promotions` — reverted, too complex (15+ name resolution points)
-- (b) Make `can_rename_scope_decl` conditional — needs identifying the 17 rename-dependent fixtures
-
----
-
-## Step 3: Remaining Validator False Bail-outs (~15 fixtures, MEDIUM)
-
-| Category | Count | Status |
-|----------|-------|--------|
-| Cannot reassign outside component | 7 | Cross-scope `IdentifierId` blocker; transitive safe callback works for direct chains only |
-| Ref access in render | 8 | Each remaining is a distinct pattern (Flow type casts, `useEffectEvent`, multi-indirection aliases) |
-| Hooks referenced as values | 2 | 1 fixed (property access), 1 needs `@enableNameAnonymousFunctions` support |
-| Reassigned after render | 8 | was 10; sync method callbacks (.forEach/.map) now recognized as render-time |
-| setState in render | 3 | Matched upstream (both no-memo), not actual false bail-outs |
-| setState in useEffect | 2 | Need investigation |
+**Approach (b):** Identify the 17 fixtures that NEED rename and add a condition to `can_rename_scope_decl`:
+1. Run conformance with `rename_variables` disabled
+2. Diff the passing list against baseline to find the 17 regressions
+3. Study what pattern those 17 share (likely: scope output is used as a dependency check value, and upstream emits `$[N] !== t0` not `$[N] !== x`)
+4. Add the condition: only rename when the scope output appears in a dependency check AND the original name would collide with a later declaration
+5. Validate: no regressions on the 17, +28 from the rest
 
 ---
 
-## Step 4: Optional Chaining — Remaining (5 fixtures, MEDIUM)
+### Step 3: Frozen Mutation — Targeted Fixes (6 fixtures, MEDIUM)
 
-**Impact:** Up to +5 more conformance
-**Files:** `src/hir/build.rs`, `src/reactive_scopes/propagate_dependencies.rs`, `src/reactive_scopes/codegen.rs`
+**Impact:** +3 to +6 conformance
 
-**What was done (Phase 109-110):**
-1. HIR builder: use `member.optional` from OXC AST (was hardcoded `false`)
-2. Dependency propagation: use PropertyLoad's `optional` flag for path entries
-3. Codegen `expr_string`: use `?.` for inlined PropertyLoad/ComputedLoad
+**3a. Check 4 (Nested FE mutation, 3 fixtures):**
+Track which outer variables are freshly allocated (from ArrayExpression, ObjectExpression, NewExpression). FEs that mutate these should not be flagged since the value is new and not frozen. Add a `locally_allocated_ids: FxHashSet<IdentifierId>` computed before Check 4, skip when the mutated name maps to a locally-allocated ID.
 
-**Result:** +5 conformance (451→456). 7→5 remaining.
+**3b. Unknown path (2 fixtures):**
+`hook-ref-callback.js` and `useMemo-multiple-returns.js` — add debug instrumentation to find which error path fires. Likely a check that's not covered by the existing 5-check debug framework.
 
-**Remaining 5:** 3 are try-catch + optional (we don't lower try-catch), 1 nested optional member, 1 computed optional.
+**3c. Check 2 (while-loop, 1 fixture):**
+`repro-missing-dependency-if-within-while.js` — the instruction ID ordering fix didn't help because the freeze happens via name-based tracking (not ID-based). Needs investigation of the name-based freeze path.
 
 ---
 
-## Step 5: Silent Bail-outs — Other Categories (23 fixtures, VARIES)
+### Step 4: Cross-Scope IdentifierId Resolution (FOUNDATIONAL, +10-15 fixtures)
 
-- 5x Flow syntax (`component` keyword, Flow type casts)
-- 4x gating patterns — `@enableGating` directive
-- 5x ref-related — various ref patterns producing 0 scopes
-- 9x other
+**Impact:** Unblocks 7 global-reassign + parts of 8 ref-access + parts of 8 reassigned-after-render
+**Files:** `src/validation/function_context.rs` (new shared utility)
+**Risk:** LOW — additive utility, no existing code changed
+
+**The problem:** When `onClick` is defined in the component and referenced inside a `useMemo` callback, the two scopes use different `IdentifierId`s for the same variable. Current workaround: name-based resolution (works for direct chains, fails for multi-hop aliases).
+
+**Approach:** Build a **cross-scope identity map** during HIR construction:
+1. In the HIR builder, when creating a nested function builder, pass the parent's `name → IdentifierId` binding map
+2. When the nested builder encounters a `LoadLocal` for a captured variable, record a mapping: `inner_id → outer_id`
+3. Store this map on the `HIRFunction` (new field: `captured_id_map: FxHashMap<IdentifierId, IdentifierId>`)
+4. Validators can use this map to resolve inner IDs back to outer IDs
+5. This eliminates the need for name-based workarounds in ref-access, global-reassign, and reassigned-after-render validators
+
+---
+
+### Step 5: Optional Chaining — Remaining (5 fixtures, MEDIUM)
+
+**Remaining:** 3 try-catch + optional, 1 nested optional member, 1 computed optional.
+
+**5a. Try-catch lowering (3 fixtures):** `try-catch-logical-and-optional.js`, `try-catch-nested-optional-chaining.js`, `try-catch-optional-call.js`. These need basic try-catch HIR lowering — emit the try body, catch body as separate blocks. Non-trivial but well-scoped. Upstream lowers try-catch to sequential blocks with error handling.
+
+**5b. Nested optional + computed (2 fixtures):** May need deeper investigation of how OXC represents nested optional chains in the AST.
+
+---
+
+### Step 6: Silent Bail-outs — Non-Flow Categories (9 fixtures, VARIES)
+
+After excluding Flow (5x) and gating (4x) fixtures, 9 silent bail-outs remain:
+- `infer-functions-component-with-ref-arg.js` — `@compilationMode:"infer"` with 2 params
+- `repro-mutate-ref-in-function-passed-to-hook.js` — ref mutation pattern
+- `return-ref-callback-structure.js` / `return-ref-callback.js` — ref callback returns
+- `useCallback-ref-in-render.js` / `useImperativeHandle-ref-mutate.js` — hook patterns
+- `repro-invalid-destructuring-reassignment-undefined-variable.js` — Flow `@compilationMode:"infer"`
+- `unused-object-element-with-rest.js` — scope inference gap (rest spread doesn't create scope)
+- `hoist-destruct.js` — Flow `component` keyword
+
+Most of these are either Flow-dependent or scope inference gaps (BLOCKED). Only 2-3 are potentially fixable.
+
+---
+
+### Step 7: Frozen Mutation Check 1 — Aliasing Pass (13 fixtures, HARD)
+
+**Impact:** Up to +13 conformance
+**Files:** `src/inference/infer_mutation_aliasing_effects.rs`
+**Risk:** HIGH — touches the same infrastructure as the BLOCKED Gap 11
+
+**Root cause:** The aliasing pass over-propagates freeze effects:
+- IIFE captures propagate freeze to outer variables (6 fixtures)
+- Method call results inherit frozen status from receiver (2 fixtures)
+- Transitive mutation through identity/propertyload functions (3 fixtures)
+- Other (2 fixtures)
+
+**Approach:** Targeted fix for method call results:
+- In the aliasing pass, when processing a `MethodCall` or `CallExpression`, the return value should NOT inherit the `Freeze` status of the receiver/arguments
+- New objects created by function calls are unfrozen by default
+- This is a narrow change but must be validated against the render benchmark (96% → no regression)
 
 ---
 
