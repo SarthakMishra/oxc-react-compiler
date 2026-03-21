@@ -61,18 +61,29 @@ pub fn collect_directly_called_fe_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
         fe_reachable.insert(fe_id, reachable);
     }
 
-    // Step 4: Find all CallExpression callee IDs
+    // Step 4: Find all CallExpression callee IDs AND FE IDs passed as first
+    // argument to synchronous array methods (.map(), .forEach(), .filter(), etc.)
+    // These callbacks execute during render, not deferred.
     let mut callee_ids: FxHashSet<IdentifierId> = FxHashSet::default();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
-                callee_ids.insert(callee.identifier.id);
+            match &instr.value {
+                InstructionValue::CallExpression { callee, .. } => {
+                    callee_ids.insert(callee.identifier.id);
+                }
+                InstructionValue::MethodCall { property, args, .. } => {
+                    // Synchronous array methods execute their callback during render
+                    if is_sync_callback_method(property) && !args.is_empty() {
+                        callee_ids.insert(args[0].identifier.id);
+                    }
+                }
+                _ => {}
             }
         }
     }
 
     // Step 5: A FE is "directly called" if any ID in its reachable set
-    // appears as a CallExpression callee
+    // appears as a CallExpression callee or sync method callback
     let mut result = FxHashSet::default();
     for (fe_id, reachable) in &fe_reachable {
         if reachable.iter().any(|id| callee_ids.contains(id)) {
@@ -80,6 +91,25 @@ pub fn collect_directly_called_fe_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
         }
     }
     result
+}
+
+/// Returns true if a method name is a synchronous array/iterator callback
+/// method whose first argument (the callback) executes during render.
+fn is_sync_callback_method(name: &str) -> bool {
+    matches!(
+        name,
+        "map"
+            | "filter"
+            | "forEach"
+            | "reduce"
+            | "reduceRight"
+            | "some"
+            | "every"
+            | "find"
+            | "findIndex"
+            | "flatMap"
+            | "sort"
+    )
 }
 
 /// Check if a FE's variable name is shadowed by a local variable inside
