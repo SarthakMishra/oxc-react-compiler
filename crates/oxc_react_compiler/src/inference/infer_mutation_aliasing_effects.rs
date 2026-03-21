@@ -3,7 +3,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::hir::types::{
-    AliasingEffect, Effect, FreezeReason, FunctionSignature, HIR, IdentifierId, Place, ValueKind,
+    AliasingEffect, Effect, FunctionSignature, HIR, IdentifierId, Place, ValueKind, ValueReason,
 };
 
 use super::aliasing_effects::compute_instruction_effects;
@@ -16,7 +16,7 @@ struct AbstractValue {
     /// Whether this value has been frozen (e.g., passed to a JSX prop).
     frozen: bool,
     /// The freeze reason, if frozen.
-    freeze_reason: Option<FreezeReason>,
+    freeze_reason: Option<ValueReason>,
     /// Set of IdentifierIds that alias this same abstract value.
     aliases: Vec<IdentifierId>,
     /// Set of IdentifierIds captured (indirectly referenced) by this value.
@@ -188,7 +188,7 @@ impl AbstractHeap {
     }
 
     /// Freeze a value. Returns `true` if this is a new freeze.
-    fn freeze(&mut self, id: IdentifierId, reason: FreezeReason) -> bool {
+    fn freeze(&mut self, id: IdentifierId, reason: ValueReason) -> bool {
         if let Some(&idx) = self.id_to_value.get(&id)
             && !self.values[idx].frozen
         {
@@ -307,8 +307,12 @@ fn infer_mutation_aliasing_effects_inner(
         for (_, block) in &mut hir.blocks {
             for instr in &mut block.instructions {
                 // Compute raw effects from instruction syntax
-                let raw_effects =
-                    compute_instruction_effects(&instr.value, &instr.lvalue, fn_signatures);
+                let raw_effects = compute_instruction_effects(
+                    &instr.value,
+                    &instr.lvalue,
+                    instr.loc,
+                    fn_signatures,
+                );
 
                 // Immediately refine using current heap state
                 let refined = refine_effects(&raw_effects, &heap);
@@ -399,7 +403,7 @@ fn pre_freeze_params(hir: &HIR, heap: &mut AbstractHeap, param_names: &[String])
             && param_names.iter().any(|p| p == name)
         {
             heap.create(place.identifier.id, ValueKind::Frozen);
-            heap.freeze(place.identifier.id, FreezeReason::FrozenByValue);
+            heap.freeze(place.identifier.id, ValueReason::ReactiveFunctionArgument);
         }
     };
 
@@ -573,10 +577,10 @@ fn process_effect_for_heap(heap: &mut AbstractHeap, effect: &AliasingEffect) -> 
         }
         AliasingEffect::ImmutableCapture { from, into } => {
             let mut changed = heap.capture(from.identifier.id, into.identifier.id);
-            changed |= heap.freeze(from.identifier.id, FreezeReason::FrozenByValue);
+            changed |= heap.freeze(from.identifier.id, ValueReason::JsxCaptured);
             changed
         }
-        AliasingEffect::Mutate { value } => heap.mutate(value.identifier.id),
+        AliasingEffect::Mutate { value, .. } => heap.mutate(value.identifier.id),
         AliasingEffect::MutateConditionally { value } => {
             heap.mutate_conditionally(value.identifier.id)
         }
@@ -637,7 +641,10 @@ fn refine_effects(effects: &[AliasingEffect], heap: &AbstractHeap) -> Vec<Aliasi
                         }
                         match param_effect.effect {
                             Effect::Mutate => {
-                                refined.push(AliasingEffect::Mutate { value: arg.clone() });
+                                refined.push(AliasingEffect::Mutate {
+                                    value: arg.clone(),
+                                    reason: None,
+                                });
                             }
                             Effect::ConditionallyMutate => {
                                 refined.push(AliasingEffect::MutateConditionally {
@@ -653,7 +660,7 @@ fn refine_effects(effects: &[AliasingEffect], heap: &AbstractHeap) -> Vec<Aliasi
                             Effect::Freeze => {
                                 refined.push(AliasingEffect::Freeze {
                                     value: arg.clone(),
-                                    reason: FreezeReason::FrozenByValue,
+                                    reason: ValueReason::KnownReturnSignature,
                                 });
                             }
                             _ => {} // Read, Store, Unknown → no effect on arg
@@ -865,7 +872,7 @@ fn refine_effects(effects: &[AliasingEffect], heap: &AbstractHeap) -> Vec<Aliasi
                 }
             }
 
-            AliasingEffect::Mutate { value } | AliasingEffect::MutateTransitive { value } => {
+            AliasingEffect::Mutate { value, .. } | AliasingEffect::MutateTransitive { value } => {
                 let kind = heap.value_kind(value.identifier.id);
                 match kind {
                     ValueKind::Primitive | ValueKind::Global => {

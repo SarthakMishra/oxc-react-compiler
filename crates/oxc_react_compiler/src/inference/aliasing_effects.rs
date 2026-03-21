@@ -2,7 +2,8 @@ use rustc_hash::FxHashMap;
 
 use crate::hir::types::{
     AliasingEffect, ArrayElement, DestructureArrayItem, DestructurePattern, DestructureTarget,
-    FreezeReason, FunctionSignature, IdentifierId, InstructionValue, Place, ValueKind, ValueReason,
+    FunctionSignature, IdentifierId, InstructionValue, Place, SourceLocation, ValueKind,
+    ValueReason,
 };
 
 /// Compute the aliasing effects for a single instruction.
@@ -17,6 +18,7 @@ use crate::hir::types::{
 pub fn compute_instruction_effects(
     value: &InstructionValue,
     lvalue: &Place,
+    loc: SourceLocation,
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
 ) -> Vec<AliasingEffect> {
     let mut effects = Vec::new();
@@ -89,9 +91,11 @@ pub fn compute_instruction_effects(
             effects.push(AliasingEffect::Apply {
                 receiver: callee.clone(),
                 function: callee.clone(),
+                mutates_function: false,
                 args: args.clone(),
                 into: lvalue.clone(),
                 signature: sig,
+                loc,
             });
         }
 
@@ -102,9 +106,11 @@ pub fn compute_instruction_effects(
             effects.push(AliasingEffect::Apply {
                 receiver: receiver.clone(),
                 function: receiver.clone(),
+                mutates_function: false,
                 args: args.clone(),
                 into: lvalue.clone(),
                 signature: None,
+                loc,
             });
             // The receiver itself may be mutated by the method call.
             // refine_effects filters this out when the receiver is Frozen.
@@ -118,13 +124,13 @@ pub fn compute_instruction_effects(
 
         InstructionValue::PropertyStore { object, value, .. }
         | InstructionValue::ComputedStore { object, value, .. } => {
-            effects.push(AliasingEffect::Mutate { value: object.clone() });
+            effects.push(AliasingEffect::Mutate { value: object.clone(), reason: None });
             effects.push(AliasingEffect::Capture { from: value.clone(), into: object.clone() });
         }
 
         InstructionValue::PropertyDelete { object, .. }
         | InstructionValue::ComputedDelete { object, .. } => {
-            effects.push(AliasingEffect::Mutate { value: object.clone() });
+            effects.push(AliasingEffect::Mutate { value: object.clone(), reason: None });
         }
 
         InstructionValue::FunctionExpression { lowered_func, .. } => {
@@ -147,7 +153,7 @@ pub fn compute_instruction_effects(
             for attr in props {
                 effects.push(AliasingEffect::Freeze {
                     value: attr.value.clone(),
-                    reason: FreezeReason::FrozenByValue,
+                    reason: ValueReason::JsxCaptured,
                 });
                 // Capture prop into JSX element (matches upstream: Freeze + Capture)
                 effects.push(AliasingEffect::Capture {
@@ -158,7 +164,7 @@ pub fn compute_instruction_effects(
             for child in children {
                 effects.push(AliasingEffect::Freeze {
                     value: child.clone(),
-                    reason: FreezeReason::FrozenByValue,
+                    reason: ValueReason::JsxCaptured,
                 });
                 // Capture child into JSX element (matches upstream: Freeze + Capture)
                 effects.push(AliasingEffect::Capture { from: child.clone(), into: lvalue.clone() });
@@ -174,7 +180,7 @@ pub fn compute_instruction_effects(
             for child in children {
                 effects.push(AliasingEffect::Freeze {
                     value: child.clone(),
-                    reason: FreezeReason::FrozenByValue,
+                    reason: ValueReason::JsxCaptured,
                 });
                 // Capture child into fragment (matches upstream: Freeze + Capture)
                 effects.push(AliasingEffect::Capture { from: child.clone(), into: lvalue.clone() });
@@ -204,9 +210,11 @@ pub fn compute_instruction_effects(
             effects.push(AliasingEffect::Apply {
                 receiver: callee.clone(),
                 function: callee.clone(),
+                mutates_function: false,
                 args: args.clone(),
                 into: lvalue.clone(),
                 signature: sig,
+                loc,
             });
         }
 
@@ -229,7 +237,7 @@ pub fn compute_instruction_effects(
 
         InstructionValue::PrefixUpdate { lvalue: target, .. }
         | InstructionValue::PostfixUpdate { lvalue: target, .. } => {
-            effects.push(AliasingEffect::Mutate { value: target.clone() });
+            effects.push(AliasingEffect::Mutate { value: target.clone(), reason: None });
             effects.push(AliasingEffect::Create {
                 into: lvalue.clone(),
                 value: ValueKind::Primitive,
@@ -274,9 +282,11 @@ pub fn compute_instruction_effects(
             effects.push(AliasingEffect::Apply {
                 receiver: tag.clone(),
                 function: tag.clone(),
+                mutates_function: false,
                 args: vec![],
                 into: lvalue.clone(),
                 signature: sig,
+                loc,
             });
         }
 

@@ -203,7 +203,10 @@ mod tests {
                         kind: BlockKind::Block,
                         id: BlockId(2),
                         instructions: vec![],
-                        terminal: Terminal::Return { value: make_place(0, "undefined") },
+                        terminal: Terminal::Return {
+                            value: make_place(0, "undefined"),
+                            effects: None,
+                        },
                         preds: Vec::new(),
                         phis: Vec::new(),
                     },

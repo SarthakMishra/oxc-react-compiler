@@ -162,7 +162,7 @@ fn rewrite_terminal_target(terminal: &mut Terminal, old: BlockId, new: BlockId) 
             remap(block);
             remap(fallthrough);
         }
-        Terminal::MaybeThrow { continuation, handler } => {
+        Terminal::MaybeThrow { continuation, handler, .. } => {
             remap(continuation);
             remap(handler);
         }
@@ -217,7 +217,7 @@ fn terminal_successors(terminal: &Terminal) -> Vec<BlockId> {
             succs
         }
         Terminal::Label { block, fallthrough, .. } => vec![*block, *fallthrough],
-        Terminal::MaybeThrow { continuation, handler } => vec![*continuation, *handler],
+        Terminal::MaybeThrow { continuation, handler, .. } => vec![*continuation, *handler],
         Terminal::Try { block, handler, fallthrough } => vec![*block, *handler, *fallthrough],
         Terminal::Scope { block, fallthrough, .. }
         | Terminal::PrunedScope { block, fallthrough, .. } => vec![*block, *fallthrough],

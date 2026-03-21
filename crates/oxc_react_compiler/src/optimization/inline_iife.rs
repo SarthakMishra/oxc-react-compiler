@@ -91,7 +91,7 @@ pub fn inline_iife(hir: &mut HIR) {
         }
 
         // Get the return value from the function's terminal.
-        let return_value = if let Terminal::Return { ref value } = entry_block.terminal {
+        let return_value = if let Terminal::Return { ref value, .. } = entry_block.terminal {
             value.clone()
         } else {
             continue;

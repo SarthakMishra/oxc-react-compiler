@@ -90,7 +90,7 @@ fn terminal_successors(terminal: &crate::hir::types::Terminal) -> Vec<BlockId> {
             succs
         }
         Terminal::Label { block, fallthrough, .. } => vec![*block, *fallthrough],
-        Terminal::MaybeThrow { continuation, handler } => vec![*continuation, *handler],
+        Terminal::MaybeThrow { continuation, handler, .. } => vec![*continuation, *handler],
         Terminal::Try { block, handler, fallthrough } => vec![*block, *handler, *fallthrough],
         Terminal::Scope { block, fallthrough, .. }
         | Terminal::PrunedScope { block, fallthrough, .. } => vec![*block, *fallthrough],
@@ -536,7 +536,7 @@ fn rename_terminal_uses(
                 }
             }
         }
-        Terminal::Return { value } | Terminal::Throw { value } => {
+        Terminal::Return { value, .. } | Terminal::Throw { value } => {
             rename_place_use(value, stacks);
         }
         _ => {}

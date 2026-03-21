@@ -436,7 +436,7 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
                             graph.capture(index, from.identifier.id, into.identifier.id);
                             index += 1;
                         }
-                        AliasingEffect::Mutate { value } => {
+                        AliasingEffect::Mutate { value, .. } => {
                             ranges
                                 .entry(value.identifier.id)
                                 .or_insert(value.identifier.mutable_range);
@@ -571,7 +571,7 @@ pub fn annotate_last_use(hir: &mut HIR) {
         // Track terminal uses
         let terminal_id = InstructionId(block.instructions.last().map_or(0, |i| i.id.0) + 1);
         match &block.terminal {
-            crate::hir::types::Terminal::Return { value }
+            crate::hir::types::Terminal::Return { value, .. }
             | crate::hir::types::Terminal::Throw { value } => {
                 let entry = last_use_map.entry(value.identifier.id).or_insert(terminal_id);
                 if terminal_id > *entry {

@@ -398,7 +398,7 @@ fn replace_in_terminal(
                 }
             }
         }
-        Terminal::Return { value } | Terminal::Throw { value } => {
+        Terminal::Return { value, .. } | Terminal::Throw { value } => {
             replace_in_place(value, replacements);
         }
         // Terminals that only contain BlockIds, no Places

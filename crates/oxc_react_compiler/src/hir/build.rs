@@ -412,7 +412,7 @@ impl HIRBuilder {
         // Ensure the last block has a return terminal if it's still unreachable.
         if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
             let undef = self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc);
-            self.emit_terminal(Terminal::Return { value: undef });
+            self.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
         let returns = self.make_temp(loc);
@@ -430,6 +430,7 @@ impl HIRBuilder {
             is_generator,
             directives,
             is_arrow: false,
+            aliasing_effects: None,
         }
     }
 
@@ -454,7 +455,7 @@ impl HIRBuilder {
             if let Some(stmt) = arrow.body.statements.first() {
                 if let Statement::ExpressionStatement(expr_stmt) = stmt {
                     let val = self.lower_expression(&expr_stmt.expression);
-                    self.emit_terminal(Terminal::Return { value: val });
+                    self.emit_terminal(Terminal::Return { value: val, effects: None });
                 } else {
                     self.lower_statement(stmt);
                 }
@@ -467,7 +468,7 @@ impl HIRBuilder {
 
         if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
             let undef = self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc);
-            self.emit_terminal(Terminal::Return { value: undef });
+            self.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
         let returns = self.make_temp(loc);
@@ -485,6 +486,7 @@ impl HIRBuilder {
             is_generator: false,
             directives,
             is_arrow: true,
+            aliasing_effects: None,
         }
     }
 
@@ -506,7 +508,7 @@ impl HIRBuilder {
             if let Some(stmt) = arrow.body.statements.first() {
                 if let Statement::ExpressionStatement(expr_stmt) = stmt {
                     let val = inner.lower_expression(&expr_stmt.expression);
-                    inner.emit_terminal(Terminal::Return { value: val });
+                    inner.emit_terminal(Terminal::Return { value: val, effects: None });
                 } else {
                     inner.lower_statement(stmt);
                 }
@@ -521,7 +523,7 @@ impl HIRBuilder {
         if matches!(inner.current_block_mut().terminal, Terminal::Unreachable) {
             let undef =
                 inner.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc);
-            inner.emit_terminal(Terminal::Return { value: undef });
+            inner.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
         let returns = inner.make_temp(loc);
@@ -539,6 +541,7 @@ impl HIRBuilder {
             is_generator: false,
             directives,
             is_arrow: true,
+            aliasing_effects: None,
         }
     }
 
@@ -762,7 +765,7 @@ impl HIRBuilder {
                 } else {
                     self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, ret.span)
                 };
-                self.emit_terminal(Terminal::Return { value });
+                self.emit_terminal(Terminal::Return { value, effects: None });
                 // Create a new block for any unreachable code after return.
                 let dead = self.new_block(BlockKind::Block);
                 self.switch_block(dead);
@@ -1693,7 +1696,7 @@ impl HIRBuilder {
 
         if matches!(self.current_block_mut().terminal, Terminal::Unreachable) {
             let undef = self.emit(InstructionValue::Primitive { value: Primitive::Undefined }, loc);
-            self.emit_terminal(Terminal::Return { value: undef });
+            self.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
         let returns = self.make_temp(loc);
@@ -1711,6 +1714,7 @@ impl HIRBuilder {
             is_generator: func.generator,
             directives,
             is_arrow: false,
+            aliasing_effects: None,
         }
     }
 

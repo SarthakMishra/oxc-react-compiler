@@ -81,9 +81,35 @@ pub enum ValueKind {
     Context,
 }
 
+/// Reason why a value has a particular `ValueKind`.
+///
+/// Upstream: `ValueReason` in `HIR.ts`. Used by `Create` and `Freeze` effects
+/// to explain provenance of a value's kind classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueReason {
+    /// The value kind is known from the instruction itself (e.g. literals, object/array creation).
     KnownValue,
+    /// Global variable access.
+    Global,
+    /// Value was captured by JSX (frozen as a prop/child).
+    JsxCaptured,
+    /// Value was captured by a hook call.
+    HookCaptured,
+    /// Value is a return from a hook call.
+    HookReturn,
+    /// Value is an effect callback argument.
+    Effect,
+    /// Value's kind is known from a built-in function's return signature.
+    KnownReturnSignature,
+    /// Value is a React context value.
+    Context,
+    /// Value is React state (from useState).
+    State,
+    /// Value is reducer state (from useReducer).
+    ReducerState,
+    /// Value is a parameter of a reactive function (component/hook).
+    ReactiveFunctionArgument,
+    /// Catch-all for other/unclassified reasons.
     Other,
 }
 
@@ -92,6 +118,15 @@ pub enum FreezeReason {
     FrozenByBinding,
     FrozenByValue,
     Other,
+}
+
+/// Reason annotation for `Mutate` effects.
+///
+/// Upstream: `MutationReason` in `AliasingEffects.ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MutationReason {
+    /// The mutation is assigning to `.current` property (e.g. `ref.current = ...`).
+    AssignCurrentProperty,
 }
 
 // ---------------------------------------------------------------------------
@@ -567,6 +602,9 @@ pub enum Terminal {
     },
     Return {
         value: Place,
+        /// Aliasing effects for the return statement, computed by inference.
+        /// Upstream: `effects` field on `ReturnTerminal` in `HIR.ts`.
+        effects: Option<Vec<AliasingEffect>>,
     },
     Throw {
         value: Place,
@@ -635,6 +673,9 @@ pub enum Terminal {
     MaybeThrow {
         continuation: BlockId,
         handler: BlockId,
+        /// Aliasing effects for the maybe-throw terminal, computed by inference.
+        /// Upstream: `effects` field on `MaybeThrowTerminal` in `HIR.ts`.
+        effects: Option<Vec<AliasingEffect>>,
     },
     Try {
         block: BlockId,
@@ -691,6 +732,13 @@ pub struct HIRFunction {
     pub directives: Vec<String>,
     /// Whether the original source was an arrow function expression.
     pub is_arrow: bool,
+    /// Externally-visible aliasing effects of this function, computed by
+    /// `InferMutationAliasingEffects` during `AnalyseFunctions`.
+    ///
+    /// Upstream: `aliasingEffects` field on `HIRFunction` in `HIR.ts`.
+    /// `None` means effects have not been computed yet (pre-inference).
+    /// `Some(vec)` contains the effects visible to callers.
+    pub aliasing_effects: Option<Vec<AliasingEffect>>,
 }
 
 #[derive(Debug, Clone)]
@@ -739,8 +787,13 @@ pub struct Phi {
 // AliasingEffect
 // ---------------------------------------------------------------------------
 
+/// Aliasing effects describe how an instruction affects the abstract heap model.
+///
+/// Upstream: `AliasingEffect` discriminated union in `Inference/AliasingEffects.ts`.
+/// Each variant corresponds to a `kind` discriminant in the upstream TypeScript.
 #[derive(Debug, Clone)]
 pub enum AliasingEffect {
+    // --- Value creation effects ---
     Create {
         into: Place,
         value: ValueKind,
@@ -752,16 +805,15 @@ pub enum AliasingEffect {
     },
     CreateFunction {
         captures: Vec<Place>,
+        /// The place holding the function value (instruction lvalue).
+        // DIVERGENCE: Upstream stores a reference to the FunctionExpression/ObjectMethod
+        // instruction value node here. We store the lvalue Place instead, which is
+        // sufficient for our current analysis passes.
         function: Place,
         into: Place,
     },
-    Apply {
-        receiver: Place,
-        function: Place,
-        args: Vec<Place>,
-        into: Place,
-        signature: Option<FunctionSignature>,
-    },
+
+    // --- Data flow effects ---
     Assign {
         from: Place,
         into: Place,
@@ -782,8 +834,28 @@ pub enum AliasingEffect {
         from: Place,
         into: Place,
     },
+
+    // --- Function call effects ---
+    Apply {
+        receiver: Place,
+        function: Place,
+        /// Whether calling this function may mutate the function value itself
+        /// (e.g. a closure that captures and mutates its own scope).
+        mutates_function: bool,
+        args: Vec<Place>,
+        into: Place,
+        signature: Option<FunctionSignature>,
+        loc: SourceLocation,
+    },
+
+    // --- State change effects ---
+    Freeze {
+        value: Place,
+        reason: ValueReason,
+    },
     Mutate {
         value: Place,
+        reason: Option<MutationReason>,
     },
     MutateConditionally {
         value: Place,
@@ -794,10 +866,13 @@ pub enum AliasingEffect {
     MutateTransitiveConditionally {
         value: Place,
     },
-    Freeze {
-        value: Place,
-        reason: FreezeReason,
+
+    // --- JSX access ---
+    Render {
+        place: Place,
     },
+
+    // --- Error effects ---
     MutateFrozen {
         place: Place,
         error: String,
@@ -809,9 +884,6 @@ pub enum AliasingEffect {
     Impure {
         place: Place,
         error: String,
-    },
-    Render {
-        place: Place,
     },
 }
 
@@ -830,6 +902,129 @@ pub struct FunctionSignature {
 pub struct ParamEffect {
     pub effect: Effect,
     pub alias_to_return: bool,
+}
+
+// ---------------------------------------------------------------------------
+// AliasingSignature
+// ---------------------------------------------------------------------------
+
+/// A resolved aliasing signature for a function call.
+///
+/// Upstream: `AliasingSignature` in `Inference/AliasingEffects.ts`.
+///
+/// This maps abstract parameter identifiers to concrete effects. When the
+/// inference pass encounters an `Apply` effect with a known signature, it
+/// substitutes the abstract identifiers with the actual arguments to produce
+/// concrete effects.
+#[derive(Debug, Clone)]
+pub struct AliasingSignature {
+    /// Abstract identifier for the receiver (`this` / first arg for methods).
+    pub receiver: IdentifierId,
+    /// Abstract identifiers for positional parameters.
+    pub params: Vec<IdentifierId>,
+    /// Abstract identifier for the rest parameter, if any.
+    pub rest: Option<IdentifierId>,
+    /// Abstract identifier for the return value.
+    pub returns: IdentifierId,
+    /// The effects expressed in terms of the abstract identifiers above.
+    pub effects: Vec<AliasingEffect>,
+    /// Temporary places used by the signature's effect computation.
+    pub temporaries: Vec<Place>,
+}
+
+// ---------------------------------------------------------------------------
+// AliasingSignatureConfig (string-based configuration format)
+// ---------------------------------------------------------------------------
+
+/// String-based configuration for aliasing signatures of built-in functions.
+///
+/// Upstream: `AliasingSignatureConfig` in `HIR/TypeSchema.ts`.
+///
+/// This is the serializable format used to define aliasing behavior for
+/// built-in functions (Array.push, Object.assign, React hooks, etc.).
+/// At initialization time, these configs are parsed into `AliasingSignature`
+/// values by allocating fresh `IdentifierId`s for each named parameter.
+#[derive(Debug, Clone)]
+pub struct AliasingSignatureConfig {
+    /// Name for the receiver parameter (e.g. "receiver").
+    pub receiver: String,
+    /// Names for positional parameters (e.g. `["arg0", "arg1"]`).
+    pub params: Vec<String>,
+    /// Name for the rest parameter, if any.
+    pub rest: Option<String>,
+    /// Name for the return value (e.g. "returns").
+    pub returns: String,
+    /// Effects expressed using the string parameter names above.
+    pub effects: Vec<AliasingEffectConfig>,
+    /// Names for temporary values used in the effect computation.
+    pub temporaries: Vec<String>,
+}
+
+/// String-based configuration for a single aliasing effect.
+///
+/// Upstream: `AliasingEffectConfig` in `HIR/TypeSchema.ts`.
+/// Each variant mirrors an `AliasingEffect` variant but uses string names
+/// instead of `Place` / `IdentifierId` for referencing parameters.
+#[derive(Debug, Clone)]
+pub enum AliasingEffectConfig {
+    Freeze {
+        value: String,
+        reason: ValueReason,
+    },
+    Create {
+        into: String,
+        value: ValueKind,
+        reason: ValueReason,
+    },
+    CreateFrom {
+        from: String,
+        into: String,
+    },
+    Assign {
+        from: String,
+        into: String,
+    },
+    Alias {
+        from: String,
+        into: String,
+    },
+    Capture {
+        from: String,
+        into: String,
+    },
+    ImmutableCapture {
+        from: String,
+        into: String,
+    },
+    Impure {
+        place: String,
+    },
+    Mutate {
+        value: String,
+    },
+    MutateTransitiveConditionally {
+        value: String,
+    },
+    Apply {
+        receiver: String,
+        function: String,
+        mutates_function: bool,
+        args: Vec<ApplyArgConfig>,
+        into: String,
+    },
+}
+
+/// Configuration for an argument in an `Apply` effect config.
+///
+/// Upstream: `ApplyArgConfig` in `HIR/TypeSchema.ts`.
+#[derive(Debug, Clone)]
+pub enum ApplyArgConfig {
+    /// A named parameter reference.
+    Place(String),
+    /// A spread of a named parameter.
+    Spread(String),
+    /// A hole (skipped argument position).
+    Hole,
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 111     | 1–111  | Full compiler: HIR foundation → 26.6% conformance. Recent: re-baseline against upstream main, upstream alignment planning |
+| [001.md](001.md) | 112     | 1–112  | Full compiler: HIR foundation → 26.6% conformance. Recent: re-baseline against upstream main, upstream alignment planning, HIR type system expansion for aliasing model |
 
 ## Archive
 

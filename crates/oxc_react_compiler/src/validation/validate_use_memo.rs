@@ -110,7 +110,7 @@ fn check_memo_callback_void(
                 // Check if the function body has any Return terminal with a non-undefined value.
                 // If all returns are void (i.e., return undefined), this is likely a mistake.
                 let has_return_value = lowered_func.body.blocks.iter().any(|(_, b)| {
-                    if let crate::hir::types::Terminal::Return { value } = &b.terminal {
+                    if let crate::hir::types::Terminal::Return { value, .. } = &b.terminal {
                         // Check if the return value is a named variable or non-trivial
                         value.identifier.name.is_some()
                             || value.identifier.type_

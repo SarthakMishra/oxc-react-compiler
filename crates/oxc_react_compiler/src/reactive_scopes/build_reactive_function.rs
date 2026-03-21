@@ -147,7 +147,7 @@ fn build_reactive_block_until(
                 current = *fallthrough;
                 continue;
             }
-            Terminal::Return { value } => {
+            Terminal::Return { value, .. } => {
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Return {
                     value: value.clone(),
                     id: current,
@@ -496,7 +496,7 @@ fn build_scope_block_only(
                     build_scope_block_only(hir, *fallthrough, visited, scope_fallthrough, loop_ctx);
                 instructions.extend(remaining.instructions);
             }
-            Terminal::Return { value } => {
+            Terminal::Return { value, .. } => {
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::Return {
                     value: value.clone(),
                     id: block_id,

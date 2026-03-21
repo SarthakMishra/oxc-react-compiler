@@ -76,7 +76,7 @@ fn test_infer_reactive_places_simple() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![instr],
-        terminal: Terminal::Return { value: make_place(&mut ids, "t0") },
+        terminal: Terminal::Return { value: make_place(&mut ids, "t0"), effects: None },
         preds: vec![],
         phis: vec![],
     };
@@ -98,7 +98,7 @@ fn test_infer_reactive_places_empty_hir() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![],
-        terminal: Terminal::Return { value: make_place(&mut ids, "undefined") },
+        terminal: Terminal::Return { value: make_place(&mut ids, "undefined"), effects: None },
         preds: vec![],
         phis: vec![],
     };
@@ -136,7 +136,7 @@ fn test_infer_reactive_places_only_seeds_params() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![param_instr, local_instr],
-        terminal: Terminal::Return { value: make_place(&mut ids, "undefined") },
+        terminal: Terminal::Return { value: make_place(&mut ids, "undefined"), effects: None },
         preds: vec![],
         phis: vec![],
     };
@@ -174,7 +174,7 @@ fn test_infer_reactive_scope_variables_no_reactive() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![instr],
-        terminal: Terminal::Return { value: make_place(&mut ids, "x") },
+        terminal: Terminal::Return { value: make_place(&mut ids, "x"), effects: None },
         preds: vec![],
         phis: vec![],
     };
@@ -209,7 +209,7 @@ fn test_infer_reactive_scope_variables_with_reactive_identifier() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![instr],
-        terminal: Terminal::Return { value: make_place(&mut ids, "derived") },
+        terminal: Terminal::Return { value: make_place(&mut ids, "derived"), effects: None },
         preds: vec![],
         phis: vec![],
     };
@@ -234,7 +234,7 @@ fn test_propagate_scope_dependencies_empty() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![],
-        terminal: Terminal::Return { value: make_place(&mut ids, "undefined") },
+        terminal: Terminal::Return { value: make_place(&mut ids, "undefined"), effects: None },
         preds: vec![],
         phis: vec![],
     };
@@ -266,7 +266,7 @@ fn test_build_reactive_function_single_block() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![instr],
-        terminal: Terminal::Return { value: x },
+        terminal: Terminal::Return { value: x, effects: None },
         preds: vec![],
         phis: vec![],
     };
@@ -308,7 +308,7 @@ fn test_build_reactive_function_with_params() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![instr],
-        terminal: Terminal::Return { value: ret },
+        terminal: Terminal::Return { value: ret, effects: None },
         preds: vec![],
         phis: vec![],
     };
@@ -394,7 +394,7 @@ fn test_build_reactive_function_if_terminal() {
         kind: BlockKind::Block,
         id: ft_id,
         instructions: vec![],
-        terminal: Terminal::Return { value: ret_val },
+        terminal: Terminal::Return { value: ret_val, effects: None },
         preds: vec![cons_id, alt_id],
         phis: vec![],
     };
@@ -618,7 +618,7 @@ fn test_hir_to_codegen_roundtrip() {
         kind: BlockKind::Block,
         id: block_id,
         instructions: vec![instr],
-        terminal: Terminal::Return { value: x },
+        terminal: Terminal::Return { value: x, effects: None },
         preds: vec![],
         phis: vec![],
     };

@@ -1,6 +1,6 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-21 (post Phase 111, re-baseline complete)
+> Last updated: 2026-03-21 (post Phase 112, Port Phase 1 complete)
 > Conformance: **456/1717 (26.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. 1 new divergence (allow-modify-global-in-callback-jsx.js).
 
@@ -19,45 +19,18 @@ The upstream React Compiler has undergone major architectural changes since our 
 
 ---
 
-### Port Phase 1: HIR Type System Updates
+### Port Phase 1: HIR Type System Updates ✅
 
-**Effort:** 1-2 sessions
-**Risk:** MEDIUM — touches core types used everywhere
-**Files:** `src/hir/types.rs`, `src/inference/aliasing_effects.rs`
+~~**Effort:** 1-2 sessions~~
+~~**Risk:** MEDIUM — touches core types used everywhere~~
 
-**1a. Expand `AliasingEffect` enum:**
-Our current `AliasingEffect` is minimal. The upstream has a rich discriminated union:
-```
-Create, CreateFunction, CreateFrom,     ← value creation
-Assign, Alias, MaybeAlias, Capture,     ← data flow
-ImmutableCapture, Apply,                ← function calls
-Freeze, Mutate, MutateConditionally,    ← state changes
-MutateTransitive, MutateTransitiveConditionally,
-Render,                                 ← JSX access
-MutateFrozen, MutateGlobal, Impure      ← error effects
-```
-Each carries a `value: Place`, `into: Place`, or similar payload plus a `reason` enum.
+**Completed:** 2026-03-21. All type system changes implemented and compiling. Changes:
+- 1a. `ValueReason` expanded to 12 variants matching upstream. `MutationReason` added. `AliasingEffect::Apply` gained `mutates_function` and `loc` fields. `Freeze` migrated from `FreezeReason` to `ValueReason`.
+- 1b. `AliasingSignature` type added to `types.rs`.
+- 1c. `HIRFunction.aliasing_effects`, `Terminal::Return.effects`, `Terminal::MaybeThrow.effects` added. `Instruction.effects` was already present.
+- 1d. `AliasingSignatureConfig`, `AliasingEffectConfig`, `ApplyArgConfig` types added to `types.rs`.
 
-**1b. Add `AliasingSignature` type:**
-```rust
-struct AliasingSignature {
-    receiver: IdentifierId,
-    params: Vec<IdentifierId>,
-    rest: Option<IdentifierId>,
-    returns: IdentifierId,
-    effects: Vec<AliasingEffect>,
-    temporaries: Vec<Place>,
-}
-```
-
-**1c. Extend HIR types:**
-- `HIRFunction` gains `aliasing_effects: Option<Vec<AliasingEffect>>`
-- `Instruction` gains `effects: Option<Vec<AliasingEffect>>`
-- Terminal variants gain optional `effects` fields
-
-**1d. Add `AliasingSignatureConfig`:** String-based (`@receiver`, `@param0`, `@returns`) format for built-in function shapes. Update `ObjectShape` / `Globals` type system.
-
-**Dependency:** None. Can be done independently.
+24 files updated across the codebase. All tests pass, conformance unchanged at 456/1717.
 
 ---
 

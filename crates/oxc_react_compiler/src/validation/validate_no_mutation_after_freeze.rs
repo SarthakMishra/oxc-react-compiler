@@ -473,7 +473,7 @@ pub fn validate_no_mutation_after_freeze(
                 if !is_update {
                     for effect in effects {
                         let mutated_frozen = match effect {
-                            AliasingEffect::Mutate { value }
+                            AliasingEffect::Mutate { value, .. }
                             | AliasingEffect::MutateTransitive { value } => {
                                 is_ssa_frozen(&value.identifier, &frozen_ids)
                             }
@@ -604,7 +604,7 @@ fn has_mutation_on_frozen(
                         return true;
                     }
                     let is_mutation = match effect {
-                        AliasingEffect::Mutate { value }
+                        AliasingEffect::Mutate { value, .. }
                         | AliasingEffect::MutateTransitive { value } => is_inner_frozen(
                             value.identifier.id,
                             &local_id_map,

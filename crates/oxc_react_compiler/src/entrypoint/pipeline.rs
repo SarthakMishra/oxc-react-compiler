@@ -642,7 +642,7 @@ fn substitute_terminal(
         }
     };
     match terminal {
-        Terminal::Return { value } | Terminal::Throw { value } => sub(value),
+        Terminal::Return { value, .. } | Terminal::Throw { value } => sub(value),
         Terminal::If { test, .. } | Terminal::Branch { test, .. } => sub(test),
         _ => {}
     }

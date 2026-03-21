@@ -468,7 +468,7 @@ pub fn merge_overlapping_reactive_scopes_hir(hir: &mut HIR) {
                 let iid = instr.id.0;
                 for effect in effects {
                     let mutated_place = match effect {
-                        AliasingEffect::Mutate { value }
+                        AliasingEffect::Mutate { value, .. }
                         | AliasingEffect::MutateConditionally { value }
                         | AliasingEffect::MutateTransitive { value }
                         | AliasingEffect::MutateTransitiveConditionally { value } => {

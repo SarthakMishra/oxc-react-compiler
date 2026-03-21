@@ -545,7 +545,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
         }
         // Terminal uses are always "outside" any scope (scope = None)
         match &block.terminal {
-            crate::hir::types::Terminal::Return { value }
+            crate::hir::types::Terminal::Return { value, .. }
             | crate::hir::types::Terminal::Throw { value } => {
                 operand_consumers.entry(value.identifier.id).or_default().push(None);
                 if let Some(decl_id) = value.identifier.declaration_id {

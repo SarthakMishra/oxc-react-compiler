@@ -80,7 +80,7 @@ fn strip_operand_reactivity(value: &mut InstructionValue) {
 /// Strip reactive flags from terminal operands.
 fn strip_terminal_reactivity(terminal: &mut Terminal) {
     match terminal {
-        Terminal::Return { value } => value.reactive = false,
+        Terminal::Return { value, .. } => value.reactive = false,
         Terminal::If { test, .. } | Terminal::Branch { test, .. } => test.reactive = false,
         Terminal::Switch { test, .. } => test.reactive = false,
         Terminal::Throw { value } => value.reactive = false,
