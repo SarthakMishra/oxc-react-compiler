@@ -1,6 +1,6 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-20 (post Phase 107)
+> Last updated: 2026-03-21 (post Phase 108)
 > Conformance: **451/1717 (26.3%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
 
 ---
@@ -12,23 +12,26 @@
 ### `effective_range` vs `mutable_range` — DO NOT CHANGE
 File: `src/reactive_scopes/infer_reactive_scope_variables.rs`
 
-Scope grouping uses `effective_range = max(mutable_range.end, last_use + 1)` instead of upstream's pure `mutable_range`. Switching to narrow `mutable_range` has been tried **4 times** and always causes render to drop 96%→36%. Each attempt used different compensating passes. The root cause: upstream's abstract interpreter produces wider mutation ranges. Our `effective_range` approximation compensates.
+Scope grouping uses `effective_range = max(mutable_range.end, last_use + 1)` instead of upstream's pure `mutable_range`. Switching to narrow `mutable_range` has been tried **4 times** and always causes render to drop 96%→36%.
 
 ### `collect_all_scope_declarations` is load-bearing
 File: `src/reactive_scopes/codegen.rs`
 
 Pre-declares ALL scope output variables at function level. Removing it causes render to drop 96%→24%.
 
-### Validation relaxation causes regressions
-Attempted relaxing 3 different validators. ALL caused conformance drops. DO NOT relax validation without fixing scope inference first.
-
 ### `rename_variables` is load-bearing for 17 fixtures
 File: `src/reactive_scopes/prune_scopes.rs`
 
-Disabling `rename_variables` entirely causes 451→434 (-17 regressions). These 17 fixtures NEED the temp rename + post-scope assignment pattern to match upstream. Selectively disabling rename for the 28 "const t0 vs const name" fixtures is the correct approach but requires identifying which specific declarations need rename. The slot distributions are unchanged — regressions are text-only.
+Disabling `rename_variables` entirely causes 451→434 (-17 regressions). These 17 fixtures NEED the temp rename + post-scope assignment pattern to match upstream. The remaining 28 "const t0 vs const name" divergences need selective skip.
 
 ### OXC stores default params in `FormalParameter.initializer`
-NOT in `BindingPattern::AssignmentPattern` as one might expect from the ESTree spec. The `AssignmentPattern` variant in `BindingPattern` is only used for destructure defaults in variable declarations, not function parameter defaults.
+NOT in `BindingPattern::AssignmentPattern`. The `AssignmentPattern` variant in `BindingPattern` is only for destructure defaults in variable declarations.
+
+### Block iteration order ≠ source order for loops
+The HIR blocks are stored in creation order, but for-loop constructs create blocks out of source order (the after-loop block can appear before loop body blocks). The frozen mutation validator now uses `frozen_at` instruction ID tracking to enforce source ordering. Any new validator that walks blocks linearly must account for this.
+
+### Cross-scope `IdentifierId` mismatch
+Nested function bodies have their own `IdentifierId` numbering. A variable captured from an outer scope (e.g., `onClick` defined in the component, referenced inside `useMemo` callback) has DIFFERENT `IdentifierId`s at each scope level. Name-based resolution is needed for cross-scope tracking.
 
 ### Build & test
 ```bash
@@ -46,183 +49,104 @@ cd benchmarks && npm run e2e:quick                    # E2E Vite builds
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Both compile, slots DIFFER | ~637 | Scope/memoization divergence (biggest) |
-| Both compile, slots MATCH | ~248 | Output format only |
-| We bail, they compile | ~144 | False bail-outs |
+| Both compile, slots DIFFER | ~642 | Scope/memoization divergence (biggest) |
+| Both compile, slots MATCH | ~249 | Output format only |
+| We bail, they compile | ~138 | False bail-outs |
 | We compile, they don't | ~149 | Over-compile (usually fine) |
 | Both no memo, format diff | ~87 | Format-only |
 | Silent bail-outs | 23 | 0 scopes, no error |
 
-### Bail-out error breakdown (144 fixtures)
+### Bail-out error breakdown (138 fixtures)
 ```
 58x  Existing memoization could not be preserved  ← BLOCKED on scope inference
-29x  Frozen mutation                               ← per-fixture investigation needed
-23x  (silent, no error)                            ← HIR lowering gaps (was 28, -5 from default params)
- 6x  Ref access in render                          ← was 14, -8 from JSX prop + transitive safety fix
- 7x  Cannot reassign outside component             ← was 8, -1 from recursive safe callback fix
-10x  Reassigned after render (x/y/count/myVar)     ← partially addressed
- 3x  Hooks referenced as values                    ← validator audit needed
- 3x  Cannot call setState during render            ← validator audit needed
- 2x  setState in useEffect                         ← validator audit needed
- 3x  Other                                         ← misc
+23x  Frozen mutation                               ← was 29, -6 from instruction ordering fix; 19 false bail-outs remain
+23x  (silent, no error)                            ← HIR lowering gaps
+ 7x  Cannot reassign outside component             ← cross-scope IdentifierId blocker
+ 6x  Ref access in render                          ← was 14; 8 false bail-outs remain
+10x  Reassigned after render (x/y/count/myVar)
+ 3x  Hooks referenced as values
+ 3x  Cannot call setState during render
+ 2x  setState in useEffect
+ 3x  Other
 ```
 
 ---
 
-## Recently Completed (Phase 107: structural improvements, 0 conformance regression)
+## Step 1: Frozen Mutation — Remaining (19 false bail-outs, HARD)
 
-- [x] **Default parameter desugaring** (`build.rs`): Function param defaults via `FormalParameter.initializer`, array destructure defaults via `emit_array_destructure_with_defaults()`, assignment expression defaults for `AssignmentTargetWithDefault`. 5 fixtures: silent bail-out → compiling (28→23).
-- [x] **Name promotion for non-inlinable temps** (`codegen.rs`): `build_name_promotion_map()` detects temp→StoreLocal patterns and promotes temp names to user variable names. `let t6 = function() {...}; let x = t6;` → `let x = function() {...};`. 6 fixtures improved in naming quality.
-- [x] **Recursive safe callback detection** (`validate_no_global_reassignment.rs`): `collect_safe_ids_recursive()` + `collect_id_aliases_recursive()` + `collect_safe_callback_names()` scan nested function bodies for JSX event handlers and effects. Name-based cross-scope resolution via `id_to_assigned_name` map. 1 false bail-out fixed (8→7).
-- [x] **Ref-access validator overhaul** (`validate_no_ref_access_in_render.rs`): ALL JSX props treated as non-render contexts (not just `onXxx` + `ref`). Transitive safety propagation via `collect_callee_names()` — FEs called only from non-render callbacks marked safe. 8 false bail-outs eliminated (16→8).
+**Impact:** Up to +19 conformance
+**Files:** `src/validation/validate_no_mutation_after_freeze.rs`, `src/inference/infer_mutation_aliasing_effects.rs`
 
----
+**Instrumented triage (23 total false bail-outs → 19 after instruction ordering fix):**
 
-## Step 1: ~~Silent Bail-outs — Default Parameters~~ DONE
+| Check | Count | Root Cause | Fix |
+|-------|-------|-----------|-----|
+| Check 1 (MutateFrozen from aliasing) | 13 | Aliasing pass over-propagates freeze — IIFE captures, method call results inherit frozen from receiver | Needs `infer_mutation_aliasing_effects.rs` changes. Touches BLOCKED infrastructure. |
+| Check 2 (MethodCall on frozen) | 1 | `repro-missing-dependency-if-within-while.js` — while-loop ordering issue not fixed by instruction ID check | Needs deeper loop analysis |
+| Check 4 (Nested FE mutation) | 3 | FEs that mutate outer variables flagged even when outer var freshly created | Need to track local allocation |
+| Unknown path | 2 | `hook-ref-callback.js`, `useMemo-multiple-returns.js` | Need investigation |
 
-Implemented. 5 fixtures now compile (silent bail-outs 28→23). Output has correct slot counts but text diffs remain (naming/format).
-
----
-
-## Step 2: Frozen Mutation Per-Fixture Triage (29 fixtures, HARD)
-
-**Impact:** Up to +29 conformance
-**Files:** `src/validation/validate_no_mutation_after_freeze.rs`
-**Risk:** MEDIUM — must not break `error.*` fixtures
-
-The validator has 5 check paths. Each of the 29 fixtures triggers a DIFFERENT check for a different reason. Not a bulk fix.
-
-**Approach:** Add debug instrumentation to print which check fires + the frozen identifier for each fixture. Group by root cause, then fix the largest group.
-
-**Categorized patterns:**
-- 6x IIFE capture/alias — IIFE detection works but aliasing effects on outer variables still trigger
-- 4x switch fall-through — mutation after JSX in switch cases
-- 3x new-mutability — transitive mutation through identity/propertyload functions
-- 2x method call results — `props.object.makeObject()` result inherits frozen status (shouldn't)
-- 2x rest/spread — `{...rest}` creates new object, shouldn't be frozen (attempted fix, freeze comes from different path)
-- 12x misc — ref callbacks, loop collections, parameter mutations
-
-**Validator check paths:**
-1. `MutateFrozen` effect from aliasing pass (Check 1, line ~310)
-2. `Freeze` effect propagation + subsequent mutation (Check 2, line ~324)
-3. `MethodCall` on frozen receiver with mutating method (Check 3, line ~386)
-4. `PropertyStore`/`ComputedStore`/`Delete` on frozen value (Check 4, line ~398)
-5. `Mutate`/`MutateTransitive` effect on SSA-frozen value (Check 5, line ~445)
-
-**Upstream:** `src/Validation/ValidateFrozenValues.ts`
+**Blocker:** 13/19 come from Check 1 which is in the aliasing pass. Fixing method call result freeze propagation in `infer_mutation_aliasing_effects.rs` would address the `repro-mutate-result-of-method-call-*` and `capturing-func-alias-*-iife` patterns but risks render regression (same infrastructure as the BLOCKED Gap 11).
 
 ---
 
-## Step 3: ~~Ref-Access Validator Fix~~ PARTIALLY DONE
+## Step 2: Named Variable Preservation (28 fixtures, HARD)
 
-**Was:** 14 false bail-outs. **Now:** 6 false bail-outs (8 fixed).
-
-**What was done:** Extended `collect_non_render_callback_ids` to treat ALL JSX prop values as non-render (not just event handlers). Added transitive safety propagation through call chains. All 3 `error.*` regression fixtures preserved.
-
-**Remaining 8 false positives:**
-- `allow-ref-type-cast-in-render.js` — Flow type cast `(ref: any)`, needs type cast handling
-- `bug-ref-prefix-postfix-operator.js` — `ref.current++` pattern
-- `ref-current-aliased-no-added-to-dep.js` — aliased ref in callback passed as JSX prop
-- `ref-current-aliased-not-added-to-dep-2.js` — same pattern, different variant
-- `ref-current-not-added-to-dep-2.js` — ref access in nested arrow, escaped via JSX prop
-- `valid-setState-in-useEffect-via-useEffectEvent-with-ref.js` — useEffectEvent pattern (not yet supported)
-- `capture-ref-for-later-mutation.tsx` — ref mutation in function returned from component (deferred)
-- `import-as-local.tsx` — imported ref alias pattern
-
-**Blocker for remaining 8:** These involve deeper patterns (Flow type casts, `useEffectEvent`, ref aliasing through multiple indirections). Each is a separate fix. The transitive safety propagation catches callees by NAME within non-render FE bodies, but the cross-scope ID mismatch prevents catching some patterns where the FE is loaded via `LoadLocal` with a different `IdentifierId` than the outer scope's definition.
-
----
-
-## Step 4: Other False Bail-outs Audit (20 fixtures remaining, MEDIUM)
-
-**Impact:** Up to +20 conformance (was 28, -8 from ref-access and global-reassign fixes)
-**Files:** Various validation passes
-**Risk:** LOW per category
-
-**Breakdown (updated):**
-- 7x "Cannot reassign variables declared outside" → `validate_no_global_reassignment.rs` — remaining 7 need **transitive safe callback analysis** across scope boundaries. The `collect_safe_callback_names()` approach works for direct JSX prop → FE chains but NOT for indirect patterns like `useEffect(() => { setGlobal() })` where `setGlobal` is a FE called inside an effect callback. Cross-scope `IdentifierId` mismatch is the root cause (same as ref-access blocker).
-- 3x "Hooks may not be referenced as normal values" → `validate_hooks_usage.rs`
-- 3x "Cannot call setState during render" → `validate_no_set_state_in_render.rs`
-- 2x "setState is called directly inside useEffect" → `validate_no_set_state_in_effects.rs`
-- 1x "useMemo called conditionally" → `validate_hooks_usage.rs`
-- 1x "Cannot freeze mutable function" → `validate_no_mutation_after_freeze.rs`
-- 3x other
-
-**Approach:** For each category, read the upstream validation source and compare against our implementation. Most are small exemptions or edge cases. The hooks/setState categories (8 fixtures total) are likely quick wins.
-
----
-
-## Step 5: Named Variable Preservation (28 fixtures remaining, HARD)
-
-**Impact:** Up to +28 conformance (was 34, -6 from name promotion)
+**Impact:** Up to +28 conformance
 **Files:** `src/reactive_scopes/codegen.rs` (`build_inline_map`, `rename_variables`)
-**Risk:** HIGH — changes interact with `rename_variables` which is load-bearing for 17 fixtures
+**Risk:** HIGH — `rename_variables` is load-bearing for 17 fixtures
 
-**What was done:** Added `build_name_promotion_map()` to codegen that promotes temp→user-name when a non-inlinable temp (FunctionExpression) is immediately stored to a named variable. Fixed 6 fixtures.
-
-**Remaining 28:** These are from `rename_variables` which renames scope declaration outputs to temps (`x` → `t10`) and creates post-scope assignments (`let x = t10`). Upstream uses the original name directly in the scope.
-
-**Investigation findings:**
-- Disabling `rename_variables` entirely: 451→434 (-17 regressions). The 17 regressions are text-only (slot counts match).
-- The fix requires either: (a) teaching `codegen_scope` to reverse-promote scope declaration names (complex — would need to clone+mutate the scope block and apply promotions to all nested identifiers), or (b) making `rename_variables` conditional based on whether the rename helps conformance (requires identifying the 17 fixtures that need it).
-- Approach (a) was attempted but reverted due to complexity — `codegen_scope` uses declaration names in 15+ places (pre-declarations, cache stores, cache loads, body emission).
-- Approach (b) is more promising: investigate what makes the 17 rename-dependent fixtures special, then add a condition to `can_rename_scope_decl`.
+Name promotion map (`build_name_promotion_map`) fixes 6 non-inlinable temp patterns. Remaining 28 are from `rename_variables` scope output renames. Two approaches investigated:
+- (a) Clone+mutate scope in `codegen_scope_with_promotions` — reverted, too complex (15+ name resolution points)
+- (b) Make `can_rename_scope_decl` conditional — needs identifying the 17 rename-dependent fixtures
 
 ---
 
-## Step 6: Optional Chaining — Remaining (9 fixtures, MEDIUM)
+## Step 3: Remaining Validator False Bail-outs (~15 fixtures, MEDIUM)
+
+| Category | Count | Status |
+|----------|-------|--------|
+| Cannot reassign outside component | 7 | Cross-scope `IdentifierId` blocker; transitive safe callback works for direct chains only |
+| Ref access in render | 8 | Each remaining is a distinct pattern (Flow type casts, `useEffectEvent`, multi-indirection aliases) |
+| Hooks referenced as values | 2 | 1 fixed (property access), 1 needs `@enableNameAnonymousFunctions` support |
+| Reassigned after render | 10 | Some may benefit from per-body `directly_called` |
+| setState in render | 3 | Matched upstream (both no-memo), not actual false bail-outs |
+| setState in useEffect | 2 | Need investigation |
+
+---
+
+## Step 4: Optional Chaining — Remaining (9 fixtures, MEDIUM)
 
 **Impact:** Up to +9 conformance
 **Files:** `src/reactive_scopes/propagate_dependencies.rs`, `src/reactive_scopes/codegen.rs`
 **Risk:** LOW
 
-6 of 15 optional chaining fixtures fixed. The remaining 9 involve optional member access in **scope dependency paths** (e.g., `a?.b` used as a reactive dependency in `$[N] !== a?.b`). The `dependency_display_name` function already handles `?.` for dependency paths, but the mismatch is in how the optional flag propagates through the reactive scope dependency collection pipeline, not codegen emission.
+The remaining 9 involve optional member access in scope dependency paths. The `dependency_display_name` function handles `?.` but the optional flag doesn't propagate through the dependency collection pipeline.
 
 ---
 
-## Step 7: Silent Bail-outs — Other Categories (23 fixtures, VARIES)
+## Step 5: Silent Bail-outs — Other Categories (23 fixtures, VARIES)
 
-**Impact:** Up to +23 conformance
-**Files:** Various
-
-After default params (Step 1), 23 silent bail-outs remain:
-- 5x Flow syntax (`component` keyword, Flow type casts) — needs Flow-specific handling in HIR builder or function discovery
-- 4x gating patterns — `@enableGating` directive handling
-- 5x ref-related — various ref patterns that produce 0 scopes
-- 9x other — `hoist-destruct.js`, `unused-object-element-with-rest.js`, `reassign-variable-in-usememo.js`, etc.
+- 5x Flow syntax (`component` keyword, Flow type casts)
+- 4x gating patterns — `@enableGating` directive
+- 5x ref-related — various ref patterns producing 0 scopes
+- 9x other
 
 ---
 
 ## BLOCKED — Do Not Attempt
 
 ### Under-memoization (Gap 11, ~404 fixtures) — FOUNDATIONAL BLOCKER
-
-Our BFS mutation propagation produces narrower ranges than upstream's full abstract interpreter. We compensate with `effective_range = max(mutable_range.end, last_use + 1)`.
-
-**What would be needed:** Port upstream's ~2000-line abstract interpreter from `src/Inference/InferMutationAliasingEffects.ts`. This also unblocks Gap 5a (+58 fixtures) and may reduce Gap 7.
-
-**Slot deficit distribution:** -1 (136), -2 (118), -3 to -5 (96), -6 to -23 (54)
-**Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`, `src/inference/infer_mutation_aliasing_effects.rs`
-**4 prior attempts, all reverted (96%→36% render regression)**
+Port upstream's ~2000-line abstract interpreter from `src/Inference/InferMutationAliasingEffects.ts`. 4 prior attempts, all reverted (96%→36% render regression). Also unblocks Gap 5a (+58) and may reduce Gap 7.
 
 ### Over-memoization (Gap 7, ~175 fixtures)
+May self-resolve as side effect of Gap 11.
 
-~175 fixtures produce MORE cache slots than upstream (+1 to +42). May self-resolve as side effect of Gap 11.
-
-**Files:** `src/reactive_scopes/merge_scopes.rs`, `src/reactive_scopes/prune_scopes.rs`
-**Upstream:** `MergeReactiveScopesThatInvalidateTogether.ts`, `PruneNonEscapingScopes.ts`
-
-### Memoization Preservation Validation (Gap 5a, 58 fixtures)
-
-58 fixtures bail with false "Existing memoization could not be preserved" error. Attempted relaxation caused -28 conformance regression (reverted `bbbbc1d` → `4a082dc`). HARD DEPENDENCY on Gap 11.
-
-### Canvas-Sidebar Render Divergence (Gap 15)
-
-Investigated: scope inference issue (64 vs 70 slots, sentinel vs dependency checks). NOT a codegen bug. BLOCKED on Gap 11.
+### Memoization Preservation (Gap 5a, 58 fixtures)
+HARD DEPENDENCY on Gap 11.
 
 ### Ternary Reconstruction (Gap 6)
-
-P4 cosmetic only. `Terminal::Ternary` emitted as `if/else` instead of `?:`. The `result: Option<Place>` field is ignored. No functional impact.
+P4 cosmetic only. No functional impact.
 
 ---
 
@@ -240,7 +164,7 @@ P4 cosmetic only. `Terminal::Ternary` emitted as `if/else` instead of `?:`. The 
 | Frozen mutation validation | `src/validation/validate_no_mutation_after_freeze.rs` |
 | Ref access validation | `src/validation/validate_no_ref_access_in_render.rs` |
 | Global reassignment validation | `src/validation/validate_no_global_reassignment.rs` |
-| Reassignment validation | `src/validation/validate_locals_not_reassigned_after_render.rs` |
+| Hooks usage validation | `src/validation/validate_hooks_usage.rs` |
 | Shared function context | `src/validation/function_context.rs` |
 | Memoization validation | `src/validation/validate_preserved_manual_memoization.rs` |
 | Conformance runner | `tests/conformance_tests.rs` |
