@@ -43,12 +43,12 @@ node bench.mjs --check-snapshots
 
 ## Fixture Tiers
 
-| Tier | LOC     | Hooks | Description                    |
-|------|---------|-------|--------------------------------|
-| XS   | < 50    | 0-1   | Baseline sanity checks         |
-| S    | < 150   | 1-3   | Typical leaf components        |
-| M    | < 400   | 3-6   | Mid-complexity pages/forms     |
-| L    | 1000+   | 6+    | Dashboards, complex views      |
+| Tier | LOC   | Hooks | Description                |
+| ---- | ----- | ----- | -------------------------- |
+| XS   | < 50  | 0-1   | Baseline sanity checks     |
+| S    | < 150 | 1-3   | Typical leaf components    |
+| M    | < 400 | 3-6   | Mid-complexity pages/forms |
+| L    | 1000+ | 6+    | Dashboards, complex views  |
 
 ## Adding New Fixtures
 
@@ -92,12 +92,12 @@ This creates an audit trail: every PR that changes compiler output will show sna
 
 When the OXC compiler output differs from Babel's `babel-plugin-react-compiler`, divergences are classified into one of four categories:
 
-| Classification | Acceptable? | Description |
-|----------------|-------------|-------------|
-| **Cosmetic** | Yes | Whitespace, variable naming, import ordering, comment differences. No semantic impact. |
-| **Conservative miss** | Yes | OXC memoizes less aggressively than Babel (fewer cache slots, wider scope boundaries). Correct but suboptimal — extra re-renders may occur. |
-| **Over-memoization** | Investigate | OXC memoizes more than Babel (extra cache slots or narrower scopes). Usually harmless but could mask bugs if dependencies are wrong. |
-| **Semantic difference** | No (bug) | Different runtime behavior — wrong values, missing updates, stale closures, or incorrect dependency tracking. These are correctness bugs that must be fixed. |
+| Classification          | Acceptable? | Description                                                                                                                                                  |
+| ----------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Cosmetic**            | Yes         | Whitespace, variable naming, import ordering, comment differences. No semantic impact.                                                                       |
+| **Conservative miss**   | Yes         | OXC memoizes less aggressively than Babel (fewer cache slots, wider scope boundaries). Correct but suboptimal — extra re-renders may occur.                  |
+| **Over-memoization**    | Investigate | OXC memoizes more than Babel (extra cache slots or narrower scopes). Usually harmless but could mask bugs if dependencies are wrong.                         |
+| **Semantic difference** | No (bug)    | Different runtime behavior — wrong values, missing updates, stale closures, or incorrect dependency tracking. These are correctness bugs that must be fixed. |
 
 ### How divergences are detected
 
@@ -123,10 +123,12 @@ score = 1.0 - (semantic_divergences / total_memoization_sites)
 ```
 
 Where:
+
 - `total_memoization_sites` = number of `useMemoCache` slots in the Babel reference output
 - `semantic_divergences` = number of sites where OXC produces different runtime behavior
 
 **Score interpretation:**
+
 - **1.0**: Perfect parity — OXC produces semantically identical output for all memoization sites.
 - **0.9–0.99**: Minor divergences (typically conservative misses). Functionally correct.
 - **< 0.9**: Significant divergences requiring investigation.
@@ -142,15 +144,3 @@ aggregate = Σ(score_i × weight_i) / Σ(weight_i)
 ```
 
 Weights are based on size tier: XS=1, S=2, M=3, L=4. This ensures larger, more complex components have proportionally more impact on the overall score.
-
-## CI Integration
-
-The `.github/workflows/benchmark.yml` workflow:
-
-1. Builds the NAPI binding
-2. Runs `cargo test`
-3. Runs benchmarks with JSON output
-4. Checks snapshots haven't changed
-5. Runs E2E tests
-6. Posts a benchmark results comment on PRs
-7. Updates `baseline.json` on main merges
