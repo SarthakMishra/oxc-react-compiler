@@ -115,13 +115,15 @@ Name promotion map (`build_name_promotion_map`) fixes 6 non-inlinable temp patte
 
 ---
 
-## Step 4: Optional Chaining — Remaining (9 fixtures, MEDIUM)
+## Step 4: Optional Chaining — Remaining (7 fixtures, MEDIUM)
 
-**Impact:** Up to +9 conformance
-**Files:** `src/reactive_scopes/propagate_dependencies.rs`, `src/reactive_scopes/codegen.rs`
+**Impact:** Up to +7 conformance (was 9, -2 from optional flag propagation fix)
+**Files:** `src/hir/build.rs`, `src/reactive_scopes/propagate_dependencies.rs`
 **Risk:** LOW
 
-The remaining 9 involve optional member access in scope dependency paths. The `dependency_display_name` function handles `?.` but the optional flag doesn't propagate through the dependency collection pipeline.
+**What was done:** Fixed HIR builder to use `member.optional` from OXC AST (was hardcoded `false`). Fixed dependency propagation to use PropertyLoad's `optional` field. Fixes 2 fixtures.
+
+**Remaining 7:** 2 still show `comments.edges` vs `comments?.edges` — the OXC AST nesting for deep optional chains may not set `optional: true` on inner member expressions inside `ChainExpression`. The remaining 3 are try-catch + optional (different issue — we don't lower try-catch), and 2 are nested/computed optional patterns.
 
 ---
 
