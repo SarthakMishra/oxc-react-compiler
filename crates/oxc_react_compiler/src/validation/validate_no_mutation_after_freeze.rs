@@ -31,6 +31,8 @@ fn ssa_id(ident: &Identifier) -> SsaId {
     (ident.id, ident.ssa_version)
 }
 
+use crate::hir::types::InstructionId;
+
 const FROZEN_MUTATION_ERROR: &str = "This value cannot be modified. Modifying a value used \
      previously in JSX is not allowed. Consider moving the \
      modification before the JSX expression.";
@@ -75,6 +77,10 @@ pub fn validate_no_mutation_after_freeze(
     // Primary: ID-based freeze tracking. SSA guarantees each reassignment gets a
     // new IdentifierId, so freezing one version doesn't affect later versions.
     let mut frozen_ids: FxHashSet<SsaId> = FxHashSet::default();
+    // Instruction ordering: tracks WHEN each freeze happened. Used by Check 2/3
+    // to avoid false positives when block iteration order doesn't match source
+    // order (e.g., loop bodies visited after the return block).
+    let mut frozen_at: FxHashMap<SsaId, InstructionId> = FxHashMap::default();
     // Secondary: name-based freeze tracking. Used as fallback for phi nodes and
     // cross-SSA references where the same frozen value flows through different IDs.
     // Also used for hook-call-freezes-captures (which tracks by capture name).
@@ -89,8 +95,10 @@ pub fn validate_no_mutation_after_freeze(
 
     // Pre-freeze function parameters (props, hook arguments) — by SsaId and name.
     // Params have ssa_version 0 (they're the first definition).
+    // Use InstructionId(0) for pre-freeze ordering (before any instruction).
     for &pid in param_ids {
         frozen_ids.insert((pid, 0));
+        frozen_at.insert((pid, 0), InstructionId(0));
     }
     for name in param_names {
         frozen_names.insert(name);
@@ -324,7 +332,9 @@ pub fn validate_no_mutation_after_freeze(
             if let Some(ref effects) = instr.effects {
                 for effect in effects {
                     if let AliasingEffect::Freeze { value, .. } = effect {
-                        frozen_ids.insert(ssa_id(&value.identifier));
+                        let sid = ssa_id(&value.identifier);
+                        frozen_ids.insert(sid);
+                        frozen_at.entry(sid).or_insert(instr.id);
                         if let Some(name) = resolve_name(
                             value.identifier.id,
                             &id_to_name,
@@ -383,8 +393,11 @@ pub fn validate_no_mutation_after_freeze(
             // is KNOWN to mutate. Read-only methods (.map(), .at(), .filter(),
             // .toString(), .foo()) are safe on frozen values.
             // Upstream uses method signatures; we use a conservative allowlist.
+            // Also verify source ordering: only flag if the freeze happened
+            // BEFORE this mutation in source order (instruction IDs are monotonic).
             if let InstructionValue::MethodCall { receiver, property, .. } = &instr.value
                 && is_place_frozen(receiver, &frozen_ids)
+                && is_frozen_before(receiver, instr.id, &frozen_at)
                 && is_known_mutating_method(property)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
@@ -396,12 +409,16 @@ pub fn validate_no_mutation_after_freeze(
             }
 
             // Check 3: PropertyStore/ComputedStore/Delete on frozen values
+            // Also verify source ordering to avoid false positives from
+            // block iteration order mismatches.
             match &instr.value {
                 InstructionValue::PropertyStore { object, .. }
                 | InstructionValue::ComputedStore { object, .. }
                 | InstructionValue::PropertyDelete { object, .. }
                 | InstructionValue::ComputedDelete { object, .. } => {
-                    if is_place_frozen(object, &frozen_ids) {
+                    if is_place_frozen(object, &frozen_ids)
+                        && is_frozen_before(object, instr.id, &frozen_at)
+                    {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             FROZEN_MUTATION_ERROR,
@@ -484,6 +501,23 @@ pub fn validate_no_mutation_after_freeze(
 }
 
 /// Check if a Place refers to a frozen value by SSA-unique key.
+/// Check if a place was frozen BEFORE the given instruction in source order.
+/// Returns true if the freeze instruction ID is less than `current_instr_id`,
+/// or if the freeze was from pre-freezing (params, which use InstructionId(0)).
+/// Returns true if there's no ordering info (conservative: treat as frozen).
+fn is_frozen_before(
+    place: &Place,
+    current_instr_id: InstructionId,
+    frozen_at: &FxHashMap<SsaId, InstructionId>,
+) -> bool {
+    let sid = ssa_id(&place.identifier);
+    match frozen_at.get(&sid) {
+        Some(&freeze_id) => freeze_id < current_instr_id,
+        // No ordering info (frozen via pre-freeze or name-based) — conservatively treat as frozen
+        None => true,
+    }
+}
+
 fn is_place_frozen(place: &Place, frozen_ids: &FxHashSet<SsaId>) -> bool {
     is_ssa_frozen(&place.identifier, frozen_ids)
 }
