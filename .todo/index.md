@@ -1,7 +1,7 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-21 (post Phase 109)
-> Conformance: **451/1717 (26.3%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
+> Last updated: 2026-03-21 (post Phase 110)
+> Conformance: **456/1717 (26.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
 
 ---
 
@@ -45,7 +45,7 @@ cd benchmarks && npm run e2e:quick                    # E2E Vite builds
 
 ---
 
-## Conformance Breakdown (451 passing, 1266 failing)
+## Conformance Breakdown (456 passing, 1261 failing)
 
 | Category | Count | Description |
 |----------|-------|-------------|
@@ -115,15 +115,19 @@ Name promotion map (`build_name_promotion_map`) fixes 6 non-inlinable temp patte
 
 ---
 
-## Step 4: Optional Chaining — Remaining (7 fixtures, MEDIUM)
+## Step 4: Optional Chaining — Remaining (5 fixtures, MEDIUM)
 
-**Impact:** Up to +7 conformance (was 9, -2 from optional flag propagation fix)
-**Files:** `src/hir/build.rs`, `src/reactive_scopes/propagate_dependencies.rs`
-**Risk:** LOW
+**Impact:** Up to +5 more conformance
+**Files:** `src/hir/build.rs`, `src/reactive_scopes/propagate_dependencies.rs`, `src/reactive_scopes/codegen.rs`
 
-**What was done:** Fixed HIR builder to use `member.optional` from OXC AST (was hardcoded `false`). Fixed dependency propagation to use PropertyLoad's `optional` field. Fixes 2 fixtures.
+**What was done (Phase 109-110):**
+1. HIR builder: use `member.optional` from OXC AST (was hardcoded `false`)
+2. Dependency propagation: use PropertyLoad's `optional` flag for path entries
+3. Codegen `expr_string`: use `?.` for inlined PropertyLoad/ComputedLoad
 
-**Remaining 7:** 2 still show `comments.edges` vs `comments?.edges` — the OXC AST nesting for deep optional chains may not set `optional: true` on inner member expressions inside `ChainExpression`. The remaining 3 are try-catch + optional (different issue — we don't lower try-catch), and 2 are nested/computed optional patterns.
+**Result:** +5 conformance (451→456). 7→5 remaining.
+
+**Remaining 5:** 3 are try-catch + optional (we don't lower try-catch), 1 nested optional member, 1 computed optional.
 
 ---
 
