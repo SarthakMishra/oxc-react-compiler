@@ -657,6 +657,8 @@ fn build_inline_map(
                     | InstructionValue::StoreContext { .. }
                     | InstructionValue::StoreGlobal { .. }
                     | InstructionValue::Destructure { .. }
+                    | InstructionValue::PrefixUpdate { .. }
+                    | InstructionValue::PostfixUpdate { .. }
             ) {
                 continue;
             }

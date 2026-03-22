@@ -1,6 +1,6 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-22 (post Phase 115, Port Phase 2 completion + Phase 3 per-place effects + FE effect inference)
+> Last updated: 2026-03-22 (post Phase 116, render regression fix)
 > Conformance: **456/1717 (26.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. 1 new divergence (allow-modify-global-in-callback-jsx.js).
 
@@ -295,6 +295,21 @@ Pre-declares ALL scope output variables at function level. Removing it causes re
 
 ### Block iteration order ≠ source order for loops
 The HIR blocks are stored in creation order, but for-loop constructs create blocks out of source order. The frozen mutation validator uses `frozen_at` instruction ID tracking. After Phase 4c (removing the standalone validator), this is handled by the new inference.
+
+### Render Regression Investigation (23/25 -> 24/25 FIXED)
+
+**Symptom:** After Phase 2 commits (c99311b through e84a583), render dropped from 24/25 (96%) to 23/25 (92%). The `multi-step-form` fixture regressed -- `completedFields` useMemo returned `{completed: 0, total: 0}` instead of `{completed: 0, total: 1}`.
+
+**Root cause:** `PostfixUpdate` and `PrefixUpdate` instructions were missing from the side-effect allowlist in `build_inline_map()` (codegen.rs line ~652). When their result temp had 0 uses (normal for `total++` as an expression statement), they were incorrectly marked as dead pure temps and skipped during emission.
+
+**Why it only appeared after Phase 2:** Before Phase 2, the useMemo callback in `multi-step-form` was NOT being transformed by the compiler (passed through as-is). The new inference gives the compiler enough information to transform nested function bodies, which exposed the latent bug in codegen's dead-temp elimination.
+
+**Fix:** Added `PrefixUpdate` and `PostfixUpdate` to the side-effect match in `build_inline_map()`, alongside `PropertyStore`, `StoreLocal`, etc. This ensures increment/decrement expression statements are never eliminated even when their result is unused.
+
+**Bisect results:**
+- 968ece3 (Phase 1 types): PASS (24/25)
+- c99311b (Phase 2 core): FAIL (23/25) -- regression introduced here
+- Fix applied on main: PASS (24/25)
 
 ### Cross-scope `IdentifierId` mismatch
 Nested function bodies have their own `IdentifierId` numbering. Name-based resolution needed for cross-scope tracking.
