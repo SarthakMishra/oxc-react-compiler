@@ -1,6 +1,6 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-21 (post Phase 112, Port Phase 1 complete)
+> Last updated: 2026-03-22 (post Phase 113, Port Phase 2 session 1 — core architecture rewrite)
 > Conformance: **456/1717 (26.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. 1 new divergence (allow-modify-global-in-callback-jsx.js).
 
@@ -34,44 +34,50 @@ The upstream React Compiler has undergone major architectural changes since our 
 
 ---
 
-### Port Phase 2: New InferMutationAliasingEffects (~2975 lines)
+### Port Phase 2: New InferMutationAliasingEffects (~2975 lines) — IN PROGRESS
 
 **Effort:** 3-5 sessions (largest single piece)
 **Risk:** HIGH — core abstract interpreter
 **Files:** `src/inference/infer_mutation_aliasing_effects.rs` (rewrite)
 **Upstream:** `compiler/packages/babel-plugin-react-compiler/src/Inference/InferMutationAliasingEffects.ts`
 
-This is the **critical path** item. The new pass uses:
+**Session 1 (2026-03-22): Core architecture rewrite COMPLETE**
 
-**2a. `InferenceState` — Abstract State:**
-- Maps each `IdentifierId` to an abstract value kind: `Mutable`, `Frozen`, `Primitive`, `Context`, `Global`
-- Maintains a pointer/alias graph between identifiers
-- Tracks frozen reasons per value
+The following sub-items are done:
 
-**2b. Fixpoint Iteration:**
-- Walks the HIR CFG blocks
-- For each instruction, generates **candidate effects** (cached on first visit)
-- Applies effects against the abstract state
-- Iterates until the state stabilizes (fixpoint)
+**2a. `InferenceState` — Abstract State: DONE**
+- Two-layer model: `values: Vec<AbstractValue>` + `variables: FxHashMap<IdentifierId, FxHashSet<AbstractValueId>>`
+- Handles phi nodes naturally (union of value sets from predecessors)
+- `kind()` merges all values a variable may hold via lattice join
+- `freeze()`, `mutate()`, `assign()`, `append_alias()`, `infer_phi()` all implemented
 
-**2c. Effect Application Logic:**
-- `MutateConditionally` on a frozen value → no-op (frozen values can't be mutated)
-- `Mutate` on a frozen value → `MutateFrozen` (error)
-- `Mutate` on a global → `MutateGlobal` (error)
-- Unknown function calls → `Apply` → resolved via signatures or fallback
+**2b. Fixpoint Iteration: DONE**
+- Worklist-based: only re-processes blocks whose incoming state changed
+- Merges states at join points via `InferenceState::merge()`
+- Instruction signature cache: candidate effects computed once per instruction
 
-**2d. Function Call Resolution:**
-For `Apply` effects:
-1. If callee is a local FE with known `aliasingEffects` → use those
-2. If callee has an `AliasingSignature` (from built-in shapes) → apply it
-3. Fallback: `MutateTransitiveConditionally` on all args, `Alias` args to return
+**2c. Effect Application Logic: DONE**
+- `applyEffect()` function with full refinement: Capture/Alias/MaybeAlias on frozen -> ImmutableCapture, MutateConditionally on frozen -> no-op, Mutate on frozen -> MutateFrozen error, etc.
+- Matches upstream's recursive applyEffect pattern
 
-**2e. Built-in Function Signatures:**
-Update `Globals.ts`/`ObjectShape.ts` equivalent with string-based aliasing configs for:
-- Array methods (push, pop, map, filter, forEach, etc.)
-- Object methods (assign, keys, entries, etc.)
-- React hooks (useState, useRef, useEffect, useMemo, etc.)
-- Math, JSON, console, etc.
+**2d. Function Call Resolution: PARTIALLY DONE**
+- Legacy signature resolution (FunctionSignature with per-param effects): DONE
+- Conservative fallback (no signature): DONE
+- AliasingSignature resolution (new-style): NOT YET (depends on 2e)
+- Local FunctionExpression resolution (using aliasingEffects): NOT YET (depends on AnalyseFunctions rewrite in Phase 4)
+
+**2e. Built-in Function Signatures: NOT YET**
+- String-based AliasingSignatureConfig types added in Phase 1
+- No built-in signatures populated yet — this requires updating ObjectShape/Globals equivalent
+
+**Conformance unchanged at 456/1717, 0 panics, +2 newly passing fixtures.**
+
+**Remaining work for Phase 2:**
+- Port `computeEffectsForSignature()` (AliasingSignature substitution)
+- Port `buildSignatureFromFunctionExpression()` (local FE resolution)
+- Port try/catch handler binding logic for MaybeThrow terminals
+- Improve `computeSignatureForInstruction` to better match upstream (DeclareContext hoisting, LoadLocal as Assign, etc.)
+- Port `computeEffectsForLegacySignature` refinements (mutableOnlyIfOperandsAreMutable, impure handling)
 
 **This replaces our current abstract interpreter** which is the root cause of Gap 11 (~404 fixtures) and indirectly blocks Gap 5a (58 fixtures) and Gap 7 (175 fixtures).
 

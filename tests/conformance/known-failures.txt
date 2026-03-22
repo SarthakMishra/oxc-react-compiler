@@ -281,7 +281,6 @@ error.invalid-setState-in-useMemo-indirect-useCallback.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
 error.invalid-type-provider-nonhook-name-typed-as-hook.js
 error.modify-state-2.js
-error.mutate-function-property.js
 error.ref-like-name-not-Ref.js
 error.ref-like-name-not-a-ref.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js
@@ -840,7 +839,6 @@ propagate-scope-deps-hir-fork/try-catch-mutate-outer-value.js
 propagate-scope-deps-hir-fork/try-catch-try-value-modified-in-catch-escaping.js
 propagate-scope-deps-hir-fork/try-catch-try-value-modified-in-catch.js
 propagate-scope-deps-hir-fork/useMemo-multiple-if-else.js
-property-assignment.js
 property-call-evaluation-order.js
 property-call-spread.js
 props-method-dependency.js
