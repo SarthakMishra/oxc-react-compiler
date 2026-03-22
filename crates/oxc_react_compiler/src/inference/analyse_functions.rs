@@ -48,16 +48,51 @@ pub fn analyse_functions(
 
 fn analyse_nested_function(func: &mut HIRFunction, errors: &mut ErrorCollector) {
     // Recursively analyze functions within this function
-    let nested_sigs = analyse_functions(&mut func.body, errors);
+    let mut nested_sigs = analyse_functions(&mut func.body, errors);
 
-    // Run inference passes on the nested function's HIR
+    // Add built-in signatures for globals used within this function expression
+    populate_builtin_signatures(&func.body, &mut nested_sigs);
+
+    // Run the sub-pipeline on the nested function's HIR.
+    // Upstream: AnalyseFunctions recursively calls this sub-pipeline:
+    //   0. InferTypes (OXC-specific: needed to set identifier types for scope inference)
+    //   1. InferMutationAliasingEffects
+    //   2. DeadCodeElimination
+    //   3. InferMutationAliasingRanges
+    //   4. RewriteInstructionKinds
+    //   5. InferReactiveScopeVariables
     crate::inference::infer_types::infer_types(&mut func.body);
+
     crate::inference::infer_mutation_aliasing_effects::infer_mutation_aliasing_effects(
         &mut func.body,
         &nested_sigs,
     );
+
+    crate::optimization::dead_code_elimination::dead_code_elimination(&mut func.body);
+
     crate::inference::infer_mutation_aliasing_ranges::infer_mutation_aliasing_ranges(
         &mut func.body,
+    );
+
+    // Annotate last_use for scope inference (feeds effective_range computation)
+    crate::inference::infer_mutation_aliasing_ranges::annotate_last_use(&mut func.body);
+
+    crate::inference::rewrite_instruction_kinds::rewrite_instruction_kinds_based_on_reassignment(
+        &mut func.body,
+    );
+
+    // Extract param IDs for scope inference
+    let param_ids: Vec<IdentifierId> = func
+        .params
+        .iter()
+        .map(|p| match p {
+            Param::Identifier(place) | Param::Spread(place) => place.identifier.id,
+        })
+        .collect();
+
+    crate::reactive_scopes::infer_reactive_scope_variables::infer_reactive_scope_variables(
+        &mut func.body,
+        &param_ids,
     );
 
     // Compute externally-visible aliasing effects for this function expression.
@@ -253,5 +288,232 @@ fn propagate_signatures(hir: &HIR, signatures: &mut FxHashMap<IdentifierId, Func
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Built-in function signatures (Phase 2e)
+// ---------------------------------------------------------------------------
+
+/// Populate the function signatures map with built-in signatures for known
+/// global functions.
+///
+/// Scans the HIR for `LoadGlobal` instructions and, for each recognized
+/// global name, inserts a `FunctionSignature` describing how the function
+/// affects its arguments and return value. This enables the abstract
+/// interpreter to reason precisely about calls to known functions instead
+/// of falling back to the conservative "assume everything is conditionally
+/// mutated" behavior.
+///
+/// Must be called after `analyse_functions` and before
+/// `infer_mutation_aliasing_effects`.
+#[expect(clippy::implicit_hasher)]
+pub fn populate_builtin_signatures(
+    hir: &HIR,
+    signatures: &mut FxHashMap<IdentifierId, FunctionSignature>,
+) {
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::LoadGlobal { binding } = &instr.value {
+                let name = &binding.name;
+                let id = instr.lvalue.identifier.id;
+                // Don't overwrite signatures from local function analysis
+                if signatures.contains_key(&id) {
+                    continue;
+                }
+                if let Some(sig) = get_builtin_signature(name) {
+                    signatures.insert(id, sig);
+                }
+            }
+        }
+    }
+
+    // Propagate built-in signatures through alias chains
+    propagate_signatures(hir, signatures);
+}
+
+/// Helper to create a read-only param effect.
+fn read_param() -> ParamEffect {
+    ParamEffect { effect: Effect::Read, alias_to_return: false }
+}
+
+/// Helper to create a freeze param effect.
+fn freeze_param() -> ParamEffect {
+    ParamEffect { effect: Effect::Freeze, alias_to_return: false }
+}
+
+/// Helper to create a capture param effect (value captured, may alias return).
+#[expect(dead_code)]
+fn capture_param() -> ParamEffect {
+    ParamEffect { effect: Effect::Capture, alias_to_return: true }
+}
+
+/// Helper to create a mutate param effect.
+#[expect(dead_code)]
+fn mutate_param() -> ParamEffect {
+    ParamEffect { effect: Effect::Mutate, alias_to_return: false }
+}
+
+/// Helper to create a conditionally-mutate param effect.
+#[expect(dead_code)]
+fn conditional_mutate_param() -> ParamEffect {
+    ParamEffect { effect: Effect::ConditionallyMutate, alias_to_return: false }
+}
+
+/// Return a `FunctionSignature` for a known global function name, or `None`
+/// if the name is not recognized.
+///
+/// This covers:
+/// - React hooks (useState, useRef, useEffect, useMemo, useCallback, etc.)
+/// - Pure global functions (parseInt, parseFloat, isNaN, etc.)
+/// - String/Number/Boolean constructors called as functions
+fn get_builtin_signature(name: &str) -> Option<FunctionSignature> {
+    match name {
+        // ---------------------------------------------------------------
+        // React hooks
+        // ---------------------------------------------------------------
+
+        // useState(initialValue): returns frozen [state, setState]
+        // The initial value is read (not mutated or captured).
+        "useState" => Some(FunctionSignature {
+            params: vec![read_param()],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useReducer(reducer, initialState, init?): returns frozen [state, dispatch]
+        "useReducer" => Some(FunctionSignature {
+            params: vec![read_param(), read_param(), read_param()],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useRef(initialValue): returns a mutable ref object { current }
+        "useRef" => Some(FunctionSignature {
+            params: vec![read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useEffect(callback, deps?): captures the callback, reads deps
+        // Returns void (no meaningful return).
+        "useEffect" | "useLayoutEffect" | "useInsertionEffect" => Some(FunctionSignature {
+            params: vec![freeze_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useMemo(factory, deps): captures factory, reads deps, returns frozen
+        "useMemo" => Some(FunctionSignature {
+            params: vec![freeze_param(), read_param()],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useCallback(callback, deps): captures callback, reads deps, returns frozen
+        "useCallback" => Some(FunctionSignature {
+            params: vec![freeze_param(), read_param()],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useContext(context): reads the context, returns frozen
+        "useContext" => Some(FunctionSignature {
+            params: vec![read_param()],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useTransition(): returns frozen [isPending, startTransition]
+        "useTransition" => Some(FunctionSignature {
+            params: vec![],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useDeferredValue(value): reads value, returns frozen
+        "useDeferredValue" => Some(FunctionSignature {
+            params: vec![read_param()],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useId(): returns frozen string
+        "useId" => Some(FunctionSignature {
+            params: vec![],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot?): returns frozen
+        "useSyncExternalStore" => Some(FunctionSignature {
+            params: vec![read_param(), read_param(), read_param()],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useImperativeHandle(ref, create, deps?): reads all args
+        "useImperativeHandle" => Some(FunctionSignature {
+            params: vec![read_param(), freeze_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // useDebugValue(value, formatter?): reads args, no return
+        "useDebugValue" => Some(FunctionSignature {
+            params: vec![read_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // ---------------------------------------------------------------
+        // Pure global functions (return primitive, read all args)
+        // ---------------------------------------------------------------
+        "parseInt" | "parseFloat" | "isNaN" | "isFinite" | "encodeURI" | "decodeURI"
+        | "encodeURIComponent" | "decodeURIComponent" | "atob" | "btoa" => {
+            Some(FunctionSignature {
+                params: vec![read_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Read,
+                mutable_only_if_operands_are_mutable: false,
+            })
+        }
+
+        // String/Number/Boolean called as functions (type coercion)
+        "String" | "Number" | "Boolean" => Some(FunctionSignature {
+            params: vec![read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // Array.isArray, Object.is — but these are usually called as methods, not globals.
+        // structuredClone: creates a new mutable value from the input
+        "structuredClone" => Some(FunctionSignature {
+            params: vec![read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        }),
+
+        // Unknown hooks: do NOT provide a signature. The conservative fallback
+        // in the abstract interpreter (MutateTransitiveConditionally on all args) is
+        // more correct for unknown hooks, because they might mutate or capture their
+        // arguments in ways we can't predict. Only well-known React hooks above get
+        // explicit signatures.
+        _ => None,
     }
 }

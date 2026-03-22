@@ -119,7 +119,13 @@ pub fn run_pipeline(
     crate::optimization::optimize_props_method_calls::optimize_props_method_calls(hir);
 
     // Pass 15: analyse_functions
-    let fn_signatures = crate::inference::analyse_functions::analyse_functions(hir, errors);
+    let mut fn_signatures = crate::inference::analyse_functions::analyse_functions(hir, errors);
+
+    // Pass 15.5: populate_builtin_signatures (Phase 2e)
+    // Add known signatures for React hooks, pure global functions, etc.
+    // so the abstract interpreter can reason precisely about their effects
+    // instead of falling back to conservative defaults.
+    crate::inference::analyse_functions::populate_builtin_signatures(hir, &mut fn_signatures);
 
     // Pass 16: infer_mutation_aliasing_effects (with param pre-freezing)
     // Threading param_names enables the abstract interpreter to pre-freeze
