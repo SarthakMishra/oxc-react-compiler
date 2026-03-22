@@ -13,7 +13,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::VecDeque;
 
 use crate::hir::types::{
-    AliasingEffect, BlockId, HIR, IdentifierId, InstructionId, InstructionValue, MutableRange,
+    AliasingEffect, BlockId, Effect, HIR, IdentifierId, InstructionId, InstructionValue,
+    MutableRange, Place, Terminal,
 };
 
 // ---------------------------------------------------------------------------
@@ -539,6 +540,313 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
 
             instr.lvalue.identifier.mutable_range = MutableRange { start, end };
         }
+    }
+
+    // Phase 4: Annotate Place.effect on all operands and lvalues.
+    // Upstream: "Part 2" of inferMutationAliasingRanges.
+    //
+    // Build a set of all identifiers that are mutated (have range.end > range.start + 1
+    // or appear in the mutations list).
+    let mutated_ids: FxHashSet<IdentifierId> = mutations.iter().map(|m| m.place_id).collect();
+
+    annotate_place_effects(hir, &ranges, &mutated_ids, &phi_ids);
+}
+
+// ---------------------------------------------------------------------------
+// Place.effect annotation
+// ---------------------------------------------------------------------------
+
+/// Annotate `Place.effect` on all operands, lvalues, and terminals.
+///
+/// Upstream: "Part 2" of `inferMutationAliasingRanges()`.
+///
+/// Assignment rules:
+/// - Phi places: `Store`
+/// - Phi operands: `Capture` if the phi is mutated after creation, else `Read`
+/// - Instruction lvalues: `ConditionallyMutate` (default)
+/// - Instruction operands: `Read` (default), refined by instruction effects
+/// - Return terminal: `Freeze` for non-FE, `Read` for FE (handled upstream in effects pass)
+///
+/// Effect-based refinements override the defaults:
+/// - Assign/Alias/Capture/CreateFrom/MaybeAlias target → `Store`, source → `Capture` if target
+///   is later mutated, else `Read`
+/// - Mutate → `Store`
+/// - MutateTransitive/Conditional variants → `ConditionallyMutate`
+/// - Freeze → `Freeze`
+fn annotate_place_effects(
+    hir: &mut HIR,
+    ranges: &FxHashMap<IdentifierId, MutableRange>,
+    mutated_ids: &FxHashSet<IdentifierId>,
+    _phi_ids: &FxHashSet<IdentifierId>,
+) {
+    // Helper: is a given identifier mutated after its creation?
+    let is_mutated_after_creation = |id: IdentifierId| -> bool {
+        if let Some(range) = ranges.get(&id) {
+            range.end > InstructionId(range.start.0 + 1) || mutated_ids.contains(&id)
+        } else {
+            false
+        }
+    };
+
+    for (_, block) in &mut hir.blocks {
+        // Annotate phi nodes
+        for phi in &mut block.phis {
+            phi.place.effect = Effect::Store;
+            let phi_mutated = is_mutated_after_creation(phi.place.identifier.id);
+            for (_, operand) in &mut phi.operands {
+                operand.effect = if phi_mutated { Effect::Capture } else { Effect::Read };
+            }
+        }
+
+        // Annotate instructions
+        for instr in &mut block.instructions {
+            // Default lvalue effect
+            instr.lvalue.effect = Effect::ConditionallyMutate;
+
+            // Build per-operand effect map from instruction effects
+            let mut operand_effects: FxHashMap<IdentifierId, Effect> = FxHashMap::default();
+
+            if let Some(ref effects) = instr.effects {
+                for effect in effects {
+                    match effect {
+                        AliasingEffect::Assign { from, into }
+                        | AliasingEffect::Alias { from, into }
+                        | AliasingEffect::CreateFrom { from, into }
+                        | AliasingEffect::MaybeAlias { from, into } => {
+                            // Target gets Store
+                            operand_effects.insert(into.identifier.id, Effect::Store);
+                            // Source: Capture if target is later mutated, else Read
+                            let source_effect = if is_mutated_after_creation(into.identifier.id) {
+                                Effect::Capture
+                            } else {
+                                Effect::Read
+                            };
+                            // Only upgrade, don't downgrade
+                            operand_effects
+                                .entry(from.identifier.id)
+                                .and_modify(|e| {
+                                    if effect_priority(source_effect) > effect_priority(*e) {
+                                        *e = source_effect;
+                                    }
+                                })
+                                .or_insert(source_effect);
+                        }
+                        AliasingEffect::Capture { from, into } => {
+                            operand_effects.insert(into.identifier.id, Effect::Store);
+                            let source_effect = if is_mutated_after_creation(into.identifier.id) {
+                                Effect::Capture
+                            } else {
+                                Effect::Read
+                            };
+                            operand_effects
+                                .entry(from.identifier.id)
+                                .and_modify(|e| {
+                                    if effect_priority(source_effect) > effect_priority(*e) {
+                                        *e = source_effect;
+                                    }
+                                })
+                                .or_insert(source_effect);
+                        }
+                        AliasingEffect::Mutate { value, .. } => {
+                            operand_effects.insert(value.identifier.id, Effect::Store);
+                        }
+                        AliasingEffect::MutateTransitive { value }
+                        | AliasingEffect::MutateConditionally { value }
+                        | AliasingEffect::MutateTransitiveConditionally { value } => {
+                            operand_effects
+                                .insert(value.identifier.id, Effect::ConditionallyMutate);
+                        }
+                        AliasingEffect::Freeze { value, .. } => {
+                            operand_effects.insert(value.identifier.id, Effect::Freeze);
+                        }
+                        AliasingEffect::ImmutableCapture { from, .. } => {
+                            operand_effects.entry(from.identifier.id).or_insert(Effect::Read);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Apply effects to operand places
+            apply_operand_effects(&mut instr.value, &operand_effects);
+
+            // Also apply to lvalue if there's a specific effect for it
+            if let Some(&eff) = operand_effects.get(&instr.lvalue.identifier.id) {
+                instr.lvalue.effect = eff;
+            }
+        }
+
+        // Annotate terminal
+        match &mut block.terminal {
+            Terminal::Return { value, .. } => {
+                // For function expressions, return value is Read (not frozen).
+                // For top-level functions, the freeze is already handled by
+                // InferMutationAliasingEffects. We default to Read here.
+                if value.effect == Effect::Unknown {
+                    value.effect = Effect::Read;
+                }
+            }
+            Terminal::Throw { value } => {
+                value.effect = Effect::Read;
+            }
+            Terminal::If { test, .. } | Terminal::Branch { test, .. } => {
+                test.effect = Effect::Read;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Apply per-operand effects to the operand places in an instruction value.
+fn apply_operand_effects(
+    value: &mut InstructionValue,
+    operand_effects: &FxHashMap<IdentifierId, Effect>,
+) {
+    let update = |place: &mut Place| {
+        if let Some(&effect) = operand_effects.get(&place.identifier.id) {
+            place.effect = effect;
+        } else {
+            // Default: Read
+            if place.effect == Effect::Unknown {
+                place.effect = Effect::Read;
+            }
+        }
+    };
+
+    match value {
+        InstructionValue::LoadLocal { place }
+        | InstructionValue::LoadContext { place }
+        | InstructionValue::TypeCastExpression { value: place, .. }
+        | InstructionValue::UnaryExpression { value: place, .. }
+        | InstructionValue::PostfixUpdate { lvalue: place, .. }
+        | InstructionValue::PrefixUpdate { lvalue: place, .. }
+        | InstructionValue::Await { value: place }
+        | InstructionValue::GetIterator { collection: place }
+        | InstructionValue::NextPropertyOf { value: place } => {
+            update(place);
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            update(iterator);
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. }
+        | InstructionValue::StoreContext { lvalue, value } => {
+            update(lvalue);
+            update(value);
+        }
+        InstructionValue::StoreGlobal { value: place, .. } => {
+            update(place);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            update(left);
+            update(right);
+        }
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => {
+            update(object);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            update(object);
+            update(value);
+        }
+        InstructionValue::ComputedLoad { object, property, .. }
+        | InstructionValue::ComputedDelete { object, property } => {
+            update(object);
+            update(property);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            update(object);
+            update(property);
+            update(value);
+        }
+        InstructionValue::CallExpression { callee, args, .. }
+        | InstructionValue::NewExpression { callee, args } => {
+            update(callee);
+            for arg in args.iter_mut() {
+                update(arg);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            update(receiver);
+            for arg in args.iter_mut() {
+                update(arg);
+            }
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties.iter_mut() {
+                if let crate::hir::types::ObjectPropertyKey::Computed(p) = &mut prop.key {
+                    update(p);
+                }
+                update(&mut prop.value);
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements.iter_mut() {
+                match elem {
+                    crate::hir::types::ArrayElement::Expression(p)
+                    | crate::hir::types::ArrayElement::Spread(p) => update(p),
+                    crate::hir::types::ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            update(tag);
+            for prop in props.iter_mut() {
+                update(&mut prop.value);
+            }
+            for child in children.iter_mut() {
+                update(child);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children.iter_mut() {
+                update(child);
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for expr in subexpressions.iter_mut() {
+                update(expr);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, .. } => {
+            update(tag);
+        }
+        InstructionValue::Destructure { value, .. } => {
+            update(value);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            update(decl);
+            for dep in deps.iter_mut() {
+                update(dep);
+            }
+        }
+        InstructionValue::FunctionExpression { lowered_func, .. } => {
+            for ctx_place in &mut lowered_func.context {
+                update(ctx_place);
+            }
+        }
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::ObjectMethod { .. }
+        | InstructionValue::DeclareLocal { .. }
+        | InstructionValue::DeclareContext { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
+    }
+}
+
+/// Priority ordering for effects (higher = more specific/important).
+fn effect_priority(e: Effect) -> u8 {
+    match e {
+        Effect::Unknown => 0,
+        Effect::Read => 1,
+        Effect::Capture => 2,
+        Effect::ConditionallyMutate => 3,
+        Effect::ConditionallyMutateIterator => 3,
+        Effect::Freeze => 4,
+        Effect::Store => 5,
+        Effect::Mutate => 6,
     }
 }
 

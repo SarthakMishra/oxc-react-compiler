@@ -2,7 +2,8 @@ use rustc_hash::FxHashMap;
 
 use crate::error::ErrorCollector;
 use crate::hir::types::{
-    Effect, FunctionSignature, HIR, HIRFunction, IdentifierId, InstructionValue, Param, ParamEffect,
+    AliasingEffect, Effect, FunctionSignature, HIR, HIRFunction, IdentifierId, InstructionValue,
+    Param, ParamEffect, ValueKind, ValueReason,
 };
 
 /// Recursively analyze nested functions within the HIR.
@@ -58,6 +59,11 @@ fn analyse_nested_function(func: &mut HIRFunction, errors: &mut ErrorCollector) 
     crate::inference::infer_mutation_aliasing_ranges::infer_mutation_aliasing_ranges(
         &mut func.body,
     );
+
+    // Compute externally-visible aliasing effects for this function expression.
+    // This enables callers to use precise effect-based resolution instead of
+    // the conservative fallback.
+    func.aliasing_effects = Some(compute_aliasing_effects(func));
 }
 
 /// Extract a FunctionSignature from an analyzed HIRFunction.
@@ -91,6 +97,109 @@ fn extract_signature(func: &HIRFunction) -> FunctionSignature {
         callee_effect: Effect::Read,
         mutable_only_if_operands_are_mutable: false,
     }
+}
+
+/// Compute the externally-visible aliasing effects of a function expression.
+///
+/// Upstream: "Part 3" of `inferMutationAliasingRanges()` — function effect inference.
+///
+/// For each parameter and context variable, check if it is mutated within the
+/// function body. If so, emit a `Mutate` or `MutateConditionally` effect. This
+/// tells the caller's abstract interpreter how calling this function affects
+/// values passed as arguments.
+///
+/// Also emits a `Create` for the return value based on the return place's effect,
+/// and `Alias` effects for any parameters that alias to the return value.
+fn compute_aliasing_effects(func: &HIRFunction) -> Vec<AliasingEffect> {
+    let mut effects = Vec::new();
+
+    // Create the return value with appropriate kind
+    let return_kind = match func.returns.effect {
+        Effect::Freeze => ValueKind::Frozen,
+        _ => ValueKind::Mutable,
+    };
+    effects.push(AliasingEffect::Create {
+        into: func.returns.clone(),
+        value: return_kind,
+        reason: ValueReason::Other,
+    });
+
+    // Check each parameter for mutation
+    for param in &func.params {
+        let place = match param {
+            Param::Identifier(p) | Param::Spread(p) => p,
+        };
+
+        match place.effect {
+            Effect::Store | Effect::Mutate => {
+                // Parameter is definitely mutated
+                effects.push(AliasingEffect::Mutate { value: place.clone(), reason: None });
+            }
+            Effect::ConditionallyMutate | Effect::ConditionallyMutateIterator => {
+                // Parameter is conditionally mutated
+                effects.push(AliasingEffect::MutateConditionally { value: place.clone() });
+            }
+            Effect::Capture => {
+                // Parameter is captured (may alias to return)
+                effects.push(AliasingEffect::Capture {
+                    from: place.clone(),
+                    into: func.returns.clone(),
+                });
+            }
+            Effect::Freeze => {
+                effects.push(AliasingEffect::Freeze {
+                    value: place.clone(),
+                    reason: ValueReason::Other,
+                });
+            }
+            _ => {
+                // Read or Unknown — no externally-visible effect
+            }
+        }
+    }
+
+    // Check each context variable (captured outer-scope vars) for mutation
+    for ctx_place in &func.context {
+        let is_mutated = is_context_var_mutated(&func.body, ctx_place.identifier.id);
+        if is_mutated {
+            effects.push(AliasingEffect::MutateConditionally { value: ctx_place.clone() });
+        }
+    }
+
+    effects
+}
+
+/// Check if a context variable is mutated within a function body.
+///
+/// A context variable is mutated if any StoreContext instruction writes to it.
+fn is_context_var_mutated(hir: &HIR, ctx_id: IdentifierId) -> bool {
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::StoreContext { lvalue, .. } = &instr.value
+                && lvalue.identifier.id == ctx_id
+            {
+                return true;
+            }
+            // Also check if the context var has a mutated mutable range
+            // by seeing if any effect directly mutates it
+            if let Some(ref effects) = instr.effects {
+                for effect in effects {
+                    match effect {
+                        AliasingEffect::Mutate { value, .. }
+                        | AliasingEffect::MutateConditionally { value }
+                        | AliasingEffect::MutateTransitive { value }
+                        | AliasingEffect::MutateTransitiveConditionally { value } => {
+                            if value.identifier.id == ctx_id {
+                                return true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Propagate function signatures through StoreLocal/LoadLocal alias chains.
