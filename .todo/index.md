@@ -1,6 +1,6 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-22 (post Phase 113, Port Phase 2 session 1 — core architecture rewrite)
+> Last updated: 2026-03-22 (post Phase 115, Port Phase 2 completion + Phase 3 per-place effects + FE effect inference)
 > Conformance: **456/1717 (26.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. 1 new divergence (allow-modify-global-in-callback-jsx.js).
 
@@ -72,39 +72,51 @@ The following sub-items are done:
 
 **Conformance unchanged at 456/1717, 0 panics, +2 newly passing fixtures.**
 
-**Remaining work for Phase 2:**
-- Port `computeEffectsForSignature()` (AliasingSignature substitution)
-- Port `buildSignatureFromFunctionExpression()` (local FE resolution)
-- Port try/catch handler binding logic for MaybeThrow terminals
-- Improve `computeSignatureForInstruction` to better match upstream (DeclareContext hoisting, LoadLocal as Assign, etc.)
-- Port `computeEffectsForLegacySignature` refinements (mutableOnlyIfOperandsAreMutable, impure handling)
+**Session 2 (2026-03-22): Remaining Phase 2 items COMPLETE**
+
+- Port `computeEffectsForSignature()`: DONE — AliasingSignature substitution with full identifier mapping
+- Port `buildSignatureFromFunctionExpression()`: DONE — builds AliasingSignature from FE params + aliasing_effects
+- Port `try_resolve_function_expression()`: DONE — checks if call target has known effects before fallback
+- Port try/catch handler binding logic for MaybeThrow terminals: DONE — catch_handlers map + terminal aliasing
+- Port `mutableOnlyIfOperandsAreMutable`: DONE — added to FunctionSignature with are_arguments_immutable()
+- Refactored Apply effect handling into `apply_call_effect()` with 3-step resolution
+
+**Remaining work for Phase 2 (deferred):**
+- Built-in function signatures (2e) — populating ObjectShape/Globals with AliasingSignatureConfig for Array methods, Object methods, React hooks, Math, JSON, console, etc. This requires significant work in the globals/shape system and is deferred to a future session.
+- Impure function handling in legacy signatures — requires `validate_no_impure_functions_in_render` integration
 
 **This replaces our current abstract interpreter** which is the root cause of Gap 11 (~404 fixtures) and indirectly blocks Gap 5a (58 fixtures) and Gap 7 (175 fixtures).
 
 ---
 
-### Port Phase 3: New InferMutationAliasingRanges (~737 lines)
+### Port Phase 3: New InferMutationAliasingRanges (~737 lines) — MOSTLY DONE
 
-**Effort:** 2-3 sessions
+**Effort:** 2-3 sessions (1.5 completed)
 **Risk:** HIGH — directly computes mutable ranges that feed scope inference
 **Files:** `src/inference/infer_mutation_aliasing_ranges.rs` (rewrite)
 **Upstream:** `compiler/packages/babel-plugin-react-compiler/src/Inference/InferMutationAliasingRanges.ts`
 
-**3a. `AliasingState` Graph:**
-- Ordered data flow graph: nodes = values, edges = typed (assign, alias, capture, createFrom, maybeAlias)
-- Edges and mutations are **time-indexed** (ordered by instruction ID)
+**3a. `AliasingState` Graph: DONE** (from prior work)
+- Ordered data flow graph with typed edges (assign, alias, capture, createdFrom, maybeAlias)
+- Time-indexed edges and mutations
+- Graph built in `AliasingGraph` struct with `Node`, `Edge`, `BackEdge` types
 
-**3b. Mutable Range Computation:**
-- For each mutation effect from Phase 2, walk reachable nodes in the graph at the mutation's time index
-- Extend `identifier.mutableRange` for all reached values
-- Handle phi nodes by connecting phi operands to phi places
+**3b. Mutable Range Computation: DONE** (from prior work)
+- BFS propagation via `mutate()` function with dedup and direction tracking
+- Handles phi nodes, backward aliases, createdFrom, and captures
 
-**3c. Per-Place Effect Annotation:**
-- After range computation, set `Place.effect` (Read, Mutate, Capture, Store) for backward compatibility with downstream passes (reactive scope inference)
+**3c. Per-Place Effect Annotation: DONE** (Phase 115)
+- `annotate_place_effects()` sets Place.effect for all operands, lvalues, phis, terminals
+- Effect-based refinements from instruction AliasingEffects
+- Effect priority system prevents downgrades
 
-**3d. Function Effect Inference:**
-- For FE bodies, compute externally-visible effects (mutations of params/context/returns)
-- Store as `fn.aliasingEffects` for use by caller analysis
+**3d. Function Effect Inference: DONE** (Phase 115)
+- `compute_aliasing_effects()` in analyse_functions.rs
+- Emits Mutate/MutateConditionally for mutated params and context vars
+- Stores on HIRFunction.aliasing_effects for caller resolution
+
+**Remaining work for Phase 3:**
+- None — all core items implemented. May need refinement when built-in signatures (Phase 2e) are populated.
 
 **Critical interaction with `effective_range`:** Our current `effective_range = max(mutable_range.end, last_use + 1)` approximation in `infer_reactive_scope_variables.rs` was needed because our old mutable ranges were too narrow. With the new model producing correct ranges, we should be able to use `mutable_range` directly — **which would fix the 4x failed attempt to switch**.
 

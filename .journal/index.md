@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 113     | 1–113  | Full compiler: HIR foundation → 26.6% conformance. Recent: re-baseline against upstream main, upstream alignment planning, HIR type system expansion, abstract interpreter rewrite |
+| [001.md](001.md) | 115     | 1–115  | Full compiler: HIR foundation → 26.6% conformance. Recent: re-baseline against upstream main, upstream alignment planning, HIR type system expansion, abstract interpreter rewrite, Phase 2 completion, Phase 3 per-place effects + FE effect inference |
 
 ## Archive
 
