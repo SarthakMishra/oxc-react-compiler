@@ -896,6 +896,12 @@ pub struct FunctionSignature {
     pub params: Vec<ParamEffect>,
     pub return_effect: Effect,
     pub callee_effect: Effect,
+    /// When true, the function only mutates operands if all arguments are
+    /// already mutable. If all args are frozen/immutable, the call is
+    /// treated as a pure read with an immutable return.
+    ///
+    /// Upstream: `mutableOnlyIfOperandsAreMutable` on `FunctionSignature`.
+    pub mutable_only_if_operands_are_mutable: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

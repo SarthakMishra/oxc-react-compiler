@@ -18,8 +18,8 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::hir::types::{
-    AliasingEffect, BlockId, Effect, FunctionSignature, HIR, IdentifierId, InstructionValue, Phi,
-    Place, Terminal, ValueKind, ValueReason,
+    AliasingEffect, AliasingSignature, BlockId, Effect, FunctionSignature, HIR, IdentifierId,
+    InstructionValue, Phi, Place, SourceLocation, Terminal, ValueKind, ValueReason,
 };
 
 // ---------------------------------------------------------------------------
@@ -332,12 +332,46 @@ struct InferenceContext {
     is_function_expression: bool,
     /// Cached instruction signatures: (block_index, instr_index) -> effects.
     instruction_signature_cache: FxHashMap<(usize, usize), Vec<AliasingEffect>>,
+    /// Maps catch handler block IDs to the catch binding identifier.
+    /// Upstream: `context.catchHandlers`.
+    /// Built by scanning Try terminals to find handler blocks and their bindings.
+    catch_handlers: FxHashMap<BlockId, Place>,
 }
 
 impl InferenceContext {
-    fn new(is_function_expression: bool) -> Self {
-        Self { is_function_expression, instruction_signature_cache: FxHashMap::default() }
+    fn new(is_function_expression: bool, catch_handlers: FxHashMap<BlockId, Place>) -> Self {
+        Self {
+            is_function_expression,
+            instruction_signature_cache: FxHashMap::default(),
+            catch_handlers,
+        }
     }
+}
+
+/// Build a map from catch handler block IDs to their catch binding places.
+///
+/// Upstream: built during `inferBlock()` for Try terminals.
+/// We scan all Try terminals in the HIR to find handler blocks,
+/// then find the first DeclareLocal in the handler block as the catch binding.
+fn build_catch_handlers(hir: &HIR) -> FxHashMap<BlockId, Place> {
+    let mut catch_handlers = FxHashMap::default();
+
+    // Collect all handler block IDs from Try terminals
+    for (_, block) in &hir.blocks {
+        if let Terminal::Try { handler, .. } = &block.terminal {
+            // Find the catch binding in the handler block: the first DeclareLocal
+            if let Some((_, handler_block)) = hir.blocks.iter().find(|(id, _)| *id == *handler) {
+                for instr in &handler_block.instructions {
+                    if let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value {
+                        catch_handlers.insert(*handler, lvalue.clone());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    catch_handlers
 }
 
 // ---------------------------------------------------------------------------
@@ -373,7 +407,8 @@ fn infer_mutation_aliasing_effects_inner(
     is_function_expression: bool,
 ) {
     let mut state = InferenceState::new(is_function_expression);
-    let mut ctx = InferenceContext::new(is_function_expression);
+    let catch_handlers = build_catch_handlers(hir);
+    let mut ctx = InferenceContext::new(is_function_expression, catch_handlers);
 
     // Initialize parameters in the abstract state.
     // Component/hook params are frozen; function expression params are mutable.
@@ -977,113 +1012,29 @@ fn apply_effect(
 
         AliasingEffect::Apply {
             receiver,
-            function: _,
-            mutates_function: _,
+            function,
+            mutates_function,
             args,
             into,
             signature,
             loc,
         } => {
-            // Try to resolve via function signature
-            if let Some(sig) = signature {
-                // Legacy signature resolution
-                let legacy_effects =
-                    compute_effects_for_legacy_signature(state, sig, into, receiver, args, *loc);
-                for le in &legacy_effects {
-                    apply_effect(
-                        ctx,
-                        state,
-                        le,
-                        initialized,
-                        effects,
-                        block_idx,
-                        instr_idx,
-                        0,
-                        hir,
-                    );
-                }
-            } else {
-                // No signature: conservative fallback
-                // 1. Create mutable return value
-                apply_effect(
-                    ctx,
-                    state,
-                    &AliasingEffect::Create {
-                        into: into.clone(),
-                        value: ValueKind::Mutable,
-                        reason: ValueReason::Other,
-                    },
-                    initialized,
-                    effects,
-                    block_idx,
-                    instr_idx,
-                    0,
-                    hir,
-                );
-
-                // Build operand list: receiver + args
-                let mut operands: Vec<Place> = Vec::new();
-                operands.push(receiver.clone());
-                for arg in args {
-                    operands.push(arg.clone());
-                }
-
-                // 2. MutateTransitiveConditionally each operand
-                for operand in &operands {
-                    // Skip the function itself unless mutates_function is true
-                    // (For CallExpression, function == receiver and mutates_function == true upstream)
-                    // DIVERGENCE: In our model, function and receiver are always the same for
-                    // CallExpression, and receiver != function only for MethodCall which we
-                    // handle separately in aliasing_effects.rs. We always mutate all operands
-                    // conditionally in the fallback.
-                    apply_effect(
-                        ctx,
-                        state,
-                        &AliasingEffect::MutateTransitiveConditionally { value: operand.clone() },
-                        initialized,
-                        effects,
-                        block_idx,
-                        instr_idx,
-                        0,
-                        hir,
-                    );
-                }
-
-                // 3. MaybeAlias each operand to the return value
-                for operand in &operands {
-                    apply_effect(
-                        ctx,
-                        state,
-                        &AliasingEffect::MaybeAlias { from: operand.clone(), into: into.clone() },
-                        initialized,
-                        effects,
-                        block_idx,
-                        instr_idx,
-                        0,
-                        hir,
-                    );
-                }
-
-                // 4. Cross-arg capture: each operand may be captured into each other
-                for (i, operand) in operands.iter().enumerate() {
-                    for (j, other) in operands.iter().enumerate() {
-                        if i == j {
-                            continue;
-                        }
-                        apply_effect(
-                            ctx,
-                            state,
-                            &AliasingEffect::Capture { from: operand.clone(), into: other.clone() },
-                            initialized,
-                            effects,
-                            block_idx,
-                            instr_idx,
-                            0,
-                            hir,
-                        );
-                    }
-                }
-            }
+            apply_call_effect(
+                ctx,
+                state,
+                receiver,
+                function,
+                *mutates_function,
+                args,
+                into,
+                signature.as_ref(),
+                *loc,
+                initialized,
+                effects,
+                block_idx,
+                instr_idx,
+                hir,
+            );
         }
 
         AliasingEffect::Mutate { value, reason: _ } => {
@@ -1178,6 +1129,449 @@ enum DestType {
 }
 
 // ---------------------------------------------------------------------------
+// Apply effect resolution (function call handling)
+// ---------------------------------------------------------------------------
+
+/// Handle an Apply effect: resolve function call through multiple strategies.
+///
+/// Upstream: the `Apply` case in `applyEffect()`.
+///
+/// Resolution order:
+/// 1. Local function expression with known `aliasingEffects` → use `computeEffectsForSignature`
+/// 2. Legacy `FunctionSignature` → use `computeEffectsForLegacySignature`
+/// 3. Conservative fallback → assume all operands conditionally mutated
+#[expect(clippy::too_many_arguments)]
+fn apply_call_effect(
+    ctx: &mut InferenceContext,
+    state: &mut InferenceState,
+    receiver: &Place,
+    function: &Place,
+    mutates_function: bool,
+    args: &[Place],
+    into: &Place,
+    signature: Option<&FunctionSignature>,
+    loc: SourceLocation,
+    initialized: &mut FxHashSet<IdentifierId>,
+    effects: &mut Vec<AliasingEffect>,
+    block_idx: usize,
+    instr_idx: usize,
+    hir: &HIR,
+) {
+    // Step 1: Try to resolve via local function expression with known aliasing effects.
+    // Upstream: checks if the function value is a FunctionExpression with aliasingEffects.
+    if let Some(aliasing_sig) = try_resolve_function_expression(state, function, hir)
+        && let Some(sig_effects) =
+            compute_effects_for_signature(&aliasing_sig, receiver, args, into, loc)
+    {
+        for se in &sig_effects {
+            apply_effect(ctx, state, se, initialized, effects, block_idx, instr_idx, 0, hir);
+        }
+        // If mutates_function, apply MutateConditionally on the function
+        if mutates_function {
+            apply_effect(
+                ctx,
+                state,
+                &AliasingEffect::MutateConditionally { value: function.clone() },
+                initialized,
+                effects,
+                block_idx,
+                instr_idx,
+                0,
+                hir,
+            );
+        }
+        return;
+    }
+
+    // Step 2: Try legacy FunctionSignature resolution
+    if let Some(sig) = signature {
+        let legacy_effects =
+            compute_effects_for_legacy_signature(state, sig, into, receiver, args, loc);
+        for le in &legacy_effects {
+            apply_effect(ctx, state, le, initialized, effects, block_idx, instr_idx, 0, hir);
+        }
+        return;
+    }
+
+    // Step 3: No signature — conservative fallback
+    // 1. Create mutable return value
+    apply_effect(
+        ctx,
+        state,
+        &AliasingEffect::Create {
+            into: into.clone(),
+            value: ValueKind::Mutable,
+            reason: ValueReason::Other,
+        },
+        initialized,
+        effects,
+        block_idx,
+        instr_idx,
+        0,
+        hir,
+    );
+
+    // Build operand list: function (if mutates_function) + receiver + args
+    let mut operands: Vec<Place> = Vec::new();
+    if mutates_function {
+        operands.push(function.clone());
+    }
+    operands.push(receiver.clone());
+    for arg in args {
+        operands.push(arg.clone());
+    }
+
+    // 2. MutateTransitiveConditionally each operand
+    for operand in &operands {
+        apply_effect(
+            ctx,
+            state,
+            &AliasingEffect::MutateTransitiveConditionally { value: operand.clone() },
+            initialized,
+            effects,
+            block_idx,
+            instr_idx,
+            0,
+            hir,
+        );
+    }
+
+    // 3. MaybeAlias each operand to the return value
+    for operand in &operands {
+        apply_effect(
+            ctx,
+            state,
+            &AliasingEffect::MaybeAlias { from: operand.clone(), into: into.clone() },
+            initialized,
+            effects,
+            block_idx,
+            instr_idx,
+            0,
+            hir,
+        );
+    }
+
+    // 4. Cross-arg capture: each operand may be captured into each other
+    for (i, operand) in operands.iter().enumerate() {
+        for (j, other) in operands.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            apply_effect(
+                ctx,
+                state,
+                &AliasingEffect::Capture { from: operand.clone(), into: other.clone() },
+                initialized,
+                effects,
+                block_idx,
+                instr_idx,
+                0,
+                hir,
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Function expression resolution
+// ---------------------------------------------------------------------------
+
+/// Try to resolve the function value to a local function expression with
+/// known aliasing effects.
+///
+/// Upstream: in `applyEffect()`, checks `state.values(effect.function)` to find
+/// a FunctionExpression whose `loweredFunc.func.aliasingEffects` is set.
+///
+/// We approximate this by checking if the function identifier was defined by
+/// a FunctionExpression instruction in the current HIR whose `aliasing_effects`
+/// has been computed.
+fn try_resolve_function_expression(
+    _state: &InferenceState,
+    function: &Place,
+    hir: &HIR,
+) -> Option<AliasingSignature> {
+    let fn_id = function.identifier.id;
+
+    // Walk all instructions to find the FunctionExpression that defines this identifier.
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if instr.lvalue.identifier.id != fn_id {
+                continue;
+            }
+            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
+                // Check if this FE has computed aliasing effects
+                if let Some(ref aliasing_effects) = lowered_func.aliasing_effects {
+                    return Some(build_signature_from_function_expression(
+                        lowered_func,
+                        aliasing_effects,
+                    ));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Build an `AliasingSignature` from a local function expression's params and effects.
+///
+/// Upstream: `buildSignatureFromFunctionExpression()`.
+fn build_signature_from_function_expression(
+    func: &crate::hir::types::HIRFunction,
+    aliasing_effects: &[AliasingEffect],
+) -> AliasingSignature {
+    let mut params = Vec::new();
+    let mut rest = None;
+
+    for param in &func.params {
+        match param {
+            crate::hir::types::Param::Identifier(place) => {
+                params.push(place.identifier.id);
+            }
+            crate::hir::types::Param::Spread(place) => {
+                rest = Some(place.identifier.id);
+            }
+        }
+    }
+
+    AliasingSignature {
+        receiver: IdentifierId(0), // FE calls don't have a meaningful receiver
+        params,
+        rest,
+        returns: func.returns.identifier.id,
+        effects: aliasing_effects.to_vec(),
+        temporaries: Vec::new(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AliasingSignature resolution
+// ---------------------------------------------------------------------------
+
+/// Compute concrete effects by substituting abstract identifiers in an
+/// `AliasingSignature` with actual call-site arguments.
+///
+/// Upstream: `computeEffectsForSignature()`.
+///
+/// Returns `None` if argument count doesn't match (fallback to conservative).
+fn compute_effects_for_signature(
+    signature: &AliasingSignature,
+    receiver: &Place,
+    args: &[Place],
+    into: &Place,
+    loc: SourceLocation,
+) -> Option<Vec<AliasingEffect>> {
+    // Build substitution map: abstract IdentifierId -> concrete Place(s)
+    let mut substitutions: FxHashMap<IdentifierId, Vec<Place>> = FxHashMap::default();
+
+    // Receiver
+    substitutions.insert(signature.receiver, vec![receiver.clone()]);
+
+    // Return value
+    substitutions.insert(signature.returns, vec![into.clone()]);
+
+    // Positional params
+    for (i, &param_id) in signature.params.iter().enumerate() {
+        if i < args.len() {
+            substitutions.insert(param_id, vec![args[i].clone()]);
+        } else {
+            // Fewer args than params — some params unresolved
+            // This is okay; they just won't participate in effects
+            substitutions.insert(param_id, Vec::new());
+        }
+    }
+
+    // Rest parameter: collects remaining args
+    if let Some(rest_id) = signature.rest {
+        let rest_args: Vec<Place> = args.iter().skip(signature.params.len()).cloned().collect();
+        substitutions.insert(rest_id, rest_args);
+    }
+
+    // Temporaries: each gets mapped to an empty list (they are created during effect application)
+    for temp in &signature.temporaries {
+        substitutions.insert(temp.identifier.id, vec![temp.clone()]);
+    }
+
+    // Substitute effects
+    let mut result_effects = Vec::new();
+    for effect in &signature.effects {
+        substitute_effect(effect, &substitutions, &mut result_effects, loc);
+    }
+
+    Some(result_effects)
+}
+
+/// Substitute abstract identifiers in a single effect with concrete places.
+///
+/// Upstream: the substitution loop inside `computeEffectsForSignature()`.
+fn substitute_effect(
+    effect: &AliasingEffect,
+    subs: &FxHashMap<IdentifierId, Vec<Place>>,
+    out: &mut Vec<AliasingEffect>,
+    loc: SourceLocation,
+) {
+    match effect {
+        AliasingEffect::Create { into, value, reason } => {
+            if let Some(places) = subs.get(&into.identifier.id) {
+                for place in places {
+                    out.push(AliasingEffect::Create {
+                        into: place.clone(),
+                        value: *value,
+                        reason: *reason,
+                    });
+                }
+            }
+        }
+        AliasingEffect::CreateFrom { from, into } => {
+            let from_places = subs.get(&from.identifier.id).cloned().unwrap_or_default();
+            let into_places = subs.get(&into.identifier.id).cloned().unwrap_or_default();
+            for fp in &from_places {
+                for ip in &into_places {
+                    out.push(AliasingEffect::CreateFrom { from: fp.clone(), into: ip.clone() });
+                }
+            }
+        }
+        AliasingEffect::Assign { from, into } => {
+            let from_places = subs.get(&from.identifier.id).cloned().unwrap_or_default();
+            let into_places = subs.get(&into.identifier.id).cloned().unwrap_or_default();
+            for fp in &from_places {
+                for ip in &into_places {
+                    out.push(AliasingEffect::Assign { from: fp.clone(), into: ip.clone() });
+                }
+            }
+        }
+        AliasingEffect::Alias { from, into } => {
+            let from_places = subs.get(&from.identifier.id).cloned().unwrap_or_default();
+            let into_places = subs.get(&into.identifier.id).cloned().unwrap_or_default();
+            for fp in &from_places {
+                for ip in &into_places {
+                    out.push(AliasingEffect::Alias { from: fp.clone(), into: ip.clone() });
+                }
+            }
+        }
+        AliasingEffect::Capture { from, into } => {
+            let from_places = subs.get(&from.identifier.id).cloned().unwrap_or_default();
+            let into_places = subs.get(&into.identifier.id).cloned().unwrap_or_default();
+            for fp in &from_places {
+                for ip in &into_places {
+                    out.push(AliasingEffect::Capture { from: fp.clone(), into: ip.clone() });
+                }
+            }
+        }
+        AliasingEffect::MaybeAlias { from, into } => {
+            let from_places = subs.get(&from.identifier.id).cloned().unwrap_or_default();
+            let into_places = subs.get(&into.identifier.id).cloned().unwrap_or_default();
+            for fp in &from_places {
+                for ip in &into_places {
+                    out.push(AliasingEffect::MaybeAlias { from: fp.clone(), into: ip.clone() });
+                }
+            }
+        }
+        AliasingEffect::ImmutableCapture { from, into } => {
+            let from_places = subs.get(&from.identifier.id).cloned().unwrap_or_default();
+            let into_places = subs.get(&into.identifier.id).cloned().unwrap_or_default();
+            for fp in &from_places {
+                for ip in &into_places {
+                    out.push(AliasingEffect::ImmutableCapture {
+                        from: fp.clone(),
+                        into: ip.clone(),
+                    });
+                }
+            }
+        }
+        AliasingEffect::Freeze { value, reason } => {
+            if let Some(places) = subs.get(&value.identifier.id) {
+                for place in places {
+                    out.push(AliasingEffect::Freeze { value: place.clone(), reason: *reason });
+                }
+            }
+        }
+        AliasingEffect::Mutate { value, reason } => {
+            if let Some(places) = subs.get(&value.identifier.id) {
+                for place in places {
+                    out.push(AliasingEffect::Mutate { value: place.clone(), reason: *reason });
+                }
+            }
+        }
+        AliasingEffect::MutateConditionally { value } => {
+            if let Some(places) = subs.get(&value.identifier.id) {
+                for place in places {
+                    out.push(AliasingEffect::MutateConditionally { value: place.clone() });
+                }
+            }
+        }
+        AliasingEffect::MutateTransitive { value } => {
+            if let Some(places) = subs.get(&value.identifier.id) {
+                for place in places {
+                    out.push(AliasingEffect::MutateTransitive { value: place.clone() });
+                }
+            }
+        }
+        AliasingEffect::MutateTransitiveConditionally { value } => {
+            if let Some(places) = subs.get(&value.identifier.id) {
+                for place in places {
+                    out.push(AliasingEffect::MutateTransitiveConditionally {
+                        value: place.clone(),
+                    });
+                }
+            }
+        }
+        AliasingEffect::Apply {
+            receiver,
+            function,
+            mutates_function,
+            args,
+            into,
+            signature,
+            ..
+        } => {
+            let recv_places = subs.get(&receiver.identifier.id).cloned().unwrap_or_default();
+            let fn_places = subs.get(&function.identifier.id).cloned().unwrap_or_default();
+            let into_places = subs.get(&into.identifier.id).cloned().unwrap_or_default();
+            let sub_args: Vec<Place> = args
+                .iter()
+                .flat_map(|a| subs.get(&a.identifier.id).cloned().unwrap_or_default())
+                .collect();
+            for rp in &recv_places {
+                for fp in &fn_places {
+                    for ip in &into_places {
+                        out.push(AliasingEffect::Apply {
+                            receiver: rp.clone(),
+                            function: fp.clone(),
+                            mutates_function: *mutates_function,
+                            args: sub_args.clone(),
+                            into: ip.clone(),
+                            signature: signature.clone(),
+                            loc,
+                        });
+                    }
+                }
+            }
+        }
+        AliasingEffect::CreateFunction { captures, function, into } => {
+            let cap_places: Vec<Place> = captures
+                .iter()
+                .flat_map(|c| subs.get(&c.identifier.id).cloned().unwrap_or_default())
+                .collect();
+            let into_places = subs.get(&into.identifier.id).cloned().unwrap_or_default();
+            for ip in &into_places {
+                out.push(AliasingEffect::CreateFunction {
+                    captures: cap_places.clone(),
+                    function: function.clone(),
+                    into: ip.clone(),
+                });
+            }
+        }
+        // Diagnostic effects pass through without substitution
+        AliasingEffect::MutateFrozen { .. }
+        | AliasingEffect::MutateGlobal { .. }
+        | AliasingEffect::Impure { .. }
+        | AliasingEffect::Render { .. } => {
+            out.push(effect.clone());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Legacy signature resolution
 // ---------------------------------------------------------------------------
 
@@ -1185,14 +1579,31 @@ enum DestType {
 ///
 /// Upstream: `computeEffectsForLegacySignature()`.
 fn compute_effects_for_legacy_signature(
-    _state: &InferenceState,
+    state: &InferenceState,
     signature: &FunctionSignature,
     lvalue: &Place,
     receiver: &Place,
     args: &[Place],
-    _loc: crate::hir::types::SourceLocation,
+    _loc: SourceLocation,
 ) -> Vec<AliasingEffect> {
     let mut effects = Vec::new();
+
+    // Upstream: `mutableOnlyIfOperandsAreMutable` optimization.
+    // If the flag is set and all arguments are immutable (frozen/primitive/global),
+    // treat the call as a pure read: the return is frozen and all args are just read.
+    if signature.mutable_only_if_operands_are_mutable && are_arguments_immutable(state, args) {
+        effects.push(AliasingEffect::Create {
+            into: lvalue.clone(),
+            value: ValueKind::Frozen,
+            reason: ValueReason::KnownReturnSignature,
+        });
+        effects.push(AliasingEffect::Alias { from: receiver.clone(), into: lvalue.clone() });
+        for arg in args {
+            effects
+                .push(AliasingEffect::ImmutableCapture { from: arg.clone(), into: lvalue.clone() });
+        }
+        return effects;
+    }
 
     // Create return value
     let return_kind = signature.return_effect.into_value_kind();
@@ -1255,6 +1666,16 @@ fn compute_effects_for_legacy_signature(
     }
 
     effects
+}
+
+/// Check if all arguments are immutable (frozen, primitive, or global).
+///
+/// Upstream: `areArgumentsImmutableAndNonMutating()`.
+fn are_arguments_immutable(state: &InferenceState, args: &[Place]) -> bool {
+    args.iter().all(|arg| {
+        let kind = state.kind(arg.identifier.id).kind;
+        matches!(kind, ValueKind::Frozen | ValueKind::Primitive | ValueKind::Global)
+    })
 }
 
 /// Apply a single parameter effect.
@@ -1344,10 +1765,47 @@ fn apply_terminal_effects(
                 }
             }
         }
-        // MaybeThrow terminal handling
-        // DIVERGENCE: Upstream handles try/catch handler bindings here.
-        // Our HIR doesn't have handler bindings on Try terminals, so we skip
-        // that logic. The MaybeThrow effects field is left as-is.
+        Terminal::MaybeThrow { handler, .. } => {
+            // Upstream: alias mutable/context call results in this block to the
+            // catch handler binding. This models the fact that thrown exceptions
+            // from calls in a try block may be caught by the handler.
+            if let Some(handler_param) = ctx.catch_handlers.get(handler).cloned() {
+                let mut terminal_effects = Vec::new();
+
+                // Find all call results in this block
+                let block = &hir.blocks[block_idx].1;
+                for instr in &block.instructions {
+                    let is_call = matches!(
+                        instr.value,
+                        InstructionValue::CallExpression { .. }
+                            | InstructionValue::MethodCall { .. }
+                            | InstructionValue::NewExpression { .. }
+                    );
+                    if is_call {
+                        // Alias call result to catch handler binding if mutable
+                        state.append_alias(handler_param.identifier.id, instr.lvalue.identifier.id);
+                        let kind = state.kind(instr.lvalue.identifier.id).kind;
+                        if matches!(kind, ValueKind::Mutable | ValueKind::Context) {
+                            terminal_effects.push(AliasingEffect::Alias {
+                                from: instr.lvalue.clone(),
+                                into: handler_param.clone(),
+                            });
+                        }
+                    }
+                }
+
+                if !terminal_effects.is_empty() {
+                    hir.blocks[block_idx].1.terminal = Terminal::MaybeThrow {
+                        continuation: match &hir.blocks[block_idx].1.terminal {
+                            Terminal::MaybeThrow { continuation, .. } => *continuation,
+                            _ => unreachable!(),
+                        },
+                        handler: *handler,
+                        effects: Some(terminal_effects),
+                    };
+                }
+            }
+        }
         _ => {}
     }
 }

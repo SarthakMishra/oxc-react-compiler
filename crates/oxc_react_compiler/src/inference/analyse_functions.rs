@@ -85,7 +85,12 @@ fn extract_signature(func: &HIRFunction) -> FunctionSignature {
     // DIVERGENCE: callee_effect is hardcoded to Read. Upstream derives it from whether the
     // function captures and mutates outer scope variables. This simplification means we won't
     // detect when calling a closure causes side-effects on captured variables.
-    FunctionSignature { params, return_effect: func.returns.effect, callee_effect: Effect::Read }
+    FunctionSignature {
+        params,
+        return_effect: func.returns.effect,
+        callee_effect: Effect::Read,
+        mutable_only_if_operands_are_mutable: false,
+    }
 }
 
 /// Propagate function signatures through StoreLocal/LoadLocal alias chains.
