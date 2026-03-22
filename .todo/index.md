@@ -1,6 +1,6 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-22 (post Phase 116, render regression fix)
+> Last updated: 2026-03-22 (post Phase 117, built-in signatures + FE sub-pipeline)
 > Conformance: **456/1717 (26.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. 1 new divergence (allow-modify-global-in-callback-jsx.js).
 
@@ -66,9 +66,12 @@ The following sub-items are done:
 - AliasingSignature resolution (new-style): NOT YET (depends on 2e)
 - Local FunctionExpression resolution (using aliasingEffects): NOT YET (depends on AnalyseFunctions rewrite in Phase 4)
 
-**2e. Built-in Function Signatures: NOT YET**
-- String-based AliasingSignatureConfig types added in Phase 1
-- No built-in signatures populated yet — this requires updating ObjectShape/Globals equivalent
+**2e. Built-in Function Signatures: DONE** (Phase 117)
+- `populate_builtin_signatures()` scans LoadGlobal instructions, inserts FunctionSignature for known globals
+- 15 React hooks with precise per-param effects (useState, useRef, useEffect, useMemo, etc.)
+- Pure globals: parseInt, parseFloat, isNaN, isFinite, encode/decodeURI(Component), atob, btoa, String, Number, Boolean, structuredClone
+- Unknown hooks deliberately get no signature (conservative fallback is safer)
+- Note: AliasingSignatureConfig types from Phase 1 are NOT yet used — FunctionSignature legacy path is used instead
 
 **Conformance unchanged at 456/1717, 0 panics, +2 newly passing fixtures.**
 
@@ -82,7 +85,8 @@ The following sub-items are done:
 - Refactored Apply effect handling into `apply_call_effect()` with 3-step resolution
 
 **Remaining work for Phase 2 (deferred):**
-- Built-in function signatures (2e) — populating ObjectShape/Globals with AliasingSignatureConfig for Array methods, Object methods, React hooks, Math, JSON, console, etc. This requires significant work in the globals/shape system and is deferred to a future session.
+- ~~Built-in function signatures (2e)~~ — DONE (Phase 117)
+- MethodCall signature resolution — Array methods (.push, .map, etc.), Object methods (Object.keys, etc.) via receiver type tracking. Currently MethodCall generates no signature (conservative fallback).
 - Impure function handling in legacy signatures — requires `validate_no_impure_functions_in_render` integration
 
 **This replaces our current abstract interpreter** which is the root cause of Gap 11 (~404 fixtures) and indirectly blocks Gap 5a (58 fixtures) and Gap 7 (175 fixtures).
@@ -118,45 +122,27 @@ The following sub-items are done:
 **Remaining work for Phase 3:**
 - None — all core items implemented. May need refinement when built-in signatures (Phase 2e) are populated.
 
-**Critical interaction with `effective_range`:** Our current `effective_range = max(mutable_range.end, last_use + 1)` approximation in `infer_reactive_scope_variables.rs` was needed because our old mutable ranges were too narrow. With the new model producing correct ranges, we should be able to use `mutable_range` directly — **which would fix the 4x failed attempt to switch**.
+**Critical interaction with `effective_range`:** Our current `effective_range = max(mutable_range.end, last_use + 1)` approximation in `infer_reactive_scope_variables.rs` is **still needed** even with the new inference model. The 5th attempt to switch to `mutable_range` (Phase 117) failed with render 96%→36%. Root cause: our `infer_mutation_aliasing_ranges` computes mutation propagation ranges, but upstream's mutableRange additionally includes usage extension. The effective_range approximation compensates for this gap.
 
 ---
 
-### Port Phase 4: Update AnalyseFunctions & Pipeline
+### Port Phase 4: Update AnalyseFunctions & Pipeline — PARTIALLY DONE
 
 **Effort:** 1-2 sessions
 **Risk:** MEDIUM
 **Files:** `src/inference/analyse_functions.rs`, `src/entrypoint/pipeline.rs`
 
-**4a. Update `AnalyseFunctions`:**
-Upstream's `AnalyseFunctions` now recursively calls a full sub-pipeline for each nested FE:
-1. `InferMutationAliasingEffects` (new Phase 2)
-2. `DeadCodeElimination`
-3. `InferMutationAliasingRanges` (new Phase 3)
-4. `RewriteInstructionKinds`
-5. `InferReactiveScopeVariables`
+**4a. Update `AnalyseFunctions`: DONE** (Phase 117)
+Sub-pipeline now runs: InferTypes, InferMutationAliasingEffects, DeadCodeElimination, InferMutationAliasingRanges, annotate_last_use, RewriteInstructionKinds, InferReactiveScopeVariables. Built-in signatures are populated before effects inference.
 
-This is different from our current approach where `AnalyseFunctions` only does basic function analysis.
+**4b. Update Pipeline Pass Ordering: DONE** (already matched upstream)
+Pipeline order already matches: AnalyseFunctions → populate_builtin_signatures → InferMutationAliasingEffects → validate_no_mutation_after_freeze → SSR → DCE → PruneMaybeThrows → InferMutationAliasingRanges → validations → InferReactivePlaces.
 
-**4b. Update Pipeline Pass Ordering:**
-Current pipeline needs reordering to match upstream:
-```
-AnalyseFunctions (with recursive sub-pipeline)
-InferMutationAliasingEffects (top-level)
-[SSR optimization]
-DeadCodeElimination
-PruneMaybeThrows
-InferMutationAliasingRanges (top-level)
-[validations]
-InferReactivePlaces
-...
-```
+**4c. Remove `validate_no_mutation_after_freeze.rs`: BLOCKED**
+Cannot remove yet. The standalone validator has independent hook-call-freezes-captures logic (freezes captured variables of function args passed to hook calls) that the effects pass does not handle. Removing would lose detection of mutations like `x.value += count` after `useIdentity(() => { setPropertyByKey(x, ...) })`. The effects pass would need to gain hook-argument-capture-freezing logic first.
 
-**4c. Remove `validate_no_mutation_after_freeze.rs`:**
-Frozen mutation validation is now integrated into `InferMutationAliasingEffects` (emits `MutateFrozen` effects) and `InferMutationAliasingRanges` (records errors). Our standalone validator becomes redundant.
-
-**4d. Try switching to `mutable_range` instead of `effective_range`:**
-With correct mutable ranges from the new inference, attempt removing the `effective_range` approximation. This has failed 4 times with the old model but should work with the new one.
+**4d. Try switching to `mutable_range` instead of `effective_range`: FAILED (5th attempt)**
+Attempted 2026-03-22 (Phase 117). Render dropped 96%→36% (9/25), conformance dropped 456→432. Reverted. The effective_range approximation (`max(mutable_range.end, last_use + 1)`) is still load-bearing. The new inference model's mutable ranges cover mutation reach but NOT usage reach — scope inference needs usage extension to group values correctly. **Do NOT attempt again without first investigating why the ranges are too narrow.** The root cause is that upstream's `mutableRange` includes usage extension in its range computation, while our `infer_mutation_aliasing_ranges` only computes mutation propagation ranges.
 
 ---
 
@@ -283,10 +269,10 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Re-test conformance
 
 **Read these before making ANY changes.**
 
-### `effective_range` vs `mutable_range` — WILL CHANGE AFTER PORT
+### `effective_range` vs `mutable_range` — STILL NEEDED (5 failed attempts)
 File: `src/reactive_scopes/infer_reactive_scope_variables.rs`
 
-Currently uses `effective_range = max(mutable_range.end, last_use + 1)` because old mutable ranges are too narrow. 4 prior attempts to switch to `mutable_range` failed (96%→36% render). After Phase 3 (new ranges), retry switching to `mutable_range` — the new model should produce correct ranges.
+Uses `effective_range = max(mutable_range.end, last_use + 1)` because mutable ranges are too narrow for scope inference. **5 attempts** to switch to `mutable_range` have all failed (96%→36% render). The problem persists even with the new inference model (Phases 2-3). Root cause: our `infer_mutation_aliasing_ranges` computes mutation propagation ranges only. Upstream's mutableRange includes usage extension that our model doesn't. **Do NOT attempt again** without first investigating how upstream extends ranges to include usage reach.
 
 ### `collect_all_scope_declarations` is load-bearing
 File: `src/reactive_scopes/codegen.rs`
