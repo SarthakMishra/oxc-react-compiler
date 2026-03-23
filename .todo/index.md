@@ -1,8 +1,8 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-23 (post Phase 118, MethodCall signature resolution)
-> Conformance: **459/1717 (26.7%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. 1 new divergence (allow-modify-global-in-callback-jsx.js).
+> Last updated: 2026-03-23 (post Phase 119, conformance housekeeping)
+> Conformance: **453/1717 (26.4%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1264.
 
 ---
 
@@ -141,6 +141,8 @@ Pipeline order already matches: AnalyseFunctions → populate_builtin_signatures
 **4c. Remove `validate_no_mutation_after_freeze.rs`: BLOCKED**
 Cannot remove yet. The standalone validator has independent hook-call-freezes-captures logic (freezes captured variables of function args passed to hook calls) that the effects pass does not handle. Removing would lose detection of mutations like `x.value += count` after `useIdentity(() => { setPropertyByKey(x, ...) })`. The effects pass would need to gain hook-argument-capture-freezing logic first.
 
+**Note (Phase 119):** The hook-call-freezes-captures logic has a gap: imported hook names (via LoadGlobal) are not resolved in id_to_name. Added LoadGlobal tracking but the error fixtures `error.hook-call-freezes-captured-identifier.tsx` and `error.hook-call-freezes-captured-memberexpr.jsx` still don't trigger bail-out. Deeper investigation needed into how the HIR represents the CallExpression args for these patterns -- the FunctionExpression temp may not be linking to func_captures correctly after passes like inline_load_local_temps.
+
 **4d. Try switching to `mutable_range` instead of `effective_range`: FAILED (5th attempt)**
 Attempted 2026-03-22 (Phase 117). Render dropped 96%→36% (9/25), conformance dropped 456→432. Reverted. The effective_range approximation (`max(mutable_range.end, last_use + 1)`) is still load-bearing. The new inference model's mutable ranges cover mutation reach but NOT usage reach — scope inference needs usage extension to group values correctly. **Do NOT attempt again without first investigating why the ranges are too narrow.** The root cause is that upstream's `mutableRange` includes usage extension in its range computation, while our `infer_mutation_aliasing_ranges` only computes mutation propagation ranges.
 
@@ -160,6 +162,18 @@ Attempted 2026-03-22 (Phase 117). Render dropped 96%→36% (9/25), conformance d
 
 **5b. Remove local `CompilerError` bail-outs:**
 Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. New pattern: pass records errors and continues. Pipeline checks aggregate errors at the end.
+
+### Blocker Report: PanicThreshold Default Change (Phase 119)
+
+**Attempted:** Changing default PanicThreshold from AllErrors to CriticalErrors (matching upstream fault tolerance PRs #35872-35888).
+
+**Result:** Conformance dropped 453→269 (-184). Reverted immediately.
+
+**Root cause:** 132 fixtures that bail with AllErrors produce pass-through output matching expected. With CriticalErrors, they compile but produce WRONG output (different scope groupings, wrong slot counts), causing divergences. Upstream can use CriticalErrors because their compilation quality is higher -- when they don't bail, they produce correct output.
+
+**What must happen first:** Core compilation quality (scope inference, codegen) must improve significantly before CriticalErrors can be the default. The 132 bail-out fixtures need to produce correct memoization output, not just "some" memoization. Estimated improvement needed: majority of the 892 "both compile but differ" fixtures must first be resolved.
+
+**Do NOT re-attempt** until conformance reaches ~600+ fixtures (35%+) and the "both compile, slots differ" category drops below 400.
 
 ---
 
