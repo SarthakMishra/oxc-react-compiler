@@ -259,13 +259,15 @@ early-return.js
 empty-catch-statement.ts
 error.assign-ref-in-effect-hint.js
 error.bug-invariant-codegen-methodcall.js
-error.call-args-destructuring-asignment-complex.js
 error.bug-invariant-couldnt-find-binding-for-decl.js
 error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-unnamed-temporary.js
+error.call-args-destructuring-asignment-complex.js
 error.default-param-accesses-local.js
 error.dont-hoist-inline-reference.js
 error.hoisting-simple-function-declaration.js
+error.hook-call-freezes-captured-identifier.tsx
+error.hook-call-freezes-captured-memberexpr.jsx
 error.invalid-hoisting-setstate.js
 error.invalid-jsx-captures-context-variable.js
 error.invalid-mutate-context.js
@@ -402,6 +404,7 @@ gating/codegen-instrument-forget-gating-test.js
 gating/component-syntax-ref-gating.flow.js
 gating/conflicting-gating-fn.js
 gating/dynamic-gating-annotation.js
+gating/dynamic-gating-bailout-nopanic.js
 gating/dynamic-gating-disabled.js
 gating/dynamic-gating-enabled.js
 gating/dynamic-gating-invalid-identifier-nopanic.js
@@ -593,6 +596,7 @@ method-call.js
 mixedreadonly-mutating-map.js
 module-scoped-bindings.js
 multiple-calls-to-hoisted-callback-from-other-callback.js
+multiple-components-first-is-invalid.js
 mutable-lifetime-loops.js
 mutable-lifetime-with-aliasing.js
 mutable-liverange-loop.js
@@ -1018,6 +1022,7 @@ repro-reassign-props.js
 repro-reassign-to-variable-without-mutable-range.js
 repro-ref-mutable-range.tsx
 repro-renaming-conflicting-decls.js
+repro-retain-source-when-bailout.js
 repro-returned-inner-fn-mutates-context.js
 repro-returned-inner-fn-reassigns-context.js
 repro-scope-missing-mutable-range.js
@@ -1062,6 +1067,7 @@ sequential-destructuring-assignment-to-scope-declarations.js
 sequential-destructuring-both-mixed-local-and-scope-declaration.js
 sequentially-constant-progagatable-if-test-conditions.js
 shapes-object-key.ts
+should-bailout-without-compilation-infer-mode.js
 simple-alias.js
 simple-function-1.js
 simple.js
