@@ -86,8 +86,7 @@ impl ErrorCategory {
 }
 
 /// Determines when the compiler should bail out of compilation.
-/// Standalone copy to avoid circular dependency with options.rs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PanicThreshold {
     /// Bail on any error
     AllErrors,

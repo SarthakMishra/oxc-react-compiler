@@ -1,18 +1,16 @@
-use crate::error::{ErrorCollector, PanicThreshold};
+use crate::error::ErrorCollector;
 use crate::hir::environment::EnvironmentConfig;
 use crate::hir::types::{HIR, HIRFunction, IdentifierId, Param, ReactiveFunction};
-
-/// Default bail-out threshold used throughout the pipeline.
-///
-/// `AllErrors` causes the pipeline to bail on any validation error
-/// (InvalidReact, InvalidJS, Todo, InvariantViolation), matching
-/// Babel's behavior of skipping functions that have validation issues.
-const PIPELINE_BAIL_THRESHOLD: PanicThreshold = PanicThreshold::AllErrors;
 
 /// Run the HIR compilation pipeline (passes 2–46).
 ///
 /// This executes all HIR-level passes in the correct order, with config-based gating.
 /// After this, the HIR is ready for reactive function construction.
+///
+/// The bail behavior is controlled by `config.bail_threshold`:
+/// - `AllErrors`: bail on any validation error (strictest)
+/// - `CriticalErrors`: bail only on invariant violations (default, matches upstream)
+/// - `None`: never bail, always attempt compilation
 pub fn run_pipeline(
     hir: &mut HIR,
     config: &EnvironmentConfig,
@@ -20,9 +18,10 @@ pub fn run_pipeline(
     param_names: &[String],
     param_ids: &[IdentifierId],
 ) -> Result<(), ()> {
+    let bail_threshold = config.bail_threshold;
     // Phase 0: Reject unsupported patterns (matches upstream BuildHIR Todo errors)
     crate::validation::validate_no_unsupported_nodes::validate_no_unsupported_nodes(hir, errors);
-    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
+    if errors.should_bail(bail_threshold) {
         return Err(());
     }
 
@@ -110,7 +109,7 @@ pub fn run_pipeline(
     crate::validation::validate_no_eval::validate_no_eval(hir, errors);
 
     // Bail early if hooks/capitalized/global/eval validation found critical errors
-    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
+    if errors.should_bail(bail_threshold) {
         return Err(());
     }
 
@@ -149,7 +148,7 @@ pub fn run_pipeline(
     );
 
     // Bail if frozen-mutation detected (before expensive downstream passes)
-    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
+    if errors.should_bail(bail_threshold) {
         return Err(());
     }
 
@@ -342,7 +341,7 @@ pub fn run_pipeline(
     crate::reactive_scopes::derive_minimal_dependencies::derive_minimal_dependencies_hir(hir);
 
     // Check if we should bail before building reactive function
-    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
+    if errors.should_bail(bail_threshold) {
         return Err(());
     }
 
@@ -358,6 +357,8 @@ pub fn run_full_pipeline(
     config: &EnvironmentConfig,
     errors: &mut ErrorCollector,
 ) -> Result<ReactiveFunction, ()> {
+    let bail_threshold = config.bail_threshold;
+
     // Extract function parameter names and IDs for reactivity seeding and Pass 46.
     let param_names: Vec<String> = extract_param_names(&hir_func.params);
     let param_ids: Vec<IdentifierId> = extract_param_ids(&hir_func.params);
@@ -405,7 +406,7 @@ pub fn run_full_pipeline(
     }
 
     // Check for errors after RF passes
-    if errors.should_bail(PIPELINE_BAIL_THRESHOLD) {
+    if errors.should_bail(bail_threshold) {
         return Err(());
     }
 

@@ -72,6 +72,16 @@ pub struct EnvironmentConfig {
     /// (e.g., `["my-app", "react-rule"]`) that, when suppressed via eslint-disable
     /// comments, cause the compiler to skip the function.
     pub eslint_suppression_rules: Vec<String>,
+
+    /// Controls when the pipeline bails out due to errors.
+    ///
+    /// - `AllErrors`: bail on any validation error (strictest)
+    /// - `CriticalErrors`: bail only on invariant violations (default, matches upstream)
+    /// - `None`: never bail, always attempt compilation
+    ///
+    /// DIVERGENCE: Upstream separates this into PluginOptions.panicThreshold.
+    /// We store it on EnvironmentConfig to avoid threading through every function.
+    pub bail_threshold: crate::error::PanicThreshold,
 }
 
 impl Default for EnvironmentConfig {
@@ -115,6 +125,7 @@ impl Default for EnvironmentConfig {
             custom_hooks: FxHashMap::default(),
             hook_aliases: FxHashSet::default(),
             eslint_suppression_rules: Vec::new(),
+            bail_threshold: crate::error::PanicThreshold::AllErrors,
         }
     }
 }

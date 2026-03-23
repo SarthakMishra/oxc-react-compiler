@@ -19,7 +19,7 @@ impl Default for PluginOptions {
             output_mode: OutputMode::Client,
             target: ReactTarget::React19,
             gating: None,
-            panic_threshold: PanicThreshold::CriticalErrors,
+            panic_threshold: PanicThreshold::AllErrors,
             sources: None,
             ignore_use_no_forget: false,
         }
@@ -60,16 +60,8 @@ pub enum ReactTarget {
     React19,
 }
 
-/// Controls when the compiler bails out due to errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PanicThreshold {
-    /// Bail on any error
-    AllErrors,
-    /// Bail only on critical errors (invariant violations)
-    CriticalErrors,
-    /// Never bail, collect all errors
-    None,
-}
+// Re-export PanicThreshold from error module to avoid duplication.
+pub use crate::error::PanicThreshold;
 
 /// Configuration for gating compiled output behind a feature flag.
 #[derive(Debug, Clone)]
@@ -124,7 +116,7 @@ impl PluginOptions {
             opts.panic_threshold = match threshold.as_str() {
                 "all" | "ALL_ERRORS" => PanicThreshold::AllErrors,
                 "none" | "NONE" => PanicThreshold::None,
-                _ => PanicThreshold::CriticalErrors,
+                _ => PanicThreshold::AllErrors,
             };
         }
 
@@ -154,7 +146,7 @@ mod tests {
         assert_eq!(opts.compilation_mode, CompilationMode::Infer);
         assert_eq!(opts.output_mode, OutputMode::Client);
         assert_eq!(opts.target, ReactTarget::React19);
-        assert_eq!(opts.panic_threshold, PanicThreshold::CriticalErrors);
+        assert_eq!(opts.panic_threshold, PanicThreshold::AllErrors);
         assert!(opts.gating.is_none());
         assert!(opts.sources.is_none());
     }
@@ -166,7 +158,7 @@ mod tests {
         assert_eq!(opts.compilation_mode, CompilationMode::Infer);
         assert_eq!(opts.output_mode, OutputMode::Client);
         assert_eq!(opts.target, ReactTarget::React19);
-        assert_eq!(opts.panic_threshold, PanicThreshold::CriticalErrors);
+        assert_eq!(opts.panic_threshold, PanicThreshold::AllErrors);
     }
 
     #[test]
@@ -226,8 +218,9 @@ mod tests {
             ("ALL_ERRORS", PanicThreshold::AllErrors),
             ("none", PanicThreshold::None),
             ("NONE", PanicThreshold::None),
-            ("critical", PanicThreshold::CriticalErrors),
-            ("unknown", PanicThreshold::CriticalErrors),
+            // "critical" is not an upstream value; it maps to the default (AllErrors)
+            ("critical", PanicThreshold::AllErrors),
+            ("unknown", PanicThreshold::AllErrors),
         ];
         for (input, expected) in cases {
             let map = HashMap::from([("panicThreshold".to_string(), input.to_string())]);

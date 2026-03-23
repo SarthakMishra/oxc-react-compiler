@@ -100,6 +100,10 @@ fn compile_program_inner_with_config(
 
     let mut config = config.clone();
 
+    // Thread the panic threshold from plugin options into the environment config
+    // so the pipeline can use it for bail-out decisions.
+    config.bail_threshold = options.panic_threshold;
+
     // DIVERGENCE: Upstream emits a per-component "Use of incompatible library" error;
     // we bail the entire file silently. This is simpler but coarser — it prevents
     // compilation of all functions in a file with an incompatible import, whereas
