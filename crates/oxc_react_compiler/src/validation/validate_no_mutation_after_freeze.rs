@@ -315,7 +315,16 @@ pub fn validate_no_mutation_after_freeze(
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             // Check 1: MutateFrozen effects from the aliasing pass
-            if let Some(ref effects) = instr.effects {
+            // Skip PrefixUpdate/PostfixUpdate: these are variable reassignments (x++),
+            // not object mutations. The aliasing pass may generate MutateFrozen for
+            // them when the variable is derived from a frozen value (e.g., `let x = props.x; x++`),
+            // but reassigning a primitive copy is a local operation, not a mutation of the original.
+            if let Some(ref effects) = instr.effects
+                && !matches!(
+                    instr.value,
+                    InstructionValue::PrefixUpdate { .. } | InstructionValue::PostfixUpdate { .. }
+                )
+            {
                 for effect in effects {
                     if matches!(effect, AliasingEffect::MutateFrozen { .. }) {
                         errors.push(CompilerError::invalid_react_with_kind(
