@@ -1,7 +1,7 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-22 (post Phase 117, built-in signatures + FE sub-pipeline)
-> Conformance: **456/1717 (26.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
+> Last updated: 2026-03-23 (post Phase 118, MethodCall signature resolution)
+> Conformance: **459/1717 (26.7%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. 1 new divergence (allow-modify-global-in-callback-jsx.js).
 
 ---
@@ -86,7 +86,7 @@ The following sub-items are done:
 
 **Remaining work for Phase 2 (deferred):**
 - ~~Built-in function signatures (2e)~~ — DONE (Phase 117)
-- MethodCall signature resolution — Array methods (.push, .map, etc.), Object methods (Object.keys, etc.) via receiver type tracking. Currently MethodCall generates no signature (conservative fallback).
+- ~~MethodCall signature resolution~~ — DONE (Phase 118). Added method-level signatures for Math, JSON, Object, Array (static + instance), Number, String. Propagation through Store/Load/Phi chains. Console methods intentionally left without signatures (impure). Limitation: propagation doesn't reach all receivers (e.g. arrays from function params/returns).
 - Impure function handling in legacy signatures — requires `validate_no_impure_functions_in_render` integration
 
 **This replaces our current abstract interpreter** which is the root cause of Gap 11 (~404 fixtures) and indirectly blocks Gap 5a (58 fixtures) and Gap 7 (175 fixtures).

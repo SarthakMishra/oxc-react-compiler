@@ -63,9 +63,13 @@ fn analyse_nested_function(func: &mut HIRFunction, errors: &mut ErrorCollector) 
     //   5. InferReactiveScopeVariables
     crate::inference::infer_types::infer_types(&mut func.body);
 
+    // Build method signatures for the nested function's HIR
+    let nested_method_sigs = populate_method_signatures(&func.body);
+
     crate::inference::infer_mutation_aliasing_effects::infer_mutation_aliasing_effects(
         &mut func.body,
         &nested_sigs,
+        &nested_method_sigs,
     );
 
     crate::optimization::dead_code_elimination::dead_code_elimination(&mut func.body);
@@ -343,13 +347,11 @@ fn freeze_param() -> ParamEffect {
 }
 
 /// Helper to create a capture param effect (value captured, may alias return).
-#[expect(dead_code)]
 fn capture_param() -> ParamEffect {
     ParamEffect { effect: Effect::Capture, alias_to_return: true }
 }
 
 /// Helper to create a mutate param effect.
-#[expect(dead_code)]
 fn mutate_param() -> ParamEffect {
     ParamEffect { effect: Effect::Mutate, alias_to_return: false }
 }
@@ -516,4 +518,472 @@ fn get_builtin_signature(name: &str) -> Option<FunctionSignature> {
         // explicit signatures.
         _ => None,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Method signatures for MethodCall instructions (Phase 2 remaining)
+// ---------------------------------------------------------------------------
+
+/// Type alias for method signature lookup.
+///
+/// Maps a receiver `IdentifierId` to a map of method names to their signatures.
+/// Used by `compute_instruction_effects` to resolve `MethodCall` instructions
+/// against known built-in method signatures instead of using the conservative
+/// fallback that aliases all operands together.
+pub type MethodSignatures = FxHashMap<IdentifierId, FxHashMap<String, FunctionSignature>>;
+
+/// Populate method signatures for known global objects.
+///
+/// Scans the HIR for `LoadGlobal` instructions and, for each recognized
+/// global object (Math, JSON, Object, console, etc.), populates a map of
+/// method signatures keyed by (receiver_id, method_name).
+///
+/// Also tracks identifiers created by `ArrayExpression` to enable precise
+/// method resolution for array instance methods like `.push()` and `.map()`.
+///
+/// Must be called alongside `populate_builtin_signatures`.
+pub fn populate_method_signatures(hir: &HIR) -> MethodSignatures {
+    let mut method_sigs: MethodSignatures = FxHashMap::default();
+
+    // Phase 1: Scan for LoadGlobal instructions to find known global objects.
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::LoadGlobal { binding } = &instr.value {
+                let name = binding.name.as_str();
+                let id = instr.lvalue.identifier.id;
+                if let Some(methods) = get_global_method_signatures(name) {
+                    method_sigs.insert(id, methods);
+                }
+            }
+        }
+    }
+
+    // Phase 2: Track ArrayExpression lvalues to enable array instance method resolution.
+    // When we see `const arr = [...]`, we know `arr` is an array and can use array
+    // method signatures for calls like `arr.push(x)`.
+    let array_methods = get_array_instance_method_signatures();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::ArrayExpression { .. } => {
+                    let id = instr.lvalue.identifier.id;
+                    method_sigs.entry(id).or_insert_with(|| array_methods.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Phase 3: Propagate method signatures through alias chains.
+    // If `x = y` and `y` has method signatures, then `x` should too.
+    propagate_method_signatures(hir, &mut method_sigs);
+
+    method_sigs
+}
+
+/// Propagate method signatures through StoreLocal/LoadLocal/Phi alias chains.
+fn propagate_method_signatures(hir: &HIR, method_sigs: &mut MethodSignatures) {
+    let mut changed = true;
+    let mut iterations = 0;
+    const MAX_ITERATIONS: usize = 10;
+
+    while changed && iterations < MAX_ITERATIONS {
+        changed = false;
+        iterations += 1;
+
+        for (_, block) in &hir.blocks {
+            // Propagate through phi nodes: if any operand has method sigs,
+            // the phi result should too.
+            for phi in &block.phis {
+                if !method_sigs.contains_key(&phi.place.identifier.id) {
+                    for (_, operand) in &phi.operands {
+                        if let Some(sigs) = method_sigs.get(&operand.identifier.id).cloned() {
+                            method_sigs.insert(phi.place.identifier.id, sigs);
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            for instr in &block.instructions {
+                match &instr.value {
+                    InstructionValue::StoreLocal { lvalue, value, .. }
+                    | InstructionValue::StoreContext { lvalue, value } => {
+                        if !method_sigs.contains_key(&lvalue.identifier.id)
+                            && let Some(sigs) = method_sigs.get(&value.identifier.id).cloned()
+                        {
+                            method_sigs.insert(lvalue.identifier.id, sigs);
+                            changed = true;
+                        }
+                    }
+                    InstructionValue::LoadLocal { place }
+                    | InstructionValue::LoadContext { place } => {
+                        if !method_sigs.contains_key(&instr.lvalue.identifier.id)
+                            && let Some(sigs) = method_sigs.get(&place.identifier.id).cloned()
+                        {
+                            method_sigs.insert(instr.lvalue.identifier.id, sigs);
+                            changed = true;
+                        }
+                    }
+                    InstructionValue::TypeCastExpression { value, .. } => {
+                        if !method_sigs.contains_key(&instr.lvalue.identifier.id)
+                            && let Some(sigs) = method_sigs.get(&value.identifier.id).cloned()
+                        {
+                            method_sigs.insert(instr.lvalue.identifier.id, sigs);
+                            changed = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+/// Return method signatures for a known global object name.
+///
+/// This maps global names like "Math", "JSON", "Object", "console" to a
+/// collection of their known method signatures.
+fn get_global_method_signatures(global_name: &str) -> Option<FxHashMap<String, FunctionSignature>> {
+    match global_name {
+        "Math" => Some(get_math_method_signatures()),
+        "JSON" => Some(get_json_method_signatures()),
+        "Object" => Some(get_object_method_signatures()),
+        // DIVERGENCE: console methods are intentionally left without signatures.
+        // Console methods are impure (side-effecting I/O), and providing read-only
+        // signatures would prevent the conservative fallback from grouping console
+        // calls with their operands' scopes. Without an "impure" concept in our
+        // FunctionSignature type, the conservative default is safer.
+        "Array" => Some(get_array_static_method_signatures()),
+        "Number" => Some(get_number_static_method_signatures()),
+        "String" => Some(get_string_static_method_signatures()),
+        _ => None,
+    }
+}
+
+/// Math methods: all pure, read args, return primitive.
+fn get_math_method_signatures() -> FxHashMap<String, FunctionSignature> {
+    let mut m = FxHashMap::default();
+    let pure_sig = || FunctionSignature {
+        params: vec![read_param(), read_param(), read_param()],
+        return_effect: Effect::Read,
+        callee_effect: Effect::Read,
+        mutable_only_if_operands_are_mutable: false,
+    };
+    for name in &[
+        "abs", "ceil", "floor", "round", "max", "min", "pow", "sqrt", "log", "log2", "log10",
+        "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sign", "trunc", "cbrt", "hypot",
+        "fround", "clz32", "imul", "exp",
+    ] {
+        m.insert(name.to_string(), pure_sig());
+    }
+    // Math.random() is impure — no signature, use conservative fallback
+    m
+}
+
+/// JSON methods: read args, return mutable.
+fn get_json_method_signatures() -> FxHashMap<String, FunctionSignature> {
+    let mut m = FxHashMap::default();
+    // JSON.parse(text, reviver?) — reads args, returns mutable new object
+    m.insert(
+        "parse".to_string(),
+        FunctionSignature {
+            params: vec![read_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        },
+    );
+    // JSON.stringify(value, replacer?, space?) — reads args, returns primitive string
+    m.insert(
+        "stringify".to_string(),
+        FunctionSignature {
+            params: vec![read_param(), read_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        },
+    );
+    m
+}
+
+/// Object static methods: keys, values, entries, assign, freeze, is, hasOwn, etc.
+fn get_object_method_signatures() -> FxHashMap<String, FunctionSignature> {
+    let mut m = FxHashMap::default();
+    // Object.keys/values/entries — reads the object, returns new array
+    for name in &["keys", "values", "entries", "getOwnPropertyNames", "getOwnPropertyDescriptor"] {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![read_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Read,
+                mutable_only_if_operands_are_mutable: false,
+            },
+        );
+    }
+    // Object.assign(target, ...sources) — mutates target, reads sources
+    m.insert(
+        "assign".to_string(),
+        FunctionSignature {
+            params: vec![mutate_param(), read_param(), read_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        },
+    );
+    // Object.freeze — reads the object, returns frozen
+    m.insert(
+        "freeze".to_string(),
+        FunctionSignature {
+            params: vec![freeze_param()],
+            return_effect: Effect::Freeze,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        },
+    );
+    // Object.is/hasOwn/isFrozen — pure predicates
+    for name in &["is", "hasOwn", "isFrozen", "getPrototypeOf", "create"] {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![read_param(), read_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Read,
+                mutable_only_if_operands_are_mutable: false,
+            },
+        );
+    }
+    m
+}
+
+/// Console methods: all impure (side-effecting I/O), read all args.
+/// Currently unused — console methods intentionally use conservative fallback
+/// because our FunctionSignature type has no "impure" concept.
+#[expect(dead_code)]
+fn get_console_method_signatures() -> FxHashMap<String, FunctionSignature> {
+    let mut m = FxHashMap::default();
+    for name in &[
+        "log",
+        "warn",
+        "error",
+        "info",
+        "debug",
+        "trace",
+        "dir",
+        "table",
+        "time",
+        "timeEnd",
+        "timeLog",
+        "assert",
+        "count",
+        "countReset",
+        "group",
+        "groupEnd",
+        "groupCollapsed",
+        "clear",
+    ] {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![read_param(), read_param(), read_param(), read_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Read,
+                mutable_only_if_operands_are_mutable: false,
+            },
+        );
+    }
+    m
+}
+
+/// Array static methods: Array.from, Array.isArray, Array.of.
+fn get_array_static_method_signatures() -> FxHashMap<String, FunctionSignature> {
+    let mut m = FxHashMap::default();
+    // Array.from(arrayLike, mapFn?, thisArg?) — reads arrayLike, may call mapFn
+    m.insert(
+        "from".to_string(),
+        FunctionSignature {
+            params: vec![read_param(), read_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: true,
+        },
+    );
+    // Array.isArray(value) — pure predicate
+    m.insert(
+        "isArray".to_string(),
+        FunctionSignature {
+            params: vec![read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        },
+    );
+    // Array.of(...items) — creates new array, reads all items
+    m.insert(
+        "of".to_string(),
+        FunctionSignature {
+            params: vec![read_param(), read_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Read,
+            mutable_only_if_operands_are_mutable: false,
+        },
+    );
+    m
+}
+
+/// Array instance method signatures.
+///
+/// Used for receivers known to be arrays (created by ArrayExpression).
+/// Mutating methods mark the callee (receiver) as mutated; non-mutating
+/// methods mark it as read.
+fn get_array_instance_method_signatures() -> FxHashMap<String, FunctionSignature> {
+    let mut m = FxHashMap::default();
+
+    // --- Mutating methods: receiver is mutated, args are captured ---
+    // push/unshift — mutates receiver, captures args into receiver
+    for name in &["push", "unshift"] {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![capture_param(), capture_param(), capture_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Mutate,
+                mutable_only_if_operands_are_mutable: false,
+            },
+        );
+    }
+    // pop/shift — mutates receiver, no meaningful args
+    for name in &["pop", "shift"] {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Mutate,
+                mutable_only_if_operands_are_mutable: false,
+            },
+        );
+    }
+    // splice(start, deleteCount, ...items) — mutates receiver
+    m.insert(
+        "splice".to_string(),
+        FunctionSignature {
+            params: vec![read_param(), read_param(), capture_param(), capture_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Mutate,
+            mutable_only_if_operands_are_mutable: false,
+        },
+    );
+    // sort/reverse — mutates receiver, callback is read
+    for name in &["sort", "reverse"] {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![read_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Mutate,
+                mutable_only_if_operands_are_mutable: false,
+            },
+        );
+    }
+    // fill(value, start?, end?) — mutates receiver, captures value
+    m.insert(
+        "fill".to_string(),
+        FunctionSignature {
+            params: vec![capture_param(), read_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Mutate,
+            mutable_only_if_operands_are_mutable: false,
+        },
+    );
+    // copyWithin(target, start?, end?) — mutates receiver
+    m.insert(
+        "copyWithin".to_string(),
+        FunctionSignature {
+            params: vec![read_param(), read_param(), read_param()],
+            return_effect: Effect::Read,
+            callee_effect: Effect::Mutate,
+            mutable_only_if_operands_are_mutable: false,
+        },
+    );
+
+    // --- Non-mutating methods: receiver is read, args are read ---
+    // Higher-order methods: callback is read (may be called but not captured)
+    for name in
+        &["map", "filter", "reduce", "forEach", "find", "findIndex", "some", "every", "flatMap"]
+    {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![read_param(), read_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Read,
+                mutable_only_if_operands_are_mutable: true,
+            },
+        );
+    }
+    // Simple non-mutating methods
+    for name in &[
+        "includes",
+        "indexOf",
+        "lastIndexOf",
+        "at",
+        "join",
+        "toString",
+        "toLocaleString",
+        "flat",
+        "slice",
+        "concat",
+        "entries",
+        "keys",
+        "values",
+    ] {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![read_param(), read_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Read,
+                mutable_only_if_operands_are_mutable: false,
+            },
+        );
+    }
+
+    m
+}
+
+/// Number static methods.
+fn get_number_static_method_signatures() -> FxHashMap<String, FunctionSignature> {
+    let mut m = FxHashMap::default();
+    for name in &["parseInt", "parseFloat", "isFinite", "isInteger", "isNaN", "isSafeInteger"] {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![read_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Read,
+                mutable_only_if_operands_are_mutable: false,
+            },
+        );
+    }
+    m
+}
+
+/// String static methods.
+fn get_string_static_method_signatures() -> FxHashMap<String, FunctionSignature> {
+    let mut m = FxHashMap::default();
+    for name in &["fromCharCode", "fromCodePoint", "raw"] {
+        m.insert(
+            name.to_string(),
+            FunctionSignature {
+                params: vec![read_param(), read_param(), read_param()],
+                return_effect: Effect::Read,
+                callee_effect: Effect::Read,
+                mutable_only_if_operands_are_mutable: false,
+            },
+        );
+    }
+    m
 }

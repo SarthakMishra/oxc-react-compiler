@@ -21,6 +21,7 @@ use crate::hir::types::{
     AliasingEffect, AliasingSignature, BlockId, Effect, FunctionSignature, HIR, IdentifierId,
     InstructionValue, Phi, Place, SourceLocation, Terminal, ValueKind, ValueReason,
 };
+use crate::inference::analyse_functions::MethodSignatures;
 
 // ---------------------------------------------------------------------------
 // AbstractValueId — surrogate for upstream's InstructionValue object identity
@@ -385,8 +386,9 @@ fn build_catch_handlers(hir: &HIR) -> FxHashMap<BlockId, Place> {
 pub fn infer_mutation_aliasing_effects(
     hir: &mut HIR,
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
+    method_signatures: &MethodSignatures,
 ) {
-    infer_mutation_aliasing_effects_inner(hir, fn_signatures, &[], &[], false);
+    infer_mutation_aliasing_effects_inner(hir, fn_signatures, method_signatures, &[], &[], false);
 }
 
 /// Variant that accepts parameter names for pre-freezing.
@@ -394,14 +396,23 @@ pub fn infer_mutation_aliasing_effects(
 pub fn infer_mutation_aliasing_effects_with_params(
     hir: &mut HIR,
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
+    method_signatures: &MethodSignatures,
     param_names: &[String],
 ) {
-    infer_mutation_aliasing_effects_inner(hir, fn_signatures, param_names, &[], false);
+    infer_mutation_aliasing_effects_inner(
+        hir,
+        fn_signatures,
+        method_signatures,
+        param_names,
+        &[],
+        false,
+    );
 }
 
 fn infer_mutation_aliasing_effects_inner(
     hir: &mut HIR,
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
+    method_signatures: &MethodSignatures,
     param_names: &[String],
     _param_ids: &[IdentifierId],
     is_function_expression: bool,
@@ -459,7 +470,14 @@ fn infer_mutation_aliasing_effects_inner(
             let mut block_state = incoming_state;
 
             // Process the block: phis, instructions, terminal
-            infer_block(&mut ctx, &mut block_state, hir, block_idx, fn_signatures);
+            infer_block(
+                &mut ctx,
+                &mut block_state,
+                hir,
+                block_idx,
+                fn_signatures,
+                method_signatures,
+            );
 
             // Queue successor blocks
             let successors = terminal_successors(&hir.blocks[block_idx].1.terminal);
@@ -675,6 +693,7 @@ fn infer_block(
     hir: &mut HIR,
     block_idx: usize,
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
+    method_signatures: &MethodSignatures,
 ) {
     let block = &hir.blocks[block_idx].1;
 
@@ -695,6 +714,7 @@ fn infer_block(
             let sig = compute_signature_for_instruction(
                 &hir.blocks[block_idx].1.instructions[instr_idx],
                 fn_signatures,
+                method_signatures,
             );
             ctx.instruction_signature_cache.insert(cache_key, sig.clone());
             sig
@@ -725,12 +745,14 @@ fn infer_block(
 fn compute_signature_for_instruction(
     instr: &crate::hir::types::Instruction,
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
+    method_signatures: &MethodSignatures,
 ) -> Vec<AliasingEffect> {
     super::aliasing_effects::compute_instruction_effects(
         &instr.value,
         &instr.lvalue,
         instr.loc,
         fn_signatures,
+        method_signatures,
     )
 }
 

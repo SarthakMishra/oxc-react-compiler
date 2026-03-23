@@ -126,6 +126,12 @@ pub fn run_pipeline(
     // instead of falling back to conservative defaults.
     crate::inference::analyse_functions::populate_builtin_signatures(hir, &mut fn_signatures);
 
+    // Pass 15.6: populate_method_signatures
+    // Build method-level signatures for known global objects (Math, JSON, Object, console, etc.)
+    // and array instance methods (push, map, etc.). Enables precise effects for MethodCall
+    // instructions instead of conservative fallback.
+    let method_signatures = crate::inference::analyse_functions::populate_method_signatures(hir);
+
     // Pass 16: infer_mutation_aliasing_effects (with param pre-freezing)
     // Threading param_names enables the abstract interpreter to pre-freeze
     // component params in the heap, producing MutateFrozen effects for actual
@@ -133,6 +139,7 @@ pub fn run_pipeline(
     crate::inference::infer_mutation_aliasing_effects::infer_mutation_aliasing_effects_with_params(
         hir,
         &fn_signatures,
+        &method_signatures,
         param_names,
     );
 

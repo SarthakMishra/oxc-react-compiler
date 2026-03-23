@@ -268,7 +268,6 @@ error.dont-hoist-inline-reference.js
 error.hoisting-simple-function-declaration.js
 error.invalid-hoisting-setstate.js
 error.invalid-jsx-captures-context-variable.js
-error.invalid-mutate-after-aliased-freeze.js
 error.invalid-mutate-context.js
 error.invalid-mutate-phi-which-could-be-frozen.js
 error.invalid-mutate-props-in-effect-fixpoint.js

@@ -5,6 +5,7 @@ use crate::hir::types::{
     FunctionSignature, IdentifierId, InstructionValue, Place, SourceLocation, ValueKind,
     ValueReason,
 };
+use crate::inference::analyse_functions::MethodSignatures;
 
 /// Compute the aliasing effects for a single instruction.
 ///
@@ -14,12 +15,17 @@ use crate::hir::types::{
 ///
 /// `fn_signatures` maps callee IdentifierIds to their known function signatures,
 /// enabling precise per-parameter effects instead of conservative defaults.
+///
+/// `method_signatures` maps receiver IdentifierIds to per-method-name signatures,
+/// enabling precise effects for MethodCall instructions (e.g. `arr.push(x)`,
+/// `Math.floor(x)`) instead of conservative fallback.
 #[expect(clippy::implicit_hasher)]
 pub fn compute_instruction_effects(
     value: &InstructionValue,
     lvalue: &Place,
     loc: SourceLocation,
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
+    method_signatures: &MethodSignatures,
 ) -> Vec<AliasingEffect> {
     let mut effects = Vec::new();
 
@@ -99,22 +105,31 @@ pub fn compute_instruction_effects(
             });
         }
 
-        InstructionValue::MethodCall { receiver, args, .. } => {
-            // DIVERGENCE: MethodCall signature lookup is not supported yet.
-            // The receiver is the object, not the method — looking up receiver.id
-            // would incorrectly apply the object's signature to a method call.
+        InstructionValue::MethodCall { receiver, property, args, .. } => {
+            // Look up method signature for the receiver + method name.
+            // This covers known global methods (Math.floor, Object.keys, etc.)
+            // and instance methods on known types (arr.push, arr.map, etc.).
+            let sig = method_signatures
+                .get(&receiver.identifier.id)
+                .and_then(|methods| methods.get(property.as_str()))
+                .cloned();
+            let has_sig = sig.is_some();
             effects.push(AliasingEffect::Apply {
                 receiver: receiver.clone(),
                 function: receiver.clone(),
                 mutates_function: false,
                 args: args.clone(),
                 into: lvalue.clone(),
-                signature: None,
+                signature: sig,
                 loc,
             });
-            // The receiver itself may be mutated by the method call.
-            // refine_effects filters this out when the receiver is Frozen.
-            effects.push(AliasingEffect::MutateTransitiveConditionally { value: receiver.clone() });
+            // If no signature found, fall back to conservative: receiver may be mutated.
+            // With a signature, the callee_effect from the signature handles this.
+            if !has_sig {
+                effects.push(AliasingEffect::MutateTransitiveConditionally {
+                    value: receiver.clone(),
+                });
+            }
         }
 
         InstructionValue::PropertyLoad { object, .. }
