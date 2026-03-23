@@ -1,8 +1,9 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-23 (post Phase 119, conformance housekeeping)
+> Last updated: 2026-03-23 (post Phase 120, frozen-mutation false positive fixes)
 > Conformance: **453/1717 (26.4%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1264.
+> Bail-outs reduced: frozen-mutation bail-outs 19→13 (Phase 120), total bail-outs 132→126.
 
 ---
 
