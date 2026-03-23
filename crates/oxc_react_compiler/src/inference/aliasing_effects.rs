@@ -268,14 +268,16 @@ pub fn compute_instruction_effects(
         }
 
         InstructionValue::GetIterator { collection } => {
+            // GetIterator reads the collection (calls Symbol.iterator) but does NOT mutate it.
+            // The iterator is a new object that references the collection's elements.
+            // DIVERGENCE: Previously used MutateTransitiveConditionally which caused false
+            // positive frozen-mutation errors on for-of loops over frozen props.
             effects.push(AliasingEffect::Create {
                 into: lvalue.clone(),
                 value: ValueKind::Mutable,
                 reason: ValueReason::Other,
             });
             effects.push(AliasingEffect::Alias { from: collection.clone(), into: lvalue.clone() });
-            effects
-                .push(AliasingEffect::MutateTransitiveConditionally { value: collection.clone() });
         }
 
         InstructionValue::IteratorNext { iterator, .. } => {
