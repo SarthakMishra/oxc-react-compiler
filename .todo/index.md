@@ -1,7 +1,7 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-24 (post fbt preprocessing)
-> Conformance: **437/1717 (25.5%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Last updated: 2026-03-24 (post gating codegen)
+> Conformance: **441/1717 (25.7%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1294.
 > Bail-outs reduced: preserve-memo bail-outs 58->4 (Phase 124), total bail-outs 126->72. Trade-off: 31 error fixtures that require `validateInferredDep` (dep comparison) moved to known-failures.
 
@@ -51,19 +51,22 @@
 
 **Follow-up needed:** Implement `memoize_fbt_and_macro_operands_in_same_scope` pass (currently a no-op stub) to merge fbt operand scopes -- may recover some of the remaining scope divergences.
 
-### 4. Constant propagation and DCE improvements (+25-30 fixtures)
+### 4. Constant propagation and DCE improvements (+25-30 fixtures) -- PARTIALLY BLOCKED
 
 **Files:** `src/optimization/constant_propagation.rs`, `src/optimization/dead_code_elimination.rs`
-**Difficulty:** MEDIUM | **Risk:** LOW
+**Difficulty:** HARD | **Risk:** MEDIUM
 
-Fold arithmetic through phi nodes and remove unused constants. 25-30 fixtures diverge because we leave dead code or un-folded constants that upstream eliminates.
+**Investigation (Phase 127):** Analyzed 40+ const-prop/DCE known-failure fixtures. Finding: nearly all (35+) have 0 cache slots -- these are non-component helper functions where upstream applies const-prop/DCE but produces no memoization. Recovery requires emitting optimized 0-slot functions, which is blocked (Phase 121: 68 regressions when attempted). The ~5 memoized fixtures require deep improvements: phi-node constant propagation across branches, branch elimination on constant tests, and function extraction with constant inlining. Reclassified from MEDIUM to HARD difficulty.
 
-### 5. Gating codegen (+27 fixtures)
+**What would help:** Emitting 0-slot functions (blocked on error validation) would recover ~25 fixtures. Deep phi-node const-prop would recover ~5 more memoized fixtures.
 
-**Files:** `src/reactive_scopes/codegen.rs`
-**Difficulty:** MEDIUM | **Risk:** LOW
+### ~~5. Gating codegen (+27 fixtures)~~ PARTIALLY DONE (Phase 127)
 
-27 fixtures diverge because feature-flag wrapper codegen is incorrect. Fix the `enableFoo && <Component />` gating pattern emission.
+**Files:** `src/reactive_scopes/codegen.rs`, `src/entrypoint/program.rs`, `src/entrypoint/options.rs`
+
+**Completed (4/27 fixtures):** Implemented per-function gating ternary wrapper matching upstream's pattern (`const Name = gatingFn() ? compiled : original`). Handles all function contexts: declarations, export-default, export-named, variable declarations. Also fixed `should_compile_default_export` for annotation/syntax modes. 4 fixtures now pass: `gating-test`, `gating-test-export-function`, `gating-test-export-default-function`, `gating-preserves-function-properties`.
+
+**Remaining 23 gating fixtures:** 8 have import ordering divergences (gating import sorts differently from user imports due to prepend placement), 6 are `@dynamicGating` fixtures (different gating function per fixture -- need to parse per-function gating annotations), 4 are validation-related (conflicting gating, invalid identifiers), 5 are other structural diffs (component syntax, wrapper calls).
 
 ### 6. Fix silent bailouts (+23 fixtures)
 

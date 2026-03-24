@@ -1,7 +1,7 @@
 #
 # (Uses corrected .expected files extracted from upstream .expect.md)
 # 298 upstream error fixtures excluded from comparison
-# Baseline: 437/1717 pass (25.5%), 0 panics, 1280 divergences
+# Baseline: 441/1717 pass (25.7%), 0 panics, 1276 divergences
 # Format: <relative-path-from-upstream-fixtures/>
 # Known upstream fixtures that our compiler does not yet match.
 # One fixture filename per line. Lines starting with '#' are comments.
