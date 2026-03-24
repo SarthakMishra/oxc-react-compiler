@@ -206,12 +206,7 @@ fn compile_program_inner_with_config(
         };
     }
 
-    let mut code = apply_compilation(source, &compiled_functions);
-
-    // Apply gating wrapper if configured
-    if let Some(gating) = &options.gating {
-        code = gating.generate_wrapper(&code);
-    }
+    let code = apply_compilation(source, &compiled_functions, options.gating.as_ref());
 
     let source_map = if generate_source_map {
         let composed = compose_source_maps(source, &compiled_functions, &function_source_maps);
@@ -536,7 +531,16 @@ fn compile_statement<'a>(
                         if let Some(sm) = sm {
                             source_maps.push((func.span, sm));
                         }
-                        compiled.push((func.span, code));
+                        // When gating is enabled, wrap the function in a ternary:
+                        //   `const Name = gatingFn() ? compiledFn : originalFn;`
+                        if let Some(gating) = &options.gating {
+                            let original =
+                                &source_text[func.span.start as usize..func.span.end as usize];
+                            let ternary = gating.wrap_function(&code, original);
+                            compiled.push((func.span, format!("const {name} = {ternary}")));
+                        } else {
+                            compiled.push((func.span, code));
+                        }
                     }
                 }
             }
@@ -546,8 +550,9 @@ fn compile_statement<'a>(
                 let name = func.id.as_ref().map(|id| id.name.to_string());
                 let fn_type =
                     name.as_deref().map_or(ReactFunctionType::Component, classify_function_name);
+                let directives = func.body.as_ref().map(|b| b.directives.as_slice());
 
-                if should_compile_default_export(name.as_deref(), fn_type, options) {
+                if should_compile_default_export(name.as_deref(), fn_type, directives, options) {
                     let builder = HIRBuilder::new(config.clone());
                     if let Some((code, sm)) = try_compile_function(
                         builder,
@@ -561,7 +566,20 @@ fn compile_statement<'a>(
                         if let Some(sm) = sm {
                             source_maps.push((func.span, sm));
                         }
-                        compiled.push((func.span, code));
+                        // When gating is enabled for export default function:
+                        //   `const Name = gatingFn() ? compiledFn : originalFn;\nexport default Name;`
+                        // Replace the entire export-default statement span.
+                        if let Some(gating) = &options.gating {
+                            let original =
+                                &source_text[func.span.start as usize..func.span.end as usize];
+                            let ternary = gating.wrap_function(&code, original);
+                            let fn_name = name.as_deref().unwrap_or("_anonymous");
+                            let replacement =
+                                format!("const {fn_name} = {ternary};\nexport default {fn_name};");
+                            compiled.push((export.span, replacement));
+                        } else {
+                            compiled.push((func.span, code));
+                        }
                     }
                 }
             }
@@ -570,6 +588,7 @@ fn compile_statement<'a>(
             if let Some(decl) = &export.declaration {
                 compile_declaration(
                     decl,
+                    export.span,
                     options,
                     config,
                     source_text,
@@ -583,6 +602,7 @@ fn compile_statement<'a>(
         Statement::VariableDeclaration(decl) => {
             compile_variable_declaration(
                 decl,
+                None,
                 options,
                 config,
                 source_text,
@@ -622,6 +642,7 @@ fn compile_statement<'a>(
 #[expect(clippy::too_many_arguments)]
 fn compile_declaration<'a>(
     decl: &'a Declaration<'a>,
+    export_span: Span,
     options: &PluginOptions,
     config: &EnvironmentConfig,
     source_text: &str,
@@ -656,7 +677,18 @@ fn compile_declaration<'a>(
                         if let Some(sm) = sm {
                             source_maps.push((func.span, sm));
                         }
-                        compiled.push((func.span, code));
+                        // When gating is enabled for `export function Foo(...)`:
+                        //   `export const Foo = gatingFn() ? compiledFn : originalFn;`
+                        // Replace the entire export-named statement span.
+                        if let Some(gating) = &options.gating {
+                            let original =
+                                &source_text[func.span.start as usize..func.span.end as usize];
+                            let ternary = gating.wrap_function(&code, original);
+                            let replacement = format!("export const {name} = {ternary}");
+                            compiled.push((export_span, replacement));
+                        } else {
+                            compiled.push((func.span, code));
+                        }
                     }
                 }
             }
@@ -664,6 +696,7 @@ fn compile_declaration<'a>(
         Declaration::VariableDeclaration(decl) => {
             compile_variable_declaration(
                 decl,
+                None,
                 options,
                 config,
                 source_text,
@@ -680,6 +713,7 @@ fn compile_declaration<'a>(
 #[expect(clippy::too_many_arguments)]
 fn compile_variable_declaration<'a>(
     decl: &'a VariableDeclaration<'a>,
+    _export_span: Option<Span>,
     options: &PluginOptions,
     config: &EnvironmentConfig,
     source_text: &str,
@@ -729,7 +763,16 @@ fn compile_variable_declaration<'a>(
                         if let Some(sm) = sm {
                             source_maps.push((arrow.span, sm));
                         }
-                        compiled.push((arrow.span, code));
+                        // When gating is enabled for `const Foo = () => ...`:
+                        //   replace the init expression with `gatingFn() ? compiledArrow : originalArrow`
+                        if let Some(gating) = &options.gating {
+                            let original =
+                                &source_text[arrow.span.start as usize..arrow.span.end as usize];
+                            let ternary = gating.wrap_function(&code, original);
+                            compiled.push((arrow.span, ternary));
+                        } else {
+                            compiled.push((arrow.span, code));
+                        }
                     }
                 }
                 Expression::FunctionExpression(func) => {
@@ -746,7 +789,16 @@ fn compile_variable_declaration<'a>(
                         if let Some(sm) = sm {
                             source_maps.push((func.span, sm));
                         }
-                        compiled.push((func.span, code));
+                        // When gating is enabled for `const Foo = function() {...}`:
+                        //   replace the init expression with `gatingFn() ? compiledFn : originalFn`
+                        if let Some(gating) = &options.gating {
+                            let original =
+                                &source_text[func.span.start as usize..func.span.end as usize];
+                            let ternary = gating.wrap_function(&code, original);
+                            compiled.push((func.span, ternary));
+                        } else {
+                            compiled.push((func.span, code));
+                        }
                     }
                 }
                 // Handle React.forwardRef(() => ...) and React.memo(() => ...),
@@ -836,10 +888,10 @@ fn discover_in_statement<'a>(
                 let name = func.id.as_ref().map(|id| id.name.to_string());
                 let fn_type =
                     name.as_deref().map_or(ReactFunctionType::Component, classify_function_name);
+                let directives = func.body.as_ref().map(|b| b.directives.as_slice());
 
-                if should_compile_default_export(name.as_deref(), fn_type, options) {
-                    let opt_out =
-                        has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
+                if should_compile_default_export(name.as_deref(), fn_type, directives, options) {
+                    let opt_out = has_opt_out_directive(directives);
                     functions.push(DiscoveredFunction { name, fn_type, span: func.span, opt_out });
                 }
             }
@@ -1029,8 +1081,14 @@ fn should_compile(
 fn should_compile_default_export(
     name: Option<&str>,
     _fn_type: ReactFunctionType,
+    directives: Option<&[Directive<'_>]>,
     options: &PluginOptions,
 ) -> bool {
+    // Check for opt-out (unless @ignoreUseNoForget is set)
+    if !options.ignore_use_no_forget && has_opt_out_directive(directives) {
+        return false;
+    }
+
     match options.compilation_mode {
         CompilationMode::All => true,
         CompilationMode::Infer => {
@@ -1042,7 +1100,10 @@ fn should_compile_default_export(
                 )
             })
         }
-        _ => false,
+        CompilationMode::Syntax | CompilationMode::Annotation => {
+            // Only compile functions with "use memo" / "use forget" directive
+            has_memo_directive(directives)
+        }
     }
 }
 
@@ -1153,4 +1214,65 @@ fn has_eslint_suppression_for_rules(source: &str, rules: &[&str]) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entrypoint::options::GatingConfig;
+
+    #[test]
+    fn gating_per_function_ternary() {
+        let source = "import {Stringify} from 'shared-runtime';\nconst ErrorView = ({error, _retry}) => <Stringify error={error}></Stringify>;\n\nexport default ErrorView;";
+        let opts = PluginOptions {
+            gating: Some(GatingConfig {
+                import_source: "ReactForgetFeatureFlag".to_string(),
+                function_name: "isForgetEnabled_Fixtures".to_string(),
+            }),
+            ..Default::default()
+        };
+        let config = EnvironmentConfig::default();
+        let result = compile_program_with_config(source, "test.js", &opts, &config);
+        assert!(result.transformed);
+        assert!(result.code.contains("isForgetEnabled_Fixtures()"));
+        // Gating import should be present
+        assert!(
+            result
+                .code
+                .contains("import { isForgetEnabled_Fixtures } from \"ReactForgetFeatureFlag\"")
+        );
+    }
+
+    #[test]
+    fn gating_export_default_function() {
+        let source = "export default function Bar(props) {\n  'use forget';\n  return <div>{props.bar}</div>;\n}";
+        let opts = PluginOptions {
+            compilation_mode: CompilationMode::Annotation,
+            gating: Some(GatingConfig {
+                import_source: "ReactForgetFeatureFlag".to_string(),
+                function_name: "isForgetEnabled_Fixtures".to_string(),
+            }),
+            ..Default::default()
+        };
+        let config = EnvironmentConfig::default();
+        let result = compile_program_with_config(source, "test.js", &opts, &config);
+        assert!(result.transformed);
+        // Should produce const declaration + ternary + separate export default
+        assert!(result.code.contains("const Bar = isForgetEnabled_Fixtures()"));
+        assert!(result.code.contains("export default Bar;"));
+    }
+
+    #[test]
+    fn annotation_mode_export_default_with_memo_directive() {
+        // Verify annotation mode compiles export-default functions with 'use forget'
+        let source = "export default function Bar(props) {\n  'use forget';\n  return <div>{props.bar}</div>;\n}";
+        let opts =
+            PluginOptions { compilation_mode: CompilationMode::Annotation, ..Default::default() };
+        let config = EnvironmentConfig::default();
+        let result = compile_program_with_config(source, "test.js", &opts, &config);
+        assert!(
+            result.transformed,
+            "annotation mode should compile 'use forget' in export-default functions"
+        );
+    }
 }

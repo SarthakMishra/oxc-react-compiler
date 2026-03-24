@@ -129,7 +129,23 @@ impl PluginOptions {
 }
 
 impl GatingConfig {
-    /// Generate the gating wrapper code.
+    /// Generate the import statement for the gating function.
+    pub fn generate_import(&self) -> String {
+        format!("import {{ {} }} from \"{}\";\n", self.function_name, self.import_source)
+    }
+
+    /// Generate a per-function gating ternary wrapper.
+    ///
+    /// Upstream wraps each compiled function in a ternary:
+    ///   `gatingFn() ? compiledVersion : originalVersion`
+    ///
+    /// The `compiled_code` is the compiled function body (from codegen_function).
+    /// The `original_code` is the original source text of the function/arrow expression.
+    pub fn wrap_function(&self, compiled_code: &str, original_code: &str) -> String {
+        format!("{}()\n  ? {}\n  : {}", self.function_name, compiled_code, original_code)
+    }
+
+    /// Generate the old-style whole-file gating wrapper (kept for backwards compat).
     pub fn generate_wrapper(&self, compiled_code: &str) -> String {
         format!(
             "import {{ {} }} from \"{}\";\n\

@@ -3193,9 +3193,14 @@ pub fn generate_import_statement() -> String {
 
 /// Apply compiled function to original source code.
 /// Returns the new source with import added and function bodies replaced.
+///
+/// When `gating` is provided, adds the gating function import alongside the
+/// compiler-runtime import. The per-function gating ternaries should already
+/// be applied in the `compiled_functions` entries by the caller.
 pub fn apply_compilation(
     original_source: &str,
     compiled_functions: &[(oxc_span::Span, String)],
+    gating: Option<&crate::entrypoint::options::GatingConfig>,
 ) -> String {
     if compiled_functions.is_empty() {
         return original_source.to_string();
@@ -3205,6 +3210,11 @@ pub fn apply_compilation(
 
     // Add compiler-runtime import at the top (JSX syntax is preserved, no jsx-runtime needed)
     result.push_str(&generate_import_statement());
+
+    // Add gating function import if configured
+    if let Some(gating) = gating {
+        result.push_str(&gating.generate_import());
+    }
 
     // Apply edits in reverse order (to preserve offsets)
     let mut edits: Vec<(usize, usize, &str)> = compiled_functions

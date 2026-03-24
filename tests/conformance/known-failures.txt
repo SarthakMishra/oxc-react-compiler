@@ -406,11 +406,7 @@ gating/dynamic-gating-invalid-multiple.js
 gating/error.dynamic-gating-invalid-identifier.js
 gating/gating-access-function-name-in-component.js
 gating/gating-nonreferenced-identifier-collision.js
-gating/gating-preserves-function-properties.tsx
-gating/gating-test-export-default-function.js
 gating/gating-test-export-function-and-default.js
-gating/gating-test-export-function.js
-gating/gating-test.js
 gating/gating-use-before-decl-ref.js
 gating/gating-use-before-decl.js
 gating/gating-with-hoisted-type-reference.flow.js
