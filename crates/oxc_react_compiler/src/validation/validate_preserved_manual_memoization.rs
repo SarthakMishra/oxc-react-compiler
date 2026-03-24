@@ -1,6 +1,6 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{
-    Instruction, InstructionValue, ReactiveBlock, ReactiveFunction, ReactiveInstruction, ScopeId,
+    Instruction, InstructionValue, ReactiveBlock, ReactiveFunction, ReactiveInstruction,
 };
 use rustc_hash::FxHashMap;
 
@@ -16,21 +16,29 @@ compilation output.";
 ///
 /// After reactive scope inference and RF optimization passes, walk the reactive
 /// function in evaluation order. For each manual memoization region (StartMemoize/
-/// FinishMemoize pair), check:
+/// FinishMemoize pair), check that the FinishMemoize is inside a reactive scope.
+/// If not, the compiler failed to create a scope for this memoized value.
 ///
-/// 1. The FinishMemoize is inside a reactive scope (if not, the compiler failed
-///    to create a scope for this memoized value).
-/// 2. The StartMemoize and FinishMemoize are in the same reactive scope (if not,
-///    the compiler split the memo region across scopes).
+/// DIVERGENCE: Upstream performs two additional checks that we skip:
+/// 1. At StartMemoize: verifies each dependency operand's scope has completed
+///    (prevents depending on values still being mutated). Requires
+///    `identifier.scope` which our HIR doesn't populate.
+/// 2. At scope visits inside memo regions: validates inferred scope dependencies
+///    match the source deps from useMemo/useCallback (`validateInferredDep`).
+///    Requires `ManualMemoDependency` and source deps on StartMemoize, which we
+///    don't store. This means we don't catch dependency mismatch errors (e.g.,
+///    aliased deps, property path mismatches). Those error fixtures are tracked
+///    as known failures in known-failures.txt.
 ///
-/// DIVERGENCE: Upstream checks `identifier.scope` on the FinishMemoize.decl, but
-/// our HIR doesn't populate `identifier.scope`. We use the current reactive scope
-/// context instead.
+/// Previous versions also checked `start_scope == finish_scope`, but this
+/// is not an upstream check and was overly strict -- it rejected 54+ fixtures
+/// where the memo output was correctly memoized in a different scope than
+/// the StartMemoize marker.
 pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &mut ErrorCollector) {
-    let mut memo_scopes: FxHashMap<u32, MemoRegion> = FxHashMap::default();
-    walk_reactive_block(&func.body, None, &mut memo_scopes);
+    let mut memo_regions: FxHashMap<u32, MemoRegion> = FxHashMap::default();
+    walk_reactive_block(&func.body, false, &mut memo_regions);
 
-    for region in memo_scopes.values() {
+    for region in memo_regions.values() {
         // Skip pruned memoizations
         if region.pruned {
             continue;
@@ -44,19 +52,7 @@ pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &m
 
         // If the FinishMemoize is outside any reactive scope, the value was
         // supposed to be memoized but the compiler didn't create a scope for it.
-        if region.finish_scope.is_none() {
-            errors.push(CompilerError::invalid_react_with_kind(
-                region.loc,
-                UNMEMOIZED_ERROR,
-                DiagnosticKind::MemoizationPreservation,
-            ));
-            continue;
-        }
-
-        // If start and finish are in different scopes, the manual memo region
-        // was split across multiple reactive scopes — the memoization semantics
-        // won't be preserved.
-        if region.start_scope != region.finish_scope {
+        if !region.finish_in_scope {
             errors.push(CompilerError::invalid_react_with_kind(
                 region.loc,
                 UNMEMOIZED_ERROR,
@@ -69,8 +65,8 @@ pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &m
 /// Tracks the reactive scope context of a StartMemoize/FinishMemoize pair.
 #[derive(Debug)]
 struct MemoRegion {
-    start_scope: Option<ScopeId>,
-    finish_scope: Option<ScopeId>,
+    /// Whether FinishMemoize was found inside any reactive scope.
+    finish_in_scope: bool,
     pruned: bool,
     /// When true, ValidateExhaustiveDependencies already flagged this memo's
     /// dependency array as invalid. Skip reporting preservation errors to
@@ -79,23 +75,22 @@ struct MemoRegion {
     loc: oxc_span::Span,
 }
 
-/// Recursively walk a reactive block, tracking which reactive scope we are in.
+/// Recursively walk a reactive block, tracking whether we are inside a scope.
 fn walk_reactive_block(
     block: &ReactiveBlock,
-    current_scope: Option<ScopeId>,
-    memo_scopes: &mut FxHashMap<u32, MemoRegion>,
+    in_scope: bool,
+    memo_regions: &mut FxHashMap<u32, MemoRegion>,
 ) {
     for item in &block.instructions {
         match item {
             ReactiveInstruction::Instruction(instr) => {
-                check_instruction(instr, current_scope, memo_scopes);
+                check_instruction(instr, in_scope, memo_regions);
             }
             ReactiveInstruction::Scope(scope_block) => {
-                let scope_id = scope_block.scope.id;
-                walk_reactive_block(&scope_block.instructions, Some(scope_id), memo_scopes);
+                walk_reactive_block(&scope_block.instructions, true, memo_regions);
             }
             ReactiveInstruction::Terminal(terminal) => {
-                walk_terminal_blocks(terminal, current_scope, memo_scopes);
+                walk_terminal_blocks(terminal, in_scope, memo_regions);
             }
         }
     }
@@ -104,30 +99,27 @@ fn walk_reactive_block(
 /// Check a single instruction for StartMemoize / FinishMemoize markers.
 fn check_instruction(
     instr: &Instruction,
-    current_scope: Option<ScopeId>,
-    memo_scopes: &mut FxHashMap<u32, MemoRegion>,
+    in_scope: bool,
+    memo_regions: &mut FxHashMap<u32, MemoRegion>,
 ) {
     match &instr.value {
         InstructionValue::StartMemoize { manual_memo_id, has_invalid_deps } => {
-            let entry = memo_scopes.entry(*manual_memo_id).or_insert(MemoRegion {
-                start_scope: current_scope,
-                finish_scope: None,
+            let entry = memo_regions.entry(*manual_memo_id).or_insert(MemoRegion {
+                finish_in_scope: false,
                 pruned: false,
                 has_invalid_deps: *has_invalid_deps,
                 loc: instr.loc,
             });
-            entry.start_scope = current_scope;
             entry.has_invalid_deps = *has_invalid_deps;
         }
         InstructionValue::FinishMemoize { manual_memo_id, pruned, .. } => {
-            let entry = memo_scopes.entry(*manual_memo_id).or_insert(MemoRegion {
-                start_scope: None,
-                finish_scope: current_scope,
+            let entry = memo_regions.entry(*manual_memo_id).or_insert(MemoRegion {
+                finish_in_scope: in_scope,
                 pruned: *pruned,
                 has_invalid_deps: false,
                 loc: instr.loc,
             });
-            entry.finish_scope = current_scope;
+            entry.finish_in_scope = in_scope;
             entry.pruned = *pruned;
         }
         _ => {}
@@ -137,49 +129,49 @@ fn check_instruction(
 /// Walk all blocks within a reactive terminal.
 fn walk_terminal_blocks(
     terminal: &crate::hir::types::ReactiveTerminal,
-    current_scope: Option<ScopeId>,
-    memo_scopes: &mut FxHashMap<u32, MemoRegion>,
+    in_scope: bool,
+    memo_regions: &mut FxHashMap<u32, MemoRegion>,
 ) {
     use crate::hir::types::ReactiveTerminal;
 
     match terminal {
         ReactiveTerminal::If { consequent, alternate, .. } => {
-            walk_reactive_block(consequent, current_scope, memo_scopes);
-            walk_reactive_block(alternate, current_scope, memo_scopes);
+            walk_reactive_block(consequent, in_scope, memo_regions);
+            walk_reactive_block(alternate, in_scope, memo_regions);
         }
         ReactiveTerminal::Switch { cases, .. } => {
             for (_, case_block) in cases {
-                walk_reactive_block(case_block, current_scope, memo_scopes);
+                walk_reactive_block(case_block, in_scope, memo_regions);
             }
         }
         ReactiveTerminal::For { init, test, update, body, .. } => {
-            walk_reactive_block(init, current_scope, memo_scopes);
-            walk_reactive_block(test, current_scope, memo_scopes);
+            walk_reactive_block(init, in_scope, memo_regions);
+            walk_reactive_block(test, in_scope, memo_regions);
             if let Some(upd) = update {
-                walk_reactive_block(upd, current_scope, memo_scopes);
+                walk_reactive_block(upd, in_scope, memo_regions);
             }
-            walk_reactive_block(body, current_scope, memo_scopes);
+            walk_reactive_block(body, in_scope, memo_regions);
         }
         ReactiveTerminal::ForOf { init, test, body, .. }
         | ReactiveTerminal::ForIn { init, test, body, .. } => {
-            walk_reactive_block(init, current_scope, memo_scopes);
-            walk_reactive_block(test, current_scope, memo_scopes);
-            walk_reactive_block(body, current_scope, memo_scopes);
+            walk_reactive_block(init, in_scope, memo_regions);
+            walk_reactive_block(test, in_scope, memo_regions);
+            walk_reactive_block(body, in_scope, memo_regions);
         }
         ReactiveTerminal::While { test, body, .. }
         | ReactiveTerminal::DoWhile { body, test, .. } => {
-            walk_reactive_block(test, current_scope, memo_scopes);
-            walk_reactive_block(body, current_scope, memo_scopes);
+            walk_reactive_block(test, in_scope, memo_regions);
+            walk_reactive_block(body, in_scope, memo_regions);
         }
         ReactiveTerminal::Label { block, .. } => {
-            walk_reactive_block(block, current_scope, memo_scopes);
+            walk_reactive_block(block, in_scope, memo_regions);
         }
         ReactiveTerminal::Try { block, handler, .. } => {
-            walk_reactive_block(block, current_scope, memo_scopes);
-            walk_reactive_block(handler, current_scope, memo_scopes);
+            walk_reactive_block(block, in_scope, memo_regions);
+            walk_reactive_block(handler, in_scope, memo_regions);
         }
         ReactiveTerminal::Logical { right, .. } => {
-            walk_reactive_block(right, current_scope, memo_scopes);
+            walk_reactive_block(right, in_scope, memo_regions);
         }
         ReactiveTerminal::Return { .. }
         | ReactiveTerminal::Throw { .. }

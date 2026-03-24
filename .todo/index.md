@@ -1,13 +1,110 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-24 (post Phase 122, cleaned up completed phases)
-> Conformance: **454/1717 (26.4%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1263.
-> Bail-outs reduced: frozen-mutation bail-outs 19->13 (Phase 120), total bail-outs 132->126.
+> Last updated: 2026-03-24 (post preserve-memo relaxation)
+> Conformance: **423/1717 (24.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1294.
+> Bail-outs reduced: preserve-memo bail-outs 58->4 (Phase 124), total bail-outs 126->72. Trade-off: 31 error fixtures that require `validateInferredDep` (dep comparison) moved to known-failures.
 
 ---
 
-## Open Work
+## Conformance Gap Analysis (1294 failures)
+
+| Category | Count | % | Description |
+|----------|-------|---|-------------|
+| Both compile, slots DIFFER | 705 | 54.5% | We compile but produce wrong scope groupings or slot counts |
+| Both compile, slots MATCH | 247 | 19.1% | Correct scopes but cosmetic diffs (structure, variable names) |
+| We compile, they don't | 189 | 14.6% | Missing validations -- we should bail but don't |
+| We bail, they compile | 72 | 5.6% | Overly strict bail-outs -- we reject valid programs |
+| Both no memo (format diff) | 81 | 6.3% | Both pass through but output format differs |
+
+### Bail-out breakdown (72 "we bail, they compile")
+
+| Cause | Count |
+|-------|-------|
+| Preserve-memo validation | 4 |
+| Silent bail (no error, 0 scopes) | 23 |
+| Frozen mutation | 13 |
+| Ref access | 7 |
+| Global reassignment | 7 |
+| Local variable reassignment | 7 |
+| Other | 11 |
+
+---
+
+## Open Work -- Prioritized by Impact
+
+### ~~1. Relax preserve-memo validation (+58 fixtures)~~ DONE (Phase 124)
+
+**Completed:** Removed non-upstream `start_scope != finish_scope` check. Preserved `finish_scope.is_none()` check. Reduced preserve-memo bail-outs from 58 to 4. Trade-off: 31 error fixtures that require `validateInferredDep` (dep comparison infrastructure: `ManualMemoDependency`, source deps on `StartMemoize`) moved to known-failures. Net: 54 fewer bail-outs, 31 new known-failures for dep comparison errors we can't detect without source deps.
+
+**Follow-up needed:** Implement `ManualMemoDependency` type, store source deps on `StartMemoize`, implement `validateInferredDep` to recover the 31 error fixtures.
+
+### 2. Variable name preservation in codegen (+47 fixtures)
+
+**Files:** `src/reactive_scopes/prune_temporary_lvalues.rs`, `src/reactive_scopes/codegen.rs`
+**Difficulty:** MEDIUM | **Risk:** LOW
+
+47 fixtures match on scope structure but use temp variable names where upstream preserves original names. Improve `prune_temporary_lvalues` or codegen to preserve original variable names instead of emitting temps like `t0`, `t1`.
+
+### 3. fbt call preservation (+36 fixtures)
+
+**Files:** `src/hir/build.rs`, `src/reactive_scopes/codegen.rs`
+**Difficulty:** MEDIUM | **Risk:** LOW
+
+36 fixtures diverge because we convert `fbt._()` calls to JSX. Upstream preserves these calls as-is. Need to detect fbt member expressions and skip JSX conversion in the HIR builder or codegen.
+
+### 4. Constant propagation and DCE improvements (+25-30 fixtures)
+
+**Files:** `src/optimization/constant_propagation.rs`, `src/optimization/dead_code_elimination.rs`
+**Difficulty:** MEDIUM | **Risk:** LOW
+
+Fold arithmetic through phi nodes and remove unused constants. 25-30 fixtures diverge because we leave dead code or un-folded constants that upstream eliminates.
+
+### 5. Gating codegen (+27 fixtures)
+
+**Files:** `src/reactive_scopes/codegen.rs`
+**Difficulty:** MEDIUM | **Risk:** LOW
+
+27 fixtures diverge because feature-flag wrapper codegen is incorrect. Fix the `enableFoo && <Component />` gating pattern emission.
+
+### 6. Fix silent bailouts (+23 fixtures)
+
+**Files:** `src/hir/build.rs`, `src/entrypoint/pipeline.rs`
+**Difficulty:** MEDIUM | **Risk:** LOW
+
+23 fixtures produce no error and no scopes (silent bail). Causes include Flow syntax edge cases and edge-case function detection. These should either compile or produce an explicit error.
+
+### 7. Frozen mutation / ref validation tuning (+20 fixtures)
+
+**Files:** `src/validation/validate_no_mutation_after_freeze.rs`, `src/validation/validate_no_ref_access_in_render.rs`
+**Difficulty:** EASY | **Risk:** LOW
+
+Frozen mutation (13) and ref access (7) validators are too strict on 20 fixtures. Tune validation to match upstream behavior -- likely specific patterns we flag that upstream does not.
+
+### 8. Missing validations (+50 fixtures)
+
+**Files:** `src/validation/`, `src/error.rs`
+**Difficulty:** MEDIUM | **Risk:** MEDIUM
+
+We incorrectly compile 50+ fixtures where upstream emits an error. Need to add error detection for patterns upstream rejects (subset of the 152 "we compile, they don't" category).
+
+### 9. Try/catch scope handling (+25 fixtures)
+
+**Files:** `src/hir/build.rs`, `src/reactive_scopes/`
+**Difficulty:** HARD | **Risk:** MEDIUM
+
+25 fixtures diverge due to incorrect scope handling in try/catch blocks. Includes for-loops in try/catch, optional/logical expressions in try/catch.
+
+### 10. Scope inference fixes (+300-400 fixtures)
+
+**Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`, `src/reactive_scopes/propagate_dependencies.rs`
+**Difficulty:** HARD | **Risk:** MEDIUM
+
+The single biggest bucket -- 300-400 fixtures in the "both compile, slots differ" category are due to scope inference producing different groupings than upstream. This is the hardest category to fix but has the largest potential payoff.
+
+---
+
+## Remaining Phase Work
 
 ### Phase 2 Remaining: Impure Function Handling
 
@@ -35,7 +132,7 @@ Attempted 5 times, most recently 2026-03-22 (Phase 117). Every attempt drops ren
 
 **Do NOT attempt again without first investigating how upstream extends ranges to include usage reach.**
 
-### Phase 5: Fault Tolerance & Error Handling
+### Phase 5: Fault Tolerance & Error Handling -- BLOCKED
 
 **Files:** `src/error.rs`, `src/entrypoint/pipeline.rs`, all validation passes
 **Status:** BLOCKED on compilation quality
@@ -160,3 +257,6 @@ All paths relative to `crates/oxc_react_compiler/`.
 3. **PanicThreshold change to CriticalErrors requires ~600+ conformance.** 132 bail-out fixtures produce wrong output when compiled instead of bailed.
 4. **Emitting 0-slot functions requires more error validations.** 68 divergences when attempted (Phase 121).
 5. **Render regressions can be latent.** The PostfixUpdate/PrefixUpdate codegen bug existed for months but only appeared when the new inference model enabled deeper function body compilation.
+6. **Fix low-risk bail-outs before high-risk scope inference.** The gap analysis shows ~200 fixtures recoverable from validation tuning and codegen fixes (items 1-7) vs ~400 from hard scope inference work (item 10). Pick the easy wins first.
+7. **"Both compile, slots match" (245 fixtures) are mostly cosmetic.** Variable naming and structural diffs -- lower priority than correctness gaps but good cleanup targets.
+8. **Preserve-memo validation needs `ManualMemoDependency` for full upstream fidelity.** Without source deps on `StartMemoize` and `validateInferredDep`, we can't detect dep mismatch errors. The `start_scope != finish_scope` check was an accidental proxy that caught both true positives (31 error fixtures) and false positives (54 valid fixtures). Removing it trades 31 undetectable errors for 54 recovered compilations.
