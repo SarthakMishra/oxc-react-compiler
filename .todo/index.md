@@ -1,6 +1,6 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-24 (post Phase 121, constant folding + DCE improvements)
+> Last updated: 2026-03-24 (post Phase 122, Phase 6/7 upstream alignment)
 > Conformance: **454/1717 (26.4%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1263.
 > Bail-outs reduced: frozen-mutation bail-outs 19→13 (Phase 120), total bail-outs 132→126.
@@ -178,39 +178,47 @@ Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. 
 
 ---
 
-### Port Phase 6: New & Updated Validation Passes
+### Port Phase 6: New & Updated Validation Passes — DONE
 
-**Effort:** 1-2 sessions
-**Risk:** LOW — additive passes
-**Files:** New files in `src/validation/`
+~~**Effort:** 1-2 sessions~~
+~~**Risk:** LOW — additive passes~~
 
-**6a. `ValidateExhaustiveDependencies` (new):**
-Compiler-side dependency checking for manual `useMemo`/`useCallback`. Checks that all reactive dependencies are included. Deduplicates with `ValidatePreservedManualMemoization` via `hasInvalidDeps` flag on `StartMemoize`.
+**6a. `ValidateExhaustiveDependencies`: DONE** (existed since Phase ~90, dedup via `has_invalid_deps` added Phase 122)
+- Pass already existed in `validate_exhaustive_dependencies.rs` with full missing/extra dep checking
+- Phase 122: Added `has_invalid_deps: bool` flag to `StartMemoize` instruction
+- When invalid deps detected, flag is set so `ValidatePreservedManualMemoization` skips duplicate errors
 
-**6b. `ValidateNoVoidUseMemo` (new):**
-Catches `useMemo` calls with void returns (common mistake).
+**6b. `ValidateNoVoidUseMemo`: DONE** (existed since Phase ~85)
+- Implemented as `check_memo_callback_void()` in `validate_use_memo.rs`
+- Detects useMemo callbacks with void returns and reports `VoidUseMemo` diagnostic
 
-**6c. Update ref validation:**
-Ref-like identifiers (names ending in `Ref`) treated as refs by default. Improved ref validation for non-mutating functions.
+**6c. Update ref validation: DONE** (existed)
+- `is_ref_name()` heuristic already checks names ending in `Ref`/`ref`
+- `enable_treat_ref_like_identifiers_as_refs` config flag exists and is wired in conformance tests
+- Non-mutating function exemption: JSX props and effect callbacks already exempt from ref validation
 
-**6d. `PropagatePhiTypes` → merged into `InferTypes`:**
-Delete `propagate_phi_types.rs` (if it exists). Merge its logic into `infer_types.rs`.
+**6d. `PropagatePhiTypes` → merged into `InferTypes`: N/A**
+- No `propagate_phi_types.rs` ever existed. Nothing to merge or delete.
 
 ---
 
-### Port Phase 7: Config & API Alignment
+### Port Phase 7: Config & API Alignment — DONE
 
-**Effort:** 1 session
-**Risk:** LOW
+~~**Effort:** 1 session~~
+~~**Risk:** LOW~~
 
-**7a. `outputMode` replaces `noEmit`:**
-New modes: `client` (default), `ssr`, `lint`, `null`. Reactive scope creation and codegen gated by `outputMode === 'client'`.
+**7a. `outputMode` with `Null` mode: DONE** (Phase 122)
+- `OutputMode::Null` variant added — skips compilation entirely, returns source unchanged
+- All modes present: `Client` (default), `ClientNoMemo`, `SSR`, `Lint`, `Null`
+- Parsed from config via `"null"` string in `from_map()`
 
-**7b. Feature flag cleanup:**
-Remove: Fire, inline JSX, context selectors, instruction reordering flags.
+**7b. Feature flag cleanup: N/A**
+- No Fire, inline JSX, context selector, or instruction reordering flags existed in our codebase
 
-**7c. `HIRFunction.returns` restructure:**
-`returns: Place` → `returns: { place: Place }`.
+**7c. `HIRFunction.returns` restructure: DONE** (Phase 122)
+- Added `FunctionReturns { place: Place }` struct in `types.rs`
+- Changed `HIRFunction.returns` from `Place` to `FunctionReturns`
+- Updated all 9 usage sites (build.rs, analyse_functions.rs, infer_mutation_aliasing_effects.rs, eliminate_redundant_phi.rs)
 
 ---
 
