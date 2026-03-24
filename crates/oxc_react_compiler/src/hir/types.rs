@@ -469,6 +469,11 @@ pub enum InstructionValue {
     // Manual memoization markers
     StartMemoize {
         manual_memo_id: u32,
+        /// When true, the dependency array for this manual memo has invalid deps
+        /// (detected by ValidateExhaustiveDependencies). This flag deduplicates
+        /// errors with ValidatePreservedManualMemoization so it won't re-report
+        /// the same dependency issue.
+        has_invalid_deps: bool,
     },
     FinishMemoize {
         manual_memo_id: u32,
@@ -718,13 +723,23 @@ pub enum Param {
     Spread(Place),
 }
 
+/// Upstream: `{ place: Place }` on `HIRFunction.returns`.
+///
+/// Wraps the return-value Place in a struct to match the upstream shape.
+/// This allows future extension (e.g., adding return type annotations)
+/// without changing the `HIRFunction` signature.
+#[derive(Debug, Clone)]
+pub struct FunctionReturns {
+    pub place: Place,
+}
+
 #[derive(Debug, Clone)]
 pub struct HIRFunction {
     pub loc: SourceLocation,
     pub id: Option<String>,
     pub fn_type: ReactFunctionType,
     pub params: Vec<Param>,
-    pub returns: Place,
+    pub returns: FunctionReturns,
     pub context: Vec<Place>,
     pub body: HIR,
     pub is_async: bool,

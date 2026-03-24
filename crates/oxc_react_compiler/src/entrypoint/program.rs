@@ -154,6 +154,17 @@ fn compile_program_inner_with_config(
         };
     }
 
+    // Null mode: skip compilation entirely, return source unchanged.
+    // Upstream uses this for testing pipeline overhead without transformation.
+    if options.output_mode == OutputMode::Null {
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics: vec![],
+            source_map: None,
+        };
+    }
+
     // Lint mode: run analysis to collect diagnostics but don't transform the code.
     if options.output_mode == OutputMode::Lint {
         return CompileResult {

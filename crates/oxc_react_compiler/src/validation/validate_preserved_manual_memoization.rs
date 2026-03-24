@@ -36,6 +36,12 @@ pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &m
             continue;
         }
 
+        // Skip if ValidateExhaustiveDependencies already flagged invalid deps.
+        // The root cause is the wrong deps, not a memoization preservation failure.
+        if region.has_invalid_deps {
+            continue;
+        }
+
         // If the FinishMemoize is outside any reactive scope, the value was
         // supposed to be memoized but the compiler didn't create a scope for it.
         if region.finish_scope.is_none() {
@@ -66,6 +72,10 @@ struct MemoRegion {
     start_scope: Option<ScopeId>,
     finish_scope: Option<ScopeId>,
     pruned: bool,
+    /// When true, ValidateExhaustiveDependencies already flagged this memo's
+    /// dependency array as invalid. Skip reporting preservation errors to
+    /// avoid duplicate diagnostics for the same root cause.
+    has_invalid_deps: bool,
     loc: oxc_span::Span,
 }
 
@@ -98,22 +108,23 @@ fn check_instruction(
     memo_scopes: &mut FxHashMap<u32, MemoRegion>,
 ) {
     match &instr.value {
-        InstructionValue::StartMemoize { manual_memo_id } => {
-            memo_scopes
-                .entry(*manual_memo_id)
-                .or_insert(MemoRegion {
-                    start_scope: current_scope,
-                    finish_scope: None,
-                    pruned: false,
-                    loc: instr.loc,
-                })
-                .start_scope = current_scope;
+        InstructionValue::StartMemoize { manual_memo_id, has_invalid_deps } => {
+            let entry = memo_scopes.entry(*manual_memo_id).or_insert(MemoRegion {
+                start_scope: current_scope,
+                finish_scope: None,
+                pruned: false,
+                has_invalid_deps: *has_invalid_deps,
+                loc: instr.loc,
+            });
+            entry.start_scope = current_scope;
+            entry.has_invalid_deps = *has_invalid_deps;
         }
         InstructionValue::FinishMemoize { manual_memo_id, pruned, .. } => {
             let entry = memo_scopes.entry(*manual_memo_id).or_insert(MemoRegion {
                 start_scope: None,
                 finish_scope: current_scope,
                 pruned: *pruned,
+                has_invalid_deps: false,
                 loc: instr.loc,
             });
             entry.finish_scope = current_scope;

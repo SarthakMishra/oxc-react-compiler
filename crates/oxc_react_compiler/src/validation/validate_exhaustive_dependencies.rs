@@ -1,6 +1,6 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::environment::{EnvironmentConfig, ExhaustiveDepsMode};
-use crate::hir::types::{HIR, IdentifierId, InstructionValue, Place};
+use crate::hir::types::{HIR, IdentifierId, InstructionId, InstructionValue, Place};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Known hooks that accept a dependency array as their second argument.
@@ -20,7 +20,7 @@ const MEMO_HOOKS: &[&str] = &["useMemo", "useCallback"];
 ///
 /// Upstream: ValidateExhaustiveDeps.ts
 pub fn validate_exhaustive_dependencies(
-    hir: &HIR,
+    hir: &mut HIR,
     config: &EnvironmentConfig,
     errors: &mut ErrorCollector,
 ) {
@@ -44,6 +44,29 @@ pub fn validate_exhaustive_dependencies(
     };
 
     let validate_memo = config.validate_exhaustive_memo_dependencies;
+
+    // Collect instruction IDs of StartMemoize instructions that have invalid deps.
+    // We set the flag in a second pass to avoid borrowing issues.
+    let mut invalid_memo_instr_ids: FxHashSet<InstructionId> = FxHashSet::default();
+
+    // First pass: build a map from call instruction ID to the preceding StartMemoize
+    // instruction ID. StartMemoize is emitted right before the useMemo/useCallback call.
+    let mut call_to_start_memo: FxHashMap<InstructionId, InstructionId> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        let mut last_start_memo_id: Option<InstructionId> = None;
+        for instr in &block.instructions {
+            if matches!(&instr.value, InstructionValue::StartMemoize { .. }) {
+                last_start_memo_id = Some(instr.id);
+            } else if matches!(&instr.value, InstructionValue::CallExpression { .. }) {
+                if let Some(start_id) = last_start_memo_id.take() {
+                    call_to_start_memo.insert(instr.id, start_id);
+                }
+            } else {
+                // Reset if we see a non-call instruction between StartMemoize and the call
+                // (shouldn't happen in normal flow, but be safe)
+            }
+        }
+    }
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -104,6 +127,8 @@ pub fn validate_exhaustive_dependencies(
                     true // memo always checks extra
                 };
 
+                let mut found_invalid = false;
+
                 // Report missing dependencies
                 if check_missing {
                     // Sort for deterministic error ordering
@@ -121,6 +146,7 @@ pub fn validate_exhaustive_dependencies(
                             continue;
                         }
 
+                        found_invalid = true;
                         let category = if is_effect { "effect" } else { "memoization" };
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
@@ -144,6 +170,7 @@ pub fn validate_exhaustive_dependencies(
                     for dep_name in sorted_declared {
                         // A declared dep is "extra" if it's not used in the callback at all
                         if !all_callback_deps.contains(dep_name) {
+                            found_invalid = true;
                             let category = if is_effect { "effect" } else { "memoization" };
                             errors.push(CompilerError::invalid_react_with_kind(
                                 instr.loc,
@@ -157,6 +184,29 @@ pub fn validate_exhaustive_dependencies(
                             ));
                         }
                     }
+                }
+
+                // If invalid deps were found for a memo hook, mark the corresponding
+                // StartMemoize so ValidatePreservedManualMemoization can skip it.
+                if found_invalid
+                    && is_memo
+                    && let Some(&start_memo_id) = call_to_start_memo.get(&instr.id)
+                {
+                    invalid_memo_instr_ids.insert(start_memo_id);
+                }
+            }
+        }
+    }
+
+    // Second pass: set has_invalid_deps on the StartMemoize instructions
+    if !invalid_memo_instr_ids.is_empty() {
+        for (_, block) in &mut hir.blocks {
+            for instr in &mut block.instructions {
+                if invalid_memo_instr_ids.contains(&instr.id)
+                    && let InstructionValue::StartMemoize { has_invalid_deps, .. } =
+                        &mut instr.value
+                {
+                    *has_invalid_deps = true;
                 }
             }
         }

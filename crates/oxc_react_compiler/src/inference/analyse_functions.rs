@@ -132,7 +132,7 @@ fn extract_signature(func: &HIRFunction) -> FunctionSignature {
     // detect when calling a closure causes side-effects on captured variables.
     FunctionSignature {
         params,
-        return_effect: func.returns.effect,
+        return_effect: func.returns.place.effect,
         callee_effect: Effect::Read,
         mutable_only_if_operands_are_mutable: false,
     }
@@ -153,12 +153,12 @@ fn compute_aliasing_effects(func: &HIRFunction) -> Vec<AliasingEffect> {
     let mut effects = Vec::new();
 
     // Create the return value with appropriate kind
-    let return_kind = match func.returns.effect {
+    let return_kind = match func.returns.place.effect {
         Effect::Freeze => ValueKind::Frozen,
         _ => ValueKind::Mutable,
     };
     effects.push(AliasingEffect::Create {
-        into: func.returns.clone(),
+        into: func.returns.place.clone(),
         value: return_kind,
         reason: ValueReason::Other,
     });
@@ -182,7 +182,7 @@ fn compute_aliasing_effects(func: &HIRFunction) -> Vec<AliasingEffect> {
                 // Parameter is captured (may alias to return)
                 effects.push(AliasingEffect::Capture {
                     from: place.clone(),
-                    into: func.returns.clone(),
+                    into: func.returns.place.clone(),
                 });
             }
             Effect::Freeze => {

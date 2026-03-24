@@ -415,7 +415,7 @@ impl HIRBuilder {
             self.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
-        let returns = self.make_temp(loc);
+        let returns = FunctionReturns { place: self.make_temp(loc) };
         let entry = self.blocks.first().map(|(id, _)| *id).unwrap();
 
         HIRFunction {
@@ -471,7 +471,7 @@ impl HIRBuilder {
             self.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
-        let returns = self.make_temp(loc);
+        let returns = FunctionReturns { place: self.make_temp(loc) };
         let entry = self.blocks.first().map(|(id, _)| *id).unwrap();
 
         HIRFunction {
@@ -526,7 +526,7 @@ impl HIRBuilder {
             inner.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
-        let returns = inner.make_temp(loc);
+        let returns = FunctionReturns { place: inner.make_temp(loc) };
         let entry = inner.blocks.first().map(|(id, _)| *id).unwrap();
 
         HIRFunction {
@@ -1699,7 +1699,7 @@ impl HIRBuilder {
             self.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
-        let returns = self.make_temp(loc);
+        let returns = FunctionReturns { place: self.make_temp(loc) };
         let entry = self.blocks.first().map(|(id, _)| *id).unwrap();
 
         HIRFunction {
@@ -2115,7 +2115,10 @@ impl HIRBuilder {
         {
             let memo_id = self.next_memo_id;
             self.next_memo_id += 1;
-            self.emit(InstructionValue::StartMemoize { manual_memo_id: memo_id }, loc);
+            self.emit(
+                InstructionValue::StartMemoize { manual_memo_id: memo_id, has_invalid_deps: false },
+                loc,
+            );
             let callee = self.lower_expression(&call.callee);
             let args = self.lower_arguments(&call.arguments);
             let result = self.emit(

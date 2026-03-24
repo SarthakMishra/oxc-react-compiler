@@ -50,6 +50,9 @@ pub enum OutputMode {
     SSR,
     /// Lint-only mode: run analysis, collect errors, skip codegen
     Lint,
+    /// Null mode: skip compilation entirely, return source unchanged.
+    /// Upstream uses this for testing and benchmarking the pipeline overhead.
+    Null,
 }
 
 /// Target React version for generated code.
@@ -99,6 +102,7 @@ impl PluginOptions {
             opts.output_mode = match output.as_str() {
                 "ssr" => OutputMode::SSR,
                 "lint" => OutputMode::Lint,
+                "null" => OutputMode::Null,
                 "client-no-memo" => OutputMode::ClientNoMemo,
                 _ => OutputMode::Client,
             };
@@ -183,6 +187,7 @@ mod tests {
         let cases = [
             ("ssr", OutputMode::SSR),
             ("lint", OutputMode::Lint),
+            ("null", OutputMode::Null),
             ("client", OutputMode::Client),
             ("unknown", OutputMode::Client),
         ];

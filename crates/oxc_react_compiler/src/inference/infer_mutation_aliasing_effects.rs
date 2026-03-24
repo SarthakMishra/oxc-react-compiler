@@ -1359,7 +1359,7 @@ fn build_signature_from_function_expression(
         receiver: IdentifierId(0), // FE calls don't have a meaningful receiver
         params,
         rest,
-        returns: func.returns.identifier.id,
+        returns: func.returns.place.identifier.id,
         effects: aliasing_effects.to_vec(),
         temporaries: Vec::new(),
     }

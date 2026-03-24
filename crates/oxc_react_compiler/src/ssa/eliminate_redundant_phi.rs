@@ -357,7 +357,7 @@ fn replace_in_hir_function(
         }
     }
     // Replace in returns
-    replace_in_place(&mut func.returns, replacements);
+    replace_in_place(&mut func.returns.place, replacements);
     // Replace in context
     for ctx in &mut func.context {
         replace_in_place(ctx, replacements);
