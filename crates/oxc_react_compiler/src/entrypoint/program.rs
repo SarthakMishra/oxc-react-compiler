@@ -340,8 +340,7 @@ fn try_compile_function(
 
     if let Ok(rf) = run_full_pipeline(hir_func, config, &mut errors) {
         // If no reactive scopes survived the pipeline (0 cache slots),
-        // skip the function — memoization would add no value. This matches
-        // Babel's behavior of returning source unchanged for such functions.
+        // skip the function — memoization would add no value.
         if !has_cache_slots(&rf) {
             diagnostics.extend(errors.into_diagnostics());
             return None;

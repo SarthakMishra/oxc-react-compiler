@@ -1,8 +1,8 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-23 (post Phase 120, frozen-mutation false positive fixes)
-> Conformance: **453/1717 (26.4%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1264.
+> Last updated: 2026-03-24 (post Phase 121, constant folding + DCE improvements)
+> Conformance: **454/1717 (26.4%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1263.
 > Bail-outs reduced: frozen-mutation bail-outs 19→13 (Phase 120), total bail-outs 132→126.
 
 ---
@@ -214,17 +214,20 @@ Remove: Fire, inline JSX, context selectors, instruction reordering flags.
 
 ---
 
-### Port Phase 8: Minor Improvements
+### Port Phase 8: Minor Improvements — PARTIALLY DONE
 
 **Effort:** 1 session
 **Risk:** LOW
 
 - Try-catch support improvements (for loops, optional/logical in try/catch)
 - IIFE inlining improvements
-- Constant propagation for template literals and unary minus
+- ~~Constant propagation for template literals and unary minus~~ **DONE (Phase 121)**: Binary expression folding (arithmetic, bitwise, comparison), unary expression folding (minus, plus, not, typeof, void, bitwise not), string concatenation. Newly passing: `constant-propagation-bit-ops.js`.
+- ~~Unused DeclareLocal removal in DCE~~ **DONE (Phase 121)**: Extended DCE removes unused DeclareLocal after validation passes.
 - Improved scope merging for scopes that invalidate together
 - Props spread optimization
 - `ControlDominators.ts` utility (needed by Phase 2)
+
+**Blocker: Emitting 0-slot functions (Phase 121):** Attempted emitting functions with 0 cache slots to match upstream's behavior of outputting DCE/const-prop optimized bodies even without memoization (87 "both no memo" fixtures). Caused 68 divergences because many error fixtures where our pipeline fails to detect errors (missing validations) were exposed. Blocked until more error validations are implemented (Phase 6). The 87 "both no memo" format-diff fixtures remain in this state until then.
 
 ---
 
@@ -297,7 +300,9 @@ Pre-declares ALL scope output variables at function level. Removing it causes re
 ### Block iteration order ≠ source order for loops
 The HIR blocks are stored in creation order, but for-loop constructs create blocks out of source order. The frozen mutation validator uses `frozen_at` instruction ID tracking. After Phase 4c (removing the standalone validator), this is handled by the new inference.
 
-### Render Regression Investigation (23/25 -> 24/25 FIXED)
+### Render Regression Investigation (23/25 -> 24/25 FIXED, then 24/25 -> 23/25 re-regressed)
+
+**Note (Phase 121):** Render dropped back to 23/25 (92%). The `command-menu` and `canvas-sidebar` fixtures now show `semantic_divergence`. This regression was NOT caused by the Phase 121 changes (constant folding/DCE) — confirmed via before/after comparison. Root cause needs investigation.
 
 **Symptom:** After Phase 2 commits (c99311b through e84a583), render dropped from 24/25 (96%) to 23/25 (92%). The `multi-step-form` fixture regressed -- `completedFields` useMemo returned `{completed: 0, total: 0}` instead of `{completed: 0, total: 1}`.
 

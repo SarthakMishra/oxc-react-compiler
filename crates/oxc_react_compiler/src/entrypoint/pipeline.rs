@@ -70,7 +70,7 @@ pub fn run_pipeline(
     inline_load_local_temps(hir);
 
     // Phase 3: Optimization & Type Inference
-    // Pass 10: Constant propagation
+    // Pass 10: Constant propagation (with binary/unary expression folding)
     crate::optimization::constant_propagation::constant_propagation(hir);
 
     // Pass 11: Infer types
@@ -164,8 +164,10 @@ pub fn run_pipeline(
         crate::optimization::optimize_for_ssr::optimize_for_ssr(hir);
     }
 
-    // Pass 18: Dead code elimination
-    crate::optimization::dead_code_elimination::dead_code_elimination(hir);
+    // Pass 18: Dead code elimination (extended: also removes unused DeclareLocal).
+    // Safe to use the extended version here because all validation passes have
+    // already run, so we won't remove declarations that validators depend on.
+    crate::optimization::dead_code_elimination::dead_code_elimination_with_unused_declares(hir);
 
     // Pass 19: prune_maybe_throws (2nd pass)
     crate::optimization::prune_maybe_throws::prune_maybe_throws(hir);

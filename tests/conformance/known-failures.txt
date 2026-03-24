@@ -172,7 +172,6 @@ constant-prop-colliding-identifier.js
 constant-prop-to-object-method.js
 constant-propagate-global-phis-constant.js
 constant-propagate-global-phis.js
-constant-propagation-bit-ops.js
 constant-propagation-for.js
 constant-propagation-into-function-expressions.js
 constant-propagation-phi.js

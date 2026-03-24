@@ -8,22 +8,48 @@ use rustc_hash::FxHashSet;
 /// 2. Remove instructions whose lvalue is not in the used set
 ///    (except instructions with side effects)
 /// 3. Remove unreachable blocks
-pub fn dead_code_elimination(hir: &mut HIR) {
+///
+/// Returns the number of instructions removed (for iterative application).
+pub fn dead_code_elimination(hir: &mut HIR) -> usize {
+    dead_code_elimination_inner(hir, false)
+}
+
+/// Extended DCE that also removes unused DeclareLocal instructions.
+/// Only safe to call AFTER validation passes, since validators may
+/// reference declared variables that appear unused to DCE.
+pub fn dead_code_elimination_with_unused_declares(hir: &mut HIR) -> usize {
+    dead_code_elimination_inner(hir, true)
+}
+
+fn dead_code_elimination_inner(hir: &mut HIR, remove_unused_declares: bool) -> usize {
     let used = collect_used_identifiers(hir);
+    let mut removed = 0;
 
     for (_, block) in &mut hir.blocks {
+        let before = block.instructions.len();
         block.instructions.retain(|instr| {
             // Keep instructions with side effects
             if has_side_effects(&instr.value) {
+                // When remove_unused_declares is true, allow removing DeclareLocal
+                // for variables that are never read or stored to.
+                // DIVERGENCE: upstream removes unused DeclareLocal instructions.
+                if remove_unused_declares
+                    && let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value
+                {
+                    return used.contains(&lvalue.identifier.id);
+                }
                 return true;
             }
             // Keep instructions whose result is used
             used.contains(&instr.lvalue.identifier.id)
         });
+        removed += before - block.instructions.len();
     }
 
     // Remove unreachable blocks
     remove_unreachable_blocks(hir);
+
+    removed
 }
 
 /// Collect all IdentifierIds that are used as operands anywhere.
