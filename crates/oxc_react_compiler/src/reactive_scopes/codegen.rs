@@ -780,6 +780,93 @@ fn get_promoted_name(place: &Place, promotions: &FxHashMap<String, String>) -> O
     promotions.get(&temp_name).cloned()
 }
 
+/// Build a map of scope-output IdentifierId → user variable name for
+/// "scope output promotion".
+///
+/// When a reactive scope block is immediately followed by a StoreLocal or
+/// DeclareLocal+StoreLocal that assigns a scope output temp to a named
+/// variable, we can promote the scope declaration to use the user variable
+/// name directly. This avoids emitting unnecessary temporaries like:
+///   let t7; if (...) { t7 = ...; $[0] = t7; } else { t7 = $[0]; } let x = t7;
+/// and instead emits:
+///   let x; if (...) { x = ...; $[0] = x; } else { x = $[0]; }
+///
+/// Returns a map from scope-output IdentifierId to the user variable name,
+/// and a set of instruction indices to skip (the StoreLocal/DeclareLocal that
+/// were folded into the scope).
+fn build_scope_output_promotions(
+    instructions: &[ReactiveInstruction],
+) -> (FxHashMap<IdentifierId, String>, FxHashSet<usize>) {
+    let mut promotions: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut skip_indices: FxHashSet<usize> = FxHashSet::default();
+
+    let mut i = 0;
+    while i < instructions.len() {
+        if let ReactiveInstruction::Scope(scope_block) = &instructions[i] {
+            // Look at instructions following this scope for StoreLocal patterns
+            // that assign scope output temps to named variables.
+            let mut j = i + 1;
+
+            // Skip over DeclareLocal instructions that just declare the target
+            while j < instructions.len()
+                && let ReactiveInstruction::Instruction(instr) = &instructions[j]
+                && matches!(
+                    &instr.value,
+                    InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. }
+                )
+            {
+                j += 1;
+            }
+
+            if j < instructions.len()
+                && let ReactiveInstruction::Instruction(store_instr) = &instructions[j]
+                && let InstructionValue::StoreLocal { lvalue: target, value: source, .. } =
+                    &store_instr.value
+            {
+                // Check if the source matches a scope output declaration.
+                // After SSA renaming and promote_used_temporaries, the IDs
+                // may differ between the scope declaration and the StoreLocal
+                // source, so we match by display name instead.
+                let source_display = identifier_display_name(&source.identifier).to_string();
+                let matching_decl =
+                    scope_block.scope.declarations.iter().find(|(_, decl)| {
+                        identifier_display_name(&decl.identifier) == source_display
+                    });
+
+                if let Some((decl_id, _)) = matching_decl
+                    && let Some(ref target_name) = target.identifier.name
+                    && !target_name.is_empty()
+                    && !is_temp_place(target)
+                {
+                    // Promote: replace the scope output with the named variable
+                    promotions.insert(*decl_id, target_name.clone());
+                    // Skip the StoreLocal and any DeclareLocal before it
+                    skip_indices.insert(j);
+                    // Also skip DeclareLocal instructions between scope and
+                    // StoreLocal that declare the target variable
+                    for (k, instr_k) in instructions.iter().enumerate().take(j).skip(i + 1) {
+                        if let ReactiveInstruction::Instruction(decl_instr) = instr_k
+                            && let InstructionValue::DeclareLocal { lvalue, .. } = &decl_instr.value
+                            && lvalue.identifier.name.as_deref() == Some(target_name)
+                        {
+                            skip_indices.insert(k);
+                        }
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+
+    (promotions, skip_indices)
+}
+
+/// Check if a StoreLocal instruction should be skipped because it assigns
+/// a scope-output temp that has been promoted to a named variable.
+fn should_skip_scope_promotion(idx: usize, skip_indices: &FxHashSet<usize>) -> bool {
+    skip_indices.contains(&idx)
+}
+
 /// Generate the RHS expression string for an inlinable instruction value,
 /// resolving any operand temps via `inline_map`.
 ///
@@ -1367,7 +1454,15 @@ fn codegen_block(
     collect_scope_temps_recursive(&block.instructions, &mut scope_temps, &mut phantom);
     let inline_map = build_inline_map(&block.instructions, &scope_temps, tag_constants);
     let name_promotions = build_name_promotion_map(&block.instructions, &inline_map);
-    for instr in &block.instructions {
+    // Build scope output promotions: when a scope's temp output is immediately
+    // stored to a named variable, use the named variable as the scope declaration.
+    let (scope_output_promotions, scope_skip_indices) =
+        build_scope_output_promotions(&block.instructions);
+    for (idx, instr) in block.instructions.iter().enumerate() {
+        // Skip instructions that were folded into scope output promotions
+        if should_skip_scope_promotion(idx, &scope_skip_indices) {
+            continue;
+        }
         match instr {
             ReactiveInstruction::Instruction(instruction) => {
                 // Skip StoreLocal whose value temp has been name-promoted
@@ -1410,7 +1505,15 @@ fn codegen_block(
                 );
             }
             ReactiveInstruction::Scope(scope_block) => {
-                codegen_scope(scope_block, output, cache_slot, indent, declared, tag_constants);
+                codegen_scope(
+                    scope_block,
+                    output,
+                    cache_slot,
+                    indent,
+                    declared,
+                    tag_constants,
+                    &scope_output_promotions,
+                );
             }
         }
     }
@@ -1460,7 +1563,16 @@ fn codegen_block_skip_hoisted(
                 );
             }
             ReactiveInstruction::Scope(scope_block) => {
-                codegen_scope(scope_block, output, cache_slot, indent, declared, tag_constants);
+                let empty_promotions = FxHashMap::default();
+                codegen_scope(
+                    scope_block,
+                    output,
+                    cache_slot,
+                    indent,
+                    declared,
+                    tag_constants,
+                    &empty_promotions,
+                );
             }
         }
     }
@@ -1555,7 +1667,16 @@ fn codegen_block_skip_declares_and_ids(
                 );
             }
             ReactiveInstruction::Scope(scope_block) => {
-                codegen_scope(scope_block, output, cache_slot, indent, declared, tag_constants);
+                let empty_promotions = FxHashMap::default();
+                codegen_scope(
+                    scope_block,
+                    output,
+                    cache_slot,
+                    indent,
+                    declared,
+                    tag_constants,
+                    &empty_promotions,
+                );
             }
         }
     }
@@ -2362,6 +2483,7 @@ fn codegen_scope(
     indent: usize,
     declared: &mut FxHashSet<String>,
     tag_constants: &TagConstantMap,
+    scope_output_promotions: &FxHashMap<IdentifierId, String>,
 ) {
     let indent_str = "  ".repeat(indent);
     let deps = &scope.scope.dependencies;
@@ -2371,7 +2493,6 @@ fn codegen_scope(
     // Upstream's CodegenReactiveFunction uses compareScopeDeclaration() for this.
     let mut sorted_decls: Vec<_> = scope.scope.declarations.iter().collect();
     sorted_decls.sort_by_key(|(_, decl)| decl.identifier.loc.start);
-
     // Identify DeclareLocal temps that correspond to destructured variables.
     // These should be excluded from scope declarations and DeclareLocal hoisting.
     // DIVERGENCE: upstream never places hook destructures in scope bodies.
@@ -2464,10 +2585,12 @@ fn codegen_scope(
     // Pre-declare scope output variables with `let` so the else-branch
     // (cache reload) can assign to them. Variables already declared by
     // DeclareLocal above are skipped.
-    for (_, decl) in &sorted_decls {
-        let decl_name = identifier_display_name(&decl.identifier);
-        if !declared.contains(decl_name.as_ref()) {
-            declared.insert(decl_name.to_string());
+    // When scope output promotions are active, use the promoted name instead
+    // of the temp name (e.g., `let x;` instead of `let t7;`).
+    for (id, decl) in &sorted_decls {
+        let decl_name = effective_decl_display_name(*id, decl, scope_output_promotions);
+        if !declared.contains(&decl_name) {
+            declared.insert(decl_name.clone());
             output.push_str(&format!("{indent_str}let {decl_name};\n"));
         }
     }
@@ -2523,9 +2646,25 @@ fn codegen_scope(
         .as_ref()
         .map(|erv| identifier_display_name(&erv.value.identifier).to_string());
 
+    // Build a temp→promoted name replacement map for scope body output.
+    // When a scope output temp is promoted to a user variable name, the scope
+    // body should use the promoted name (e.g., `x = [1, 2, 3]` instead of
+    // `t7 = [1, 2, 3]`).
+    let scope_body_replacements: Vec<(String, String)> = scope
+        .scope
+        .declarations
+        .iter()
+        .filter_map(|(id, decl)| {
+            scope_output_promotions.get(id).map(|promoted_name| {
+                let temp_name = identifier_display_name(&decl.identifier).to_string();
+                (temp_name, promoted_name.clone())
+            })
+        })
+        .collect();
+
+    let body_start = output.len();
     if let Some(ref ern) = early_return_name {
         // Codegen the scope body into a temporary buffer
-        let body_start = output.len();
         codegen_block_skip_declares_and_ids(
             &scope.instructions,
             output,
@@ -2566,12 +2705,28 @@ fn codegen_scope(
         );
     }
 
+    // Apply scope body replacements: replace temp names with promoted names
+    // in the scope body output. This transforms e.g. `t7 = [1, 2, 3]` to
+    // `x = [1, 2, 3]` when `t7` has been promoted to `x`.
+    if !scope_body_replacements.is_empty() {
+        let body = output[body_start..].to_string();
+        let mut replaced = body;
+        for (temp_name, promoted_name) in &scope_body_replacements {
+            // Replace at word boundaries to avoid replacing `t7` inside `t70`
+            // We use a simple approach: replace `temp_name` when preceded/followed
+            // by non-alphanumeric characters. Since temp names are `tN`, this is safe.
+            replaced = replace_identifier_in_output(&replaced, temp_name, promoted_name);
+        }
+        output.truncate(body_start);
+        output.push_str(&replaced);
+    }
+
     // Build the effective list of declaration names for cache store/load.
     // This includes the original (non-phantom) declarations plus any
     // destructured names that replace phantom temps.
     let mut effective_decl_names: Vec<String> = sorted_decls
         .iter()
-        .map(|(_, decl)| identifier_display_name(&decl.identifier).to_string())
+        .map(|(id, decl)| effective_decl_display_name(*id, decl, scope_output_promotions))
         .collect();
     effective_decl_names.extend(destructure_pattern_names.iter().cloned());
     // Add early return value to effective declarations so it gets cached/reloaded
@@ -3274,6 +3429,59 @@ fn identifier_display_name(identifier: &crate::hir::types::Identifier) -> Cow<'_
         Some(name) => Cow::Borrowed(name.as_str()),
         None => Cow::Owned(format!("t{}", identifier.id.0)),
     }
+}
+
+/// Get the effective display name for a scope declaration, applying scope
+/// output promotions if available.
+fn effective_decl_display_name(
+    id: IdentifierId,
+    decl: &crate::hir::types::ReactiveScopeDeclaration,
+    promotions: &FxHashMap<IdentifierId, String>,
+) -> String {
+    if let Some(promoted) = promotions.get(&id) {
+        promoted.clone()
+    } else {
+        identifier_display_name(&decl.identifier).to_string()
+    }
+}
+
+/// Replace an identifier name in codegen output, respecting word boundaries.
+///
+/// Replaces occurrences of `old_name` with `new_name` only when `old_name`
+/// appears as a standalone identifier (not part of a longer identifier).
+/// This prevents replacing `t7` inside `t70` or `t7x`.
+fn replace_identifier_in_output(output: &str, old_name: &str, new_name: &str) -> String {
+    if old_name.is_empty() || old_name == new_name {
+        return output.to_string();
+    }
+    let mut result = String::with_capacity(output.len());
+    let old_bytes = old_name.as_bytes();
+    let old_len = old_bytes.len();
+    let src = output.as_bytes();
+    let src_len = src.len();
+    let mut i = 0;
+    while i < src_len {
+        if i + old_len <= src_len && &src[i..i + old_len] == old_bytes {
+            // Check character before: must not be alphanumeric or underscore
+            let before_ok = i == 0 || {
+                let c = src[i - 1];
+                !c.is_ascii_alphanumeric() && c != b'_'
+            };
+            // Check character after: must not be alphanumeric or underscore
+            let after_ok = i + old_len >= src_len || {
+                let c = src[i + old_len];
+                !c.is_ascii_alphanumeric() && c != b'_'
+            };
+            if before_ok && after_ok {
+                result.push_str(new_name);
+                i += old_len;
+                continue;
+            }
+        }
+        result.push(src[i] as char);
+        i += 1;
+    }
+    result
 }
 
 /// Render a scope dependency as a string, including its property path.
@@ -3991,6 +4199,7 @@ fn codegen_block_with_map(
                 recompute_position(ctx);
             }
             ReactiveInstruction::Scope(scope_block) => {
+                let empty_promotions = FxHashMap::default();
                 codegen_scope(
                     scope_block,
                     &mut ctx.output,
@@ -3998,6 +4207,7 @@ fn codegen_block_with_map(
                     indent,
                     &mut declared,
                     tag_constants,
+                    &empty_promotions,
                 );
                 recompute_position(ctx);
             }

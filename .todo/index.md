@@ -39,12 +39,11 @@
 
 **Follow-up needed:** Implement `ManualMemoDependency` type, store source deps on `StartMemoize`, implement `validateInferredDep` to recover the 31 error fixtures.
 
-### 2. Variable name preservation in codegen (+47 fixtures)
+### ~~2. Variable name preservation in codegen (+47 fixtures)~~ RECLASSIFIED
 
-**Files:** `src/reactive_scopes/prune_temporary_lvalues.rs`, `src/reactive_scopes/codegen.rs`
-**Difficulty:** MEDIUM | **Risk:** LOW
+**Investigation (Phase 125):** Deep investigation revealed this is NOT a codegen naming issue. The ~26 fixtures showing `const t0` vs `const x` patterns have **different scope boundaries** than upstream. Our scope wraps a narrower set of instructions (e.g., only the array allocation), while upstream wraps more (allocation + mutation). As a result, the scope output is a temp (the intermediate computation result) rather than the named variable. Fixing this requires scope inference improvements (item #10), not codegen changes.
 
-47 fixtures match on scope structure but use temp variable names where upstream preserves original names. Improve `prune_temporary_lvalues` or codegen to preserve original variable names instead of emitting temps like `t0`, `t1`.
+**Partial improvement committed:** Added scope output promotion in codegen (`build_scope_output_promotions`) that replaces temp scope declarations with named variables when a StoreLocal immediately follows a scope. This produces cleaner output but doesn't recover fixtures because the scope body content also differs.
 
 ### 3. fbt call preservation (+36 fixtures)
 

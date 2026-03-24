@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 124     | 1–124  | Full compiler: HIR foundation → 26.4% conformance. Recent: re-baseline against upstream main, upstream alignment planning, HIR type system expansion, abstract interpreter rewrite, Phase 2 completion, Phase 3 per-place effects + FE effect inference, render regression fix, MethodCall signature resolution, scope co-invalidation merge improvements, preserve-memo validation relaxation |
+| [001.md](001.md) | 125     | 1–125  | Full compiler: HIR foundation → 26.4% conformance. Recent: preserve-memo validation relaxation, variable name preservation investigation + scope output promotion |
 
 ## Archive
 
