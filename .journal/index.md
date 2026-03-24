@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 125     | 1–125  | Full compiler: HIR foundation → 26.4% conformance. Recent: preserve-memo validation relaxation, variable name preservation investigation + scope output promotion |
+| [001.md](001.md) | 126     | 1–126  | Full compiler: HIR foundation → 25.5% conformance. Recent: fbt preprocessing (+14 fixtures), preserve-memo validation relaxation, variable name preservation investigation + scope output promotion |
 
 ## Archive
 

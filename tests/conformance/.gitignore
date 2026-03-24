@@ -1,3 +1,8 @@
 # Upstream fixtures are downloaded, not committed
 upstream-fixtures/*
 !upstream-fixtures/.gitkeep
+
+# Node.js dependencies for fbt preprocessing
+node_modules/
+package.json
+package-lock.json

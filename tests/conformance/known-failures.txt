@@ -1,12 +1,13 @@
 #
 # (Uses corrected .expected files extracted from upstream .expect.md)
 # 298 upstream error fixtures excluded from comparison
-# Re-baselined: 2026-03-21 against upstream main (facebook/react)
-# Baseline: 423/1717 pass (24.6%), 0 panics, 1294 divergences
-# Phase 124: +31 error fixtures (validateInferredDep dep comparison not implemented)
+# Baseline: 437/1717 pass (25.5%), 0 panics, 1280 divergences
 # Format: <relative-path-from-upstream-fixtures/>
 # Known upstream fixtures that our compiler does not yet match.
 # One fixture filename per line. Lines starting with '#' are comments.
+# Phase 124: +31 error fixtures (validateInferredDep dep comparison not implemented)
+# Re-baselined: 2026-03-21 against upstream main (facebook/react)
+# fbt preprocessing: +14 fixtures (fbt JSX pre-transformed via babel-plugin-fbt)
 alias-capture-in-method-receiver.js
 alias-nested-member-path.js
 alias-while.js
@@ -339,32 +340,18 @@ fbt/error.todo-fbt-as-local.js
 fbt/error.todo-fbt-unknown-enum-value.js
 fbt/error.todo-locally-require-fbt.js
 fbt/error.todo-multiple-fbt-plural.tsx
-fbt/fbs-params.js
 fbt/fbt-call-complex-param-value.js
 fbt/fbt-call.js
-fbt/fbt-no-whitespace-btw-text-and-param.tsx
 fbt/fbt-param-with-leading-whitespace.js
-fbt/fbt-param-with-newline.js
-fbt/fbt-param-with-quotes.js
 fbt/fbt-param-with-trailing-whitespace.js
-fbt/fbt-param-with-unicode.js
-fbt/fbt-params-complex-param-value.js
 fbt/fbt-params.js
 fbt/fbt-preserve-jsxtext.js
-fbt/fbt-preserve-whitespace-subtree.tsx
 fbt/fbt-preserve-whitespace-two-subtrees.tsx
-fbt/fbt-preserve-whitespace.tsx
 fbt/fbt-repro-invalid-mutable-range-destructured-prop.js
-fbt/fbt-single-space-btw-param-and-text.tsx
 fbt/fbt-template-string-same-scope.js
-fbt/fbt-to-string.js
-fbt/fbt-whitespace-around-param-value.tsx
-fbt/fbt-whitespace-within-text.tsx
-fbt/fbtparam-text-must-use-expression-container.js
 fbt/fbtparam-with-jsx-element-content.js
 fbt/fbtparam-with-jsx-fragment-value.js
 fbt/lambda-with-fbt.js
-fbt/recursively-merge-scopes-jsx.js
 fbt/repro-fbt-param-nested-fbt-jsx.js
 fbt/repro-fbt-param-nested-fbt.js
 fbt/repro-macro-property-not-handled.tsx

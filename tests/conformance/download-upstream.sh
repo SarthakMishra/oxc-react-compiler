@@ -71,3 +71,14 @@ done < /tmp/upstream-fixtures-list.txt
 echo ""
 echo "Done! Downloaded $COUNT fixture files to $UPSTREAM_DIR"
 rm -f /tmp/upstream-fixtures-list.txt
+
+# Run fbt preprocessing if Node.js and dependencies are available
+if command -v node &>/dev/null && [ -d "$SCRIPT_DIR/node_modules/babel-plugin-fbt" ]; then
+    echo ""
+    echo "Running fbt preprocessing (transforms <fbt> JSX to fbt._() calls)..."
+    node "$SCRIPT_DIR/preprocess-fbt.mjs"
+else
+    echo ""
+    echo "NOTE: Run 'cd tests/conformance && npm install && node preprocess-fbt.mjs'"
+    echo "to pre-process fbt fixtures (required for fbt conformance tests)."
+fi

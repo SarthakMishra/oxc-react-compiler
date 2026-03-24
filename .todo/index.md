@@ -1,7 +1,7 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-24 (post preserve-memo relaxation)
-> Conformance: **423/1717 (24.6%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Last updated: 2026-03-24 (post fbt preprocessing)
+> Conformance: **437/1717 (25.5%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1294.
 > Bail-outs reduced: preserve-memo bail-outs 58->4 (Phase 124), total bail-outs 126->72. Trade-off: 31 error fixtures that require `validateInferredDep` (dep comparison) moved to known-failures.
 
@@ -45,12 +45,11 @@
 
 **Partial improvement committed:** Added scope output promotion in codegen (`build_scope_output_promotions`) that replaces temp scope declarations with named variables when a StoreLocal immediately follows a scope. This produces cleaner output but doesn't recover fixtures because the scope body content also differs.
 
-### 3. fbt call preservation (+36 fixtures)
+### ~~3. fbt call preservation (+36 fixtures)~~ PARTIALLY DONE (Phase 126)
 
-**Files:** `src/hir/build.rs`, `src/reactive_scopes/codegen.rs`
-**Difficulty:** MEDIUM | **Risk:** LOW
+**Completed (14/38 fixtures):** Root cause was that upstream runs `babel-plugin-fbt` alongside the React Compiler, transforming `<fbt>` JSX to `fbt._()` calls. Added `preprocess-fbt.mjs` to pre-process fixture inputs the same way. 14 fixtures now pass. Remaining 24 failures: 4 error.todo (need validation), ~16 scope inference (item #10), 4 structural diffs.
 
-36 fixtures diverge because we convert `fbt._()` calls to JSX. Upstream preserves these calls as-is. Need to detect fbt member expressions and skip JSX conversion in the HIR builder or codegen.
+**Follow-up needed:** Implement `memoize_fbt_and_macro_operands_in_same_scope` pass (currently a no-op stub) to merge fbt operand scopes -- may recover some of the remaining scope divergences.
 
 ### 4. Constant propagation and DCE improvements (+25-30 fixtures)
 
