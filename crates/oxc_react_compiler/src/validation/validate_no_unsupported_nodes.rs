@@ -1,5 +1,9 @@
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{BlockId, HIR, Instruction, InstructionKind, InstructionValue, Terminal};
+use crate::hir::types::{
+    BlockId, HIR, HIRFunction, IdentifierId, Instruction, InstructionKind, InstructionValue, Param,
+    Terminal,
+};
+use rustc_hash::FxHashSet;
 
 /// Set of `UnsupportedNode` names that upstream explicitly rejects as Todo errors.
 ///
@@ -25,6 +29,15 @@ const REJECTED_UNSUPPORTED_NODES: &[&str] = &[
     // Note: ThrowStatement in try/catch is detected via CFG walk in check_value_blocks_in_try,
     // not via UnsupportedNode markers, so it doesn't appear in this list.
     "ObjectExpression_computed_key",
+    // Upstream: Invariant: (BuildHIR::lowerAssignment) Could not find binding for declaration.
+    // Destructured catch clause parameters (e.g. `catch ({status})`) are not supported.
+    "CatchClause_destructured_param",
+    // Upstream: Todo: Support spread syntax for hook arguments
+    // Hook calls with spread arguments (e.g. `useHook(...items)`) are not supported.
+    "HookCall_spread_argument",
+    // Upstream: Todo: Expression type `ArrowFunctionExpression` cannot be safely reordered
+    // Default parameter values that are arrow/function expressions cannot be reordered.
+    "DefaultParam_nonreorderable_expression",
 ];
 
 /// Validate that the HIR contains no `UnsupportedNode` instructions for patterns
@@ -71,6 +84,11 @@ pub fn validate_no_unsupported_nodes(hir: &HIR, errors: &mut ErrorCollector) {
             match &instr.value {
                 InstructionValue::FunctionExpression { lowered_func, .. }
                 | InstructionValue::ObjectMethod { lowered_func, .. } => {
+                    // Upstream: Todo: Support local variables named `fbt`
+                    // Check for `fbt` as a function parameter name.
+                    check_fbt_in_function_params(lowered_func, errors);
+                    // Upstream: Todo: Handle UpdateExpression to variables captured within lambdas
+                    check_update_context_identifiers(&lowered_func.body, instr.loc, errors);
                     validate_no_unsupported_nodes(&lowered_func.body, errors);
                 }
                 _ => {}
@@ -83,6 +101,10 @@ pub fn validate_no_unsupported_nodes(hir: &HIR, errors: &mut ErrorCollector) {
     // within a try/catch statement
     // Upstream: Todo: (BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch
     check_value_blocks_in_try(hir, errors);
+
+    // Check for function declarations in unreachable code (after return/throw).
+    // Upstream: Todo: Support functions with unreachable code that may contain hoisted declarations
+    check_hoisted_function_in_unreachable_code(hir, errors);
 }
 
 /// Check if an instruction declares a `var` variable.
@@ -113,6 +135,106 @@ fn check_fbt_local(instr: &Instruction, errors: &mut ErrorCollector) {
             instr.loc,
             "Support local variables named `fbt`".to_string(),
         ));
+    }
+}
+
+/// Check if a `HIRFunction` has a parameter named `fbt`.
+/// Upstream: Todo: Support local variables named `fbt`
+/// When `fbt` appears as a function parameter name (e.g., `fbt => fbt._("...")`),
+/// it creates a local variable that conflicts with the fbt plugin transformation.
+fn check_fbt_in_function_params(func: &HIRFunction, errors: &mut ErrorCollector) {
+    for param in &func.params {
+        let place = match param {
+            Param::Identifier(p) | Param::Spread(p) => p,
+        };
+        if place.identifier.name.as_deref() == Some("fbt") {
+            errors.push(CompilerError::todo(
+                func.loc,
+                "Support local variables named `fbt`".to_string(),
+            ));
+            return;
+        }
+    }
+}
+
+/// Check for `UpdateExpression` (`++`/`--`) applied to variables captured from
+/// outer scope (context variables) within nested function expressions.
+/// Upstream: Todo: (BuildHIR::lowerExpression) Handle UpdateExpression to variables
+/// captured within lambdas.
+///
+/// Detects the pattern: `let x = 0; const fn = () => { x++; };`
+/// The `x++` modifies a context variable which upstream cannot handle.
+fn check_update_context_identifiers(
+    func_hir: &HIR,
+    func_loc: oxc_span::Span,
+    errors: &mut ErrorCollector,
+) {
+    // Collect all identifier IDs that appear as LoadContext/StoreContext targets.
+    // These are variables captured from the outer scope.
+    let mut context_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    for (_, block) in &func_hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadContext { place }
+                | InstructionValue::StoreContext { lvalue: place, .. } => {
+                    context_ids.insert(place.identifier.id);
+                }
+                _ => {}
+            }
+        }
+    }
+    if context_ids.is_empty() {
+        return;
+    }
+    // Check for PrefixUpdate/PostfixUpdate on context variables
+    for (_, block) in &func_hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::PrefixUpdate { lvalue, .. }
+                | InstructionValue::PostfixUpdate { lvalue, .. } => {
+                    if context_ids.contains(&lvalue.identifier.id) {
+                        errors.push(CompilerError::todo(
+                            func_loc,
+                            "(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas".to_string(),
+                        ));
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Check for function declarations in unreachable code (after return/throw).
+/// Upstream: Todo: Support functions with unreachable code that may contain
+/// hoisted declarations.
+///
+/// When a function declaration appears after a `return` or `throw` statement,
+/// it is placed in a dead block (no predecessors) in our HIR. Upstream bails
+/// because hoisted function declarations have complex semantics in unreachable
+/// code — they are still JS-hoisted to the top of the containing scope.
+fn check_hoisted_function_in_unreachable_code(hir: &HIR, errors: &mut ErrorCollector) {
+    for (_, block) in &hir.blocks {
+        // Skip the entry block — it has no preds but is reachable.
+        if block.id == hir.entry {
+            continue;
+        }
+        // Dead block: no predecessors means unreachable
+        if block.preds.is_empty() {
+            for instr in &block.instructions {
+                if matches!(
+                    &instr.value,
+                    InstructionValue::DeclareLocal { type_: InstructionKind::HoistedFunction, .. }
+                ) {
+                    errors.push(CompilerError::todo(
+                        instr.loc,
+                        "Support functions with unreachable code that may contain hoisted declarations".to_string(),
+                    ));
+                    return; // One error per HIR is enough
+                }
+            }
+        }
     }
 }
 

@@ -564,6 +564,25 @@ impl HIRBuilder {
             if let Some(init) = &param.initializer
                 && let BindingPattern::BindingIdentifier(id) = &param.pattern
             {
+                // Upstream: Todo: (BuildHIR::node.lowerReorderableExpression)
+                // Expression type `ArrowFunctionExpression` cannot be safely reordered.
+                // Default parameter values that are function expressions cannot be
+                // reordered safely because they may capture earlier parameters.
+                if matches!(
+                    init.as_ref(),
+                    Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+                ) {
+                    self.emit(
+                        InstructionValue::UnsupportedNode {
+                            node: "DefaultParam_nonreorderable_expression".to_string(),
+                        },
+                        param.span,
+                    );
+                    // Still need a place for the param
+                    let place = self.make_temp(param.span);
+                    result.push(Param::Identifier(place));
+                    continue;
+                }
                 let place = self.make_temp(param.span);
                 result.push(Param::Identifier(place.clone()));
                 defaults.push((place, init.as_ref(), &id.name, id.span));
@@ -1560,14 +1579,28 @@ impl HIRBuilder {
         self.switch_block(handler_block);
         if let Some(handler) = &try_stmt.handler {
             // Declare catch param if present
-            if let Some(param) = &handler.param
-                && let BindingPattern::BindingIdentifier(id) = &param.pattern
-            {
-                let lvalue = self.make_declared_place(&id.name, id.span);
-                self.emit(
-                    InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::Let },
-                    id.span,
-                );
+            if let Some(param) = &handler.param {
+                match &param.pattern {
+                    BindingPattern::BindingIdentifier(id) => {
+                        let lvalue = self.make_declared_place(&id.name, id.span);
+                        self.emit(
+                            InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::Let },
+                            id.span,
+                        );
+                    }
+                    // Upstream: Invariant: (BuildHIR::lowerAssignment) Could not find
+                    // binding for declaration.
+                    // Destructured catch clause parameters (e.g. `catch ({status})`)
+                    // are not supported — upstream bails with an invariant error.
+                    _ => {
+                        self.emit(
+                            InstructionValue::UnsupportedNode {
+                                node: "CatchClause_destructured_param".to_string(),
+                            },
+                            param.pattern.span(),
+                        );
+                    }
+                }
             }
             for stmt in &handler.body.body {
                 self.lower_statement(stmt);
@@ -2121,8 +2154,23 @@ impl HIRBuilder {
         optional: bool,
         loc: Span,
     ) -> Place {
+        // Extract callee name once for all callee-name-based checks below.
+        let callee_name = extract_callee_name(&call.callee);
+
+        // Upstream: Todo: Support spread syntax for hook arguments
+        // Hook calls with spread arguments (e.g. `useHook(...items)`) are not supported.
+        if let Some(ref name) = callee_name
+            && crate::hir::globals::is_hook_name(name)
+            && call.arguments.iter().any(|arg| matches!(arg, Argument::SpreadElement(_)))
+        {
+            return self.emit(
+                InstructionValue::UnsupportedNode { node: "HookCall_spread_argument".to_string() },
+                loc,
+            );
+        }
+
         // Detect useMemo / useCallback for manual memoization markers
-        if let Some(callee_name) = extract_callee_name(&call.callee)
+        if let Some(ref callee_name) = callee_name
             && (callee_name == "useMemo" || callee_name == "useCallback")
         {
             let memo_id = self.next_memo_id;

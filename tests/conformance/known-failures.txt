@@ -1,7 +1,7 @@
 #
 # (Uses corrected .expected files extracted from upstream .expect.md)
 # 298 upstream error fixtures excluded from comparison
-# Baseline: 435/1717 pass (25.3%), 0 panics, 1282 divergences
+# Baseline: 442/1717 pass (25.7%), 0 panics, 1275 divergences
 # Format: <relative-path-from-upstream-fixtures/>
 # Known upstream fixtures that our compiler does not yet match.
 # One fixture filename per line. Lines starting with '#' are comments.
@@ -276,15 +276,12 @@ effect-derived-computations/usestate-derived-from-prop-no-show-in-data-flow-tree
 empty-catch-statement.ts
 error.assign-ref-in-effect-hint.js
 error.bug-invariant-codegen-methodcall.js
-error.bug-invariant-couldnt-find-binding-for-decl.js
 error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-unnamed-temporary.js
 error.call-args-destructuring-asignment-complex.js
-error.default-param-accesses-local.js
 error.dont-hoist-inline-reference.js
 error.hoist-optional-member-expression-with-conditional-optional.js
 error.hoist-optional-member-expression-with-conditional.js
-error.hoisting-simple-function-declaration.js
 error.invalid-hoisting-setstate.js
 error.invalid-jsx-captures-context-variable.js
 error.invalid-known-incompatible-function.js
@@ -304,9 +301,6 @@ error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency
 error.todo-for-loop-with-context-variable-iterator.js
 error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
-error.todo-hoist-function-decls.js
-error.todo-hoisted-function-in-unreachable-code.js
-error.todo-hook-call-spreads-mutable-iterator.js
 error.todo-missing-source-locations.js
 error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js
@@ -350,7 +344,6 @@ fast-refresh-refresh-on-const-changes-dev.js
 fast-refresh-reloading.js
 fbt/bug-fbt-plural-multiple-function-calls.ts
 fbt/bug-fbt-plural-multiple-mixed-call-tag.tsx
-fbt/error.todo-fbt-as-local.js
 fbt/error.todo-fbt-unknown-enum-value.js
 fbt/error.todo-multiple-fbt-plural.tsx
 fbt/fbs-params.js

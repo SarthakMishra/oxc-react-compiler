@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Stage 4d)
-> Conformance: **435/1717 (25.3%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 4d (Frozen-mutation false negatives): COMPLETE, +9 fixtures (426->435). 7 of 9 planned frozen-mutation fixtures fixed plus 2 bonus. Name-based freeze tracking introduces 4 IIFE false positives (new bail-outs, shifted from slots-MATCH/DIFFER).
-> Known-failures: 1282.
+> Last updated: 2026-03-25 (post Stage 4e-A)
+> Conformance: **442/1717 (25.7%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 4e-A (Upstream error bail-outs): COMPLETE, +7 fixtures (435->442). Hoisted function decls in unreachable code (3), fbt param name detection (1), default-param arrow expressions (1), catch clause destructuring (1), hook spread arguments (1).
+> Known-failures: 1275. Error.* fixtures remaining in KF: 39 (37 top-level + 2 fbt/).
 
 ---
 
@@ -15,7 +15,7 @@
 |----------|-------|-------------|
 | Both compile, slots DIFFER | ~699 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** |
 | Both compile, slots MATCH | ~237 (18%) | Same slots, codegen structure diffs. **B2 pattern (temps vs original names) dominates: 40 fixtures.** |
-| We compile, they don't | ~201 (15%) | Missing validations. **75 are UPSTREAM ERROR fixtures (already correct). 32 need preserveExistingMemoization. 12 remain for Todo error detection (15 done). 2 frozen-mutation remain (9 fixed in Stage 4d).** |
+| We compile, they don't | ~194 (15%) | Missing validations. **75 are UPSTREAM ERROR fixtures (7 more fixed in Stage 4e-A). 32 need preserveExistingMemoization. 5 remain for Todo error detection (22 done). 2 frozen-mutation remain (9 fixed in Stage 4d).** |
 | We bail, they compile | ~73 (6%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking) |
 | Both no memo (format diff) | 76 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
 
@@ -49,7 +49,7 @@ The path is clearer but requires significant compiler infrastructure work:
 | Todo error detection (remaining) | 12 | +5-8 | LOW — need hoisting, optional terminals, default params |
 | Frozen-mutation validation fixes | 2 remain | +9 done (Stage 4d) | MEDIUM | 2 remaining need effect callback + JSX capture analysis |
 
-**Conservative estimate:** +141-266 from 435 base = 576-701. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +134-259 from 442 base = 576-701. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
@@ -199,9 +199,9 @@ Completed 2026-03-25 (extended investigation). Breakdown of ~225 "we compile, th
 
 | Sub-category | Count | Action Needed |
 |-------------|-------|---------------|
-| UPSTREAM ERROR fixtures (expected output IS the error) | 75 | Must emit matching error message to pass |
+| UPSTREAM ERROR fixtures (expected output IS the error) | 29 remaining in KF (was 75, 22 fixed in Stages 4c+4e-A, others already passing) | Must bail (not transform) to pass — error message matching NOT required |
 | `validatePreserveExistingMemoizationGuarantees` gaps | 32 | Extend existing preserve-memo validation |
-| `Todo` error detection (unimplemented features) | 12 remaining (15 done) | 12 need hoisting, optional terminals, default params, capture analysis |
+| `Todo` error detection (unimplemented features) | 5 remaining (22 done) | 5 need hoisting, optional terminals, context var detection |
 | Frozen-mutation detection gaps | 2 remain (9 fixed) | 9 fixed in Stage 4d; 2 remain (effect callback, JSX capture) |
 | Other validation gaps (ref-access, reassignment, hooks) | ~80 | Various per-validation fixes |
 
@@ -234,13 +234,12 @@ Completed 2026-03-25. Implemented bail-outs for 15 of 27 Todo-error fixtures:
 
 **Key finding:** The 16 fixtures originally identified as targets were already passing. The actual Todo-error fixtures were in the known-failures list (UPSTREAM ERROR set). Of 27 in that set, 15 fixed, 12 remain.
 
-**Remaining 12 Todo-error fixtures** (require more complex handling):
-- Hoisting patterns (5) — need hoisting infrastructure
-- Optional terminal issues (3) — need optional chaining terminal handling
-- Arrow in default params (1) — need default param lowering
-- Update expression on captured vars (1) — need capture analysis
-- Hook spread (1) — need spread-in-hook detection
-- For-loop context vars (1) — need for-loop context variable handling
+**Remaining 5 Todo-error fixtures** (require more complex handling — 7 of original 12 fixed in Stage 4e-A):
+- Hoisting patterns (2) — `error.todo-functiondecl-hoisting.tsx`, `error.todo-valid-functiondecl-hoisting.tsx` — need function-level hoisting infrastructure
+- Optional terminal issues (1) — `error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js` — need optional chaining terminal handling
+- Update expression on context vars (1) — `error.todo-handle-update-context-identifiers.js` — BLOCKED: nested HIR builders don't emit LoadContext (see blocker report in Stage 4e-A)
+- For-loop context vars (1) — `error.todo-for-loop-with-context-variable-iterator.js` — need for-loop context variable handling
+- **Fixed in 4e-A (moved from this list):** hoisted-function-in-unreachable-code, hoist-function-decls, hook-call-spreads-mutable-iterator, default-param-accesses-local, fbt-as-local, bug-invariant-couldnt-find-binding-for-decl, hoisting-simple-function-declaration
 
 #### Stage 4d: Fix Frozen-Mutation False Negatives -- COMPLETE (+9 net, 426->435)
 
@@ -252,13 +251,54 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
   - `error.invalid-jsx-captures-context-variable.js` — complex JSX capture pattern, needs deeper analysis
 - **New regression:** 4 IIFE-pattern fixtures (`capturing-func-alias-*-iife.js`) now falsely bail. See Stage 2d note below.
 
-#### Stage 4e: UPSTREAM ERROR Fixture Handling (75 fixtures)
+#### Stage 4e: UPSTREAM ERROR Fixture Handling (39 error.* remain in KF post 4e-A, was 43)
 
-- [ ] These fixtures have error messages as their expected output (not compiled code)
-- [ ] To pass: we must emit the EXACT same error message and bail
-- [ ] Requires matching upstream error format strings precisely
-- [ ] **Potential gain:** +30-50 fixtures (depends on how many error formats we can match)
-- [ ] **Risk:** LOW-MEDIUM — tedious but straightforward per-error implementation
+**Critical correction (2026-03-25):** The conformance test does NOT require matching exact error messages. It only checks `!compile_result.transformed` (line 781 of conformance_tests.rs). To pass an UPSTREAM ERROR fixture, we just need to bail (not transform). This is much simpler than originally described.
+
+**Revised breakdown of 39 error.* fixtures remaining in known-failures (post Stage 4e-A):**
+
+| Sub-category | Count | What we need to bail |
+|-------------|-------|---------------------|
+| "Compilation Skipped: preserve-memo" | 11 | `validatePreserveExistingMemoizationGuarantees` must detect and bail — overlaps Stage 4b |
+| "Todo: hoisting/optional/context-var/etc" | 7 | Remaining unsupported patterns: hoisting (3), optional member expr (2), context var update (1), missing source locs (1) — need deeper compiler infra |
+| "Invariant: ..." (upstream internal errors) | 3 | MethodCall codegen (1), inconsistent destructuring (1), unnamed temporary (1) — 3 of original 6 fixed in 4e-A |
+| "Error: This value cannot be modified" | 3 | Frozen-mutation detection — overlaps Stage 4d remaining |
+| "Error: Cannot modify locals after render" | 2 | `validateLocalsNotReassignedAfterRender` gaps |
+| "Error: Cannot access refs during render" | 4 | `validateNoRefAccessInRender` gaps (ref-like-name patterns + pass-ref + mutate-ref) |
+| "Error: setState from useMemo" | 1 | setState-in-render validation gap (already partially fixed in 4cd3b20) |
+| "Error: validate-*" | 3 | validate-blocklisted-imports (1), validate-object-entries/values-mutation (2) |
+| Compiled output (NOT UPSTREAM ERROR) | 5 | Slots-DIFFER/MATCH issues, not bail-out issues |
+
+**Tractable sub-tasks (no new infrastructure needed):**
+
+- [x] **4e-A: Mixed bail-outs — COMPLETE (+7, 435->442)** — implemented 7 new bail-outs across 3 files: hoisted function decls in unreachable code (3 fixtures: `error.todo-hoist-function-decls.js`, `error.todo-hoisted-function-in-unreachable-code.js`, `error.hoisting-simple-function-declaration.js`), fbt parameter name detection (1: `fbt/error.todo-fbt-as-local.js`), default-param arrow/function expressions (1: `error.default-param-accesses-local.js`), catch clause destructuring (1: `error.bug-invariant-couldnt-find-binding-for-decl.js`), hook spread arguments (1: `error.todo-hook-call-spreads-mutable-iterator.js`). Files: `validate_no_unsupported_nodes.rs`, `build.rs`, `known-failures.txt`. **Note:** `error.todo-handle-update-context-identifiers.js` (Group 6, UpdateExpression on context vars) was NOT fixed — nested HIR builders don't emit `LoadContext` instructions, so context variables can't be detected by walking the nested HIR. See blocker report below.
+- [ ] **4e-B: Locals-reassigned + ref-access + setState bail-outs (5 fixtures)** — tighten existing validators (`validate_no_ref_access_in_render`, `validate_locals_not_reassigned_after_render`, setState checks) to catch these 5 specific patterns. Potential gain: +5.
+- [ ] **4e-C: Frozen-mutation remaining (3 fixtures)** — overlaps Stage 4d remaining. Need effect callback mutation + JSX capture analysis. Potential gain: +3.
+- [ ] **4e-D: Preserve-memo gaps (11 fixtures)** — overlaps Stage 4b. BLOCKED by `finish_in_scope` issue (see Stage 4b notes). Potential gain: +11 but requires scope inference fix.
+- [ ] **4e-E: Todo remaining (7 fixtures)** — overlaps Stage 4c remaining. Need hoisting (3), optional member expr (2), context var update (1), missing source locs (1). Potential gain: +7 but requires new infrastructure. Context var update BLOCKED by nested HIR LoadContext gap.
+
+**Stage 4e-A done: +7 fixtures gained.**
+**Remaining tractable gain (4e-B): +5 fixtures, no new infrastructure.**
+**Full potential (all remaining sub-tasks): +26 fixtures.**
+**Risk:** LOW for 4e-B. MEDIUM-HIGH for 4e-C/D/E.
+
+#### Blocker Report — Nested HIR LoadContext gap (2026-03-25)
+
+**Affects:** `error.todo-handle-update-context-identifiers.js` (Stage 4e-E, 1 fixture)
+
+**Approach attempted:** Walk the nested function HIR looking for `PostfixUpdate`/`PrefixUpdate` instructions whose operand is a "context variable" (captured from outer scope). Tried collecting local declaration IDs and treating any non-local variable as a context variable.
+
+**Assumption that was wrong:** Expected nested HIR to contain `LoadContext` instructions for captured variables (as upstream does). In reality, our nested `HIRBuilder` emits `LoadLocal` for all variables, whether local or captured from outer scope.
+
+**What was discovered:** The nested HIR builder creates a fresh scope and fresh `IdentifierId` numbering for each nested function. Variables captured from the parent are lowered as `LoadLocal` with a new ID, not `LoadContext`. The distinction between "local" and "context" is only resolved later in the pipeline (during scope inference / codegen), not at HIR construction time. This means a validation pass running on the raw nested HIR cannot distinguish context variables from locals.
+
+**Prerequisites for a successful attempt:**
+
+- Either emit `LoadContext` in nested HIR builders (requires threading parent scope bindings into child builder), OR
+- Run this validation after scope inference when context variables are identified, OR
+- Pass parent scope binding names to the validation and compare by name (fragile but possible)
+
+**Do NOT attempt again until:** The HIR builder's nested function lowering is enhanced to distinguish context variables, or a post-scope-inference validation hook exists.
 
 ---
 
@@ -307,15 +347,18 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 | B2: Variable name preservation | +20-30 | 464-501 | MEDIUM | 40 fixtures, scope output naming |
 | Stage 3: Scope inference (±1/±2 diffs) | +50-100 | 514-601 | HIGH | ~699 pool, cascading regression risk |
 | Stage 4b: Preserve-memo validation | +15-25 | 529-626 | MEDIUM | 32 fixtures |
-| Stage 4c: Todo error detection | +15 (done, 12 remain) | 426 | LOW | 15/27 done. Remaining 12 need hoisting, optional terminals, etc. |
+| Stage 4c: Todo error detection | +15 (done, 5 remain) | 426 | LOW | 22/27 done (15 in 4c + 7 in 4e-A). Remaining 5 need hoisting, optional terminals, context vars. |
 | Stage 4d: Frozen-mutation false negatives | +9 (done) | 435 | MEDIUM | Completed. 7/9 planned + 2 bonus. 2 remain (effect callback, JSX capture). |
-| Stage 4e: Upstream error matching | +30-50 | 574-704 | LOW-MED | 75 fixtures |
+| Stage 4e-A: Upstream error bail-outs | +7 (done) | 442 | LOW | 7/43 done. 4e-B through 4e-E remain. |
+| Stage 4e-B/C/D/E: Remaining upstream errors | +23-43 | 465-485 | LOW-HIGH | 4e-B (5, LOW), 4e-C (3, MED), 4e-D (11, MED-HIGH), 4e-E (7, HIGH) |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 76 fixtures, new passes needed |
-| **Total remaining** | **+169-319** | **604-754** | | From 435 base |
+| **Total remaining** | **+162-312** | **604-754** | | From 442 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
 **Key learning from Stage 2a/2b:** Most bail-outs come from specific validations, not silent/0-scope issues. File-level bail-outs were low-hanging fruit (+1 net from removing 4).
+
+**Key correction (2026-03-25):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-A, **39 error.* fixtures remain in known-failures** (37 top-level + 2 fbt/). Down from 43 pre-4e-A.
 
 **Key learning from Stage 2c:** Fixing bail-outs does not directly increase conformance if the newly-compiling fixtures land in slots-DIFFER/MATCH pools. Bail-out fixes unblock fixtures for FUTURE scope/codegen improvements but yield +0 net on their own.
 
@@ -325,7 +368,7 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
 
-**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +45-88 remaining) + codegen fixes (B2 + 1d, +35-60). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~576. Optimistic: 700+.
+**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +38-81 remaining) + codegen fixes (B2 + 1d, +35-60). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~576. Optimistic: 700+.
 
 **Key principle:** Each stage starts with investigation (sub-task "a") that produces a fixture-level breakdown. If the investigation shows estimates are wrong, the plan is updated before implementation begins. No blind implementation.
 
@@ -456,4 +499,6 @@ All paths relative to `crates/oxc_react_compiler/`.
 17. **B2 (variable name preservation) is the dominant tractable slots-MATCH pattern.** 40 fixtures where we use temps but upstream preserves original names in scope outputs. Single largest fixable sub-pattern in the 237-fixture slots-MATCH pool.
 18. **Todo error fixtures live in known-failures, not in the "not in KF" set.** The 16 fixtures initially identified as Todo-error targets were already passing. The actual Todo-error fixtures were in the UPSTREAM ERROR subset of known-failures. Always check known-failures.txt for UPSTREAM ERROR fixtures when looking for validation gaps.
 19. **Low-hanging Todo errors yield good ROI.** Stage 4c gained +15 from simple pattern detection (try-without-catch, computed keys, value-blocks-in-try, throw-in-try, fbt locals). The remaining 12 need deeper compiler infrastructure (hoisting, optional terminals, default params).
-20. **Name-based freeze tracking trades false negatives for false positives.** Stage 4d gained +9 by tracking frozen identifiers by name (solving cross-scope IdentifierId mismatch), but introduced 4 IIFE-pattern false positives where captured variables are mutated inside IIFEs. Net gain is still positive (+9 gained, -4 shifted to bail = +5 net new passing + 4 category shifts). Future improvement: scoped name tracking that understands IIFE boundaries.
+20. **UPSTREAM ERROR conformance only checks `!transformed`, not error message content.** The conformance test (line 775-781 of conformance_tests.rs) passes an UPSTREAM ERROR fixture if `compile_result.transformed` is false. We do NOT need to match the exact upstream error string. This makes the task much simpler: just bail, don't need error format matching.
+21. **Name-based freeze tracking trades false negatives for false positives.** Stage 4d gained +9 by tracking frozen identifiers by name (solving cross-scope IdentifierId mismatch), but introduced 4 IIFE-pattern false positives where captured variables are mutated inside IIFEs. Net gain is still positive (+9 gained, -4 shifted to bail = +5 net new passing + 4 category shifts). Future improvement: scoped name tracking that understands IIFE boundaries.
+22. **Nested HIR builders don't emit LoadContext instructions.** When a nested function is lowered by a child `HIRBuilder`, context variables (captured from outer scope) are represented as plain `LoadLocal` in the nested HIR, not `LoadContext`. This means walking the nested HIR cannot distinguish context variables from local variables. The upstream compiler uses `LoadContext` to identify captured variables in nested lambdas. Fixing `error.todo-handle-update-context-identifiers.js` requires either (a) emitting `LoadContext` in nested builders, or (b) passing parent scope binding information to the validation pass. This is a structural limitation, not a simple pattern-matching fix.
