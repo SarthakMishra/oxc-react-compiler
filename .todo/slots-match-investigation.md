@@ -1,0 +1,137 @@
+# Stage 1a: "Slots MATCH" Investigation Results
+
+> Completed: 2026-03-25
+> Pool: 239 fixtures where both compile, same slot count, different structure
+
+## Sub-Pattern Breakdown
+
+| Pattern | Count | % | Fixable? | Est. Fixtures Fixed |
+|---------|-------|---|----------|---------------------|
+| B: Variable naming | 126 | 52.7% | YES | 40-80 |
+| A: Instruction ordering | 55 | 23.0% | PARTIAL | 15-30 |
+| C: Assignment/structure | 14 | 5.9% | MIXED | 5-10 |
+| Other (scope boundary, JSX, etc.) | 44 | 18.4% | HARD | 5-15 |
+
+## Pattern B: Variable Naming (126 fixtures, 52.7%)
+
+### B1: High-numbered temp variables (dominant)
+
+**Problem:** We emit temp variables with HIR instruction IDs (`t5`, `t6`, `t7`, `t8`, `t10`, `t11`) instead of renumbering from `t0` per function like upstream does.
+
+**Example (rules-of-hooks):**
+```
+// Ours:   let t8; useHook(); if ($[0] !== props ...
+// Theirs: useHook(); let t0; if ($[0] !== props ...
+```
+
+**Example (simple.js):**
+```
+// Ours:   let t7; let t11;
+// Theirs: (declared inside scope) let t0; ... let t1;
+```
+
+**Root cause:** `codegen.rs` uses `InstructionId` as the temp var name suffix. Upstream's `ReactiveFunction` codegen renumbers temps sequentially from 0.
+
+**Fix complexity:** MEDIUM — Need a temp counter in codegen that allocates fresh t0, t1, t2... instead of using instruction IDs. Must handle nested scopes correctly.
+
+**Estimated impact:** Directly fixes naming in 48+ fixtures. Combined with other improvements, could help 60-80.
+
+### B2: Temps where upstream uses original names (34 fixtures)
+
+**Problem:** We assign to a temp variable and then assign to the original; upstream assigns directly to the original.
+
+**Example (type-test-field-store.js):**
+```
+// Ours:   let t10; ... t10 = x.t; ... let z = t10;
+// Theirs: let x; ... x = {...}; ... const z = x.t;
+```
+
+**Root cause:** Our codegen doesn't preserve original variable names for scope outputs when possible. Upstream tries to reuse the original declaration name.
+
+**Fix complexity:** HIGH — Requires changes to how scope outputs are emitted. The `collect_all_scope_declarations` system complicates this.
+
+### B3: Original names where upstream uses temps (23 fixtures)
+
+Opposite of B2. Less common, lower priority.
+
+### B4: Different original names or temp numbering (10 fixtures)
+
+Edge cases with `t0` vs `t1` numbering within scopes, different `$` conflict resolution, etc.
+
+## Pattern A: Instruction Ordering (55 fixtures, 23.0%)
+
+### A1: Variable declarations at function level instead of inside control flow (primary)
+
+**Problem:** Our `collect_all_scope_declarations` pre-declares ALL scope output variables at function level. Upstream declares them inside the relevant control flow block.
+
+**Example (simple.js):**
+```
+// Ours:   let t7; let t11; if (x) { if ($[0] !== y) { t7 = ... } }
+// Theirs: if (x) { let t0; if ($[0] !== y) { t0 = ... } }
+```
+
+**Root cause:** `collect_all_scope_declarations` in `codegen.rs` (documented as load-bearing in .todo/index.md). Removing it causes render collapse 96%→24%.
+
+**Fix complexity:** HIGH — Cannot simply remove. Need to change declaration placement strategy to emit declarations at narrowest possible scope while maintaining correctness.
+
+### A2: Hook calls after variable declarations
+
+**Problem:** We emit `let t8; useHook();` but upstream emits `useHook(); let t0;`.
+
+**Root cause:** All scope output declarations are emitted before any instructions.
+
+**Fix complexity:** MEDIUM — Related to A1; fixing declaration placement would fix this too.
+
+### A3: Try/catch mishandling
+
+**Problem:** Some fixtures show try/catch being dropped or restructured incorrectly.
+
+**Root cause:** Try/catch lowering in HIR or codegen. Separate issue from naming/ordering.
+
+**Fix complexity:** HIGH — requires investigation of try-catch codegen path.
+
+## Pattern C: Structural Differences (58 fixtures combined)
+
+- **C1: Scope output variable choice** — We cache a derived value instead of the original object (5-10 fixtures)
+- **C2: Extra `return undefined`** in function expressions (affects ~10 fixtures, simple codegen fix)
+- **C3: Function outlining** — Upstream outlines certain lambdas to `_temp` at module scope (5 fixtures, not implemented)
+- **C4: `$` conflict resolution** — Different strategy for conflicting dollar-sign variables (1 fixture)
+- **C5: Catch clause handling** — We emit `catch (e)` where upstream emits `catch {}` (2-3 fixtures)
+
+## Recommended Implementation Order
+
+### Stage 1b: Temp Variable Renumbering (B1) -- COMPLETE
+
+~~**Estimated gain:** +25-40 fixtures~~
+
+**Completed 2026-03-25. Actual gain: +2 fixtures (403→405).**
+
+**What was implemented:**
+- `renumber_temps_in_output` in `codegen.rs` — two-pass atomic temp renumbering (pass 1: collect all `tN` identifiers, pass 2: replace with sequential `t0`, `t1`, `t2`...)
+- Fixed `is_temp_place` to use pattern matching instead of ID-based check
+- Fixed Unicode safety in `replace_identifier_in_output` (char-boundary-safe slicing)
+- Fixed cascade replacement bug with atomic two-pass approach (avoids `t1`→`t0` then `t10`→`t00` problem)
+- Added `$` to word boundary detection for JS identifier matching
+
+**Fixtures gained:** `gating/multi-arrow-expr-export-gating-test.js`, `gating/multi-arrow-expr-gating-test.js`
+
+**Why the estimate was wrong:** The B1 sub-pattern (126 fixtures, "high-numbered temp variables") was counted by examining naming differences alone. In reality, most of those 126 fixtures ALSO differ in instruction ordering (where declarations appear) or scope output name preservation (B2). Renumbering temps to sequential names is necessary but not sufficient — the declarations also need to be in the right place, and scope outputs need to use original variable names where upstream does. Only 2 fixtures had temp numbering as their sole remaining difference.
+
+### Stage 1c: Minor Codegen Fixes
+- **C2: Remove extra `return undefined`** — +5-10 fixtures, trivial fix
+- **C5: Empty catch clause** — +2-3 fixtures
+- **B4 edge cases** — +2-5 fixtures
+
+### Stage 1d (deferred): Instruction Ordering (A1)
+- **Estimated gain:** +15-30 fixtures
+- **Risk:** HIGH — collect_all_scope_declarations is load-bearing
+- **Requires:** Careful redesign of declaration placement strategy
+- **Note:** This overlaps heavily with naming fixes; some A1 fixtures will be fixed by B1 alone
+
+### Revised Estimates After Stage 1b
+
+**Stage 1b delivered +2 (not +25-40).** The key insight: naming and ordering are entangled. A fixture that differs in temp naming almost always also differs in declaration placement or instruction ordering. Fixing one without the other does not pass conformance.
+
+**Revised total from Stage 1:** +7-15 (1c: minor codegen) + 15-30 (1d: declaration placement, HIGH risk) = +22-45 total. But Stage 1d carries significant regression risk due to `collect_all_scope_declarations` being load-bearing.
+
+**Recommendation:** Pursue Stage 1c (low-hanging codegen fixes) next, then evaluate whether Stage 1d is worth the risk vs moving to Stage 2 (false-positive bail-outs, MEDIUM risk, larger pool).

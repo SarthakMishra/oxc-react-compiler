@@ -1,8 +1,8 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Phase 133)
-> Conformance: **403/1717 (23.5%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined expected files with `compilationMode: "all"` in Phase 133. Known-failures: 1314.
+> Last updated: 2026-03-25 (post Stage 1b)
+> Conformance: **405/1717 (23.6%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 1b temp renumbering: +2 net (403→405). Known-failures: 1312.
 
 ---
 
@@ -26,30 +26,33 @@
 **Root causes:** Variable naming (`t0` vs original names), instruction ordering within scopes, scope output placement, dependency list ordering.
 **Risk:** LOW — these are the closest to passing, same semantic structure.
 
-#### Stage 1a: Investigate "Slots MATCH" Patterns (est: 0 fixtures, prerequisite)
+#### Stage 1a: Investigate "Slots MATCH" Patterns -- COMPLETE
 
-- [ ] Sample 20-30 "slots MATCH" fixtures, diff our output vs expected
-- [ ] Categorize into sub-patterns: (a) variable naming, (b) instruction ordering, (c) dependency list ordering, (d) scope boundary placement, (e) other
-- [ ] For each sub-pattern, count affected fixtures and estimate fix difficulty
-- [ ] **Deliverable:** Sub-pattern breakdown with fixture counts, prioritized by ROI
-- **If estimate is wrong:** Re-scope Stage 1b/1c based on actual findings
+Completed 2026-03-25. Full results in [slots-match-investigation.md](slots-match-investigation.md).
+Found 4 sub-patterns: variable naming (126, 52.7%), instruction ordering (55, 23.0%), structural (58), other (44).
 
-#### Stage 1b: Fix Dominant "Slots MATCH" Pattern (est: +25-40 fixtures)
+#### Stage 1b: Temp Variable Renumbering -- COMPLETE (+2 net, not +25-40)
 
-- [ ] Implement fix for the most common sub-pattern from 1a
-- [ ] Run conformance, verify gains, update known-failures.txt
-- **If blockers found:** Document in Stage 1d investigation task
+Completed 2026-03-25. Implemented `renumber_temps_in_output` in `codegen.rs` (two-pass atomic rename, t0/t1/t2 sequential).
+Also fixed `is_temp_place` pattern matching, Unicode safety in `replace_identifier_in_output`, and `$` word boundary.
+**Gained only +2 fixtures** (403→405): `gating/multi-arrow-expr-export-gating-test.js`, `gating/multi-arrow-expr-gating-test.js`.
+Estimate of +25-40 was wrong: most "naming" differences also involve instruction ordering or scope output name preservation,
+which temp renumbering alone cannot fix. See [slots-match-investigation.md](slots-match-investigation.md) for revised analysis.
 
-#### Stage 1c: Fix Secondary "Slots MATCH" Patterns (est: +15-20 fixtures)
+#### Stage 1c: Minor Codegen Fixes (revised est: +5-10 fixtures)
 
-- [ ] Implement fixes for remaining tractable sub-patterns from 1a
-- [ ] Run conformance, verify gains, update known-failures.txt
+- [ ] C2: Remove extra `return undefined` in function expressions (~5-10 fixtures, simple codegen fix)
+- [ ] C5: Empty catch clause — emit `catch {}` instead of `catch (e)` (~2-3 fixtures)
+- [ ] B4: Edge case temp numbering within scopes (~2-5 fixtures)
+- **Note:** Original +15-20 estimate reduced. Most "naming" fixes require instruction ordering (Stage 1d), not just cosmetic changes.
 
-#### Stage 1d: Replan — "Slots MATCH" Residual (est: 0 fixtures, planning)
+#### Stage 1d: Declaration Placement / Instruction Ordering (est: +15-30, HIGH risk)
 
-- [ ] Categorize remaining "slots MATCH" failures after 1b/1c
-- [ ] If >50 remain, investigate whether they share a common root cause
-- [ ] Update this plan with new sub-tasks or mark as deferred
+- [ ] Redesign `collect_all_scope_declarations` to emit declarations at narrowest possible scope instead of function level
+- [ ] Fix hook call ordering (hook calls before temp declarations, not after)
+- [ ] This is the dominant remaining "slots MATCH" blocker — 55+ fixtures depend on instruction ordering, and many of the 126 "naming" fixtures also need this
+- **Risk:** HIGH — `collect_all_scope_declarations` is load-bearing (removing it collapses render 96%→24%). Requires careful incremental approach.
+- **Prerequisite:** Must understand exactly which declarations can be moved safely vs which must stay at function level
 
 ---
 
@@ -174,17 +177,20 @@
 
 ### Milestone Summary
 
-| Stage | Target | Cumulative | Risk |
-|-------|--------|------------|------|
-| Stage 1: Slots MATCH codegen | +40-60 | 443-463 | LOW |
-| Stage 2: False-positive bails | +50-70 | 493-533 | MEDIUM |
-| Stage 3: ±1/±2 slot diffs | +30-50 | 523-583 | HIGH |
-| Stage 4: Missing validations | +20-30 | 543-613 | LOW |
-| Stage 5: Format + stretch | +10-20 | 553-633 | MIXED |
-| **Total** | **+150-230** | **553-633** | |
+| Stage | Target | Cumulative (from 405) | Risk | Notes |
+|-------|--------|-----------------------|------|-------|
+| Stage 1b: Temp renumbering | +2 (done) | 405 | LOW | Completed. Estimate was +25-40, actual +2. |
+| Stage 1c: Minor codegen fixes | +5-10 | 410-415 | LOW | return undefined, catch clause, edge cases |
+| Stage 1d: Declaration placement | +15-30 | 425-445 | HIGH | collect_all_scope_declarations redesign |
+| Stage 2: False-positive bails | +50-70 | 475-515 | MEDIUM | |
+| Stage 3: ±1/±2 slot diffs | +30-50 | 505-565 | HIGH | |
+| Stage 4: Missing validations | +20-30 | 525-595 | LOW | |
+| Stage 5: Format + stretch | +10-20 | 535-615 | MIXED | |
+| **Total remaining** | **+130-210** | **535-615** | | |
 
-**Conservative path to 600:** Stages 1-4 (est 543-613). Stage 3 must deliver well.
-**Optimistic path to 600:** Stages 1-3 alone if estimates hold (est 523-583 + Stage 4 = 543-613).
+**Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). The real "slots MATCH" gains require instruction ordering changes (Stage 1d), which is high-risk. The plan's original +40-60 for Stage 1 was heavily overestimated because it assumed naming was the primary diff, when in reality naming differences co-occur with ordering differences.
+
+**Revised path to 600:** Requires strong delivery on Stages 2-4. Stage 1d is optional for 600 if Stages 2-4 deliver at the high end. Conservative path: 525-595 without Stage 1d.
 
 **Key principle:** Each stage starts with investigation (sub-task "a") that produces a fixture-level breakdown. If the investigation shows estimates are wrong, the plan is updated before implementation begins. No blind implementation.
 
@@ -306,3 +312,4 @@ All paths relative to `crates/oxc_react_compiler/`.
 8. **Performance regression from Phases 113-130.** O(n^2+) scaling in effects/aliasing passes. Deferred.
 9. **Expected file generation must use `compilationMode: "all"`.** Fixed in Phase 133.
 10. **Each stage must start with investigation.** Blind implementation wastes effort. Investigate → plan → implement → verify → replan.
+11. **Naming diffs co-occur with ordering diffs.** Temp renumbering alone gained only +2 (expected +25-40). Most "variable naming" fixtures also differ in instruction ordering or declaration placement. Fixing names without fixing ordering does not pass conformance.

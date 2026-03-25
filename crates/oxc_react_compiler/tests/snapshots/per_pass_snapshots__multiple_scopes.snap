@@ -9,27 +9,27 @@ function Summary(t0) {
   let { items, threshold } = t0;
   let count;
   let label;
-  let t13;
-  let t25;
+  let t1;
+  let t2;
   if ($[0] !== items.length || $[1] !== threshold) {
     count = items.length;
     let hasMany = (count > threshold);
     if (hasMany) {
-      t13 = "Many items";
+      t1 = "Many items";
     } else {
-      t13 = "Few items";
+      t1 = "Few items";
     }
-    label = t13;
-    t25 = <div><span>{label}</span><span>({count})</span></div>;
+    label = t1;
+    t2 = <div><span>{label}</span><span>({count})</span></div>;
     $[0] = items.length;
     $[1] = threshold;
     $[2] = count;
     $[3] = label;
-    $[4] = t25;
+    $[4] = t2;
   } else {
     count = $[2];
     label = $[3];
-    t25 = $[4];
+    t2 = $[4];
   }
-  return t25;
+  return t2;
 }

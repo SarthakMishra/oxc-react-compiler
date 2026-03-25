@@ -8,15 +8,15 @@ function UserCard(t0) {
   const $ = _c(4);
   let { name, age, role } = t0;
   if (role === undefined) { role = "member"; }
-  let t18;
+  let t1;
   if ($[0] !== age || $[1] !== name || $[2] !== role) {
-    t18 = <div><h2>{name}</h2><p>Age: {age}</p><p>Role: {role}</p></div>;
+    t1 = <div><h2>{name}</h2><p>Age: {age}</p><p>Role: {role}</p></div>;
     $[0] = age;
     $[1] = name;
     $[2] = role;
-    $[3] = t18;
+    $[3] = t1;
   } else {
-    t18 = $[3];
+    t1 = $[3];
   }
-  return t18;
+  return t1;
 }

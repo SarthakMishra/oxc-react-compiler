@@ -6,30 +6,30 @@ import { c as _c } from "react/compiler-runtime";
 
 function useCounter() {
   const $ = _c(4);
-  let t2;
-  let t9;
+  let t0;
+  let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = 0;
-    $[0] = t2;
+    t0 = 0;
+    $[0] = t0;
   } else {
-    t2 = $[0];
+    t0 = $[0];
   }
-  let t3 = useState(t2);
+  let t2 = useState(t0);
   let count;
   let setCount;
-  ([count, setCount] = t3);
+  ([count, setCount] = t2);
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    let t8 = () => {
+    let t3 = () => {
       return setCount((count + 1));
     };
-    t9 = { count, increment: t8 };
-    $[1] = t9;
+    t1 = { count, increment: t3 };
+    $[1] = t1;
     $[2] = count;
     $[3] = setCount;
   } else {
-    t9 = $[1];
+    t1 = $[1];
     count = $[2];
     setCount = $[3];
   }
-  return t9;
+  return t1;
 }

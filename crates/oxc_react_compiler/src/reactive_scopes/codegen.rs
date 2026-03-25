@@ -29,13 +29,16 @@ const STMT_ONLY_SENTINEL: &str = "\x01STMT";
 fn is_temp_place(place: &Place) -> bool {
     match &place.identifier.name {
         None => true,
-        // After promote_used_temporaries, unnamed temps get synthetic names like "t{id}".
-        // Detect these so we can still inline them.
-        Some(name) => {
-            let expected = format!("t{}", place.identifier.id.0);
-            name == &expected
-        }
+        // After promote_used_temporaries, unnamed temps get synthetic names
+        // like "t{id}". Detect these so we can still inline them.
+        Some(name) => is_temp_var_name(name),
     }
+}
+
+/// Check if a name matches the compiler temporary pattern `t{digits}`.
+/// NOTE: Duplicated in prune_scopes.rs — both are module-private.
+fn is_temp_var_name(name: &str) -> bool {
+    name.starts_with('t') && name.len() >= 2 && name[1..].chars().all(|c| c.is_ascii_digit())
 }
 
 /// Count how many times each temp identifier is *used* (appears on the RHS)
@@ -1436,7 +1439,95 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
     );
 
     output.push_str("}\n");
+    renumber_temps_in_output(&mut output);
     output
+}
+
+/// Renumber all compiler-generated temporaries (`t5`, `t7`, `t10`, ...) in the
+/// codegen output string to sequential `t0`, `t1`, `t2`, ... in order of first
+/// appearance. This matches upstream's sequential temp naming convention.
+///
+/// Uses a two-pass approach (discover then replace) to avoid cascade issues
+/// where sequential string replacements like `t7→t1` then `t1→t0` would
+/// double-rename.
+fn renumber_temps_in_output(output: &mut String) {
+    fn is_ident_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '_' || c == '$'
+    }
+
+    // Single-pass scan and replace: find each t{N} token, look up its
+    // sequential replacement, and build the result string directly.
+    let mut seen: FxHashMap<String, u32> = FxHashMap::default();
+    let mut next_id = 0u32;
+    let mut any_rename_needed = false;
+
+    // First pass: discover all temp tokens and assign sequential IDs.
+    let chars: Vec<char> = output.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == 't' {
+            let start = i;
+            i += 1;
+            if i < chars.len() && chars[i].is_ascii_digit() {
+                while i < chars.len() && chars[i].is_ascii_digit() {
+                    i += 1;
+                }
+                let at_end = i >= chars.len() || !is_ident_char(chars[i]);
+                let at_start = start == 0 || !is_ident_char(chars[start - 1]);
+                if at_start && at_end {
+                    let token: String = chars[start..i].iter().collect();
+                    let assigned = *seen.entry(token.clone()).or_insert_with(|| {
+                        let id = next_id;
+                        next_id += 1;
+                        id
+                    });
+                    let expected = format!("t{assigned}");
+                    if token != expected {
+                        any_rename_needed = true;
+                    }
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    if !any_rename_needed {
+        return;
+    }
+
+    // Second pass: build result with all renames applied in one go.
+    let mut result = String::with_capacity(output.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == 't' {
+            let start = i;
+            i += 1;
+            if i < chars.len() && chars[i].is_ascii_digit() {
+                while i < chars.len() && chars[i].is_ascii_digit() {
+                    i += 1;
+                }
+                let at_end = i >= chars.len() || !is_ident_char(chars[i]);
+                let at_start = start == 0 || !is_ident_char(chars[start - 1]);
+                if at_start && at_end {
+                    let token: String = chars[start..i].iter().collect();
+                    if let Some(&new_idx) = seen.get(&token) {
+                        result.push_str(&format!("t{new_idx}"));
+                        continue;
+                    }
+                }
+            }
+            // Not a temp token — emit characters as-is
+            for c in &chars[start..i] {
+                result.push(*c);
+            }
+        } else {
+            result.push(chars[i]);
+            i += 1;
+        }
+    }
+
+    *output = result;
 }
 
 fn codegen_block(
@@ -3460,37 +3551,41 @@ fn effective_decl_display_name(
 /// Replaces occurrences of `old_name` with `new_name` only when `old_name`
 /// appears as a standalone identifier (not part of a longer identifier).
 /// This prevents replacing `t7` inside `t70` or `t7x`.
+///
+/// Word boundary characters include alphanumeric, `_`, and `$` (JS identifier chars).
 fn replace_identifier_in_output(output: &str, old_name: &str, new_name: &str) -> String {
     if old_name.is_empty() || old_name == new_name {
         return output.to_string();
     }
-    let mut result = String::with_capacity(output.len());
-    let old_bytes = old_name.as_bytes();
-    let old_len = old_bytes.len();
-    let src = output.as_bytes();
-    let src_len = src.len();
-    let mut i = 0;
-    while i < src_len {
-        if i + old_len <= src_len && &src[i..i + old_len] == old_bytes {
-            // Check character before: must not be alphanumeric or underscore
-            let before_ok = i == 0 || {
-                let c = src[i - 1];
-                !c.is_ascii_alphanumeric() && c != b'_'
-            };
-            // Check character after: must not be alphanumeric or underscore
-            let after_ok = i + old_len >= src_len || {
-                let c = src[i + old_len];
-                !c.is_ascii_alphanumeric() && c != b'_'
-            };
-            if before_ok && after_ok {
-                result.push_str(new_name);
-                i += old_len;
-                continue;
-            }
-        }
-        result.push(src[i] as char);
-        i += 1;
+
+    fn is_ident_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '_' || c == '$'
     }
+
+    let mut result = String::with_capacity(output.len());
+    let mut search_start = 0;
+    while let Some(pos) = output[search_start..].find(old_name) {
+        let abs_pos = search_start + pos;
+        // Check character before: must not be an identifier char
+        let before_ok =
+            abs_pos == 0 || !is_ident_char(output[..abs_pos].chars().next_back().unwrap_or(' '));
+        // Check character after: must not be an identifier char
+        let after_pos = abs_pos + old_name.len();
+        let after_ok = after_pos >= output.len()
+            || !is_ident_char(output[after_pos..].chars().next().unwrap_or(' '));
+
+        if before_ok && after_ok {
+            result.push_str(&output[search_start..abs_pos]);
+            result.push_str(new_name);
+            search_start = after_pos;
+        } else {
+            // Not a word boundary match — copy up to just past the match start
+            // and continue searching after that
+            result.push_str(&output[search_start..abs_pos + old_name.len()]);
+            search_start = abs_pos + old_name.len();
+        }
+    }
+    result.push_str(&output[search_start..]);
     result
 }
 

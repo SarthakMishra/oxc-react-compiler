@@ -9,13 +9,13 @@ import { c as _c } from "react/compiler-runtime";
 function Counter(t0) {
   const $ = _c(2);
   let { count } = t0;
-  let t5;
+  let t1;
   if ($[0] !== count) {
-    t5 = <div>{count}</div>;
+    t1 = <div>{count}</div>;
     $[0] = count;
-    $[1] = t5;
+    $[1] = t1;
   } else {
-    t5 = $[1];
+    t1 = $[1];
   }
-  return t5;
+  return t1;
 }

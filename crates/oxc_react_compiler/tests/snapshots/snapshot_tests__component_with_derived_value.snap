@@ -9,25 +9,25 @@ function Display(t0) {
   let { items } = t0;
   let count;
   let label;
-  let t10;
-  let t17;
+  let t1;
+  let t2;
   if ($[0] !== items.length) {
     count = items.length;
     if ((count > 0)) {
-      t10 = "Has items";
+      t1 = "Has items";
     } else {
-      t10 = "Empty";
+      t1 = "Empty";
     }
-    label = t10;
-    t17 = <div>{label}: {count}</div>;
+    label = t1;
+    t2 = <div>{label}: {count}</div>;
     $[0] = items.length;
     $[1] = count;
     $[2] = label;
-    $[3] = t17;
+    $[3] = t2;
   } else {
     count = $[1];
     label = $[2];
-    t17 = $[3];
+    t2 = $[3];
   }
-  return t17;
+  return t2;
 }

@@ -7,14 +7,14 @@ import { c as _c } from "react/compiler-runtime";
 function Greeting(t0) {
   const $ = _c(3);
   let { name, age } = t0;
-  let t9;
+  let t1;
   if ($[0] !== age || $[1] !== name) {
-    t9 = <div>Hello {name}, you are {age}</div>;
+    t1 = <div>Hello {name}, you are {age}</div>;
     $[0] = age;
     $[1] = name;
-    $[2] = t9;
+    $[2] = t1;
   } else {
-    t9 = $[2];
+    t1 = $[2];
   }
-  return t9;
+  return t1;
 }

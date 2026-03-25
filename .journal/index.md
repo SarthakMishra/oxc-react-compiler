@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 133     | 1–133  | Full compiler: HIR foundation → 23.5% conformance (rebaselined). Recent: expected file rebaseline with compilationMode:"all" (+9 net), validation fixes, mutation range propagation fixes (+93 fixtures) |
+| [001.md](001.md) | 134     | 1–134  | Full compiler: HIR foundation → 23.5% conformance (rebaselined). Recent: temp renumbering in codegen (+2), expected file rebaseline with compilationMode:"all" (+9 net), validation fixes, mutation range propagation fixes (+93 fixtures) |
 
 ## Archive
 
