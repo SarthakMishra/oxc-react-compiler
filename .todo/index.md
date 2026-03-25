@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post silent-bailout + validation tuning)
-> Conformance: **441/1717 (25.7%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1276.
-> Bail-outs reduced: 75->60 (Phase 128). Silent bail-outs: 23->7. Flow component/hook preprocessing added.
+> Last updated: 2026-03-25 (post Phase 129: missing validations)
+> Conformance: **445/1717 (25.9%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1272.
+> Bail-outs reduced: 75->60 (Phase 128). Silent bail-outs: 23->7. Phase 129: +4 fixtures via var detection, compiler-runtime skip, custom opt-out directives.
 
 ---
 
@@ -13,7 +13,7 @@
 |----------|-------|---|-------------|
 | Both compile, slots DIFFER | 712 | 55.8% | We compile but produce wrong scope groupings or slot counts |
 | Both compile, slots MATCH | 231 | 18.1% | Correct scopes but cosmetic diffs (structure, variable names) |
-| We compile, they don't | 193 | 15.1% | Missing validations -- we should bail but don't |
+| We compile, they don't | 189 | 14.8% | Missing validations -- we should bail but don't |
 | We bail, they compile | 60 | 4.7% | Overly strict bail-outs -- we reject valid programs |
 | Both no memo (format diff) | 80 | 6.3% | Both pass through but output format differs |
 
@@ -82,19 +82,33 @@
 
 **Investigation findings:** Removing `is_ref_name` heuristic entirely fixes 7+ fixtures but regresses 3 error fixtures that need name-based ref detection for props like `Component({ref})` and `props.ref.current`. The heuristic IS needed for prop-based ref detection. Deeper fix requires tracking whether a name comes from `useRef()` vs destructured props.
 
-### 8. Missing validations (+50 fixtures)
+### 8. Missing validations (+50 fixtures) -- PARTIALLY DONE (Phase 129)
 
-**Files:** `src/validation/`, `src/error.rs`
+**Files:** `src/validation/`, `src/error.rs`, `src/entrypoint/program.rs`
 **Difficulty:** MEDIUM | **Risk:** MEDIUM
 
-We incorrectly compile 50+ fixtures where upstream emits an error. Need to add error detection for patterns upstream rejects (subset of the 152 "we compile, they don't" category).
+**Completed (4/54 fixtures):** Added `var` declaration detection (upstream bails on var hoisting), compiler-runtime import skip (prevent double-compilation), and custom opt-out directives support. 4 fixtures recovered.
 
-### 9. Try/catch scope handling (+25 fixtures)
+**Remaining 50 fixtures breakdown:**
+- PRESERVE_MEMO (12): Need `validateInferredDep` dep comparison infrastructure
+- VALUE_CANNOT_MODIFY (13): Need deeper frozen mutation detection (useState return values, context mutations, JSX-previously-passed values)
+- TODO patterns (8): Function hoisting with unreachable code, UpdateExpression on captured variables, default params with arrow functions
+- SET_STATE_IN_RENDER (2): Indirect setState via useCallback → useMemo call chain
+- INVARIANT (6): Codegen MethodCall invariant, unnamed temporaries, inconsistent destructuring
+- Other (9): Access before declaration, invalid type config, etc.
 
-**Files:** `src/hir/build.rs`, `src/reactive_scopes/`
+### 9. Try/catch scope handling (+37 fixtures) -- INVESTIGATED, BLOCKED on scope inference
+
+**Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`, `src/reactive_scopes/prune_scopes.rs`
 **Difficulty:** HARD | **Risk:** MEDIUM
 
-25 fixtures diverge due to incorrect scope handling in try/catch blocks. Includes for-loops in try/catch, optional/logical expressions in try/catch.
+37 try/catch fixtures diverge due to reactive scopes crossing try/catch boundaries. Includes for-loops in try/catch, optional/logical expressions in try/catch, basic try/catch memoization.
+
+**Investigation (Phase 129):** Root cause identified. Reactive scope inference groups identifiers defined BEFORE the try (e.g., destructured props) with their uses INSIDE the try body. The scope insertion places the scope terminal in the pre-try block, causing the scope wrapper to appear before `try {` instead of inside it. A targeted fix in `prune_scopes.rs` (prefer try body block when scope spans try boundary) had no effect because the scope annotations exist only in the pre-try block -- the try body block's instructions lack scope annotations.
+
+**Fix requires:** Changes to scope inference (`infer_reactive_scope_variables.rs`) to prevent merging identifiers across try/catch boundaries. This is fundamentally the same problem as item #10 (scope inference fixes) -- the scope grouping logic doesn't account for control flow structure like try/catch.
+
+**Not attempted:** Direct modification of scope inference or mutable_range (per todo constraints).
 
 ### 10. Scope inference fixes (+300-400 fixtures)
 

@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 127     | 1–127  | Full compiler: HIR foundation → 25.7% conformance. Recent: per-function gating codegen (+4 fixtures), fbt preprocessing (+14 fixtures), preserve-memo validation relaxation, variable name preservation investigation + scope output promotion |
+| [001.md](001.md) | 129     | 1–129  | Full compiler: HIR foundation → 25.9% conformance. Recent: var declaration detection, compiler-runtime skip, custom opt-out directives, try/catch scope investigation |
 
 ## Archive
 
