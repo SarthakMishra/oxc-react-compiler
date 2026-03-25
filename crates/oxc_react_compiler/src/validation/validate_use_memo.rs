@@ -9,7 +9,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 ///    (a callback and a dependency array).
 /// 2. The callback argument should be a function expression (not an arbitrary value).
 /// 3. The callback passed to `useMemo` should not be async.
-pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
+pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector, validate_preserve_memo: bool) {
     // Build id-to-name map for resolving SSA temporaries
     let id_to_name = build_name_map(hir);
 
@@ -50,6 +50,19 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector) {
 
             if !args.is_empty() {
                 let callback_id = args[0].identifier.id;
+
+                // When preserve-memo validation is active, check that the first
+                // argument is an inline function expression. Named function
+                // references can't be analyzed for reactive dependencies.
+                if validate_preserve_memo {
+                    check_callback_is_inline_function(
+                        hir,
+                        callback_id,
+                        hook_name,
+                        instr.loc,
+                        errors,
+                    );
+                }
 
                 if hook_name == "useMemo" {
                     // Only useMemo callbacks must not accept parameters (called with no args).
@@ -300,6 +313,87 @@ fn check_memo_callback_params(
             }
         }
     }
+}
+
+/// Check that the first argument to useMemo/useCallback is an inline function expression.
+/// Named function references (e.g., `useMemo(someHelper, [])`) cannot be analyzed
+/// for reactive dependencies, so preserve-memo validation rejects them.
+///
+/// Checks if the identifier resolves to a FunctionExpression instruction.
+/// If it resolves to anything else (LoadLocal, LoadGlobal, LoadContext), it's
+/// not an inline function and should be rejected.
+fn check_callback_is_inline_function(
+    hir: &HIR,
+    callback_id: crate::hir::types::IdentifierId,
+    hook_name: &str,
+    call_loc: crate::hir::types::SourceLocation,
+    errors: &mut ErrorCollector,
+) {
+    // Check if callback_id is directly produced by a FunctionExpression instruction.
+    // This handles the common case: `useMemo(() => ..., [...])`.
+    let is_inline_fe = hir.blocks.iter().any(|(_, block)| {
+        block.instructions.iter().any(|instr| {
+            instr.lvalue.identifier.id == callback_id
+                && matches!(instr.value, InstructionValue::FunctionExpression { .. })
+        })
+    });
+
+    if is_inline_fe {
+        return;
+    }
+
+    // Not a direct FE -- could be a LoadLocal that transitively resolves to an FE.
+    // Check if it's a LoadLocal pointing to a StoreLocal of an FE.
+    let resolved_to_fe = hir.blocks.iter().any(|(_, block)| {
+        block.instructions.iter().any(|instr| {
+            if instr.lvalue.identifier.id != callback_id {
+                return false;
+            }
+            // If it's a LoadLocal, check if the source variable was defined by an FE
+            if let InstructionValue::LoadLocal { place } = &instr.value {
+                // Walk the HIR to find if place.identifier.id comes from a FE
+                return hir.blocks.iter().any(|(_, b)| {
+                    b.instructions.iter().any(|i| {
+                        // StoreLocal that stores into this variable from an FE temp
+                        if let InstructionValue::StoreLocal { lvalue, value, .. } = &i.value
+                            && lvalue.identifier.id == place.identifier.id
+                        {
+                            // Check if the value comes from a FunctionExpression
+                            hir.blocks.iter().any(|(_, b2)| {
+                                b2.instructions.iter().any(|i2| {
+                                    i2.lvalue.identifier.id == value.identifier.id
+                                        && matches!(
+                                            i2.value,
+                                            InstructionValue::FunctionExpression { .. }
+                                        )
+                                })
+                            })
+                        } else {
+                            // Direct FE assignment to this identifier
+                            i.lvalue.identifier.id == place.identifier.id
+                                && matches!(i.value, InstructionValue::FunctionExpression { .. })
+                        }
+                    })
+                });
+            }
+            false
+        })
+    });
+
+    if resolved_to_fe {
+        return;
+    }
+
+    // The first argument is not an inline function expression
+    errors.push(CompilerError::invalid_react_with_kind(
+        call_loc,
+        format!(
+            "Expected the first argument to be an inline function expression. \
+             {hook_name}() requires an inline function so the compiler can \
+             analyze its reactive dependencies."
+        ),
+        DiagnosticKind::UseMemoValidation,
+    ));
 }
 
 /// Check if the function expression producing the given identifier is async.

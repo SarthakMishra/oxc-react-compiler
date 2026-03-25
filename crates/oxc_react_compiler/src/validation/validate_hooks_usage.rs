@@ -263,31 +263,59 @@ fn check_dynamic_hook_identity(
         }
     }
 
-    // Now check all CallExpressions: if the callee has a hook-like name but is NOT stable,
-    // emit a dynamic hook identity error.
+    // Now check all CallExpressions and MethodCalls: if the callee has a hook-like name
+    // but is NOT stable, emit a dynamic hook identity error.
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
-                let callee_name = callee
-                    .identifier
-                    .name
-                    .as_deref()
-                    .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+            match &instr.value {
+                InstructionValue::CallExpression { callee, .. } => {
+                    let callee_name = callee
+                        .identifier
+                        .name
+                        .as_deref()
+                        .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
 
-                if let Some(name) = callee_name
-                    && is_hook(name)
-                    && !is_stable_hook_by_id.get(&callee.identifier.id).copied().unwrap_or(true)
-                {
-                    errors.push(CompilerError::invalid_react_with_kind(
-                        instr.loc,
-                        format!(
-                            "Hooks must be the same function on every render, but \"{name}\" \
-                             may change over time to a different function. See the Rules of Hooks \
-                             (https://react.dev/warnings/invalid-hook-call-warning)."
-                        ),
-                        DiagnosticKind::HooksViolation,
-                    ));
+                    if let Some(name) = callee_name
+                        && is_hook(name)
+                        && !is_stable_hook_by_id.get(&callee.identifier.id).copied().unwrap_or(true)
+                    {
+                        errors.push(CompilerError::invalid_react_with_kind(
+                            instr.loc,
+                            format!(
+                                "Hooks must be the same function on every render, but \"{name}\" \
+                                 may change over time to a different function. \
+                                 See https://react.dev/reference/rules/react-calls-components-and-hooks#dont-dynamically-use-hooks"
+                            ),
+                            DiagnosticKind::HooksViolation,
+                        ));
+                    }
                 }
+                // MethodCall with hook-like property name (e.g., `player.useMedia()`)
+                // is always a dynamic hook call -- the receiver is not a stable module.
+                InstructionValue::MethodCall { property, receiver, .. } => {
+                    if is_hook(property) {
+                        // Check if the receiver is a stable hook source (e.g., React namespace).
+                        // LoadGlobal of "React" calling React.useState() is stable.
+                        let receiver_name = receiver.identifier.name.as_deref().or_else(|| {
+                            id_to_name.get(&receiver.identifier.id).map(String::as_str)
+                        });
+                        let is_known_namespace = matches!(
+                            receiver_name,
+                            Some("React" | "react" | "ReactDOM" | "ReactDOMServer")
+                        );
+                        if !is_known_namespace {
+                            errors.push(CompilerError::invalid_react_with_kind(
+                                instr.loc,
+                                "Hooks must be the same function on every render, but this \
+                                 value may change over time to a different function. \
+                                 See https://react.dev/reference/rules/react-calls-components-and-hooks#dont-dynamically-use-hooks"
+                                    .to_string(),
+                                DiagnosticKind::HooksViolation,
+                            ));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }

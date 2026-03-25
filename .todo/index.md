@@ -1,8 +1,8 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Phase 131 cleanup)
-> Conformance: **528/1717 (30.8%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: ~1189.
+> Last updated: 2026-03-25 (post Phase 132)
+> Conformance: **532/1717 (31.0%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: ~1185.
 
 ---
 
@@ -73,7 +73,7 @@ Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. 
 ### Other Open Work
 
 - [ ] Constant propagation and DCE improvements (+25-30 fixtures) — PARTIALLY BLOCKED — most are 0-slot functions
-- [ ] Missing validations (+50 fixtures) — PARTIALLY DONE (Phase 129: 4/54)
+- [ ] Missing validations (+50 fixtures) — PARTIALLY DONE (Phase 129: 4/54, Phase 132: +4 = 8/54)
 - [ ] Remaining gating codegen (23 fixtures) — import ordering, @dynamicGating, validation
 - [ ] Remaining silent bailouts (7) — Flow type casts, compilationMode:infer edge cases
 - [ ] Remaining frozen mutation / ref validation (20 fixtures) — effects-level issues, FE data-flow

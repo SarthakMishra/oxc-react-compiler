@@ -254,14 +254,42 @@ pub fn validate_no_set_state_in_render(
         }
     }
 
-    // Update functions_calling_set_state with transitive results
+    // Update functions_calling_set_state with transitive results.
+    // Must check both FunctionExpression lvalues (which may have names) AND
+    // StoreLocal/StoreContext/DeclareLocal (which give names to temp FE lvalues).
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            if let InstructionValue::FunctionExpression { .. } = &instr.value
-                && let Some(name) = &instr.lvalue.identifier.name
-                && func_name_calls_set_state.contains(name)
-            {
-                functions_calling_set_state.insert(instr.lvalue.identifier.id);
+            match &instr.value {
+                InstructionValue::FunctionExpression { .. } => {
+                    if let Some(name) = &instr.lvalue.identifier.name
+                        && func_name_calls_set_state.contains(name)
+                    {
+                        functions_calling_set_state.insert(instr.lvalue.identifier.id);
+                    }
+                }
+                InstructionValue::StoreLocal { lvalue, value, .. }
+                | InstructionValue::StoreContext { lvalue, value } => {
+                    // Propagate: if the value is a function that transitively calls setState
+                    // (found by fixpoint via name), mark the StoreLocal lvalue ID too.
+                    if functions_calling_set_state.contains(&value.identifier.id) {
+                        functions_calling_set_state.insert(instr.lvalue.identifier.id);
+                    }
+                    if let Some(name) = &lvalue.identifier.name
+                        && func_name_calls_set_state.contains(name)
+                    {
+                        functions_calling_set_state.insert(instr.lvalue.identifier.id);
+                        functions_calling_set_state.insert(lvalue.identifier.id);
+                    }
+                }
+                InstructionValue::DeclareLocal { lvalue, .. } => {
+                    if let Some(name) = &lvalue.identifier.name
+                        && func_name_calls_set_state.contains(name)
+                    {
+                        functions_calling_set_state.insert(instr.lvalue.identifier.id);
+                        functions_calling_set_state.insert(lvalue.identifier.id);
+                    }
+                }
+                _ => {}
             }
         }
     }

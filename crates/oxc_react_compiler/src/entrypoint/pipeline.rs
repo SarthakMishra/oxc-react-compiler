@@ -36,7 +36,14 @@ pub fn run_pipeline(
     );
 
     // Pass 4: validate_use_memo
-    crate::validation::validate_use_memo::validate_use_memo(hir, errors);
+    crate::validation::validate_use_memo::validate_use_memo(
+        hir,
+        errors,
+        config.validate_preserve_existing_memoization_guarantees,
+    );
+    if errors.should_bail(bail_threshold) {
+        return Err(());
+    }
 
     // Pass 5: drop_manual_memoization (conditional)
     // Keep manual memo markers if either the preserve-memo flag or the
