@@ -82,6 +82,16 @@ pub struct EnvironmentConfig {
     /// DIVERGENCE: Upstream separates this into PluginOptions.panicThreshold.
     /// We store it on EnvironmentConfig to avoid threading through every function.
     pub bail_threshold: crate::error::PanicThreshold,
+
+    /// When true, use raw `mutable_range` for scope inference instead of
+    /// `effective_range = max(mutable_range.end, last_use + 1)`.
+    ///
+    /// Upstream uses mutable_range directly for `isMutable()` checks.
+    /// Our mutable ranges were historically too narrow, so we used
+    /// effective_range as a workaround. Phase 130 fixed 7 gaps in mutation
+    /// range propagation. This flag allows testing whether raw mutable_range
+    /// now produces correct scope groupings.
+    pub use_mutable_range: bool,
 }
 
 impl Default for EnvironmentConfig {
@@ -126,6 +136,7 @@ impl Default for EnvironmentConfig {
             hook_aliases: FxHashSet::default(),
             eslint_suppression_rules: Vec::new(),
             bail_threshold: crate::error::PanicThreshold::AllErrors,
+            use_mutable_range: false,
         }
     }
 }

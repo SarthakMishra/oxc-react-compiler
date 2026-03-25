@@ -289,7 +289,9 @@ pub fn run_pipeline(
     // Phase 8: Reactive Scope Construction
     // Pass 33: infer_reactive_scope_variables
     crate::reactive_scopes::infer_reactive_scope_variables::infer_reactive_scope_variables(
-        hir, param_ids,
+        hir,
+        param_ids,
+        config.use_mutable_range,
     );
 
     // Pass 33.5: propagate_scope_membership_hir

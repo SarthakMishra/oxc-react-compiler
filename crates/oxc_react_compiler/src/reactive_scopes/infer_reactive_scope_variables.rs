@@ -21,6 +21,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 pub fn infer_reactive_scope_variables(
     hir: &mut HIR,
     param_ids: &[IdentifierId],
+    use_mutable_range: bool,
 ) -> Vec<ReactiveScope> {
     let param_id_set: FxHashSet<IdentifierId> = param_ids.iter().copied().collect();
     let mut dsu: DisjointSet<IdentifierId> = DisjointSet::new();
@@ -112,21 +113,29 @@ pub fn infer_reactive_scope_variables(
             let lvalue_range = instr.lvalue.identifier.mutable_range;
             let instr_id = instr.id;
 
-            // Compute the "effective range end" for the lvalue: the max of
-            // mutable_range.end and last_use + 1. This combines mutation reach
-            // (narrow BFS) with usage reach (last_use annotation).
+            // Compute the "effective range end" for the lvalue.
+            // When use_mutable_range is true, use raw mutable_range.end (matching
+            // upstream's isMutable check). When false, extend with last_use as a
+            // workaround for historically narrow mutable ranges.
             let lvalue_last_use = instr.lvalue.identifier.last_use;
-            let lvalue_effective_end = lvalue_range
-                .end
-                .0
-                .max(if lvalue_last_use > InstructionId(0) { lvalue_last_use.0 + 1 } else { 0 });
+            let lvalue_effective_end = if use_mutable_range {
+                lvalue_range.end.0
+            } else {
+                lvalue_range.end.0.max(if lvalue_last_use > InstructionId(0) {
+                    lvalue_last_use.0 + 1
+                } else {
+                    0
+                })
+            };
 
             // If the lvalue has a non-trivial effective range OR the instruction
             // allocates, collect live operands and union them together.
             // This matches upstream: `range.end > range.start + 1 || mayAllocate(env, instr)`
-            // DIVERGENCE: We use the effective range (mutation + last_use) rather
-            // than mutable_range alone, because our mutable_range is mutation-only
-            // while upstream's includes usage extension.
+            // DIVERGENCE: When use_mutable_range=false (default), we use effective_range
+            // (mutation + last_use) rather than mutable_range alone, because our
+            // mutable_range is still too narrow for correct scope grouping.
+            // Phase 131 tested use_mutable_range=true: +16 passes, -20 regressions
+            // (over-splitting, e.g. 9 slots vs expected 1). Still needs work.
             if lvalue_effective_end > lvalue_range.start.0 + 1
                 || is_allocating_instruction(
                     &instr.value,
@@ -145,14 +154,17 @@ pub fn infer_reactive_scope_variables(
                     // Use effective range (mutation + last_use) for the liveness check.
                     // Upstream's isMutable uses the full range which includes usage extension.
                     if let Some(&op_range) = ranges.get(&op_id) {
-                        let op_last_use =
-                            last_use_map.get(&op_id).copied().unwrap_or(InstructionId(0));
-                        let op_effective_end =
+                        let op_effective_end = if use_mutable_range {
+                            op_range.end.0
+                        } else {
+                            let op_last_use =
+                                last_use_map.get(&op_id).copied().unwrap_or(InstructionId(0));
                             op_range.end.0.max(if op_last_use > InstructionId(0) {
                                 op_last_use.0 + 1
                             } else {
                                 0
-                            });
+                            })
+                        };
                         if instr_id.0 >= op_range.start.0 && instr_id.0 < op_effective_end {
                             // Both lvalue_id and op_id are registered via make_set in Phase 1
                             let _ = dsu.union(lvalue_id, op_id);
@@ -194,14 +206,17 @@ pub fn infer_reactive_scope_variables(
 
         for &member in &members {
             if let Some(&range) = ranges.get(&member) {
-                // Use effective range (mutation + last_use) for scope boundaries
-                let member_last_use =
-                    last_use_map.get(&member).copied().unwrap_or(InstructionId(0));
-                let effective_end = range.end.0.max(if member_last_use > InstructionId(0) {
-                    member_last_use.0 + 1
+                let effective_end = if use_mutable_range {
+                    range.end.0
                 } else {
-                    0
-                });
+                    let member_last_use =
+                        last_use_map.get(&member).copied().unwrap_or(InstructionId(0));
+                    range.end.0.max(if member_last_use > InstructionId(0) {
+                        member_last_use.0 + 1
+                    } else {
+                        0
+                    })
+                };
                 merged_range.start = InstructionId(merged_range.start.0.min(range.start.0));
                 merged_range.end = InstructionId(merged_range.end.0.max(effective_end));
             }

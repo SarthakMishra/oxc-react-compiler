@@ -96,9 +96,12 @@ fn analyse_nested_function(func: &mut HIRFunction, errors: &mut ErrorCollector) 
         })
         .collect();
 
+    // DIVERGENCE: Inner function bodies always use effective_range (use_mutable_range=false)
+    // because they have independent scope inference from the outer function.
     crate::reactive_scopes::infer_reactive_scope_variables::infer_reactive_scope_variables(
         &mut func.body,
         &param_ids,
+        false,
     );
 
     // Compute externally-visible aliasing effects for this function expression.

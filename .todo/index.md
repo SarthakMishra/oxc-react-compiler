@@ -1,6 +1,6 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (Phase 130: mutation range propagation fixes)
+> Last updated: 2026-03-25 (Phase 131: mutable_range flag infrastructure)
 > Conformance: **528/1717 (30.8%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
 > Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1189.
 > Phase 130: +93 fixtures from mutation range propagation fixes (all 5 gaps). Render 23/25 is pre-existing (command-menu + canvas-sidebar).
@@ -44,12 +44,18 @@ Cannot remove yet. The standalone validator has independent hook-call-freezes-ca
 
 **Note (Phase 119):** The hook-call-freezes-captures logic has a gap: imported hook names (via LoadGlobal) are not resolved in id_to_name. Added LoadGlobal tracking but the error fixtures `error.hook-call-freezes-captured-identifier.tsx` and `error.hook-call-freezes-captured-memberexpr.jsx` still don't trigger bail-out. Deeper investigation needed into how the HIR represents the CallExpression args for these patterns -- the FunctionExpression temp may not be linking to func_captures correctly after passes like inline_load_local_temps.
 
-### Phase 4d: Switch to `mutable_range` -- READY TO RE-ATTEMPT
+### Phase 4d: Switch to `mutable_range` -- TESTED, NOT READY (Phase 131)
 
 **Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`
-**Status:** Previously FAILED 5x, but now mutation ranges are fixed (Phase 130, +93 fixtures). The 7 upstream gaps have been closed. Ready for another attempt.
+**Status:** Attempt #6 completed. Flag infrastructure added (`use_mutable_range` on EnvironmentConfig, default false). Testing with flag=true showed:
+- +16 newly passing fixtures (from known-failures)
+- -20 new regressions (over-splitting: too many scopes/slots)
+- Render: stable at 23/25
+- Net: -4 conformance, not viable as default
 
-**Approach:** Add `use_mutable_range: bool` flag to EnvironmentConfig (default false). In `infer_reactive_scope_variables.rs`, conditionally use raw mutable_range instead of effective_range. Test and compare.
+**Root cause:** Mutable ranges are still too narrow for proper scope grouping. The effective_range workaround (max of mutable_range.end, last_use+1) is still needed. The 20 regressions are all over-splitting (e.g. 9 slots expected 1, 8 slots expected 1). Scopes that should merge are not overlapping because mutable ranges don't extend far enough.
+
+**What would fix this:** The mutable ranges need to be wider -- upstream's ranges include more transitive mutation propagation. Investigate which specific fixtures regress and what range extension is missing. The flag is preserved for future A/B testing.
 
 ### Phase 5: Fault Tolerance & Error Handling -- BLOCKED
 
@@ -98,10 +104,10 @@ Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. 
 
 **Read these before making ANY changes.**
 
-### `effective_range` vs `mutable_range` -- READY TO RE-TEST (Phase 130 fixed ranges)
+### `effective_range` vs `mutable_range` -- TESTED, STILL NEEDED (Phase 131)
 File: `src/reactive_scopes/infer_reactive_scope_variables.rs`
 
-Uses `effective_range = max(mutable_range.end, last_use + 1)` because mutable ranges were too narrow for scope inference. **5 previous attempts** to switch all failed (96%->36% render). Phase 130 fixed 7 gaps in `infer_mutation_aliasing_ranges` (+93 fixtures). The mutable ranges should now be more correct. The effective_range workaround may no longer be needed -- re-test recommended.
+Uses `effective_range = max(mutable_range.end, last_use + 1)` because mutable ranges are still too narrow for scope inference. **6 attempts** to switch have all shown regressions. Phase 130 fixed 7 mutation range gaps (+93 fixtures). Phase 131 tested with `use_mutable_range` flag: render was stable (23/25) but conformance showed -20 over-splitting regressions vs +16 newly passing. The effective_range workaround is still needed. The `use_mutable_range` flag on EnvironmentConfig is preserved for future A/B testing.
 
 ### `collect_all_scope_declarations` is load-bearing
 File: `src/reactive_scopes/codegen.rs`
@@ -179,7 +185,7 @@ All paths relative to `crates/oxc_react_compiler/`.
 
 ## Lessons Learned
 
-1. **effective_range is load-bearing.** 5 attempts to switch to mutable_range have failed. Do not attempt without understanding upstream's usage extension logic.
+1. **effective_range is load-bearing.** 6 attempts to switch to mutable_range have shown regressions. Phase 131: render stable but -20 over-splitting regressions. Mutable ranges still too narrow for correct scope grouping.
 2. **collect_all_scope_declarations cannot be removed.** It prevents render collapse from 96% to 24%.
 3. **PanicThreshold change to CriticalErrors requires ~600+ conformance.** 132 bail-out fixtures produce wrong output when compiled instead of bailed.
 4. **Emitting 0-slot functions requires more error validations.** 68 divergences when attempted (Phase 121).
