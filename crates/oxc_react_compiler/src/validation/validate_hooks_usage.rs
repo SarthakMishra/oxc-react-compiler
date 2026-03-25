@@ -457,15 +457,34 @@ fn find_conditional_blocks(hir: &HIR) -> FxHashSet<BlockId> {
                     mark_reachable(hir, case.block, &mut conditional);
                 }
             }
-            Terminal::For { body, .. }
-            | Terminal::ForOf { body, .. }
-            | Terminal::ForIn { body, .. } => {
+            // High-level loop terminals (used if loops are NOT lowered to
+            // primitive Branch + Goto). Our HIR builder currently lowers loops
+            // to primitive CFG, so these rarely match. Keep for robustness.
+            Terminal::For { test, update, body, .. } => {
+                conditional.insert(*test);
+                mark_reachable(hir, *test, &mut conditional);
+                if let Some(update) = update {
+                    conditional.insert(*update);
+                    mark_reachable(hir, *update, &mut conditional);
+                }
+                conditional.insert(*body);
+                mark_reachable(hir, *body, &mut conditional);
+            }
+            Terminal::ForOf { body, .. } | Terminal::ForIn { body, .. } => {
                 conditional.insert(*body);
                 mark_reachable(hir, *body, &mut conditional);
             }
             Terminal::While { body, .. } | Terminal::DoWhile { body, .. } => {
                 conditional.insert(*body);
                 mark_reachable(hir, *body, &mut conditional);
+            }
+            // Branch terminals (used by lowered loop tests). Both branches
+            // are conditional since the test determines which executes.
+            Terminal::Branch { consequent, alternate, .. } => {
+                conditional.insert(*consequent);
+                mark_reachable(hir, *consequent, &mut conditional);
+                conditional.insert(*alternate);
+                mark_reachable(hir, *alternate, &mut conditional);
             }
             Terminal::Ternary { consequent, alternate, .. } => {
                 conditional.insert(*consequent);

@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Stage 4e-A)
-> Conformance: **442/1717 (25.7%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 4e-A (Upstream error bail-outs): COMPLETE, +7 fixtures (435->442). Hoisted function decls in unreachable code (3), fbt param name detection (1), default-param arrow expressions (1), catch clause destructuring (1), hook spread arguments (1).
-> Known-failures: 1275. Error.* fixtures remaining in KF: 39 (37 top-level + 2 fbt/).
+> Last updated: 2026-03-25 (post Stage 4e-B partial)
+> Conformance: **443/1717 (25.8%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 4e-B (in progress): +1 fixture (442->443). Fixed hooks-in-for-loop detection via Terminal::Branch handling in validate_hooks_usage.rs.
+> Known-failures: 1274. Error.* fixtures remaining in KF: 38 (36 top-level + 2 fbt/).
 
 ---
 
@@ -272,13 +272,14 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 **Tractable sub-tasks (no new infrastructure needed):**
 
 - [x] **4e-A: Mixed bail-outs — COMPLETE (+7, 435->442)** — implemented 7 new bail-outs across 3 files: hoisted function decls in unreachable code (3 fixtures: `error.todo-hoist-function-decls.js`, `error.todo-hoisted-function-in-unreachable-code.js`, `error.hoisting-simple-function-declaration.js`), fbt parameter name detection (1: `fbt/error.todo-fbt-as-local.js`), default-param arrow/function expressions (1: `error.default-param-accesses-local.js`), catch clause destructuring (1: `error.bug-invariant-couldnt-find-binding-for-decl.js`), hook spread arguments (1: `error.todo-hook-call-spreads-mutable-iterator.js`). Files: `validate_no_unsupported_nodes.rs`, `build.rs`, `known-failures.txt`. **Note:** `error.todo-handle-update-context-identifiers.js` (Group 6, UpdateExpression on context vars) was NOT fixed — nested HIR builders don't emit `LoadContext` instructions, so context variables can't be detected by walking the nested HIR. See blocker report below.
-- [ ] **4e-B: Locals-reassigned + ref-access + setState bail-outs (5 fixtures)** — tighten existing validators (`validate_no_ref_access_in_render`, `validate_locals_not_reassigned_after_render`, setState checks) to catch these 5 specific patterns. Potential gain: +5.
+- [~] **4e-B: Locals-reassigned + ref-access + setState bail-outs (5 fixtures)** — tighten existing validators (`validate_no_ref_access_in_render`, `validate_locals_not_reassigned_after_render`, setState checks, hooks-in-loop) to catch these specific patterns. **Progress:** +1 fixture (hooks-in-for-loop via Terminal::Branch handling in `validate_hooks_usage.rs` `find_conditional_blocks`). Remaining potential gain: +4.
 - [ ] **4e-C: Frozen-mutation remaining (3 fixtures)** — overlaps Stage 4d remaining. Need effect callback mutation + JSX capture analysis. Potential gain: +3.
 - [ ] **4e-D: Preserve-memo gaps (11 fixtures)** — overlaps Stage 4b. BLOCKED by `finish_in_scope` issue (see Stage 4b notes). Potential gain: +11 but requires scope inference fix.
 - [ ] **4e-E: Todo remaining (7 fixtures)** — overlaps Stage 4c remaining. Need hoisting (3), optional member expr (2), context var update (1), missing source locs (1). Potential gain: +7 but requires new infrastructure. Context var update BLOCKED by nested HIR LoadContext gap.
 
 **Stage 4e-A done: +7 fixtures gained.**
-**Remaining tractable gain (4e-B): +5 fixtures, no new infrastructure.**
+**Stage 4e-B progress: +1 fixture gained (443 total).** Fixed hooks-in-for-loop detection: `find_conditional_blocks` in `validate_hooks_usage.rs` now handles `Terminal::Branch` (for-loop continue/break targets), which was previously unmatched, causing the validator to miss hook calls inside for-loops. This is a targeted fix; remaining 4e-B fixtures (locals-reassigned, ref-access, setState patterns) still need investigation.
+**Remaining tractable gain (4e-B): +4 fixtures, no new infrastructure.**
 **Full potential (all remaining sub-tasks): +26 fixtures.**
 **Risk:** LOW for 4e-B. MEDIUM-HIGH for 4e-C/D/E.
 
@@ -350,9 +351,10 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 | Stage 4c: Todo error detection | +15 (done, 5 remain) | 426 | LOW | 22/27 done (15 in 4c + 7 in 4e-A). Remaining 5 need hoisting, optional terminals, context vars. |
 | Stage 4d: Frozen-mutation false negatives | +9 (done) | 435 | MEDIUM | Completed. 7/9 planned + 2 bonus. 2 remain (effect callback, JSX capture). |
 | Stage 4e-A: Upstream error bail-outs | +7 (done) | 442 | LOW | 7/43 done. 4e-B through 4e-E remain. |
-| Stage 4e-B/C/D/E: Remaining upstream errors | +23-43 | 465-485 | LOW-HIGH | 4e-B (5, LOW), 4e-C (3, MED), 4e-D (11, MED-HIGH), 4e-E (7, HIGH) |
+| Stage 4e-B: Locals/ref/setState/hooks | +1 so far | 443 | LOW | 1/5 done (hooks-in-loop). 4 remain. |
+| Stage 4e-C/D/E: Remaining upstream errors | +21-38 | 464-481 | MED-HIGH | 4e-C (3, MED), 4e-D (11, MED-HIGH), 4e-E (7, HIGH) |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 76 fixtures, new passes needed |
-| **Total remaining** | **+162-312** | **604-754** | | From 442 base |
+| **Total remaining** | **+161-311** | **604-754** | | From 443 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
@@ -368,7 +370,7 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
 
-**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +38-81 remaining) + codegen fixes (B2 + 1d, +35-60). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~576. Optimistic: 700+.
+**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +37-80 remaining) + codegen fixes (B2 + 1d, +35-60). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~577. Optimistic: 700+.
 
 **Key principle:** Each stage starts with investigation (sub-task "a") that produces a fixture-level breakdown. If the investigation shows estimates are wrong, the plan is updated before implementation begins. No blind implementation.
 
