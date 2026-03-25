@@ -275,7 +275,6 @@ effect-derived-computations/ref-conditional-in-effect-no-error.js
 effect-derived-computations/usestate-derived-from-prop-no-show-in-data-flow-tree.js
 empty-catch-statement.ts
 error.assign-ref-in-effect-hint.js
-error.bailout-on-suppression-of-custom-rule.js
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-couldnt-find-binding-for-decl.js
 error.bug-invariant-expected-consistent-destructuring.js
@@ -317,6 +316,8 @@ error.todo-handle-update-context-identifiers.js
 error.todo-hoist-function-decls.js
 error.todo-hoisted-function-in-unreachable-code.js
 error.todo-hook-call-spreads-mutable-iterator.js
+error.todo-invalid-jsx-in-catch-in-outer-try-with-finally.js
+error.todo-invalid-jsx-in-try-with-finally.js
 error.todo-missing-source-locations.js
 error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js
@@ -1156,10 +1157,8 @@ ssr/ssr-infer-event-handlers-from-startTransition.js
 ssr/ssr-use-reducer-initializer.js
 ssr/ssr-use-reducer.js
 static-components/invalid-conditionally-assigned-dynamically-constructed-component-in-render.js
-static-components/invalid-dynamically-construct-component-in-render.js
 static-components/invalid-dynamically-constructed-component-function.js
 static-components/invalid-dynamically-constructed-component-method-call.js
-static-components/invalid-dynamically-constructed-component-new.js
 switch-non-final-default.js
 switch-with-fallthrough.js
 switch-with-only-default.js

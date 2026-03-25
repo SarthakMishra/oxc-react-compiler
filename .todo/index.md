@@ -1,8 +1,8 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Stage 1c)
-> Conformance: **410/1717 (23.9%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 1c minor codegen fixes: +5 net (405→410). Known-failures: 1307.
+> Last updated: 2026-03-25 (post Stage 2b partial)
+> Conformance: **411/1717 (23.9%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 2b partial: bail-outs reduced 108→89, +1 net conformance (410→411). Known-failures: 1306.
 
 ---
 
@@ -56,39 +56,65 @@ Completed 2026-03-25. C2 (return undefined): +5 fixtures. C5 (catch clause): +0 
 
 ### Stage 2: False-Positive Bail-outs — "We Bail, They Compile" (target: +50-70 fixtures)
 
-**Pool:** 108 fixtures where we incorrectly reject valid code.
+**Pool:** Originally 108 fixtures, now **89 remaining** after Stage 2b partial fixes.
 **Risk:** MEDIUM — each bail-out removal must not introduce wrong output.
 
-#### Stage 2a: Investigate Bail-out Categories (est: 0 fixtures, prerequisite)
+#### Stage 2a: Investigate Bail-out Categories -- COMPLETE
 
-- [ ] For each of the 108 fixtures, extract our error message/reason for bailing
-- [ ] Group by validation pass: silent (0 scopes), frozen-mutation, ref-access, setState, hooks, reassignment, preserve-memo, other
-- [ ] For "silent bailouts" (est ~51): determine if they're 0-slot functions (no reactive deps) or actual bugs
-- [ ] **Deliverable:** Bail-out breakdown by pass, with fixture lists per group
+Completed 2026-03-25. Full results in [bail-out-investigation.md](bail-out-investigation.md).
+Categorized all 108 bail-outs by error type. Found 4 overly aggressive file-level bail-outs (lint mode, incompatible imports, eslint suppression, runtime import check).
 
-#### Stage 2b: Silent Bail-outs / 0-Scope Functions (est: +30-40 fixtures)
+#### Stage 2b: Remove Overly Aggressive File-Level Bail-outs -- PARTIALLY COMPLETE (+1 net, 410→411)
 
-- [ ] Investigate why these produce 0 reactive scopes with no error
-- [ ] If 0-slot: implement 0-slot function emission (emit original code, no cache wrapper)
-- [ ] If scope inference bug: fix scope creation to not drop valid scopes
-- **Known blocker:** Phase 121 attempted 0-slot emission and got 68 regressions. Must investigate which regressions remain after Phase 130-133 improvements before re-attempting.
-- **If blocker confirmed:** Add investigation task, defer to Stage 5
+Completed 2026-03-25. Removed 4 file-level bail-outs in `program.rs`:
+- Removed `OutputMode::Lint` early return (+2 net passing, 42 fixtures now compile)
+- Removed `has_known_incompatible_import` file-level bail (+0 net)
+- Refined `has_compiler_runtime_import` to only bail on `c`/`useMemoCache` imports (+0 net)
+- Removed `has_eslint_suppression_for_rules` file-level bail (+1 net passing)
+Net result: bail-outs reduced 108→89, conformance +1 (410→411). 2 error.todo fixtures regressed (added to known-failures).
+Remaining 89 bail-outs require per-validation fixes (see stages 2c-2f below).
 
-#### Stage 2c: Frozen Mutation / Ref-Access Relaxation (est: +10-15 fixtures)
+#### Stage 2c: Fix `validateNoDerivedComputationsInEffects` (20 fixtures, largest group)
 
-- [ ] Review `validate_no_mutation_after_freeze` for over-strict patterns (11 fixtures)
-- [ ] Review `validate_no_ref_access_in_render` for false positives (8 fixtures)
-- [ ] For each, compare our validation logic against upstream's to find divergence
+- [ ] Investigate why our validation fires on `@validateNoDerivedComputationsInEffects_exp` directive fixtures when upstream compiles
+- [ ] Likely issue: we treat this as a bail condition when upstream only emits it as a diagnostic
+- [ ] Compare our implementation against upstream's handling of this directive
+- [ ] Fix: either skip bail for `_exp` directives, or correct the validation logic
+- **Risk:** LOW-MEDIUM — 20 fixtures, highest bang-for-buck in remaining bail-outs
+- **Details:** [bail-out-investigation.md](bail-out-investigation.md)#stage-2b-fix-validatenoderivedcomputationsineffects-20-fixtures--15-18-gained
+
+#### Stage 2d: Fix Frozen-Mutation False Positives (11 fixtures)
+
+- [ ] Review `validate_no_mutation_after_freeze` / `InferMutableRanges` for over-reporting mutations on frozen values
+- [ ] Compare our validation logic against upstream's to find divergence
 - [ ] Implement targeted relaxations without losing true-positive detections
+- **Risk:** MEDIUM — requires mutable range analysis refinements
+- **Details:** [bail-out-investigation.md](bail-out-investigation.md)
 
-#### Stage 2d: Other Bail-out Fixes (est: +10-15 fixtures)
+#### Stage 2e: Fix Ref-Access False Positives (8 fixtures)
 
-- [ ] Fix remaining false-positive bail-outs: setState (4), hooks (3), reassignment (7), other (17)
+- [ ] Review `validateNoRefAccessInRender` for over-eager patterns
+- [ ] Some patterns (assigning ref-accessing functions to properties, ref type casts) should be allowed
+- [ ] Compare against upstream validation
+- **Risk:** MEDIUM
+- **Details:** [bail-out-investigation.md](bail-out-investigation.md)
+
+#### Stage 2f: Fix Reassignment False Positives (10 fixtures)
+
+- [ ] Review `validateLocalsNotReassignedAfterRender` for false positives
+- [ ] Compare against upstream validation
+- **Risk:** MEDIUM
+- **Details:** [bail-out-investigation.md](bail-out-investigation.md)
+
+#### Stage 2g: Other Bail-out Fixes (remaining ~40 fixtures)
+
+- [ ] Fix remaining false-positive bail-outs: setState-in-render (4), setState-in-effect (7), hooks (3), preserve-memo (4), exhaustive-deps (3), silent (9), other (10)
 - [ ] Each fix: compare upstream validation logic, adjust our thresholds
+- [ ] Re-categorize after 2c-2f to identify new patterns
 
-#### Stage 2e: Replan — Bail-out Residual (est: 0 fixtures, planning)
+#### Stage 2h: Replan — Bail-out Residual (est: 0 fixtures, planning)
 
-- [ ] Categorize remaining "we bail, they compile" after 2b-2d
+- [ ] Categorize remaining "we bail, they compile" after 2c-2g
 - [ ] Update plan with new findings or mark as deferred
 
 ---
@@ -175,20 +201,28 @@ Completed 2026-03-25. C2 (return undefined): +5 fixtures. C5 (catch clause): +0 
 
 ### Milestone Summary
 
-| Stage | Target | Cumulative (from 405) | Risk | Notes |
+| Stage | Target | Cumulative (from 411) | Risk | Notes |
 |-------|--------|-----------------------|------|-------|
-| Stage 1b: Temp renumbering | +2 (done) | 405 | LOW | Completed. Estimate was +25-40, actual +2. |
-| Stage 1c: Minor codegen fixes | +5 (done) | 410 | LOW | Completed. C2 +5, C5 +0 net, B4 skipped. |
-| Stage 1d: Declaration placement | +15-30 | 425-440 | HIGH | collect_all_scope_declarations redesign |
-| Stage 2: False-positive bails | +50-70 | 475-515 | MEDIUM | |
-| Stage 3: ±1/±2 slot diffs | +30-50 | 505-565 | HIGH | |
-| Stage 4: Missing validations | +20-30 | 525-595 | LOW | |
-| Stage 5: Format + stretch | +10-20 | 535-615 | MIXED | |
-| **Total remaining** | **+130-210** | **535-615** | | |
+| Stage 1b: Temp renumbering | +2 (done) | 405 | LOW | Completed. |
+| Stage 1c: Minor codegen fixes | +5 (done) | 410 | LOW | Completed. |
+| Stage 2a: Bail-out investigation | +0 (done) | 410 | -- | Completed. Categorized all 108 bail-outs. |
+| Stage 2b: File-level bail-outs | +1 (done) | 411 | LOW | Completed. 108→89 bail-outs remaining. |
+| Stage 1d: Declaration placement | +15-30 | 426-441 | HIGH | collect_all_scope_declarations redesign |
+| Stage 2c: Effect-derived-computations | +15-18 | 426-429 | LOW-MED | 20 fixtures, largest fixable group |
+| Stage 2d: Frozen-mutation | +5-8 | 431-437 | MEDIUM | 11 fixtures |
+| Stage 2e: Ref-access | +3-5 | 434-442 | MEDIUM | 8 fixtures |
+| Stage 2f: Reassignment | +5-7 | 439-449 | MEDIUM | 10 fixtures |
+| Stage 2g: Other bail-outs | +5-10 | 444-459 | MIXED | ~40 remaining fixtures |
+| Stage 3: ±1/±2 slot diffs | +30-50 | 474-509 | HIGH | |
+| Stage 4: Missing validations | +20-30 | 494-539 | LOW | |
+| Stage 5: Format + stretch | +10-20 | 504-559 | MIXED | |
+| **Total remaining** | **+93-178** | **504-589** | | From 411 base |
 
-**Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). The real "slots MATCH" gains require instruction ordering changes (Stage 1d), which is high-risk. The plan's original +40-60 for Stage 1 was heavily overestimated because it assumed naming was the primary diff, when in reality naming differences co-occur with ordering differences.
+**Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). The real "slots MATCH" gains require instruction ordering changes (Stage 1d), which is high-risk.
 
-**Revised path to 600:** Requires strong delivery on Stages 2-4. Stage 1d is optional for 600 if Stages 2-4 deliver at the high end. Conservative path: 525-595 without Stage 1d.
+**Key learning from Stage 2a/2b:** Bail-out investigation revealed that most bail-outs are from specific validations (not silent/0-scope as originally assumed). The `validateNoDerivedComputationsInEffects` validation alone accounts for 20 of 89 remaining bail-outs. File-level bail-outs were low-hanging fruit (+1 net from removing 4).
+
+**Revised path to 600:** From 411 base, need +189. Stages 2c-2g (bail-outs) could yield +33-48. Stage 3 (slot diffs) +30-50. Stage 4 (validations) +20-30. Conservative estimate: 504-539 without Stage 1d. Reaching 600 likely requires Stage 1d or overperformance in Stages 3-4.
 
 **Key principle:** Each stage starts with investigation (sub-task "a") that produces a fixture-level breakdown. If the investigation shows estimates are wrong, the plan is updated before implementation begins. No blind implementation.
 
@@ -311,3 +345,5 @@ All paths relative to `crates/oxc_react_compiler/`.
 9. **Expected file generation must use `compilationMode: "all"`.** Fixed in Phase 133.
 10. **Each stage must start with investigation.** Blind implementation wastes effort. Investigate → plan → implement → verify → replan.
 11. **Naming diffs co-occur with ordering diffs.** Temp renumbering alone gained only +2 (expected +25-40). Most "variable naming" fixtures also differ in instruction ordering or declaration placement. Fixing names without fixing ordering does not pass conformance.
+12. **File-level bail-outs are wasteful.** 4 overly aggressive file-level bail-outs (lint mode, incompatible imports, eslint suppression, runtime import) were blocking 19 fixtures unnecessarily. Upstream handles these per-function. Always prefer per-function bail-outs over file-level.
+13. **`validateNoDerivedComputationsInEffects` is the largest single bail-out source.** 20 of 89 remaining false-positive bail-outs come from this one validation. Fixing it is the highest-ROI next step for bail-out reduction.
