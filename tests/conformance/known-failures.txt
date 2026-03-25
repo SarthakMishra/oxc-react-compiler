@@ -295,9 +295,7 @@ error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-hoist-function-decls.js
 error.todo-hoisted-function-in-unreachable-code.js
-error.todo-hoisting-simple-var-declaration.js
 error.todo-hook-call-spreads-mutable-iterator.js
-error.todo-kitchensink.js
 error.todo-missing-source-locations.js
 error.todo-nested-method-calls-lower-property-load-into-temporary.js
 error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js
@@ -1085,7 +1083,6 @@ should-bailout-without-compilation-infer-mode.js
 simple-alias.js
 simple-function-1.js
 simple.js
-skip-useMemoCache.js
 ssa-arrayexpression.js
 ssa-call-jsx-2.js
 ssa-call-jsx.js

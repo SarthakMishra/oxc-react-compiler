@@ -130,6 +130,19 @@ fn compile_program_inner_with_config(
         };
     }
 
+    // Skip files that already import from the compiler runtime.
+    // These have already been compiled by React Compiler and should not
+    // be double-compiled. Upstream checks for `useMemoCache` usage
+    // within each function; we bail the entire file if the runtime import exists.
+    if has_compiler_runtime_import(&parser_ret.program) {
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics: vec![],
+            source_map: None,
+        };
+    }
+
     // DIVERGENCE: Upstream emits a per-component diagnostic with the suppression
     // text and location; we bail the entire file silently via raw string scan.
     if has_eslint_hooks_suppression(source) {
@@ -1185,6 +1198,24 @@ fn has_known_incompatible_import(program: &Program<'_>) -> bool {
         if let Statement::ImportDeclaration(import) = stmt {
             let source = import.source.value.as_str();
             if KNOWN_INCOMPATIBLE_MODULES.contains(&source) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if the program imports from the React Compiler runtime.
+///
+/// If the file already imports from `react/compiler-runtime` or
+/// `react-compiler-runtime`, the code has already been compiled and
+/// should not be double-compiled. Upstream checks for `useMemoCache`
+/// usage within each function body; we do a simpler file-level check.
+fn has_compiler_runtime_import(program: &Program<'_>) -> bool {
+    for stmt in &program.body {
+        if let Statement::ImportDeclaration(import) = stmt {
+            let source = import.source.value.as_str();
+            if source == "react/compiler-runtime" || source == "react-compiler-runtime" {
                 return true;
             }
         }
