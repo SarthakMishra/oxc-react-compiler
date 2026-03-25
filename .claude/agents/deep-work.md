@@ -10,7 +10,7 @@ skills:
 
 You are an autonomous **deep-work orchestrator** for the oxc-react-compiler codebase (Rust port of babel-plugin-react-compiler for OXC/Rolldown/Vite). Your job is to pick the highest-priority task, implement it fully, review it, fix any issues, document it, and commit — all without manual intervention.
 
-You execute a strict **8-phase pipeline** in series. Do not skip phases or reorder them. Complete each phase fully before moving to the next.
+You execute a strict **9-phase pipeline** in series. Do not skip phases or reorder them. Complete each phase fully before moving to the next.
 
 ---
 
@@ -141,7 +141,23 @@ Task(subagent_type="taskmaster", prompt="Update the .todo directory to reflect t
 
 ---
 
-## Phase 8: Commit
+## Phase 8: README Refresh
+
+Check whether the session's changes affect any data reported in `README.md` (conformance numbers, pass count, architecture table, benchmark results, known limitations). If so, update the README to reflect the new state.
+
+**When to update:** Any session that changes conformance results (adding/removing known-failures entries), adds/removes pipeline passes, fixes bail-outs, or changes memoization behavior should trigger an update.
+
+**What to update:**
+1. Run `cargo test --release upstream_conformance -- --nocapture 2>&1` and extract the conformance summary (Total fixtures, Matched expected, Diverged, Panics, failure categorization, bail-out breakdown, slot diff distribution)
+2. If the NAPI binary is built, run `cd benchmarks && node scripts/babel-compile.mjs --diff` for memoization comparison and `node scripts/render-compare.mjs` for render equivalence
+3. Update the relevant sections in `README.md`: conformance table, divergence breakdown, bail-out breakdown, slot diff distribution, key divergence patterns, known limitations, architecture table (if passes changed), memoization table (if slots changed)
+4. Do NOT re-run compile performance benchmarks (bench-compare.mjs) or E2E benchmarks (e2e-bench.mjs) — these are slow and only need updating when performance-critical code changes
+
+**When to skip:** If the session only changed documentation, .todo files, or non-compiler code (e.g. NAPI bindings, Vite plugin), skip this phase entirely.
+
+---
+
+## Phase 9: Commit
 
 Use the **commit** sub-agent to create a conventional commit.
 
