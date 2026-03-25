@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Stage 4c)
-> Conformance: **426/1717 (24.8%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 4c (Todo error detection): PARTIALLY COMPLETE, +15 fixtures (411->426). 15 of 27 Todo-error fixtures now correctly bail on unsupported patterns.
-> Known-failures: 1291.
+> Last updated: 2026-03-25 (post Stage 4d)
+> Conformance: **435/1717 (25.3%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 4d (Frozen-mutation false negatives): COMPLETE, +9 fixtures (426->435). 7 of 9 planned frozen-mutation fixtures fixed plus 2 bonus. Name-based freeze tracking introduces 4 IIFE false positives (new bail-outs, shifted from slots-MATCH/DIFFER).
+> Known-failures: 1282.
 
 ---
 
@@ -15,8 +15,8 @@
 |----------|-------|-------------|
 | Both compile, slots DIFFER | ~699 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** |
 | Both compile, slots MATCH | ~237 (18%) | Same slots, codegen structure diffs. **B2 pattern (temps vs original names) dominates: 40 fixtures.** |
-| We compile, they don't | ~210 (16%) | Missing validations. **75 are UPSTREAM ERROR fixtures (already correct). 32 need preserveExistingMemoization. 12 remain for Todo error detection (15 done). 11 need frozen-mutation fix.** |
-| We bail, they compile | ~69 (5%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c) |
+| We compile, they don't | ~201 (15%) | Missing validations. **75 are UPSTREAM ERROR fixtures (already correct). 32 need preserveExistingMemoization. 12 remain for Todo error detection (15 done). 2 frozen-mutation remain (9 fixed in Stage 4d).** |
+| We bail, they compile | ~73 (6%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking) |
 | Both no memo (format diff) | 76 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
 
 ### Key Investigation Findings (2026-03-25)
@@ -47,9 +47,9 @@ The path is clearer but requires significant compiler infrastructure work:
 | Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — load-bearing code |
 | Remaining bail-out fixes (2d-2g) | ~49 | +15-25 | MEDIUM — per-validation fixes |
 | Todo error detection (remaining) | 12 | +5-8 | LOW — need hoisting, optional terminals, default params |
-| Frozen-mutation validation fixes | 11 | +5-8 | MEDIUM |
+| Frozen-mutation validation fixes | 2 remain | +9 done (Stage 4d) | MEDIUM | 2 remaining need effect callback + JSX capture analysis |
 
-**Conservative estimate:** +150-275 from 426 base = 576-701. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +141-266 from 435 base = 576-701. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
@@ -113,12 +113,13 @@ Completed 2026-03-25. Fixed handling of `@validateNoDerivedComputationsInEffects
 These 20 fixtures now compile instead of bailing, but land in slots-DIFFER/MATCH pools (output doesn't match upstream yet).
 Net conformance: +0. But these fixtures are now unblocked for future scope/codegen improvements.
 
-#### Stage 2d: Fix Frozen-Mutation False Positives (11 fixtures)
+#### Stage 2d: Fix Frozen-Mutation False Positives (11 original + 4 new IIFE = ~15 fixtures)
 
 - [ ] Review `validate_no_mutation_after_freeze` / `InferMutableRanges` for over-reporting mutations on frozen values
 - [ ] Compare our validation logic against upstream's to find divergence
 - [ ] Implement targeted relaxations without losing true-positive detections
-- **Risk:** MEDIUM — requires mutable range analysis refinements
+- [ ] **NEW (post Stage 4d):** Fix 4 IIFE-pattern false positives introduced by name-based freeze tracking (`capturing-func-alias-*-iife.js`). These fixtures mutate a captured variable inside an IIFE, but the name-based tracker incorrectly treats this as mutation-after-freeze. Future fix: implement scoped name tracking that distinguishes IIFE-internal mutations from true post-freeze mutations.
+- **Risk:** MEDIUM — requires mutable range analysis refinements + scoped name tracking for IIFE patterns
 - **Details:** [bail-out-investigation.md](bail-out-investigation.md)
 
 #### Stage 2e: Fix Ref-Access False Positives (8 fixtures)
@@ -201,7 +202,7 @@ Completed 2026-03-25 (extended investigation). Breakdown of ~225 "we compile, th
 | UPSTREAM ERROR fixtures (expected output IS the error) | 75 | Must emit matching error message to pass |
 | `validatePreserveExistingMemoizationGuarantees` gaps | 32 | Extend existing preserve-memo validation |
 | `Todo` error detection (unimplemented features) | 12 remaining (15 done) | 12 need hoisting, optional terminals, default params, capture analysis |
-| Frozen-mutation detection gaps | 11 | Fix false negatives in mutation validation |
+| Frozen-mutation detection gaps | 2 remain (9 fixed) | 9 fixed in Stage 4d; 2 remain (effect callback, JSX capture) |
 | Other validation gaps (ref-access, reassignment, hooks) | ~80 | Various per-validation fixes |
 
 #### Stage 4b: Implement `validatePreserveExistingMemoizationGuarantees` Fixes (32 fixtures)
@@ -241,12 +242,15 @@ Completed 2026-03-25. Implemented bail-outs for 15 of 27 Todo-error fixtures:
 - Hook spread (1) — need spread-in-hook detection
 - For-loop context vars (1) — need for-loop context variable handling
 
-#### Stage 4d: Fix Frozen-Mutation False Negatives (11 fixtures)
+#### Stage 4d: Fix Frozen-Mutation False Negatives -- COMPLETE (+9 net, 426->435)
 
-- [ ] These are cases where upstream detects a mutation-after-freeze but we miss it
-- [ ] Different from Stage 2d (which is false POSITIVES — we detect when we shouldn't)
-- [ ] Audit `validate_no_mutation_after_freeze.rs` for missed patterns
-- [ ] **Risk:** MEDIUM
+Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mutation_after_freeze.rs` to detect mutations on frozen values that were previously missed due to IdentifierId mismatches across scopes.
+- **7 of 9 planned fixtures fixed** plus **2 bonus fixtures** (9 total gained)
+- **Side effect:** 9 fixtures shifted from slots-MATCH/DIFFER to bail category (name-based tracking introduced false positives on IIFE patterns where a variable is captured and mutated inside an IIFE, but the freeze tracker sees the mutation as post-freeze)
+- **2 planned fixtures remain:**
+  - `error.assign-ref-in-effect-hint.js` — requires effect callback mutation checking (not just freeze tracking)
+  - `error.invalid-jsx-captures-context-variable.js` — complex JSX capture pattern, needs deeper analysis
+- **New regression:** 4 IIFE-pattern fixtures (`capturing-func-alias-*-iife.js`) now falsely bail. See Stage 2d note below.
 
 #### Stage 4e: UPSTREAM ERROR Fixture Handling (75 fixtures)
 
@@ -304,10 +308,10 @@ Completed 2026-03-25. Implemented bail-outs for 15 of 27 Todo-error fixtures:
 | Stage 3: Scope inference (±1/±2 diffs) | +50-100 | 514-601 | HIGH | ~699 pool, cascading regression risk |
 | Stage 4b: Preserve-memo validation | +15-25 | 529-626 | MEDIUM | 32 fixtures |
 | Stage 4c: Todo error detection | +15 (done, 12 remain) | 426 | LOW | 15/27 done. Remaining 12 need hoisting, optional terminals, etc. |
-| Stage 4d: Frozen-mutation false negatives | +5-8 | 544-654 | MEDIUM | 11 fixtures |
+| Stage 4d: Frozen-mutation false negatives | +9 (done) | 435 | MEDIUM | Completed. 7/9 planned + 2 bonus. 2 remain (effect callback, JSX capture). |
 | Stage 4e: Upstream error matching | +30-50 | 574-704 | LOW-MED | 75 fixtures |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 76 fixtures, new passes needed |
-| **Total remaining** | **+178-328** | **604-754** | | From 426 base |
+| **Total remaining** | **+169-319** | **604-754** | | From 435 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
@@ -452,3 +456,4 @@ All paths relative to `crates/oxc_react_compiler/`.
 17. **B2 (variable name preservation) is the dominant tractable slots-MATCH pattern.** 40 fixtures where we use temps but upstream preserves original names in scope outputs. Single largest fixable sub-pattern in the 237-fixture slots-MATCH pool.
 18. **Todo error fixtures live in known-failures, not in the "not in KF" set.** The 16 fixtures initially identified as Todo-error targets were already passing. The actual Todo-error fixtures were in the UPSTREAM ERROR subset of known-failures. Always check known-failures.txt for UPSTREAM ERROR fixtures when looking for validation gaps.
 19. **Low-hanging Todo errors yield good ROI.** Stage 4c gained +15 from simple pattern detection (try-without-catch, computed keys, value-blocks-in-try, throw-in-try, fbt locals). The remaining 12 need deeper compiler infrastructure (hoisting, optional terminals, default params).
+20. **Name-based freeze tracking trades false negatives for false positives.** Stage 4d gained +9 by tracking frozen identifiers by name (solving cross-scope IdentifierId mismatch), but introduced 4 IIFE-pattern false positives where captured variables are mutated inside IIFEs. Net gain is still positive (+9 gained, -4 shifted to bail = +5 net new passing + 4 category shifts). Future improvement: scoped name tracking that understands IIFE boundaries.

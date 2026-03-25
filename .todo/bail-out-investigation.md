@@ -2,7 +2,7 @@
 
 > Completed: 2026-03-25
 > Starting pool: 108 "we bail, they compile" fixtures
-> After fixes: 89 remaining
+> After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in)
 
 ## Summary
 
@@ -34,7 +34,7 @@ Of the original 108 fixtures where we bail but upstream compiles:
 | Error Category | Count | Fixable? | Notes |
 |---------------|-------|----------|-------|
 | Values derived from props/state (effect-derived-computations validation) | 20 | YES | New validation `validateNoDerivedComputationsInEffects` fires incorrectly; upstream compiles despite this validation |
-| Frozen mutation (false positive) | 11 | MEDIUM | `InferMutableRanges` over-reports mutations on frozen values |
+| Frozen mutation (false positive) | 15 (11 original + 4 IIFE from Stage 4d) | MEDIUM | `InferMutableRanges` over-reports mutations on frozen values. 4 new IIFE false positives from name-based freeze tracking. |
 | Cannot reassign outside component | 10 | MEDIUM | `validateLocalsNotReassignedAfterRender` false positives |
 | (no error / silent) | 9 | MIXED | Various: gating mode (3), 0-scope functions (2), misc (4) |
 | Cannot access refs during render | 8 | MEDIUM | `validateNoRefAccessInRender` false positives |
@@ -55,10 +55,33 @@ Of the original 108 fixtures where we bail but upstream compiles:
 - These fixtures are unblocked for future scope/codegen improvements
 - **Key learning:** Bail-out fixes move fixtures between pools but don't directly increase conformance when output still differs
 
-### Stage 2d: Fix frozen-mutation false positives (11 fixtures → ~5-8 gained)
+### Stage 2d: Fix frozen-mutation false positives (11 original + 4 new IIFE = ~15 fixtures)
 - `InferMutableRanges` incorrectly reports mutations on frozen values
 - Requires mutable range analysis refinements
+- **NEW (post Stage 4d):** 4 additional IIFE-pattern false positives introduced by name-based freeze tracking:
+  - `capturing-func-alias-captured-mutate-iife.js`
+  - `capturing-func-alias-computed-iife.js`
+  - `capturing-func-alias-mutate-iife.js`
+  - `capturing-func-alias-property-iife.js`
+  - These shifted from slots-MATCH/DIFFER to bail category. The name-based tracker sees mutations inside IIFEs as post-freeze mutations because it doesn't track scope boundaries.
+  - **Fix approach:** Implement scoped name tracking that resets or excludes names within IIFE boundaries from freeze-after-mutation checks.
 - **Risk:** MEDIUM
+
+### Stage 4d: Frozen-mutation false negatives -- COMPLETE (+9 net, 426->435)
+
+Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mutation_after_freeze.rs`.
+
+**Approach:** Track frozen identifiers by name (not just IdentifierId) to solve cross-scope identity mismatches where the same logical variable has different IdentifierIds in different scopes.
+
+**Results:**
+- 7 of 9 planned fixtures fixed + 2 bonus = 9 total gained
+- 9 fixtures shifted from slots-MATCH/DIFFER to bail (IIFE false positives + other side effects of broader freeze tracking)
+
+**Remaining 2 planned fixtures:**
+- `error.assign-ref-in-effect-hint.js` — requires effect callback mutation checking, not just freeze tracking
+- `error.invalid-jsx-captures-context-variable.js` — complex JSX capture pattern needing deeper capture analysis
+
+**Trade-off:** Name-based tracking is coarser than IdentifierId-based tracking. It correctly catches more true positives (the 9 gained) but also catches 4 false positives on IIFE patterns. Net impact is positive.
 
 ### Stage 2e: Fix ref-access false positives (8 fixtures → ~3-5 gained)
 - `validateNoRefAccessInRender` is over-eager

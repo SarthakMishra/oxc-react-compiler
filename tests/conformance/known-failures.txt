@@ -1,7 +1,7 @@
 #
 # (Uses corrected .expected files extracted from upstream .expect.md)
 # 298 upstream error fixtures excluded from comparison
-# Baseline: 441/1717 pass (25.7%), 0 panics, 1276 divergences
+# Baseline: 435/1717 pass (25.3%), 0 panics, 1282 divergences
 # Format: <relative-path-from-upstream-fixtures/>
 # Known upstream fixtures that our compiler does not yet match.
 # One fixture filename per line. Lines starting with '#' are comments.
@@ -285,19 +285,11 @@ error.dont-hoist-inline-reference.js
 error.hoist-optional-member-expression-with-conditional-optional.js
 error.hoist-optional-member-expression-with-conditional.js
 error.hoisting-simple-function-declaration.js
-error.hook-call-freezes-captured-identifier.tsx
-error.hook-call-freezes-captured-memberexpr.jsx
-error.invalid-assing-to-ref-current-in-render.js
 error.invalid-hoisting-setstate.js
 error.invalid-jsx-captures-context-variable.js
 error.invalid-known-incompatible-function.js
 error.invalid-known-incompatible-hook-return-property.js
 error.invalid-known-incompatible-hook.js
-error.invalid-mutate-context.js
-error.invalid-mutate-phi-which-could-be-frozen.js
-error.invalid-mutate-props-in-effect-fixpoint.js
-error.invalid-mutate-props-via-for-of-iterator.js
-error.invalid-mutation-of-possible-props-phi-indirect.js
 error.invalid-optional-member-expression-as-memo-dep-non-optional-in-body.js
 error.invalid-pass-mutable-function-as-prop.js
 error.invalid-pass-ref-to-function.js
@@ -305,7 +297,6 @@ error.invalid-reassign-variable-in-usememo.js
 error.invalid-return-mutable-function-from-hook.js
 error.invalid-setState-in-useMemo-indirect-useCallback.js
 error.invalid-unconditional-set-state-prop-in-render.js
-error.modify-state-2.js
 error.ref-like-name-not-Ref.js
 error.ref-like-name-not-a-ref.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js

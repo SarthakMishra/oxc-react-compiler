@@ -313,6 +313,33 @@ pub fn validate_no_mutation_after_freeze(
 
     // Main pass: walk instructions, check for frozen mutations
     for (_, block) in &hir.blocks {
+        // DIVERGENCE: Upstream tracks freeze through its type-based abstract interpretation.
+        // We propagate freeze through phi nodes: if ANY operand is frozen (by ID or name),
+        // the phi result is also frozen. This handles `x = cond ? frozenValue : {}`
+        // where upstream marks the phi as "could be frozen" and rejects mutations.
+        for phi in &block.phis {
+            let any_operand_frozen = phi.operands.iter().any(|(_, operand)| {
+                is_ssa_frozen(&operand.identifier, &frozen_ids)
+                    || resolve_name(
+                        operand.identifier.id,
+                        &id_to_name,
+                        operand.identifier.name.as_deref(),
+                    )
+                    .is_some_and(|n| frozen_names.contains(n))
+            });
+            if any_operand_frozen {
+                let sid = ssa_id(&phi.place.identifier);
+                frozen_ids.insert(sid);
+                if let Some(name) = resolve_name(
+                    phi.place.identifier.id,
+                    &id_to_name,
+                    phi.place.identifier.name.as_deref(),
+                ) {
+                    frozen_names.insert(name);
+                }
+            }
+        }
+
         for instr in &block.instructions {
             // Check 1: MutateFrozen effects from the aliasing pass
             // Skip PrefixUpdate/PostfixUpdate: these are variable reassignments (x++),
@@ -353,6 +380,106 @@ pub fn validate_no_mutation_after_freeze(
                         }
                     }
                 }
+            }
+
+            // DIVERGENCE: Upstream propagates freeze transitively in its abstract interpreter.
+            // We propagate freeze through load/store chains and property accesses.
+            // When a frozen value is stored to a new variable, the new variable
+            // is also frozen. When a property is loaded from a frozen object,
+            // the loaded value is transitively frozen.
+            match &instr.value {
+                InstructionValue::StoreLocal { value, lvalue, .. }
+                | InstructionValue::StoreContext { value, lvalue } => {
+                    // Skip ref-typed lvalues: useRef() returns are mutable by design.
+                    // Without this guard, storing a frozen value into a ref variable
+                    // would incorrectly freeze it, causing false positives on ref.current writes.
+                    if !ref_ids.contains(&lvalue.identifier.id) {
+                        let value_frozen_by_id = is_ssa_frozen(&value.identifier, &frozen_ids);
+                        let value_frozen_by_name = !value_frozen_by_id
+                            && resolve_name(
+                                value.identifier.id,
+                                &id_to_name,
+                                value.identifier.name.as_deref(),
+                            )
+                            .is_some_and(|n| frozen_names.contains(n));
+                        if value_frozen_by_id || value_frozen_by_name {
+                            let sid = ssa_id(&lvalue.identifier);
+                            frozen_ids.insert(sid);
+                            frozen_at.entry(sid).or_insert(instr.id);
+                            if let Some(name) = resolve_name(
+                                lvalue.identifier.id,
+                                &id_to_name,
+                                lvalue.identifier.name.as_deref(),
+                            ) {
+                                frozen_names.insert(name);
+                            }
+                        }
+                    }
+                }
+                InstructionValue::PropertyLoad { object, .. }
+                | InstructionValue::ComputedLoad { object, .. } => {
+                    let obj_frozen_by_id = is_ssa_frozen(&object.identifier, &frozen_ids);
+                    let obj_frozen_by_name = !obj_frozen_by_id
+                        && resolve_name(
+                            object.identifier.id,
+                            &id_to_name,
+                            object.identifier.name.as_deref(),
+                        )
+                        .is_some_and(|n| frozen_names.contains(n));
+                    if obj_frozen_by_id || obj_frozen_by_name {
+                        // Freeze the loaded value by ID only — don't add the loaded
+                        // property's name to frozen_names because that can cause
+                        // name collisions with unrelated variables.
+                        let sid = ssa_id(&instr.lvalue.identifier);
+                        frozen_ids.insert(sid);
+                        frozen_at.entry(sid).or_insert(instr.id);
+                    }
+                }
+                // Propagate freeze through iterator chains:
+                // `for (const x of frozenObj.items)` → GetIterator(frozen) → IteratorNext(frozen_iter)
+                InstructionValue::GetIterator { collection } => {
+                    if is_ssa_frozen(&collection.identifier, &frozen_ids)
+                        || resolve_name(
+                            collection.identifier.id,
+                            &id_to_name,
+                            collection.identifier.name.as_deref(),
+                        )
+                        .is_some_and(|n| frozen_names.contains(n))
+                    {
+                        let sid = ssa_id(&instr.lvalue.identifier);
+                        frozen_ids.insert(sid);
+                        frozen_at.entry(sid).or_insert(instr.id);
+                    }
+                }
+                InstructionValue::IteratorNext { iterator, .. } => {
+                    if is_ssa_frozen(&iterator.identifier, &frozen_ids) {
+                        let sid = ssa_id(&instr.lvalue.identifier);
+                        frozen_ids.insert(sid);
+                        frozen_at.entry(sid).or_insert(instr.id);
+                        if let Some(name) = resolve_name(
+                            instr.lvalue.identifier.id,
+                            &id_to_name,
+                            instr.lvalue.identifier.name.as_deref(),
+                        ) {
+                            frozen_names.insert(name);
+                        }
+                    }
+                }
+                InstructionValue::NextPropertyOf { value } => {
+                    if is_ssa_frozen(&value.identifier, &frozen_ids)
+                        || resolve_name(
+                            value.identifier.id,
+                            &id_to_name,
+                            value.identifier.name.as_deref(),
+                        )
+                        .is_some_and(|n| frozen_names.contains(n))
+                    {
+                        let sid = ssa_id(&instr.lvalue.identifier);
+                        frozen_ids.insert(sid);
+                        frozen_at.entry(sid).or_insert(instr.id);
+                    }
+                }
+                _ => {}
             }
 
             // Hook calls freeze captured variables of function arguments.
@@ -426,16 +553,26 @@ pub fn validate_no_mutation_after_freeze(
             }
 
             // Check 3: PropertyStore/ComputedStore/Delete on frozen values
-            // Also verify source ordering to avoid false positives from
-            // block iteration order mismatches.
+            // Uses both SSA-id tracking (frozen_ids) and name-based fallback
+            // (frozen_names) to catch cases where the object has a fresh SSA ID
+            // but the underlying variable name is frozen.
+            // NOTE: The name-based path intentionally skips the `is_frozen_before`
+            // ordering check. Name-based freezes come from pre-frozen params
+            // (always before any instruction) or hook-captures (which freeze at the
+            // hook call site). In both cases, the freeze logically precedes any
+            // subsequent mutation, so ordering is guaranteed by construction.
+            // DIVERGENCE: Upstream uses abstract-interpretation-based freeze tracking
+            // in InferMutationAliasingEffects.ts rather than this post-hoc validation.
             match &instr.value {
                 InstructionValue::PropertyStore { object, .. }
                 | InstructionValue::ComputedStore { object, .. }
                 | InstructionValue::PropertyDelete { object, .. }
                 | InstructionValue::ComputedDelete { object, .. } => {
-                    if is_place_frozen(object, &frozen_ids)
-                        && is_frozen_before(object, instr.id, &frozen_at)
-                    {
+                    let id_frozen = is_place_frozen(object, &frozen_ids)
+                        && is_frozen_before(object, instr.id, &frozen_at);
+                    let name_frozen =
+                        !id_frozen && is_place_name_frozen(object, &frozen_names, &id_to_name);
+                    if id_frozen || name_frozen {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             FROZEN_MUTATION_ERROR,
@@ -537,6 +674,16 @@ fn is_frozen_before(
 
 fn is_place_frozen(place: &Place, frozen_ids: &FxHashSet<SsaId>) -> bool {
     is_ssa_frozen(&place.identifier, frozen_ids)
+}
+
+/// Check if a place refers to a frozen value by name-based fallback.
+fn is_place_name_frozen(
+    place: &Place,
+    frozen_names: &FxHashSet<&str>,
+    id_to_name: &FxHashMap<IdentifierId, &str>,
+) -> bool {
+    let name = id_to_name.get(&place.identifier.id).copied().or(place.identifier.name.as_deref());
+    name.is_some_and(|n| frozen_names.contains(n))
 }
 
 /// Returns true if a hook name represents an effect or callback hook whose
