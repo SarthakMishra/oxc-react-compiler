@@ -10,28 +10,29 @@
 
 ## Road to 600+ Conformance (411 → 600+, need +189)
 
-### Failure Category Summary (post-investigation, revised)
+### Failure Category Summary (revised 2026-03-25, fresh data from deep-work session)
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Both compile, slots DIFFER | ~699 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** |
-| Both compile, slots MATCH | ~227 (was 237, -6 from 1d Phase 1 moved to matched) | Same slots, codegen structure diffs. **B2 pattern (temps vs original names) dominates: 40 fixtures.** |
-| We compile, they don't | ~193 (15%) | Missing validations. **75 are UPSTREAM ERROR fixtures (7 fixed in 4e-A, 2 in 4e-B). 32 need preserveExistingMemoization. 5 remain for Todo error detection (22 done). 2 frozen-mutation remain (9 fixed in Stage 4d).** |
-| We bail, they compile | ~73 (6%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking) |
-| Both no memo (format diff) | 76 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
+| Both compile, slots DIFFER | 688 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** Deficit (our < expected): 402 fixtures. Surplus (our > expected): 286 fixtures. |
+| Both compile, slots MATCH | 227 (was 237, -6 from 1d Phase 1 moved to matched) | Same slots, codegen structure diffs. **B2 pattern (temps vs original names) dominates: 40 fixtures.** |
+| We compile, they don't | 189 (15%) | Missing validations. **Breakdown: 60 preserve-memo, 15 flow-parse, 10 todo-bail, 6 invariant, 4 frozen-value, rest mixed.** |
+| We bail, they compile | 84 (6%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking) |
+| Both no memo (format diff) | 79 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
 
 ### Key Investigation Findings (2026-03-25)
 
-1. **"Both no memo" (76 fixtures) is NOT low-hanging fruit.** These require dead-code elimination and constant propagation compiler passes. Neither pass exists yet. This is significant compiler work, not cosmetic format fixes as originally assumed.
+1. **"Both no memo" (79 fixtures) is NOT low-hanging fruit.** These require dead-code elimination and constant propagation compiler passes. Neither pass exists yet. This is significant compiler work, not cosmetic format fixes as originally assumed.
 
-2. **"We compile, they don't" (225 fixtures) breakdown:**
-   - **75 are UPSTREAM ERROR fixtures** — upstream intentionally bails with an error message as the expected output. We compile instead. These are correct behavior IF we add the matching error detection. However, many of these error messages come from validations we already partially have.
-   - **32 need `validatePreserveExistingMemoizationGuarantees`** — our implementation exists but has gaps vs upstream
-   - **27 need various `Todo` error detection** — upstream emits `Todo` errors for unimplemented features; we silently compile
-   - **11 need frozen-mutation detection fixes** — our validation fires incorrectly or misses cases
+2. **"We compile, they don't" (189 fixtures, revised 2026-03-25) breakdown:**
+   - **60 are preserve-memo** — `validatePreserveExistingMemoizationGuarantees` gaps. Sub-types: 26 need `validateInferredDep` (not implemented), 17 need "value was memoized" check improvement, 17 need "dependency may be mutated" tracking.
+   - **15 are flow-parse** — Flow type annotation parsing failures (not actionable without Flow support)
+   - **10 are todo-bail** — upstream emits `Todo` errors for unimplemented features; we silently compile
+   - **6 are invariant** — upstream internal assertion failures we don't replicate
+   - **4 are frozen-value** — frozen-mutation detection gaps
    - Remaining: mixed validation gaps (ref-access, reassignment, hooks, etc.)
 
-3. **"Slots MATCH" (237 fixtures) is dominated by B2 pattern** — 40 fixtures where we use temp variables but upstream preserves original variable names in scope outputs. This is the single largest tractable sub-pattern in slots-MATCH.
+3. **"Slots MATCH" (227 fixtures) is dominated by B2 pattern** — 40 fixtures where we use temp variables but upstream preserves original variable names in scope outputs. This is the single largest tractable sub-pattern in slots-MATCH.
 
 4. **Stage 2c (`_exp` directive handling) is COMPLETE** — moved 20 fixtures from "we bail, they compile" to "both compile" categories. Net conformance +0 because the newly-compiling fixtures land in slots-DIFFER/MATCH pools (their output doesn't match yet). But this unblocks those 20 fixtures for future scope/codegen fixes.
 
@@ -41,12 +42,12 @@ The path is clearer but requires significant compiler infrastructure work:
 
 | Work Item | Pool Size | Potential Gain | Difficulty |
 |-----------|-----------|---------------|------------|
-| Scope inference fixes (slots-DIFFER) | ~699 | +50-100 | HIGH — cascading regression risk |
-| DCE + constant propagation (both-no-memo) | 76 | +30-50 | HIGH — new compiler passes needed |
-| `validatePreserveExistingMemoizationGuarantees` gaps | 32 | +15-25 | MEDIUM — extend existing validation |
+| Scope inference fixes (slots-DIFFER) | 688 | +50-100 | HIGH — cascading regression risk, scope MERGING is bottleneck (see 3b blocker) |
+| DCE + constant propagation (both-no-memo) | 79 | +30-50 | HIGH — new compiler passes needed |
+| `validatePreserveExistingMemoizationGuarantees` gaps | 60 | +30-45 | MEDIUM — 3 sub-types: validateInferredDep (26), value-memoized (17), dep-mutated (17) |
 | Variable name preservation in codegen (B2) | 40 | +20-30 | MEDIUM — scope output naming changes |
 | Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — load-bearing code |
-| Remaining bail-out fixes (2d-2g) | ~49 | +15-25 | MEDIUM — per-validation fixes |
+| Remaining bail-out fixes (2d-2g) | ~84 total bail pool | +15-25 | MEDIUM — per-validation fixes |
 | Todo error detection (remaining) | 12 | +5-8 | LOW — need hoisting, optional terminals, default params |
 | Frozen-mutation validation fixes | 2 remain | +9 done (Stage 4d) | MEDIUM | 2 remaining need effect callback + JSX capture analysis |
 
@@ -148,28 +149,49 @@ Net conformance: +0. But these fixtures are now unblocked for future scope/codeg
 
 ---
 
-### Stage 3: Scope Inference — Small Slot Diffs (target: +30-50 fixtures)
+### Stage 3: Scope Inference — Slot Diffs (target: +30-50 fixtures)
 
-**Pool:** 246 fixtures with ±1 slot diff, 55 with ±2 slot diff (301 total).
-**Root causes:** Scope merging too aggressive/conservative, dependency over/under-counting, mutable range gaps.
+**Pool:** 688 slot-differ fixtures total (402 deficit, 286 surplus). Deficit distribution: -1 (131), -2 (120), -3 (35), -4 (42), -5 (16), -6 (22), -7 (4), -8+ (32).
+**Root causes:** Scope merging too aggressive/conservative, dependency over/under-counting, mutable range gaps. **Scope MERGING identified as bottleneck (not scope creation) — see 3b blocker report.**
 **Risk:** HIGH — scope inference changes can cause cascading regressions.
 
 #### Stage 3a: Investigate ±1 Slot Diff Patterns -- COMPLETE (investigation only)
 
 Completed 2026-03-25 (Phase 142 in journal). Full categorization of 1274 diverged fixtures into 5 buckets.
+Key findings (refreshed 2026-03-25: 84 we-bail, 189 we-compile-they-dont, 227 same-slots, 688 slot-differ, 79 both-no-memo):
 Key findings for slot-diff (688 fixtures):
 - **Primary root cause:** `last_use_map` in `infer_mutation_aliasing_ranges` over-extends mutable ranges vs upstream. Removing it breaks codegen (unresolved JSXText/intermediate refs). Fix requires: (1) receiver mutation effects for MethodCall Apply, (2) reverse scope propagation pass.
 - **Secondary root cause (partially fixed):** scope inference operand check used wrong condition; fixed in Phase 92 (isMutable check, mayAllocate lvalue, phi range gating). Net: +1 fixture.
-- **Same-slots-different-structure (227, was 233 pre-1d Phase 1):** 5 recurring patterns — variable naming (PromoteUsedTemporaries missing), declaration hoisting, import line presence, temp vs destructuring, optional-chaining. No single fix > ~30 fixtures.
+- **Same-slots-different-structure (227):** 5 recurring patterns — variable naming (PromoteUsedTemporaries missing), declaration hoisting, import line presence, temp vs destructuring, optional-chaining. No single fix > ~30 fixtures.
 - **Both-no-memo (79):** Requires DCE + constant propagation (new passes). NOT cosmetic.
+- **Slot-diff deficit distribution:** -1 (131), -2 (120), -3 (35), -4 (42), -5 (16), -6 (22), -7 (4), -8+ (32). Total deficit: 402. Total surplus: 286.
 
-#### Stage 3b: Fix Dominant ±1 Slot Diff Patterns (est: +15-25 fixtures, HIGH risk)
+#### Stage 3b: Fix Dominant Slot Diff Patterns (est: +15-25 fixtures, HIGH risk)
 
 **This is the critical-path task for reaching 600+.** The 688 slot-diff pool is the only category large enough to bridge the gap.
+
+**Slot diff distribution (deficit = our_slots < expected_slots, 402 fixtures):**
+| Diff | Count |
+|------|-------|
+| -1   | 131   |
+| -2   | 120   |
+| -3   | 35    |
+| -4   | 42    |
+| -5   | 16    |
+| -6   | 22    |
+| -7   | 4     |
+| -8+  | 32    |
+
+**Surplus (our_slots > expected_slots): 286 fixtures.**
 
 **Known root causes from Phase 92 + Phase 142 investigations:**
 1. `last_use_map` in `infer_mutation_aliasing_ranges.rs` extends ranges to last USE (not just last MUTATION). Upstream does NOT do this. Wider ranges mask scope separation bugs but prevent optimal splitting. **Cannot simply remove** — codegen depends on wide ranges for scope containment. Prerequisites: receiver mutation effects for MethodCall Apply + reverse scope propagation pass.
 2. Scope inference operand `isMutable` check (partially fixed Phase 92, +1 fixture).
+
+**Sample analysis of deficit fixtures (diverse root causes):**
+- `timers.js`: Over-merged scopes — `Date.now()` + JSX lumped into one scope, should be two separate scopes
+- `globals-Boolean.js`: Object creation and array creation should be separate scopes, our scope inference merges them
+- `simple-alias.js`: Missing scope output — variable should be cached separately but isn't
 
 **Approach:** Do NOT attempt to remove `last_use_map` directly. Instead:
 - [ ] Sample 20 fixtures from the ±1 deficit group (we have fewer slots than upstream = under-memoization)
@@ -181,6 +203,28 @@ Key findings for slot-diff (688 fixtures):
 
 **Upstream files:** `src/ReactiveScopes/InferReactiveScopeVariables.ts`, `src/Inference/InferMutationAliasingRanges.ts`, `src/ReactiveScopes/PropagateScopeDependencies.ts`
 **Our files:** `infer_reactive_scope_variables.rs`, `infer_mutation_aliasing_ranges.rs`, `propagate_dependencies.rs`
+
+##### Blocker Report — `is_allocating_instruction` heuristic removal attempt (2026-03-25)
+
+**Approach attempted:** Removed the `last_use > instr_id` heuristic from `is_allocating_instruction` for `CallExpression`, `MethodCall`, and `TaggedTemplateExpression`. The hypothesis was that the heuristic was preventing scope creation for allocating instructions when the result was used later, causing scopes to merge when they should remain separate (deficit fixtures).
+
+**Assumption that was wrong:** Assumed that removing the heuristic would create extra sentinel scopes that would then merge correctly with existing scope infrastructure. In reality, the extra sentinel scopes do NOT merge correctly — they create misaligned scope boundaries that break 5 previously-passing fixtures.
+
+**What was discovered:** The problem is NOT in scope CREATION (is_allocating_instruction) but in scope MERGING. The scope merging logic consumes sentinel scopes and combines adjacent scopes, but it does so in a way that depends on the current heuristic filtering. When more sentinel scopes are created by removing the heuristic, the merger produces different (worse) results. The deficit fixtures need fixes to how scopes are merged/split, not to which instructions are flagged as allocating.
+
+**Regression details:** -5 regressions (450 -> 445/1717), 0 new passes. Net: -5. Reverted immediately.
+
+**Prerequisites for a successful attempt:**
+- Understand the scope MERGING algorithm in detail (how sentinel scopes are consumed, what decides whether adjacent scopes merge)
+- Fix scope merging to handle additional sentinel scopes without breaking existing fixtures
+- Alternatively, find a different approach entirely: fix scope splitting logic rather than scope creation logic
+
+**Useful findings to carry forward:**
+- The deficit fixtures have diverse root causes (over-merging, missing outputs, wrong boundaries) — there is no single fix
+- The `last_use > instr_id` heuristic in `is_allocating_instruction` is load-bearing for scope merging correctness
+- Scope merging is the bottleneck, not scope sentinel creation
+
+**Do NOT attempt again until:** The scope merging algorithm is understood in detail and a targeted fix for merging is designed. Do not naively remove heuristics from `is_allocating_instruction`.
 
 #### Stage 3c: Fix Secondary ±1 Patterns (est: +10-15 fixtures)
 
@@ -203,7 +247,7 @@ Key findings for slot-diff (688 fixtures):
 
 ### Stage 4: Validation Gaps — "We Compile, They Don't" (target: +50-75 fixtures)
 
-**Pool:** ~225 fixtures where upstream bails with an error but we compile (incorrectly).
+**Pool:** 189 fixtures where upstream bails with an error but we compile (incorrectly). Breakdown: 60 preserve-memo, 15 flow-parse, 10 todo-bail, 6 invariant, 4 frozen-value, rest mixed.
 **Risk:** LOW — adding validations is safe (bail-out = pass-through = correct).
 
 #### Stage 4a: Categorize Missing Validations -- COMPLETE (investigation)
@@ -218,23 +262,32 @@ Completed 2026-03-25 (extended investigation). Breakdown of ~225 "we compile, th
 | Frozen-mutation detection gaps | 2 remain (9 fixed) | 9 fixed in Stage 4d; 2 remain (effect callback, JSX capture) |
 | Other validation gaps (ref-access, reassignment, hooks) | ~80 | Various per-validation fixes |
 
-#### Stage 4b: Implement `validatePreserveExistingMemoizationGuarantees` Fixes (32 fixtures)
+#### Stage 4b: Implement `validatePreserveExistingMemoizationGuarantees` Fixes (60 preserve-memo fixtures in "we compile, they don't")
+
+**Updated breakdown (2026-03-25 deep-work session):** The 60 preserve-memo fixtures in the "we compile, they don't" category break into 3 distinct sub-types:
+
+| Sub-type | Count | What's needed |
+|----------|-------|---------------|
+| `validateInferredDep` not implemented | 26 | Port upstream's `validateInferredDep` checks — validates that inferred dependencies match manual memo deps |
+| "value was memoized" check improvement | 17 | Improve detection of whether a value was actually memoized by the compiler (our check is too permissive) |
+| "dependency may be mutated" tracking | 17 | Track whether dependencies of manual memos may be mutated, triggering preserve-memo bail-out |
 
 - [ ] Audit our `validate_preserved_manual_memoization.rs` against upstream
-- [ ] Identify which guarantee checks are missing (likely: dependency tracking, conditional memoization patterns)
-- [ ] Implement missing checks
+- [ ] Port `validateInferredDep` checks (26 fixtures — largest sub-type)
+- [ ] Fix "value was memoized" detection (17 fixtures)
+- [ ] Add "dependency may be mutated" tracking (17 fixtures)
 - [ ] **Risk:** MEDIUM — our implementation exists but has known gaps
-- [ ] **Potential gain:** +15-25 fixtures (some may also need other fixes)
+- [ ] **Potential gain:** +30-45 fixtures (some may also need other fixes)
 
 ##### Partial Investigation Notes (2026-03-25)
 
 An investigation was started but not completed. Key finding: our validation exists at Pass 61 but fails to detect errors because `finish_in_scope` is true -- our scope inference wraps `FinishMemoize` in reactive scopes, which causes the validation to skip checks it should be performing. Additionally, upstream has `validateInferredDep` checks that we skip entirely. These are **prerequisites** for Stage 4b to succeed:
 
 1. Understand why `finish_in_scope` is true (scope inference wrapping `FinishMemoize` instructions)
-2. Port the `validateInferredDep` checks from upstream
+2. Port the `validateInferredDep` checks from upstream (affects 26 fixtures)
 3. May require scope inference adjustments to avoid wrapping `FinishMemoize` in reactive scopes
 
-**Status:** Investigation incomplete. Approach is understood but implementation requires deeper scope inference analysis. Consider doing Stage 4c first (lower risk, no blockers).
+**Status:** Investigation incomplete. Approach is understood but implementation requires deeper scope inference analysis. The 3-sub-type breakdown provides clear attack plan once the `finish_in_scope` prerequisite is resolved.
 
 #### Stage 4c: Add Todo Error Detection -- PARTIALLY COMPLETE (+15 net, 411->426)
 
@@ -321,7 +374,7 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 
 ### Stage 5: "Both No Memo" — DCE + Constant Propagation (target: +30-50 fixtures)
 
-**Pool:** 76 fixtures where neither side memoizes but output differs.
+**Pool:** 79 fixtures where neither side memoizes but output differs.
 **Risk:** HIGH — requires implementing new compiler passes (DCE, constant propagation).
 
 **Investigation finding (2026-03-25):** These are NOT cosmetic format diffs as originally assumed. The 76 fixtures produce different output because upstream runs dead-code elimination and constant propagation passes that simplify the output. Without these passes, our output includes dead assignments, unreachable branches, and un-folded constants that upstream eliminates.
@@ -362,14 +415,14 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 | Stage 2g: Other bail-outs | +5-10 | 429-441 | MIXED | ~40 remaining fixtures |
 | Stage 1d Phase 1: Declaration placement | +6 (done) | 450 | LOW | Completed. Phase 2/3 remain (+10-30). |
 | B2: Variable name preservation | +20-30 | 464-501 | MEDIUM | 40 fixtures, scope output naming |
-| Stage 3: Scope inference (±1/±2 diffs) | +50-100 | 514-601 | HIGH | ~699 pool, cascading regression risk |
-| Stage 4b: Preserve-memo validation | +15-25 | 529-626 | MEDIUM | 32 fixtures |
+| Stage 3: Scope inference (±1/±2 diffs) | +50-100 | 514-601 | HIGH | 688 pool (402 deficit, 286 surplus), scope MERGING is bottleneck (see 3b blocker) |
+| Stage 4b: Preserve-memo validation | +30-45 | 544-646 | MEDIUM | 60 fixtures (26 validateInferredDep, 17 value-memoized, 17 dep-mutated) |
 | Stage 4c: Todo error detection | +15 (done, 5 remain) | 426 | LOW | 22/27 done (15 in 4c + 7 in 4e-A). Remaining 5 need hoisting, optional terminals, context vars. |
 | Stage 4d: Frozen-mutation false negatives | +9 (done) | 435 | MEDIUM | Completed. 7/9 planned + 2 bonus. 2 remain (effect callback, JSX capture). |
 | Stage 4e-A: Upstream error bail-outs | +7 (done) | 442 | LOW | 7/43 done. 4e-B through 4e-E remain. |
 | Stage 4e-B: Locals/ref/setState/hooks | +2 so far | 444 (pre-1d) | LOW | 2/5 done (hooks-in-loop, mutate-ref-arg). 3 remain. |
 | Stage 4e-C/D/E: Remaining upstream errors | +21-38 | 464-481 | MED-HIGH | 4e-C (3, MED), 4e-D (11, MED-HIGH), 4e-E (7, HIGH) |
-| Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 76 fixtures, new passes needed |
+| Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 79 fixtures, new passes needed |
 | **Total remaining** | **+154-304** | **604-754** | | From 450 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
@@ -393,6 +446,10 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
 
 **Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +37-80 remaining) + codegen fixes (B2 + 1d Phases 2-3, +30-50). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~577 from 450 base. Optimistic: 700+.
+
+**Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
+
+**Key learning from "we compile, they don't" re-analysis (2026-03-25):** The 189 fixtures break down as 60 preserve-memo (largest actionable sub-pool), 15 flow-parse (not actionable), 10 todo-bail, 6 invariant, 4 frozen-value. The 60 preserve-memo further split into 3 sub-types, making Stage 4b more tractable than previously thought (clear attack plan per sub-type).
 
 **Key principle:** Each stage starts with investigation (sub-task "a") that produces a fixture-level breakdown. If the investigation shows estimates are wrong, the plan is updated before implementation begins. No blind implementation.
 
