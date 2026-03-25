@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 130     | 1–130  | Full compiler: HIR foundation → 30.8% conformance. Recent: mutation range propagation fixes (+93 fixtures), var declaration detection, compiler-runtime skip, custom opt-out directives |
+| [001.md](001.md) | 133     | 1–133  | Full compiler: HIR foundation → 23.5% conformance (rebaselined). Recent: expected file rebaseline with compilationMode:"all" (+9 net), validation fixes, mutation range propagation fixes (+93 fixtures) |
 
 ## Archive
 

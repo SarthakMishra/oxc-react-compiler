@@ -2,7 +2,7 @@
 
 Native [OXC](https://oxc.rs/) port of Meta's [React Compiler](https://github.com/facebook/react/tree/main/compiler/packages/babel-plugin-react-compiler) for the Rolldown/Vite pipeline, plus React 19 compiler-based lint rules for oxlint.
 
-> **Status:** This is an active port — 130+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 22.9% (394/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
+> **Status:** This is an active port — 130+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 23.5% (403/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
 
 ## Vite Plugin Usage
 
@@ -218,25 +218,26 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 | Panics / crashes            | 0            |
 | Render equivalence          | 92% (23/25)  |
 
-#### Divergence Breakdown (~1185 known failures)
+#### Divergence Breakdown (~1314 known failures)
 
 | Category                                 | Count | % of known |
 | ---------------------------------------- | ----- | ---------- |
-| We compile, they don't (validation gaps) | 677   | 56.9%      |
-| Both compile, slots DIFFER               | 365   | 30.7%      |
-| Both compile, slots MATCH (codegen diff) | 86    | 7.2%       |
-| We bail, they compile                    | 44    | 3.7%       |
-| Both no memo (format diff)               | 7     | 0.6%       |
-| Other / uncategorized                    | 10    | 0.8%       |
+| Both compile, slots DIFFER               | 668   | 50.8%      |
+| Both compile, slots MATCH (codegen diff) | 239   | 18.2%      |
+| We compile, they don't (validation gaps) | 223   | 17.0%      |
+| We bail, they compile                    | 108   | 8.2%       |
+| Both no memo (format diff)               | 76    | 5.8%       |
 
-#### Bail-out Breakdown (44 fixtures where we bail but upstream compiles)
+> Note: In Phase 133, expected files were rebaselined with `compilationMode: "all"` (matching the upstream test suite). The previous "we compile, they don't" category (677) was inflated by ~450 fixtures where upstream also compiles in all-mode. The dominant category is now "both compile, slots differ" — scope inference and codegen accuracy improvements are the primary path to higher conformance.
+
+#### Bail-out Breakdown (108 fixtures where we bail but upstream compiles)
 
 | Error                                 | Count |
 | ------------------------------------- | ----- |
-| Frozen-mutation false positives       | 9     |
-| Cannot reassign outside component     | 8     |
-| Ref-access in render false positives  | 7     |
-| Silent bail-outs (0 scopes, no error) | 5     |
+| Silent bail-outs (0 scopes, no error) | 51    |
+| Frozen-mutation false positives       | 11    |
+| Cannot reassign outside component     | 10    |
+| Ref-access in render false positives  | 8     |
 | Preserve-memo validation              | 4     |
 | Hooks / setState                      | 6     |
 | Other                                 | 5     |
@@ -255,7 +256,7 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 
 Most of the 1189 failures fall into a few root causes:
 
-- **Validation gaps (677 fixtures)** — The dominant failure category. We compile functions that upstream correctly rejects. These are missing validation checks that need to be ported.
+- **Scope inference / codegen accuracy (668 fixtures)** — The dominant failure category. Both compilers compile the function but produce different slot counts. Improving mutable range propagation, scope merging, and codegen structure is the primary path to higher conformance.
 - **Slot count divergences (365 fixtures)** — Both sides compile but reactive scope computation produces different cache slot counts. Under-counts typically reflect scope analysis gaps; over-counts reflect extra scopes or deps being included.
 - **Codegen structure (86 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement). This has improved significantly from 240 through formatting fixes.
 - **False-positive bail-outs (44 fixtures)** — We reject functions that upstream compiles successfully. Down from 135 through Flow preprocessing, preserve-memo relaxation, and validation tuning.

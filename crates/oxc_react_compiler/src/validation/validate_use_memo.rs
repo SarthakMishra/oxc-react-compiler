@@ -72,7 +72,7 @@ pub fn validate_use_memo(hir: &HIR, errors: &mut ErrorCollector, validate_preser
                     check_memo_callback_async(hir, callback_id, instr.loc, errors);
                     // Check if the callback returns void (useMemo must return a value)
                     check_memo_callback_void(hir, callback_id, instr.loc, errors);
-                    // Check if the callback calls setState
+                    // Check if the callback calls setState (directly or transitively)
                     check_memo_callback_set_state(hir, callback_id, instr.loc, errors);
                 }
             }
@@ -150,12 +150,21 @@ fn check_memo_callback_void(
 }
 
 /// Check if the useMemo callback calls setState, which could cause infinite loops.
+/// Detects both direct setState calls within the callback body and indirect calls
+/// through functions that transitively call setState (e.g., calling a useCallback
+/// function that itself calls setState).
 fn check_memo_callback_set_state(
     hir: &HIR,
     callback_id: IdentifierId,
     _call_loc: crate::hir::types::SourceLocation,
     errors: &mut ErrorCollector,
 ) {
+    // Collect names of parent-scope functions that transitively call setState.
+    // This handles patterns like:
+    //   const fn = useCallback(() => { setState(init); });
+    //   useMemo(() => { fn(); }, [...]);
+    let fns_calling_set_state = collect_fns_calling_set_state(hir);
+
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if instr.lvalue.identifier.id != callback_id {
@@ -165,11 +174,26 @@ fn check_memo_callback_set_state(
                 // Collect setState identifiers in the callback body
                 let set_state_ids = collect_set_state_ids(&lowered_func.body);
 
+                // Build a set of callee IDs that resolve to fns_calling_set_state names
+                // via LoadContext instructions in the callback body
+                let mut indirect_set_state_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+                for (_, inner_block) in &lowered_func.body.blocks {
+                    for inner_instr in &inner_block.instructions {
+                        if let InstructionValue::LoadContext { place } = &inner_instr.value
+                            && let Some(name) = &place.identifier.name
+                            && fns_calling_set_state.contains(name.as_str())
+                        {
+                            indirect_set_state_ids.insert(inner_instr.lvalue.identifier.id);
+                        }
+                    }
+                }
+
                 // Check all call expressions in the callback body
                 for (_, inner_block) in &lowered_func.body.blocks {
                     for inner_instr in &inner_block.instructions {
                         if let InstructionValue::CallExpression { callee, .. } = &inner_instr.value
-                            && set_state_ids.contains(&callee.identifier.id)
+                            && (set_state_ids.contains(&callee.identifier.id)
+                                || indirect_set_state_ids.contains(&callee.identifier.id))
                         {
                             errors.push(CompilerError::invalid_react_with_kind(
                                 inner_instr.loc,
@@ -186,6 +210,62 @@ fn check_memo_callback_set_state(
             }
         }
     }
+}
+
+/// Collect names of functions defined at the parent HIR level that
+/// transitively call setState in their body.
+fn collect_fns_calling_set_state(hir: &HIR) -> FxHashSet<String> {
+    let mut result = FxHashSet::default();
+
+    // Build a map from FE lvalue id -> variable name (via StoreLocal/StoreContext)
+    let mut fe_id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::StoreLocal { lvalue, value, .. }
+                | InstructionValue::StoreContext { lvalue, value } => {
+                    if let Some(name) = &lvalue.identifier.name {
+                        fe_id_to_name.insert(value.identifier.id, name.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
+                // Check if this FE's body calls setState
+                if fe_body_calls_set_state(&lowered_func.body) {
+                    // Find the name of this FE
+                    if let Some(name) = &instr.lvalue.identifier.name {
+                        result.insert(name.clone());
+                    }
+                    if let Some(name) = fe_id_to_name.get(&instr.lvalue.identifier.id) {
+                        result.insert(name.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Check if a FunctionExpression body contains any setState calls.
+fn fe_body_calls_set_state(hir: &HIR) -> bool {
+    let set_state_ids = collect_set_state_ids(hir);
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value
+                && set_state_ids.contains(&callee.identifier.id)
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Collect all setState identifier IDs in an HIR body.

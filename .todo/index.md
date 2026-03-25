@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Phase 132)
-> Conformance: **394/1717 (22.9%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1333.
-> **Note:** Previous "528" count was inflated — known-failures.txt was missing 148 entries for fixtures that actually diverge. Corrected in Phase 132.
+> Last updated: 2026-03-25 (post Phase 133)
+> Conformance: **403/1717 (23.5%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Re-baselined expected files with `compilationMode: "all"` in Phase 133. Previous expected files used Babel plugin default (`infer` mode), causing ~526 false "we compile, they don't" categorizations. Now the comparison is accurate. Known-failures: 1324.
+> **Note:** Previous "394" count was partially due to false positives from wrong expected files. After rebaseline: 403 true matches, 88 newly passing, 79 newly diverging (previously appeared to match due to wrong expected output).
 
 ---
 
@@ -74,7 +74,7 @@ Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. 
 ### Other Open Work
 
 - [ ] Constant propagation and DCE improvements (+25-30 fixtures) — PARTIALLY BLOCKED — most are 0-slot functions
-- [ ] Missing validations (+50 fixtures) — PARTIALLY DONE (Phase 129: 4/54, Phase 132: +4 = 8/54)
+- [ ] Missing validations — PARTIALLY DONE (Phase 129: 4/54, Phase 132: +4 = 8/54). Phase 133: transitive setState detection in useMemo. "We compile, they don't" category reduced from 749 to 223 after expected file rebaseline (was inflated by wrong compilation mode).
 - [ ] Remaining gating codegen (23 fixtures) — import ordering, @dynamicGating, validation
 - [ ] Remaining silent bailouts (7) — Flow type casts, compilationMode:infer edge cases
 - [ ] Remaining frozen mutation / ref validation (20 fixtures) — effects-level issues, FE data-flow
@@ -181,3 +181,4 @@ All paths relative to `crates/oxc_react_compiler/`.
 7. **"Both compile, slots match" (245 fixtures) are mostly cosmetic.** Variable naming and structural diffs -- lower priority than correctness gaps but good cleanup targets.
 8. **Preserve-memo validation needs `ManualMemoDependency` for full upstream fidelity.** Without source deps on `StartMemoize` and `validateInferredDep`, we can't detect dep mismatch errors. The `start_scope != finish_scope` check was an accidental proxy that caught both true positives (31 error fixtures) and false positives (54 valid fixtures). Removing it trades 31 undetectable errors for 54 recovered compilations.
 9. **Performance regression from Phases 113-130.** O(n^2+) scaling in effects/aliasing analysis passes. Large files slower than Babel. Optimization needed but deferred until correctness work stabilizes.
+10. **Expected file generation must use `compilationMode: "all"`.** The `run-upstream.mjs` script previously used Babel plugin defaults (`infer` mode), which skips non-component/non-hook functions. The upstream test suite uses `all` mode. This caused ~526 false "we compile, they don't" categorizations. Always parse @annotations from fixture comments and pass them to the Babel plugin. Fixed in Phase 133.
