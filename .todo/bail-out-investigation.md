@@ -47,23 +47,25 @@ Of the original 108 fixtures where we bail but upstream compiles:
 
 ## Recommended Next Steps
 
-### Stage 2b: Fix `validateNoDerivedComputationsInEffects` (20 fixtures → ~15-18 gained)
-- These 20 fixtures all have `@validateNoDerivedComputationsInEffects_exp` directive
-- Our validation fires and bails; upstream compiles anyway
-- Fix: Check if our validation is implementing this check when the directive only asks for it as a diagnostic (not a bail condition)
-- **Risk:** LOW-MEDIUM
+### Stage 2c (was 2b): Fix `_exp` Directive Handling -- COMPLETE
 
-### Stage 2c: Fix frozen-mutation false positives (11 fixtures → ~5-8 gained)
+**Completed 2026-03-25.** Fixed handling of `@validateNoDerivedComputationsInEffects_exp` directive fixtures.
+- 20 fixtures now compile instead of bailing
+- Net conformance: +0 (all land in slots-DIFFER/MATCH pools)
+- These fixtures are unblocked for future scope/codegen improvements
+- **Key learning:** Bail-out fixes move fixtures between pools but don't directly increase conformance when output still differs
+
+### Stage 2d: Fix frozen-mutation false positives (11 fixtures → ~5-8 gained)
 - `InferMutableRanges` incorrectly reports mutations on frozen values
 - Requires mutable range analysis refinements
 - **Risk:** MEDIUM
 
-### Stage 2d: Fix ref-access false positives (8 fixtures → ~3-5 gained)
+### Stage 2e: Fix ref-access false positives (8 fixtures → ~3-5 gained)
 - `validateNoRefAccessInRender` is over-eager
 - Some patterns (assigning ref-accessing functions to properties, ref type casts) should be allowed
 - **Risk:** MEDIUM
 
-### Stage 2e: Fix reassignment false positives (10 fixtures → ~5-7 gained)
+### Stage 2f: Fix reassignment false positives (10 fixtures → ~5-7 gained)
 - `validateLocalsNotReassignedAfterRender` false positives
 - **Risk:** MEDIUM
 

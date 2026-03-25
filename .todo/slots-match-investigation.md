@@ -36,9 +36,11 @@
 
 **Estimated impact:** Directly fixes naming in 48+ fixtures. Combined with other improvements, could help 60-80.
 
-### B2: Temps where upstream uses original names (34 fixtures)
+### B2: Temps where upstream uses original names (40 fixtures — DOMINANT TRACTABLE PATTERN)
 
 **Problem:** We assign to a temp variable and then assign to the original; upstream assigns directly to the original.
+
+**Extended investigation (2026-03-25):** This is the SINGLE LARGEST TRACTABLE sub-pattern in the entire 237-fixture slots-MATCH pool. Revised count: 40 fixtures (up from initial 34 estimate). These fixtures have matching slot counts and would pass if we preserved original variable names in scope outputs instead of using temps.
 
 **Example (type-test-field-store.js):**
 ```
@@ -48,7 +50,7 @@
 
 **Root cause:** Our codegen doesn't preserve original variable names for scope outputs when possible. Upstream tries to reuse the original declaration name.
 
-**Fix complexity:** HIGH — Requires changes to how scope outputs are emitted. The `collect_all_scope_declarations` system complicates this.
+**Fix complexity:** MEDIUM-HIGH — Requires changes to how scope outputs are emitted. The `collect_all_scope_declarations` system complicates this. However, this is more tractable than the full A1 (declaration placement) redesign because it only requires changing WHICH variable is used for scope outputs, not WHERE declarations are placed.
 
 ### B3: Original names where upstream uses temps (23 fixtures)
 

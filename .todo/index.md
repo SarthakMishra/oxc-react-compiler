@@ -1,22 +1,55 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Stage 2b partial)
+> Last updated: 2026-03-25 (post extended investigation)
 > Conformance: **411/1717 (23.9%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 2b partial: bail-outs reduced 108→89, +1 net conformance (410→411). Known-failures: 1306.
+> Stage 2c (_exp handling): COMPLETE but +0 net conformance. Moved 20 fixtures from bail to compile (now in slots-DIFFER/MATCH pools).
+> Known-failures: 1306.
 
 ---
 
-## Road to 600+ Conformance (403 → 600+, need +197)
+## Road to 600+ Conformance (411 → 600+, need +189)
 
-### Failure Category Summary
+### Failure Category Summary (post-investigation, revised)
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Both compile, slots DIFFER | 668 (50.8%) | Scope inference accuracy — different cache slot counts |
-| Both compile, slots MATCH | 239 (18.2%) | Same slots, codegen structure diffs (naming, ordering) |
-| We compile, they don't | 223 (17.0%) | Missing validations — we should bail but don't |
-| We bail, they compile | 108 (8.2%) | False-positive bail-outs — we reject valid code |
-| Both no memo (format diff) | 76 (5.8%) | Neither side memoizes, cosmetic output diffs |
+| Both compile, slots DIFFER | ~699 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** |
+| Both compile, slots MATCH | ~237 (18%) | Same slots, codegen structure diffs. **B2 pattern (temps vs original names) dominates: 40 fixtures.** |
+| We compile, they don't | ~225 (17%) | Missing validations. **75 are UPSTREAM ERROR fixtures (already correct). 32 need preserveExistingMemoization. 27 need Todo error detection. 11 need frozen-mutation fix.** |
+| We bail, they compile | ~69 (5%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c) |
+| Both no memo (format diff) | 76 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
+
+### Key Investigation Findings (2026-03-25)
+
+1. **"Both no memo" (76 fixtures) is NOT low-hanging fruit.** These require dead-code elimination and constant propagation compiler passes. Neither pass exists yet. This is significant compiler work, not cosmetic format fixes as originally assumed.
+
+2. **"We compile, they don't" (225 fixtures) breakdown:**
+   - **75 are UPSTREAM ERROR fixtures** — upstream intentionally bails with an error message as the expected output. We compile instead. These are correct behavior IF we add the matching error detection. However, many of these error messages come from validations we already partially have.
+   - **32 need `validatePreserveExistingMemoizationGuarantees`** — our implementation exists but has gaps vs upstream
+   - **27 need various `Todo` error detection** — upstream emits `Todo` errors for unimplemented features; we silently compile
+   - **11 need frozen-mutation detection fixes** — our validation fires incorrectly or misses cases
+   - Remaining: mixed validation gaps (ref-access, reassignment, hooks, etc.)
+
+3. **"Slots MATCH" (237 fixtures) is dominated by B2 pattern** — 40 fixtures where we use temp variables but upstream preserves original variable names in scope outputs. This is the single largest tractable sub-pattern in slots-MATCH.
+
+4. **Stage 2c (`_exp` directive handling) is COMPLETE** — moved 20 fixtures from "we bail, they compile" to "both compile" categories. Net conformance +0 because the newly-compiling fixtures land in slots-DIFFER/MATCH pools (their output doesn't match yet). But this unblocks those 20 fixtures for future scope/codegen fixes.
+
+### Revised Path to 600+
+
+The path is clearer but requires significant compiler infrastructure work:
+
+| Work Item | Pool Size | Potential Gain | Difficulty |
+|-----------|-----------|---------------|------------|
+| Scope inference fixes (slots-DIFFER) | ~699 | +50-100 | HIGH — cascading regression risk |
+| DCE + constant propagation (both-no-memo) | 76 | +30-50 | HIGH — new compiler passes needed |
+| `validatePreserveExistingMemoizationGuarantees` gaps | 32 | +15-25 | MEDIUM — extend existing validation |
+| Variable name preservation in codegen (B2) | 40 | +20-30 | MEDIUM — scope output naming changes |
+| Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — load-bearing code |
+| Remaining bail-out fixes (2d-2g) | ~49 | +15-25 | MEDIUM — per-validation fixes |
+| Todo error detection | 27 | +10-20 | LOW — add bail-outs for unimplemented features |
+| Frozen-mutation validation fixes | 11 | +5-8 | MEDIUM |
+
+**Conservative estimate:** +160-288 from 411 base = 571-699. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
@@ -74,14 +107,11 @@ Completed 2026-03-25. Removed 4 file-level bail-outs in `program.rs`:
 Net result: bail-outs reduced 108→89, conformance +1 (410→411). 2 error.todo fixtures regressed (added to known-failures).
 Remaining 89 bail-outs require per-validation fixes (see stages 2c-2f below).
 
-#### Stage 2c: Fix `validateNoDerivedComputationsInEffects` (20 fixtures, largest group)
+#### Stage 2c: Fix `_exp` Directive Handling -- COMPLETE (+0 net, 20 fixtures moved)
 
-- [ ] Investigate why our validation fires on `@validateNoDerivedComputationsInEffects_exp` directive fixtures when upstream compiles
-- [ ] Likely issue: we treat this as a bail condition when upstream only emits it as a diagnostic
-- [ ] Compare our implementation against upstream's handling of this directive
-- [ ] Fix: either skip bail for `_exp` directives, or correct the validation logic
-- **Risk:** LOW-MEDIUM — 20 fixtures, highest bang-for-buck in remaining bail-outs
-- **Details:** [bail-out-investigation.md](bail-out-investigation.md)#stage-2b-fix-validatenoderivedcomputationsineffects-20-fixtures--15-18-gained
+Completed 2026-03-25. Fixed handling of `@validateNoDerivedComputationsInEffects_exp` directive fixtures.
+These 20 fixtures now compile instead of bailing, but land in slots-DIFFER/MATCH pools (output doesn't match upstream yet).
+Net conformance: +0. But these fixtures are now unblocked for future scope/codegen improvements.
 
 #### Stage 2d: Fix Frozen-Mutation False Positives (11 fixtures)
 
@@ -157,72 +187,120 @@ Remaining 89 bail-outs require per-validation fixes (see stages 2c-2f below).
 
 ---
 
-### Stage 4: Validation Gaps — "We Compile, They Don't" (target: +20-30 fixtures)
+### Stage 4: Validation Gaps — "We Compile, They Don't" (target: +50-75 fixtures)
 
-**Pool:** 223 fixtures where upstream bails with an error but we compile (incorrectly).
+**Pool:** ~225 fixtures where upstream bails with an error but we compile (incorrectly).
 **Risk:** LOW — adding validations is safe (bail-out = pass-through = correct).
 
-#### Stage 4a: Categorize Missing Validations (est: 0 fixtures, prerequisite)
+#### Stage 4a: Categorize Missing Validations -- COMPLETE (investigation)
 
-- [ ] For each of 223 fixtures, extract upstream's error message from expected output
-- [ ] Group by validation type: locals-reassigned, direct-props-mutation, jsx-in-try, hooks-in-try, exhaustive-deps, other
-- [ ] Count per validation, estimate implementation difficulty
-- [ ] **Deliverable:** Validation gap breakdown, prioritized by fixture count
+Completed 2026-03-25 (extended investigation). Breakdown of ~225 "we compile, they don't" fixtures:
 
-#### Stage 4b: Implement Top Missing Validations (est: +15-20 fixtures)
+| Sub-category | Count | Action Needed |
+|-------------|-------|---------------|
+| UPSTREAM ERROR fixtures (expected output IS the error) | 75 | Must emit matching error message to pass |
+| `validatePreserveExistingMemoizationGuarantees` gaps | 32 | Extend existing preserve-memo validation |
+| `Todo` error detection (unimplemented features) | 27 | Add bail-outs for features we don't support |
+| Frozen-mutation detection gaps | 11 | Fix false negatives in mutation validation |
+| Other validation gaps (ref-access, reassignment, hooks) | ~80 | Various per-validation fixes |
 
-- [ ] Implement the 2-3 highest-count missing validations from 4a
-- [ ] Wire into pipeline, run conformance
-- [ ] Update known-failures.txt
+#### Stage 4b: Implement `validatePreserveExistingMemoizationGuarantees` Fixes (32 fixtures)
 
-#### Stage 4c: Implement Secondary Validations (est: +5-10 fixtures)
+- [ ] Audit our `validate_preserved_manual_memoization.rs` against upstream
+- [ ] Identify which guarantee checks are missing (likely: dependency tracking, conditional memoization patterns)
+- [ ] Implement missing checks
+- [ ] **Risk:** MEDIUM — our implementation exists but has known gaps
+- [ ] **Potential gain:** +15-25 fixtures (some may also need other fixes)
 
-- [ ] Implement remaining tractable validations from 4a
-- [ ] Run conformance, verify
+#### Stage 4c: Add Todo Error Detection (27 fixtures)
+
+- [ ] Identify which upstream `Todo` errors we silently compile past
+- [ ] Add bail-outs for genuinely unimplemented features (e.g., certain destructuring patterns, complex control flow)
+- [ ] Each bail-out converts "wrong output" to "correct pass-through"
+- [ ] **Risk:** LOW — adding bail-outs is always safe
+- [ ] **Potential gain:** +10-20 fixtures
+
+#### Stage 4d: Fix Frozen-Mutation False Negatives (11 fixtures)
+
+- [ ] These are cases where upstream detects a mutation-after-freeze but we miss it
+- [ ] Different from Stage 2d (which is false POSITIVES — we detect when we shouldn't)
+- [ ] Audit `validate_no_mutation_after_freeze.rs` for missed patterns
+- [ ] **Risk:** MEDIUM
+
+#### Stage 4e: UPSTREAM ERROR Fixture Handling (75 fixtures)
+
+- [ ] These fixtures have error messages as their expected output (not compiled code)
+- [ ] To pass: we must emit the EXACT same error message and bail
+- [ ] Requires matching upstream error format strings precisely
+- [ ] **Potential gain:** +30-50 fixtures (depends on how many error formats we can match)
+- [ ] **Risk:** LOW-MEDIUM — tedious but straightforward per-error implementation
 
 ---
 
-### Stage 5: Stretch — Format Diffs and Large Slot Diffs (target: +10-20 fixtures)
+### Stage 5: "Both No Memo" — DCE + Constant Propagation (target: +30-50 fixtures)
 
-**Pool:** 76 "both no memo" + 367 fixtures with ±3+ slot diffs.
-**Risk:** MIXED — format fixes are easy, large slot diffs are hard.
+**Pool:** 76 fixtures where neither side memoizes but output differs.
+**Risk:** HIGH — requires implementing new compiler passes (DCE, constant propagation).
 
-#### Stage 5a: "Both No Memo" Format Fixes (est: +5-10 fixtures)
+**Investigation finding (2026-03-25):** These are NOT cosmetic format diffs as originally assumed. The 76 fixtures produce different output because upstream runs dead-code elimination and constant propagation passes that simplify the output. Without these passes, our output includes dead assignments, unreachable branches, and un-folded constants that upstream eliminates.
 
-- [ ] Investigate 76 fixtures where neither side memoizes
-- [ ] Fix cosmetic output diffs (whitespace, semicolons, import ordering)
+#### Stage 5a: Dead Code Elimination Pass
 
-#### Stage 5b: Large Slot Diff Triage (est: +5-10 fixtures)
+- [ ] Implement DCE pass to remove unused variable assignments, unreachable branches
+- [ ] Upstream reference: `src/Optimization/DeadCodeElimination.ts` (or equivalent)
+- [ ] Must run after scope inference, before codegen
+- [ ] **Risk:** HIGH — new pass, requires thorough testing
+- [ ] **Prerequisite for:** Many of the 76 "both no memo" fixtures
 
-- [ ] Sample ±3+ fixtures for any patterns that share root cause with Stage 3 fixes
+#### Stage 5b: Constant Propagation / Folding
+
+- [ ] Implement constant propagation to fold known-constant expressions
+- [ ] Upstream reference: `src/Optimization/ConstantPropagation.ts` (or equivalent)
+- [ ] **Risk:** HIGH — new pass
+
+#### Stage 5c: Large Slot Diff Triage (est: +5-10 fixtures)
+
+- [ ] Sample ±3+ slot diff fixtures for patterns sharing root cause with Stage 3 fixes
 - [ ] Cherry-pick easy wins only
 
 ---
 
-### Milestone Summary
+### Milestone Summary (revised post-investigation)
 
 | Stage | Target | Cumulative (from 411) | Risk | Notes |
 |-------|--------|-----------------------|------|-------|
 | Stage 1b: Temp renumbering | +2 (done) | 405 | LOW | Completed. |
 | Stage 1c: Minor codegen fixes | +5 (done) | 410 | LOW | Completed. |
-| Stage 2a: Bail-out investigation | +0 (done) | 410 | -- | Completed. Categorized all 108 bail-outs. |
-| Stage 2b: File-level bail-outs | +1 (done) | 411 | LOW | Completed. 108→89 bail-outs remaining. |
-| Stage 1d: Declaration placement | +15-30 | 426-441 | HIGH | collect_all_scope_declarations redesign |
-| Stage 2c: Effect-derived-computations | +15-18 | 426-429 | LOW-MED | 20 fixtures, largest fixable group |
-| Stage 2d: Frozen-mutation | +5-8 | 431-437 | MEDIUM | 11 fixtures |
-| Stage 2e: Ref-access | +3-5 | 434-442 | MEDIUM | 8 fixtures |
-| Stage 2f: Reassignment | +5-7 | 439-449 | MEDIUM | 10 fixtures |
-| Stage 2g: Other bail-outs | +5-10 | 444-459 | MIXED | ~40 remaining fixtures |
-| Stage 3: ±1/±2 slot diffs | +30-50 | 474-509 | HIGH | |
-| Stage 4: Missing validations | +20-30 | 494-539 | LOW | |
-| Stage 5: Format + stretch | +10-20 | 504-559 | MIXED | |
-| **Total remaining** | **+93-178** | **504-589** | | From 411 base |
+| Stage 2a: Bail-out investigation | +0 (done) | 410 | -- | Completed. |
+| Stage 2b: File-level bail-outs | +1 (done) | 411 | LOW | Completed. 108→89 bail-outs. |
+| Stage 2c: `_exp` directive handling | +0 (done) | 411 | LOW | Completed. 20 fixtures moved to compile pools. |
+| Stage 2d: Frozen-mutation false positives | +5-8 | 416-419 | MEDIUM | 11 fixtures |
+| Stage 2e: Ref-access false positives | +3-5 | 419-424 | MEDIUM | 8 fixtures |
+| Stage 2f: Reassignment false positives | +5-7 | 424-431 | MEDIUM | 10 fixtures |
+| Stage 2g: Other bail-outs | +5-10 | 429-441 | MIXED | ~40 remaining fixtures |
+| Stage 1d: Declaration placement | +15-30 | 444-471 | HIGH | collect_all_scope_declarations redesign |
+| B2: Variable name preservation | +20-30 | 464-501 | MEDIUM | 40 fixtures, scope output naming |
+| Stage 3: Scope inference (±1/±2 diffs) | +50-100 | 514-601 | HIGH | ~699 pool, cascading regression risk |
+| Stage 4b: Preserve-memo validation | +15-25 | 529-626 | MEDIUM | 32 fixtures |
+| Stage 4c: Todo error detection | +10-20 | 539-646 | LOW | 27 fixtures, add bail-outs |
+| Stage 4d: Frozen-mutation false negatives | +5-8 | 544-654 | MEDIUM | 11 fixtures |
+| Stage 4e: Upstream error matching | +30-50 | 574-704 | LOW-MED | 75 fixtures |
+| Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 76 fixtures, new passes needed |
+| **Total remaining** | **+193-343** | **604-754** | | From 411 base |
 
-**Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). The real "slots MATCH" gains require instruction ordering changes (Stage 1d), which is high-risk.
+**Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
-**Key learning from Stage 2a/2b:** Bail-out investigation revealed that most bail-outs are from specific validations (not silent/0-scope as originally assumed). The `validateNoDerivedComputationsInEffects` validation alone accounts for 20 of 89 remaining bail-outs. File-level bail-outs were low-hanging fruit (+1 net from removing 4).
+**Key learning from Stage 2a/2b:** Most bail-outs come from specific validations, not silent/0-scope issues. File-level bail-outs were low-hanging fruit (+1 net from removing 4).
 
-**Revised path to 600:** From 411 base, need +189. Stages 2c-2g (bail-outs) could yield +33-48. Stage 3 (slot diffs) +30-50. Stage 4 (validations) +20-30. Conservative estimate: 504-539 without Stage 1d. Reaching 600 likely requires Stage 1d or overperformance in Stages 3-4.
+**Key learning from Stage 2c:** Fixing bail-outs does not directly increase conformance if the newly-compiling fixtures land in slots-DIFFER/MATCH pools. Bail-out fixes unblock fixtures for FUTURE scope/codegen improvements but yield +0 net on their own.
+
+**Key learning from extended investigation (2026-03-25):**
+- "Both no memo" is NOT format diffs — requires DCE + constant propagation (new compiler passes)
+- "We compile, they don't" has 75 UPSTREAM ERROR fixtures — significant untapped pool if we match error formats
+- Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
+- `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
+
+**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +60-103) + codegen fixes (B2 + 1d, +35-60). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~570. Optimistic: 700+.
 
 **Key principle:** Each stage starts with investigation (sub-task "a") that produces a fixture-level breakdown. If the investigation shows estimates are wrong, the plan is updated before implementation begins. No blind implementation.
 
@@ -347,3 +425,7 @@ All paths relative to `crates/oxc_react_compiler/`.
 11. **Naming diffs co-occur with ordering diffs.** Temp renumbering alone gained only +2 (expected +25-40). Most "variable naming" fixtures also differ in instruction ordering or declaration placement. Fixing names without fixing ordering does not pass conformance.
 12. **File-level bail-outs are wasteful.** 4 overly aggressive file-level bail-outs (lint mode, incompatible imports, eslint suppression, runtime import) were blocking 19 fixtures unnecessarily. Upstream handles these per-function. Always prefer per-function bail-outs over file-level.
 13. **`validateNoDerivedComputationsInEffects` is the largest single bail-out source.** 20 of 89 remaining false-positive bail-outs come from this one validation. Fixing it is the highest-ROI next step for bail-out reduction.
+14. **Fixing bail-outs yields +0 net conformance if output still differs.** Stage 2c moved 20 fixtures from bail to compile, but all landed in slots-DIFFER/MATCH pools. Bail-out fixes UNBLOCK fixtures for future scope/codegen fixes but do not directly increase conformance. Plan accordingly.
+15. **"Both no memo" requires DCE + constant propagation.** Originally assumed to be cosmetic format diffs. Actually requires dead-code elimination and constant folding passes that don't exist yet. 76 fixtures affected.
+16. **"We compile, they don't" has a large UPSTREAM ERROR sub-pool.** 75 of ~225 fixtures have error messages as expected output. These are a significant conformance opportunity if we match upstream error formats precisely.
+17. **B2 (variable name preservation) is the dominant tractable slots-MATCH pattern.** 40 fixtures where we use temps but upstream preserves original names in scope outputs. Single largest fixable sub-pattern in the 237-fixture slots-MATCH pool.
