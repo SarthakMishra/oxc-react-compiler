@@ -3,6 +3,7 @@
 > Completed: 2026-03-25
 > Starting pool: 108 "we bail, they compile" fixtures
 > After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in)
+> Note: Conformance tests use `compilationMode:"all"` — all functions are compiled, not just detected components/hooks. This affects which bail-out validations fire.
 
 ## Summary
 
@@ -37,7 +38,7 @@ Of the original 108 fixtures where we bail but upstream compiles:
 | Frozen mutation (false positive) | 15 (11 original + 4 IIFE from Stage 4d) | MEDIUM | `InferMutableRanges` over-reports mutations on frozen values. 4 new IIFE false positives from name-based freeze tracking. |
 | Cannot reassign outside component | 10 | MEDIUM | `validateLocalsNotReassignedAfterRender` false positives |
 | (no error / silent) | 9 | MIXED | Various: gating mode (3), 0-scope functions (2), misc (4) |
-| Cannot access refs during render | 8 | MEDIUM | `validateNoRefAccessInRender` false positives |
+| Cannot access refs during render | 8 | MEDIUM | `validateNoRefAccessInRender` false positives. Note: separate from Stage 4e-B ref-access *detection* fixes (where we fail to bail on upstream-error fixtures). |
 | setState in useEffect (synchronous) | 7 | HARD | New validation that doesn't exist upstream or fires incorrectly |
 | Cannot call setState during render | 4 | MEDIUM | `validateNoSetStateInRender` false positives |
 | Existing memo preservation | 4 | HARD | `preserveExistingMemoization` validation gaps |
@@ -83,10 +84,20 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 
 **Trade-off:** Name-based tracking is coarser than IdentifierId-based tracking. It correctly catches more true positives (the 9 gained) but also catches 4 false positives on IIFE patterns. Net impact is positive.
 
-### Stage 2e: Fix ref-access false positives (8 fixtures → ~3-5 gained)
-- `validateNoRefAccessInRender` is over-eager
-- Some patterns (assigning ref-accessing functions to properties, ref type casts) should be allowed
-- **Risk:** MEDIUM
+### Stage 2e: Fix ref-access false positives (8 fixtures) — LOW PRIORITY, NO CONFORMANCE IMPACT
+
+~~- `validateNoRefAccessInRender` is over-eager~~
+~~- Some patterns (assigning ref-accessing functions to properties, ref type casts) should be allowed~~
+~~- **Risk:** MEDIUM~~
+
+**Investigation completed (2026-03-25):** Thoroughly investigated whether relaxing ref-access false positives would improve conformance. **Result: NO conformance gain.** The 8 fixtures freed by relaxing ref-access validation land in slots-DIFFER (not matched), so they do not pass conformance. Additionally, 2 fixtures that currently pass by accident (Flow parse errors producing output that happens to match upstream error format) would regress. Net impact: **-2 to +0 conformance**.
+
+**Decision:** Deprioritized. Not worth pursuing until scope inference improvements (Stage 3) can make the freed fixtures actually match. The false-positive bail-outs are semantically incorrect (we bail when upstream compiles), but fixing them does not improve the metric.
+
+**Note (2026-03-25):** Stage 4e-B separately fixed 1 ref-access *detection* gap (`error.validate-mutate-ref-arg-in-render.js` now correctly bails). That fix improved the detection path (name-based + Type::Ref fallback for PropertyLoad/PropertyStore), but the Stage 2e false-positive fixtures are the *opposite* problem: we bail when we should compile. These are distinct issues:
+- **4e-B ref-access (detection):** We compile when upstream bails with "Cannot access refs during render". Fix: improve ref tracking to catch more true positives. 1 of 4 fixed, 3 remain.
+- **2e ref-access (false positives):** We bail with "Cannot access refs during render" when upstream compiles successfully. Fix: relax over-eager patterns. 8 fixtures, 0 fixed so far. **LOW PRIORITY — freed fixtures land in slots-DIFFER, not matched.**
+- `error.invalid-pass-ref-to-function.js` (4e-B remaining) specifically needs ref-through-function-call tracking: detecting when a ref object is passed as an argument to a function that accesses `.current` on it.
 
 ### Stage 2f: Fix reassignment false positives (10 fixtures → ~5-7 gained)
 - `validateLocalsNotReassignedAfterRender` false positives

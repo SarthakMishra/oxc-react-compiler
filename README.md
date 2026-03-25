@@ -2,7 +2,7 @@
 
 Native [OXC](https://oxc.rs/) port of Meta's [React Compiler](https://github.com/facebook/react/tree/main/compiler/packages/babel-plugin-react-compiler) for the Rolldown/Vite pipeline, plus React 19 compiler-based lint rules for oxlint.
 
-> **Status:** This is an active port — 140+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 25.7% (442/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
+> **Status:** This is an active port — 140+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 26.2% (450/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
 
 ## Vite Plugin Usage
 
@@ -213,17 +213,17 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 | Metric                      | Value        |
 | --------------------------- | ------------ |
 | Total upstream fixtures     | 1717         |
-| Passing (exact match)       | 444 (25.9%)  |
-| Failing (output divergence) | 1273         |
+| Passing (exact match)       | 450 (26.2%)  |
+| Failing (output divergence) | 1267         |
 | Panics / crashes            | 0            |
 | Render equivalence          | 92% (23/25)  |
 
-#### Divergence Breakdown (~1273 known failures)
+#### Divergence Breakdown (~1267 known failures)
 
 | Category                                 | Count | % of known |
 | ---------------------------------------- | ----- | ---------- |
 | Both compile, slots DIFFER               | 688   | 54.0%      |
-| Both compile, slots MATCH (codegen diff) | 233   | 18.3%      |
+| Both compile, slots MATCH (codegen diff) | 227   | 17.9%      |
 | We compile, they don't (validation gaps) | 189   | 14.8%      |
 | We bail, they compile                    | 84    | 6.6%       |
 | Both no memo (format diff)               | 79    | 6.2%       |
@@ -258,7 +258,7 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 
 #### Key Divergence Patterns
 
-Most of the 1273 failures fall into a few root causes:
+Most of the 1267 failures fall into a few root causes:
 
 - **Scope inference / codegen accuracy (688 fixtures)** — The dominant failure category. Both compilers compile the function but produce different slot counts. Improving mutable range propagation, scope merging, and codegen structure is the primary path to higher conformance.
 - **Codegen structure (233 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement). Declaration placement and variable name preservation are the largest sub-patterns.
@@ -454,7 +454,7 @@ node scripts/bench-compare.mjs --iterations 20 --warmup 5
 
 ### General
 
-- **Active development** — Upstream conformance is at 25.9% (444/1717 fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries, validation gaps).
+- **Active development** — Upstream conformance is at 26.2% (450/1717 fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries, validation gaps).
 - **Performance regression on large files** — The mutation/aliasing analysis passes (Phases 113–130) introduced O(n²+) scaling. Small components compile 5–67x faster than Babel, but large components (150+ LOC) are currently slower. This is the highest-priority optimization target.
 - **No oxlint integration** — Lint rules exist in `crates/oxc_react_compiler_lint` and are callable via the NAPI binding, but they are not integrated into the oxlint binary. This would require upstream work in the [oxc repo](https://github.com/oxc-project/oxc) to support external plugin crates.
 - **Source maps** — Source map generation covers compiled function regions with per-line identity mappings for unmodified code. Complex source map chaining with other Vite plugins has not been verified.

@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Stage 4e-B partial, ref-access fix)
-> Conformance: **444/1717 (25.9%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 4e-B (in progress): +2 fixtures (442->444). Fixed hooks-in-for-loop detection + ref-access detection for `error.validate-mutate-ref-arg-in-render.js`.
-> Known-failures: 1273. Error.* fixtures remaining in KF: 37 (35 top-level + 2 fbt/).
+> Last updated: 2026-03-25 (post Stage 1d Phase 1 — lazy scope declaration placement)
+> Conformance: **450/1717 (26.2%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 1d Phase 1 (complete): +6 fixtures (444->450). Lazy scope declaration placement — declarations emitted just before scope guard instead of function top. Same-slots pool: 233->227.
+> Known-failures: 1267. Error.* fixtures remaining in KF: 37 (35 top-level + 2 fbt/).
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
@@ -15,8 +15,8 @@
 | Category | Count | Description |
 |----------|-------|-------------|
 | Both compile, slots DIFFER | ~699 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** |
-| Both compile, slots MATCH | ~237 (18%) | Same slots, codegen structure diffs. **B2 pattern (temps vs original names) dominates: 40 fixtures.** |
-| We compile, they don't | ~194 (15%) | Missing validations. **75 are UPSTREAM ERROR fixtures (7 more fixed in Stage 4e-A). 32 need preserveExistingMemoization. 5 remain for Todo error detection (22 done). 2 frozen-mutation remain (9 fixed in Stage 4d).** |
+| Both compile, slots MATCH | ~227 (was 237, -6 from 1d Phase 1 moved to matched) | Same slots, codegen structure diffs. **B2 pattern (temps vs original names) dominates: 40 fixtures.** |
+| We compile, they don't | ~193 (15%) | Missing validations. **75 are UPSTREAM ERROR fixtures (7 fixed in 4e-A, 2 in 4e-B). 32 need preserveExistingMemoization. 5 remain for Todo error detection (22 done). 2 frozen-mutation remain (9 fixed in Stage 4d).** |
 | We bail, they compile | ~73 (6%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking) |
 | Both no memo (format diff) | 76 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
 
@@ -50,13 +50,13 @@ The path is clearer but requires significant compiler infrastructure work:
 | Todo error detection (remaining) | 12 | +5-8 | LOW — need hoisting, optional terminals, default params |
 | Frozen-mutation validation fixes | 2 remain | +9 done (Stage 4d) | MEDIUM | 2 remaining need effect callback + JSX capture analysis |
 
-**Conservative estimate:** +133-258 from 444 base = 577-702. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +127-252 from 450 base = 577-702. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
 ### Stage 1: Codegen Structure — "Slots MATCH" Fixes (target: +40-60 fixtures)
 
-**Pool:** 239 fixtures where slot count matches upstream but codegen differs.
+**Pool:** 227 fixtures where slot count matches upstream but codegen differs (was 239, reduced by Stage 1b/1c/1d fixes).
 **Root causes:** Variable naming (`t0` vs original names), instruction ordering within scopes, scope output placement, dependency list ordering.
 **Risk:** LOW — these are the closest to passing, same semantic structure.
 
@@ -78,13 +78,12 @@ which temp renumbering alone cannot fix. See [slots-match-investigation.md](slot
 Completed 2026-03-25. C2 (return undefined): +5 fixtures. C5 (catch clause): +0 net (improves output but all catch fixtures also blocked by A1 instruction ordering). B4 (edge case naming): skipped — only 1 fixture and high complexity.
 **Fixtures gained:** capturing-func-mutate-nested.js, capturing-function-decl.js, hoisting-recursive-call.ts, mutate-captured-arg-separately.js, reassign-object-in-context.js.
 
-#### Stage 1d: Declaration Placement / Instruction Ordering (est: +15-30, HIGH risk)
+#### Stage 1d: Lazy Scope Declaration Placement (phased)
 
-- [ ] Redesign `collect_all_scope_declarations` to emit declarations at narrowest possible scope instead of function level
-- [ ] Fix hook call ordering (hook calls before temp declarations, not after)
-- [ ] This is the dominant remaining "slots MATCH" blocker — 55+ fixtures depend on instruction ordering, and many of the 126 "naming" fixtures also need this
-- **Risk:** HIGH — `collect_all_scope_declarations` is load-bearing (removing it collapses render 96%→24%). Requires careful incremental approach.
-- **Prerequisite:** Must understand exactly which declarations can be moved safely vs which must stay at function level
+- [x] **Phase 1 (LOW risk): COMPLETE (+6, 444->450).** Moved scope declarations from function-top to just-before-scope-guard. Gained 6 fixtures (exceeded +5 estimate). Same-slots pool reduced 233->227.
+- [ ] **Phase 2 (MEDIUM risk, +10-20):** Move declarations inside control flow blocks (if/for/try). Fixes A1 pattern (39 fixtures with declaration-before-control-flow as first diff). Same-slots pool now 227.
+- [ ] **Phase 3 (HIGH risk, +5-10):** Merge declaration with initialization (`let t0; t0 = expr;` → `let t0 = expr;`).
+- **Details:** [slots-match-investigation.md](slots-match-investigation.md)#stage-1d-lazy-scope-declaration-placement-a1a2
 
 ---
 
@@ -123,12 +122,10 @@ Net conformance: +0. But these fixtures are now unblocked for future scope/codeg
 - **Risk:** MEDIUM — requires mutable range analysis refinements + scoped name tracking for IIFE patterns
 - **Details:** [bail-out-investigation.md](bail-out-investigation.md)
 
-#### Stage 2e: Fix Ref-Access False Positives (8 fixtures)
+#### Stage 2e: Fix Ref-Access False Positives (8 fixtures) — LOW PRIORITY, NO CONFORMANCE IMPACT
 
-- [ ] Review `validateNoRefAccessInRender` for over-eager patterns
-- [ ] Some patterns (assigning ref-accessing functions to properties, ref type casts) should be allowed
-- [ ] Compare against upstream validation
-- **Risk:** MEDIUM
+- **Investigated (2026-03-25):** Thoroughly analyzed whether relaxing ref-access false positives would improve conformance. Result: **no gain**. Freed fixtures land in slots-DIFFER (not matched); 2 accidental Flow parse error matches would be lost. Net: -2 to +0.
+- **Decision:** Deprioritized until scope inference improvements (Stage 3) make freed fixtures matchable.
 - **Details:** [bail-out-investigation.md](bail-out-investigation.md)
 
 #### Stage 2f: Fix Reassignment False Positives (10 fixtures)
@@ -157,24 +154,39 @@ Net conformance: +0. But these fixtures are now unblocked for future scope/codeg
 **Root causes:** Scope merging too aggressive/conservative, dependency over/under-counting, mutable range gaps.
 **Risk:** HIGH — scope inference changes can cause cascading regressions.
 
-#### Stage 3a: Investigate ±1 Slot Diff Patterns (est: 0 fixtures, prerequisite)
+#### Stage 3a: Investigate ±1 Slot Diff Patterns -- COMPLETE (investigation only)
 
-- [ ] Sample 30+ fixtures from the ±1 group
-- [ ] For each: compare scope boundaries, identify which scope is extra/missing
-- [ ] Categorize: (a) extra scope (over-splitting), (b) missing scope (under-splitting), (c) scope merged wrong, (d) dependency miscounted
-- [ ] **Deliverable:** Root cause distribution with fixture counts
-- **Critical:** Must identify whether fixes would cause regressions in currently-passing fixtures
+Completed 2026-03-25 (Phase 142 in journal). Full categorization of 1274 diverged fixtures into 5 buckets.
+Key findings for slot-diff (688 fixtures):
+- **Primary root cause:** `last_use_map` in `infer_mutation_aliasing_ranges` over-extends mutable ranges vs upstream. Removing it breaks codegen (unresolved JSXText/intermediate refs). Fix requires: (1) receiver mutation effects for MethodCall Apply, (2) reverse scope propagation pass.
+- **Secondary root cause (partially fixed):** scope inference operand check used wrong condition; fixed in Phase 92 (isMutable check, mayAllocate lvalue, phi range gating). Net: +1 fixture.
+- **Same-slots-different-structure (227, was 233 pre-1d Phase 1):** 5 recurring patterns — variable naming (PromoteUsedTemporaries missing), declaration hoisting, import line presence, temp vs destructuring, optional-chaining. No single fix > ~30 fixtures.
+- **Both-no-memo (79):** Requires DCE + constant propagation (new passes). NOT cosmetic.
 
-#### Stage 3b: Fix Dominant ±1 Pattern (est: +15-25 fixtures)
+#### Stage 3b: Fix Dominant ±1 Slot Diff Patterns (est: +15-25 fixtures, HIGH risk)
 
-- [ ] Implement fix for most common ±1 root cause from 3a
-- [ ] **Regression check:** Run full conformance, verify no currently-passing fixtures break
-- [ ] If regressions: revert, add to 3e investigation
+**This is the critical-path task for reaching 600+.** The 688 slot-diff pool is the only category large enough to bridge the gap.
+
+**Known root causes from Phase 92 + Phase 142 investigations:**
+1. `last_use_map` in `infer_mutation_aliasing_ranges.rs` extends ranges to last USE (not just last MUTATION). Upstream does NOT do this. Wider ranges mask scope separation bugs but prevent optimal splitting. **Cannot simply remove** — codegen depends on wide ranges for scope containment. Prerequisites: receiver mutation effects for MethodCall Apply + reverse scope propagation pass.
+2. Scope inference operand `isMutable` check (partially fixed Phase 92, +1 fixture).
+
+**Approach:** Do NOT attempt to remove `last_use_map` directly. Instead:
+- [ ] Sample 20 fixtures from the ±1 deficit group (we have fewer slots than upstream = under-memoization)
+- [ ] For each: diff reactive scope boundaries to identify which specific scope is missing/merged
+- [ ] Categorize: (a) scope should split but doesn't (under-splitting), (b) scope merged when shouldn't, (c) dependency over-counted preventing scope creation
+- [ ] Identify safe, incremental fixes that don't require removing `last_use_map`
+- [ ] **Regression check:** Run full conformance after each change, verify no currently-passing fixtures break
+- [ ] If regressions: revert immediately, document in blocker report
+
+**Upstream files:** `src/ReactiveScopes/InferReactiveScopeVariables.ts`, `src/Inference/InferMutationAliasingRanges.ts`, `src/ReactiveScopes/PropagateScopeDependencies.ts`
+**Our files:** `infer_reactive_scope_variables.rs`, `infer_mutation_aliasing_ranges.rs`, `propagate_dependencies.rs`
 
 #### Stage 3c: Fix Secondary ±1 Patterns (est: +10-15 fixtures)
 
-- [ ] Fix remaining tractable ±1 patterns from 3a
+- [ ] Fix remaining tractable ±1 patterns identified in 3b
 - [ ] Regression check on each
+- [ ] Consider: receiver mutation effects for MethodCall Apply (prerequisite for last_use_map removal)
 
 #### Stage 3d: ±2 Slot Diff Quick Wins (est: +5-10 fixtures)
 
@@ -345,28 +357,34 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 | Stage 2b: File-level bail-outs | +1 (done) | 411 | LOW | Completed. 108→89 bail-outs. |
 | Stage 2c: `_exp` directive handling | +0 (done) | 411 | LOW | Completed. 20 fixtures moved to compile pools. |
 | Stage 2d: Frozen-mutation false positives | +5-8 | 416-419 | MEDIUM | 11 fixtures |
-| Stage 2e: Ref-access false positives | +3-5 | 419-424 | MEDIUM | 8 fixtures |
+| Stage 2e: Ref-access false positives | +0 (no impact) | -- | LOW | 8 fixtures, freed land in slots-DIFFER. Deprioritized. |
 | Stage 2f: Reassignment false positives | +5-7 | 424-431 | MEDIUM | 10 fixtures |
 | Stage 2g: Other bail-outs | +5-10 | 429-441 | MIXED | ~40 remaining fixtures |
-| Stage 1d: Declaration placement | +15-30 | 444-471 | HIGH | collect_all_scope_declarations redesign |
+| Stage 1d Phase 1: Declaration placement | +6 (done) | 450 | LOW | Completed. Phase 2/3 remain (+10-30). |
 | B2: Variable name preservation | +20-30 | 464-501 | MEDIUM | 40 fixtures, scope output naming |
 | Stage 3: Scope inference (±1/±2 diffs) | +50-100 | 514-601 | HIGH | ~699 pool, cascading regression risk |
 | Stage 4b: Preserve-memo validation | +15-25 | 529-626 | MEDIUM | 32 fixtures |
 | Stage 4c: Todo error detection | +15 (done, 5 remain) | 426 | LOW | 22/27 done (15 in 4c + 7 in 4e-A). Remaining 5 need hoisting, optional terminals, context vars. |
 | Stage 4d: Frozen-mutation false negatives | +9 (done) | 435 | MEDIUM | Completed. 7/9 planned + 2 bonus. 2 remain (effect callback, JSX capture). |
 | Stage 4e-A: Upstream error bail-outs | +7 (done) | 442 | LOW | 7/43 done. 4e-B through 4e-E remain. |
-| Stage 4e-B: Locals/ref/setState/hooks | +2 so far | 444 | LOW | 2/5 done (hooks-in-loop, mutate-ref-arg). 3 remain. |
+| Stage 4e-B: Locals/ref/setState/hooks | +2 so far | 444 (pre-1d) | LOW | 2/5 done (hooks-in-loop, mutate-ref-arg). 3 remain. |
 | Stage 4e-C/D/E: Remaining upstream errors | +21-38 | 464-481 | MED-HIGH | 4e-C (3, MED), 4e-D (11, MED-HIGH), 4e-E (7, HIGH) |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 76 fixtures, new passes needed |
-| **Total remaining** | **+160-310** | **604-754** | | From 444 base |
+| **Total remaining** | **+154-304** | **604-754** | | From 450 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
 **Key learning from Stage 2a/2b:** Most bail-outs come from specific validations, not silent/0-scope issues. File-level bail-outs were low-hanging fruit (+1 net from removing 4).
 
-**Key correction (2026-03-25):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-A, **39 error.* fixtures remain in known-failures** (37 top-level + 2 fbt/). Down from 43 pre-4e-A.
+**Key correction (2026-03-25):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-B partial, **37 error.* fixtures remain in known-failures** (35 top-level + 2 fbt/). Down from 43 pre-4e-A.
+
+**Important: CompilationMode::All in conformance tests.** The conformance test harness (`tests/conformance_tests.rs`) uses `compilationMode:"all"`, meaning ALL functions in a fixture are compiled (not just those detected as components/hooks). This affects which fixtures pass/fail because validations run on every function body, not just component-shaped ones. When investigating fixture behavior, always account for this mode.
 
 **Key learning from Stage 2c:** Fixing bail-outs does not directly increase conformance if the newly-compiling fixtures land in slots-DIFFER/MATCH pools. Bail-out fixes unblock fixtures for FUTURE scope/codegen improvements but yield +0 net on their own.
+
+**Key learning from Stage 1d Phase 1:** Lazy declaration placement gained +6 (exceeded +5 estimate). Confirms that declaration ordering is a tractable codegen fix. Phases 2-3 (control-flow-scoped declarations, merged init) remain and target the larger A1 pool (39 fixtures).
+
+**Key learning from Stage 2e investigation:** Not all bail-out fixes improve conformance. Ref-access false positives free 8 fixtures that land in slots-DIFFER, not matched. Additionally, 2 accidental Flow parse error matches would be lost. Always check where freed fixtures land before pursuing bail-out removal.
 
 **Key learning from extended investigation (2026-03-25):**
 - "Both no memo" is NOT format diffs — requires DCE + constant propagation (new compiler passes)
@@ -374,7 +392,7 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
 
-**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +37-80 remaining) + codegen fixes (B2 + 1d, +35-60). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~577. Optimistic: 700+.
+**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +37-80 remaining) + codegen fixes (B2 + 1d Phases 2-3, +30-50). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~577 from 450 base. Optimistic: 700+.
 
 **Key principle:** Each stage starts with investigation (sub-task "a") that produces a fixture-level breakdown. If the investigation shows estimates are wrong, the plan is updated before implementation begins. No blind implementation.
 

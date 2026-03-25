@@ -1419,13 +1419,8 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
         }
     }
 
-    // Pre-declare ALL scope declaration variables at function level.
-    // This ensures that any StoreLocal targeting a scope output uses bare
-    // assignment instead of `const`/`let`, preventing "Assignment to constant
-    // variable" errors and duplicate declarations. This matches the upstream
-    // compiler's approach where scope outputs are always `let`-declared at
-    // function scope before the scope guard.
-    collect_all_scope_declarations(&rf.body, &mut output, &mut declared, 1);
+    // Scope declarations are emitted lazily by `codegen_scope` just before
+    // each scope guard, matching upstream's CodegenReactiveFunction.ts.
 
     // Generate body, skipping hoisted instructions
     codegen_block_skip_hoisted(
@@ -3108,107 +3103,6 @@ fn codegen_hir_body(hir: &crate::hir::types::HIR, output: &mut String, indent: u
     let trailing = format!("{}return undefined;\n", "  ".repeat(indent));
     if output.ends_with(&trailing) {
         output.truncate(output.len() - trailing.len());
-    }
-}
-
-/// Recursively collect all scope declaration names from the reactive block tree
-/// and emit `let` declarations for them at the current indent level.
-/// This ensures scope output variables are always declared before any scope
-/// guard or StoreLocal can reference them.
-fn collect_all_scope_declarations(
-    block: &ReactiveBlock,
-    output: &mut String,
-    declared: &mut FxHashSet<String>,
-    indent: usize,
-) {
-    let indent_str = "  ".repeat(indent);
-    for instr in &block.instructions {
-        match instr {
-            ReactiveInstruction::Scope(scope) => {
-                // Find DeclareLocal temps that correspond to destructured variables
-                let destructured_declare_ids = find_destructured_declare_ids(scope);
-                // Find names with value-producing instructions in this scope body
-                let value_producing = collect_value_producing_names(&scope.instructions);
-
-                // Sort declarations by source location for deterministic ordering
-                let mut sorted_decls: Vec<_> = scope.scope.declarations.iter().collect();
-                sorted_decls.sort_by_key(|(_, decl)| decl.identifier.loc.start);
-
-                for (id, decl) in &sorted_decls {
-                    // Skip DeclareLocal temps for destructured variables — they
-                    // will be replaced by the actual destructured names
-                    if destructured_declare_ids.contains(id) {
-                        continue;
-                    }
-                    let decl_name = identifier_display_name(&decl.identifier);
-                    // Skip declarations that are only DeclareLocal'd but never
-                    // assigned a value — their value comes from a later scope
-                    if !value_producing.contains(decl_name.as_ref()) {
-                        continue;
-                    }
-                    if !declared.contains(decl_name.as_ref()) {
-                        declared.insert(decl_name.to_string());
-                        output.push_str(&format!("{indent_str}let {decl_name};\n"));
-                    }
-                }
-                // Recurse into scope body for nested scopes
-                collect_all_scope_declarations(&scope.instructions, output, declared, indent);
-            }
-            ReactiveInstruction::Terminal(terminal) => {
-                collect_scope_declarations_in_terminal(terminal, output, declared, indent);
-            }
-            ReactiveInstruction::Instruction(_) => {}
-        }
-    }
-}
-
-/// Recurse into terminal branches to find nested scopes.
-fn collect_scope_declarations_in_terminal(
-    terminal: &ReactiveTerminal,
-    output: &mut String,
-    declared: &mut FxHashSet<String>,
-    indent: usize,
-) {
-    match terminal {
-        ReactiveTerminal::If { consequent, alternate, .. } => {
-            collect_all_scope_declarations(consequent, output, declared, indent);
-            collect_all_scope_declarations(alternate, output, declared, indent);
-        }
-        ReactiveTerminal::Switch { cases, .. } => {
-            for (_, block) in cases {
-                collect_all_scope_declarations(block, output, declared, indent);
-            }
-        }
-        ReactiveTerminal::For { init, test, update, body, .. } => {
-            collect_all_scope_declarations(init, output, declared, indent);
-            collect_all_scope_declarations(test, output, declared, indent);
-            if let Some(update) = update {
-                collect_all_scope_declarations(update, output, declared, indent);
-            }
-            collect_all_scope_declarations(body, output, declared, indent);
-        }
-        ReactiveTerminal::ForOf { body, .. } | ReactiveTerminal::ForIn { body, .. } => {
-            collect_all_scope_declarations(body, output, declared, indent);
-        }
-        ReactiveTerminal::While { test, body, .. }
-        | ReactiveTerminal::DoWhile { test, body, .. } => {
-            collect_all_scope_declarations(test, output, declared, indent);
-            collect_all_scope_declarations(body, output, declared, indent);
-        }
-        ReactiveTerminal::Try { block, handler, .. } => {
-            collect_all_scope_declarations(block, output, declared, indent);
-            collect_all_scope_declarations(handler, output, declared, indent);
-        }
-        ReactiveTerminal::Label { block, .. } => {
-            collect_all_scope_declarations(block, output, declared, indent);
-        }
-        ReactiveTerminal::Logical { right, .. } => {
-            collect_all_scope_declarations(right, output, declared, indent);
-        }
-        ReactiveTerminal::Return { .. }
-        | ReactiveTerminal::Throw { .. }
-        | ReactiveTerminal::Continue { .. }
-        | ReactiveTerminal::Break { .. } => {}
     }
 }
 

@@ -125,16 +125,45 @@ Edge cases with `t0` vs `t1` numbering within scopes, different `$` conflict res
 - ~~**C5: Empty catch clause** — +2-3 fixtures~~ **Completed:** +0 net fixtures. Catch clause now emits `catch {}` instead of `catch (e)` when the parameter is unused, matching upstream. However, all catch-clause fixtures are also blocked by A1 (instruction ordering — declarations at function level instead of inside control flow), so improved catch output alone is not sufficient to pass.
 - **B4 edge cases** — SKIPPED. Only 1 fixture affected and high implementation complexity. Not worth pursuing.
 
-### Stage 1d (deferred): Instruction Ordering (A1)
-- **Estimated gain:** +15-30 fixtures
-- **Risk:** HIGH — collect_all_scope_declarations is load-bearing
-- **Requires:** Careful redesign of declaration placement strategy
-- **Note:** This overlaps heavily with naming fixes; some A1 fixtures will be fixed by B1 alone
+### Stage 1d: Lazy Scope Declaration Placement (A1+A2)
+
+#### Phase 1: Move declarations to just-before-scope-guard ✅
+
+~~**Status:** NOT STARTED — recommended as next task (2026-03-25)~~
+
+**Completed (2026-03-25):** Implemented lazy scope declaration placement in `codegen.rs`. Instead of `collect_all_scope_declarations` emitting ALL scope output `let` declarations at function top, declarations are now emitted just before the scope guard that needs them. This places declarations after hook calls and before the relevant scope block, matching upstream behavior for the rules-of-hooks pattern.
+
+**Result:** +6 fixtures (444 -> 450). Gained 6 fixtures (exceeded the +5 estimate). Same-slots-different-structure pool reduced from 233 to 227.
+
+**Risk was LOW as predicted.** No regressions. All unit tests pass. Render rate and E2E rate unchanged.
+
+#### Phase 2 (MEDIUM risk, +10-20): Move declarations inside control flow — NOT STARTED
+
+- For scopes inside if/for/try blocks, emit declarations at the start of the control flow block.
+- This is where the risk increases — must ensure no "already declared" errors or "assignment to const" issues.
+- **Verify:** run full conformance after each change, check for regressions.
+- **Impact analysis:** 39 fixtures have A1 (declaration-before-control-flow) as first diff. Total same-slots pool now 227 fixtures.
+
+#### Phase 3 (HIGH risk, +5-10): Merge declaration with initialization — NOT STARTED
+
+- Instead of `let t0; ... t0 = expr;`, emit `let t0 = expr;` when possible.
+- Pattern: `const q ;` → `const q =` (see `capture-indirect-mutate-alias.js`, `capture_mutate-across-fns.js`)
+- Only merge when the declaration and first assignment are adjacent.
+
+**Key files:**
+- `codegen.rs` — `collect_all_scope_declarations` and lazy declaration placement logic
+- `codegen.rs` — `codegen_scope` where scope guards are emitted
+
+**Safety checks after each phase:**
+1. `cargo test` — all unit tests pass
+2. Conformance count does not decrease (no regressions)
+3. Render rate stays at 92%+ (23/25)
+4. E2E rate stays at 95-100%
 
 ### Revised Estimates After Stage 1b
 
 **Stage 1b delivered +2 (not +25-40).** The key insight: naming and ordering are entangled. A fixture that differs in temp naming almost always also differs in declaration placement or instruction ordering. Fixing one without the other does not pass conformance.
 
-**Revised total from Stage 1:** +2 (1b) + 5 (1c) + 15-30 (1d: declaration placement, HIGH risk) = +22-37 total. Stage 1d carries significant regression risk due to `collect_all_scope_declarations` being load-bearing. B4 skipped (1 fixture, high complexity).
+**Revised total from Stage 1:** +2 (1b) + 5 (1c) + 6 (1d Phase 1) + TBD (1d Phases 2-3) = +13 so far, +10-30 remaining from Phases 2-3.
 
-**Recommendation:** Stage 1c is complete. Evaluate whether Stage 1d is worth the risk vs moving to Stage 2 (false-positive bail-outs, MEDIUM risk, larger pool of 108 fixtures).
+**Stage 1d Phase 1 COMPLETE (2026-03-25):** +6 fixtures gained (exceeded +5 estimate). Same-slots pool reduced 233 -> 227. Phases 2-3 remain for broader A1 pattern (39 fixtures with declaration-before-control-flow as first diff).
