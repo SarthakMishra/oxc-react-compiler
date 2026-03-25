@@ -1,8 +1,9 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-03-25 (post Phase 132)
-> Conformance: **532/1717 (31.0%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: ~1185.
+> Conformance: **394/1717 (22.9%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1333.
+> **Note:** Previous "528" count was inflated — known-failures.txt was missing 148 entries for fixtures that actually diverge. Corrected in Phase 132.
 
 ---
 
