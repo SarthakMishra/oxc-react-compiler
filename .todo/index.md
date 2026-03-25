@@ -1,33 +1,33 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-24 (post gating codegen)
+> Last updated: 2026-03-25 (post silent-bailout + validation tuning)
 > Conformance: **441/1717 (25.7%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1294.
-> Bail-outs reduced: preserve-memo bail-outs 58->4 (Phase 124), total bail-outs 126->72. Trade-off: 31 error fixtures that require `validateInferredDep` (dep comparison) moved to known-failures.
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1276.
+> Bail-outs reduced: 75->60 (Phase 128). Silent bail-outs: 23->7. Flow component/hook preprocessing added.
 
 ---
 
-## Conformance Gap Analysis (1294 failures)
+## Conformance Gap Analysis (1276 failures)
 
 | Category | Count | % | Description |
 |----------|-------|---|-------------|
-| Both compile, slots DIFFER | 705 | 54.5% | We compile but produce wrong scope groupings or slot counts |
-| Both compile, slots MATCH | 247 | 19.1% | Correct scopes but cosmetic diffs (structure, variable names) |
-| We compile, they don't | 189 | 14.6% | Missing validations -- we should bail but don't |
-| We bail, they compile | 72 | 5.6% | Overly strict bail-outs -- we reject valid programs |
-| Both no memo (format diff) | 81 | 6.3% | Both pass through but output format differs |
+| Both compile, slots DIFFER | 712 | 55.8% | We compile but produce wrong scope groupings or slot counts |
+| Both compile, slots MATCH | 231 | 18.1% | Correct scopes but cosmetic diffs (structure, variable names) |
+| We compile, they don't | 193 | 15.1% | Missing validations -- we should bail but don't |
+| We bail, they compile | 60 | 4.7% | Overly strict bail-outs -- we reject valid programs |
+| Both no memo (format diff) | 80 | 6.3% | Both pass through but output format differs |
 
-### Bail-out breakdown (72 "we bail, they compile")
+### Bail-out breakdown (60 "we bail, they compile")
 
 | Cause | Count |
 |-------|-------|
 | Preserve-memo validation | 4 |
-| Silent bail (no error, 0 scopes) | 23 |
-| Frozen mutation | 13 |
-| Ref access | 7 |
+| Silent bail (no error, 0 scopes) | 7 |
+| Frozen mutation | 12 |
+| Ref access | 8 |
 | Global reassignment | 7 |
 | Local variable reassignment | 7 |
-| Other | 11 |
+| Other | 15 |
 
 ---
 
@@ -68,19 +68,19 @@
 
 **Remaining 23 gating fixtures:** 8 have import ordering divergences (gating import sorts differently from user imports due to prepend placement), 6 are `@dynamicGating` fixtures (different gating function per fixture -- need to parse per-function gating annotations), 4 are validation-related (conflicting gating, invalid identifiers), 5 are other structural diffs (component syntax, wrapper calls).
 
-### 6. Fix silent bailouts (+23 fixtures)
+### ~~6. Fix silent bailouts (+23 fixtures)~~ PARTIALLY DONE (Phase 128)
 
-**Files:** `src/hir/build.rs`, `src/entrypoint/pipeline.rs`
-**Difficulty:** MEDIUM | **Risk:** LOW
+**Completed (16/23 fixtures):** Added Flow component/hook syntax preprocessor in `program.rs` that converts `component Foo(...)` to `function Foo({...})` and `hook useFoo(...)` to `function useFoo(...)` before parsing. 16 fixtures recovered from silent bailout (moved to compilation). 3 of those now pass conformance. Trade-off: 3 error fixtures that were accidentally matching now expose real validation gaps (added to known-failures).
 
-23 fixtures produce no error and no scopes (silent bail). Causes include Flow syntax edge cases and edge-case function detection. These should either compile or produce an explicit error.
+**Remaining 7 silent bailouts:** Flow type cast expressions `(x: Foo)` (2 fixtures), `@compilationMode:"infer"` edge cases (2 fixtures: `infer-functions-component-with-ref-arg.js`, gating fixtures), `unused-object-element-with-rest.js` (destructuring), `exhaustive-deps` edge case (1 fixture).
 
-### 7. Frozen mutation / ref validation tuning (+20 fixtures)
+### ~~7. Frozen mutation / ref validation tuning (+20 fixtures)~~ PARTIALLY DONE (Phase 128)
 
-**Files:** `src/validation/validate_no_mutation_after_freeze.rs`, `src/validation/validate_no_ref_access_in_render.rs`
-**Difficulty:** EASY | **Risk:** LOW
+**Completed (3/20 fixtures):** Added `useEffectEvent` to ref-access validator's non-render hook list (-2 ref-access bail-outs). Fixed `@directive false` space-separated parsing. Skipped ref-typed captures in frozen mutation hook-call-freezes-captures logic (-1 frozen-mutation bail-out). Added return-value FEs to non-render IDs.
 
-Frozen mutation (13) and ref access (7) validators are too strict on 20 fixtures. Tune validation to match upstream behavior -- likely specific patterns we flag that upstream does not.
+**Remaining:** 12 frozen-mutation bail-outs (mostly effects-level issues requiring changes to `infer_mutation_aliasing_effects`), 8 ref-access bail-outs (5 need FE data-flow analysis to distinguish render-time from deferred calls, 3 from newly-compiling Flow fixtures).
+
+**Investigation findings:** Removing `is_ref_name` heuristic entirely fixes 7+ fixtures but regresses 3 error fixtures that need name-based ref detection for props like `Component({ref})` and `props.ref.current`. The heuristic IS needed for prop-based ref detection. Deeper fix requires tracking whether a name comes from `useRef()` vs destructured props.
 
 ### 8. Missing validations (+50 fixtures)
 
