@@ -1,8 +1,8 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Stage 1b)
-> Conformance: **405/1717 (23.6%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 1b temp renumbering: +2 net (403→405). Known-failures: 1312.
+> Last updated: 2026-03-25 (post Stage 1c)
+> Conformance: **410/1717 (23.9%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 1c minor codegen fixes: +5 net (405→410). Known-failures: 1307.
 
 ---
 
@@ -39,12 +39,10 @@ Also fixed `is_temp_place` pattern matching, Unicode safety in `replace_identifi
 Estimate of +25-40 was wrong: most "naming" differences also involve instruction ordering or scope output name preservation,
 which temp renumbering alone cannot fix. See [slots-match-investigation.md](slots-match-investigation.md) for revised analysis.
 
-#### Stage 1c: Minor Codegen Fixes (revised est: +5-10 fixtures)
+#### Stage 1c: Minor Codegen Fixes -- COMPLETE (+5 net, 405→410)
 
-- [ ] C2: Remove extra `return undefined` in function expressions (~5-10 fixtures, simple codegen fix)
-- [ ] C5: Empty catch clause — emit `catch {}` instead of `catch (e)` (~2-3 fixtures)
-- [ ] B4: Edge case temp numbering within scopes (~2-5 fixtures)
-- **Note:** Original +15-20 estimate reduced. Most "naming" fixes require instruction ordering (Stage 1d), not just cosmetic changes.
+Completed 2026-03-25. C2 (return undefined): +5 fixtures. C5 (catch clause): +0 net (improves output but all catch fixtures also blocked by A1 instruction ordering). B4 (edge case naming): skipped — only 1 fixture and high complexity.
+**Fixtures gained:** capturing-func-mutate-nested.js, capturing-function-decl.js, hoisting-recursive-call.ts, mutate-captured-arg-separately.js, reassign-object-in-context.js.
 
 #### Stage 1d: Declaration Placement / Instruction Ordering (est: +15-30, HIGH risk)
 
@@ -180,8 +178,8 @@ which temp renumbering alone cannot fix. See [slots-match-investigation.md](slot
 | Stage | Target | Cumulative (from 405) | Risk | Notes |
 |-------|--------|-----------------------|------|-------|
 | Stage 1b: Temp renumbering | +2 (done) | 405 | LOW | Completed. Estimate was +25-40, actual +2. |
-| Stage 1c: Minor codegen fixes | +5-10 | 410-415 | LOW | return undefined, catch clause, edge cases |
-| Stage 1d: Declaration placement | +15-30 | 425-445 | HIGH | collect_all_scope_declarations redesign |
+| Stage 1c: Minor codegen fixes | +5 (done) | 410 | LOW | Completed. C2 +5, C5 +0 net, B4 skipped. |
+| Stage 1d: Declaration placement | +15-30 | 425-440 | HIGH | collect_all_scope_declarations redesign |
 | Stage 2: False-positive bails | +50-70 | 475-515 | MEDIUM | |
 | Stage 3: ±1/±2 slot diffs | +30-50 | 505-565 | HIGH | |
 | Stage 4: Missing validations | +20-30 | 525-595 | LOW | |

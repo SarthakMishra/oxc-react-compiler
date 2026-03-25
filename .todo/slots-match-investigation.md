@@ -93,10 +93,10 @@ Edge cases with `t0` vs `t1` numbering within scopes, different `$` conflict res
 ## Pattern C: Structural Differences (58 fixtures combined)
 
 - **C1: Scope output variable choice** — We cache a derived value instead of the original object (5-10 fixtures)
-- **C2: Extra `return undefined`** in function expressions (affects ~10 fixtures, simple codegen fix)
+- ~~**C2: Extra `return undefined`** in function expressions (affects ~10 fixtures, simple codegen fix)~~ ✅ **FIXED:** +5 fixtures
 - **C3: Function outlining** — Upstream outlines certain lambdas to `_temp` at module scope (5 fixtures, not implemented)
 - **C4: `$` conflict resolution** — Different strategy for conflicting dollar-sign variables (1 fixture)
-- **C5: Catch clause handling** — We emit `catch (e)` where upstream emits `catch {}` (2-3 fixtures)
+- ~~**C5: Catch clause handling** — We emit `catch (e)` where upstream emits `catch {}` (2-3 fixtures)~~ ✅ **FIXED:** +0 net (blocked by A1 ordering)
 
 ## Recommended Implementation Order
 
@@ -117,10 +117,11 @@ Edge cases with `t0` vs `t1` numbering within scopes, different `$` conflict res
 
 **Why the estimate was wrong:** The B1 sub-pattern (126 fixtures, "high-numbered temp variables") was counted by examining naming differences alone. In reality, most of those 126 fixtures ALSO differ in instruction ordering (where declarations appear) or scope output name preservation (B2). Renumbering temps to sequential names is necessary but not sufficient — the declarations also need to be in the right place, and scope outputs need to use original variable names where upstream does. Only 2 fixtures had temp numbering as their sole remaining difference.
 
-### Stage 1c: Minor Codegen Fixes
-- **C2: Remove extra `return undefined`** — +5-10 fixtures, trivial fix
-- **C5: Empty catch clause** — +2-3 fixtures
-- **B4 edge cases** — +2-5 fixtures
+### Stage 1c: Minor Codegen Fixes -- COMPLETE (+5 net, 405→410)
+
+- ~~**C2: Remove extra `return undefined`** — +5-10 fixtures, trivial fix~~ **Completed:** +5 fixtures (capturing-func-mutate-nested.js, capturing-function-decl.js, hoisting-recursive-call.ts, mutate-captured-arg-separately.js, reassign-object-in-context.js). Codegen now omits trailing `return undefined` in function expressions.
+- ~~**C5: Empty catch clause** — +2-3 fixtures~~ **Completed:** +0 net fixtures. Catch clause now emits `catch {}` instead of `catch (e)` when the parameter is unused, matching upstream. However, all catch-clause fixtures are also blocked by A1 (instruction ordering — declarations at function level instead of inside control flow), so improved catch output alone is not sufficient to pass.
+- **B4 edge cases** — SKIPPED. Only 1 fixture affected and high implementation complexity. Not worth pursuing.
 
 ### Stage 1d (deferred): Instruction Ordering (A1)
 - **Estimated gain:** +15-30 fixtures
@@ -132,6 +133,6 @@ Edge cases with `t0` vs `t1` numbering within scopes, different `$` conflict res
 
 **Stage 1b delivered +2 (not +25-40).** The key insight: naming and ordering are entangled. A fixture that differs in temp naming almost always also differs in declaration placement or instruction ordering. Fixing one without the other does not pass conformance.
 
-**Revised total from Stage 1:** +7-15 (1c: minor codegen) + 15-30 (1d: declaration placement, HIGH risk) = +22-45 total. But Stage 1d carries significant regression risk due to `collect_all_scope_declarations` being load-bearing.
+**Revised total from Stage 1:** +2 (1b) + 5 (1c) + 15-30 (1d: declaration placement, HIGH risk) = +22-37 total. Stage 1d carries significant regression risk due to `collect_all_scope_declarations` being load-bearing. B4 skipped (1 fixture, high complexity).
 
-**Recommendation:** Pursue Stage 1c (low-hanging codegen fixes) next, then evaluate whether Stage 1d is worth the risk vs moving to Stage 2 (false-positive bail-outs, MEDIUM risk, larger pool).
+**Recommendation:** Stage 1c is complete. Evaluate whether Stage 1d is worth the risk vs moving to Stage 2 (false-positive bail-outs, MEDIUM risk, larger pool of 108 fixtures).

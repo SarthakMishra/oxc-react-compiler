@@ -2527,7 +2527,27 @@ fn codegen_terminal(
         ReactiveTerminal::Try { block, handler, .. } => {
             output.push_str(&format!("{indent_str}try {{\n"));
             codegen_block(block, output, cache_slot, indent + 1, declared, tag_constants);
-            output.push_str(&format!("{indent_str}}} catch (e) {{\n"));
+
+            // Detect catch param: the HIR builder emits a DeclareLocal as the first
+            // instruction in the handler block when the source has `catch (param)`.
+            // When absent (bare `catch {}`), there is no DeclareLocal.
+            let catch_param_name: Option<String> = handler.instructions.first().and_then(|first| {
+                if let ReactiveInstruction::Instruction(instr) = first
+                    && let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value
+                {
+                    return Some(place_name(lvalue).to_string());
+                }
+                None
+            });
+
+            if let Some(ref name) = catch_param_name {
+                output.push_str(&format!("{indent_str}}} catch ({name}) {{\n"));
+                // Pre-declare so the DeclareLocal instruction becomes a no-op
+                // when codegen_block processes the handler body.
+                declared.insert(name.clone());
+            } else {
+                output.push_str(&format!("{indent_str}}} catch {{\n"));
+            }
             codegen_block(handler, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}}\n"));
         }
@@ -3079,6 +3099,16 @@ fn codegen_hir_body(hir: &crate::hir::types::HIR, output: &mut String, indent: u
     // so JSX tag constants within them are resolved locally.
     let tag_constants = build_tag_constant_map(&reactive_block);
     codegen_block(&reactive_block, output, &mut cache_slot, indent, &mut declared, &tag_constants);
+
+    // Strip implicit `return undefined;` added by the HIR builder for functions
+    // with no explicit return value. Upstream omits this trailing statement,
+    // relying on JavaScript's implicit undefined return for function expressions.
+    // DIVERGENCE: Upstream distinguishes implicit vs explicit return in the AST;
+    // we strip the trailing pattern as a post-processing step.
+    let trailing = format!("{}return undefined;\n", "  ".repeat(indent));
+    if output.ends_with(&trailing) {
+        output.truncate(output.len() - trailing.len());
+    }
 }
 
 /// Recursively collect all scope declaration names from the reactive block tree

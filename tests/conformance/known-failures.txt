@@ -114,7 +114,6 @@ capturing-func-alias-receiver-mutate-iife.js
 capturing-func-alias-receiver-mutate.js
 capturing-func-mutate-2.js
 capturing-func-mutate-3.js
-capturing-func-mutate-nested.js
 capturing-func-mutate.js
 capturing-func-no-mutate.js
 capturing-func-simple-alias-iife.js
@@ -130,7 +129,6 @@ capturing-function-alias-computed-load-iife.js
 capturing-function-alias-computed-load.js
 capturing-function-capture-ref-before-rename.js
 capturing-function-conditional-capture-mutate.js
-capturing-function-decl.js
 capturing-function-member-expr-arguments.js
 capturing-function-member-expr-call.js
 capturing-function-renamed-ref.js
@@ -478,7 +476,6 @@ hoisting-object-method.js
 hoisting-reassigned-let-declaration.js
 hoisting-reassigned-twice-let-declaration.js
 hoisting-recursive-call-within-lambda.js
-hoisting-recursive-call.ts
 hoisting-repro-variable-used-in-assignment.js
 hoisting-setstate-captured-indirectly-jsx.js
 hoisting-simple-const-declaration.js
@@ -622,7 +619,6 @@ multiple-components-first-is-invalid.js
 mutable-lifetime-loops.js
 mutable-lifetime-with-aliasing.js
 mutable-liverange-loop.js
-mutate-captured-arg-separately.js
 mutate-outer-scope-within-value-block.ts
 mutation-within-jsx-and-break.tsx
 mutation-within-jsx.tsx
@@ -946,7 +942,6 @@ reanimated-no-memo-arg.js
 reassign-global-hook-arg.js
 reassign-global-return.js
 reassign-in-while-loop-condition.js
-reassign-object-in-context.js
 reassign-primitive-in-context.js
 reassign-variable-in-usememo.js
 reassigned-phi-in-returned-function-expression.js
