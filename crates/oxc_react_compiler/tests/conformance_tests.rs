@@ -609,6 +609,25 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig, boo
             opts.ignore_use_no_forget = true;
         }
 
+        // @customOptOutDirectives:["use todo memo"] — custom opt-out directives
+        // Can't use find_directive_value since it splits on spaces.
+        // Parse the JSON array directly from the comment.
+        if let Some(pos) = comment.find("@customOptOutDirectives:") {
+            let after = &comment[pos + "@customOptOutDirectives:".len()..];
+            // Find matching brackets
+            if let Some(start) = after.find('[')
+                && let Some(end) = after[start..].find(']')
+            {
+                let arr = &after[start + 1..start + end];
+                for item in arr.split(',') {
+                    let item = item.trim().trim_matches('"').trim_matches('\'');
+                    if !item.is_empty() {
+                        opts.custom_opt_out_directives.push(item.to_string());
+                    }
+                }
+            }
+        }
+
         if let Some(v) = find_directive_bool(comment, "enablePreserveExistingMemoizationGuarantees")
         {
             env.enable_preserve_existing_memoization_guarantees = v;

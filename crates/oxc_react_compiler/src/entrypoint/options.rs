@@ -10,6 +10,10 @@ pub struct PluginOptions {
     /// When true, ignore `'use no forget'` / `'use no memo'` opt-out directives
     /// and compile the function anyway. Upstream uses this for migration testing.
     pub ignore_use_no_forget: bool,
+    /// Custom opt-out directives. Functions containing any of these directives
+    /// (e.g., `'use todo memo'`) will be skipped by the compiler.
+    /// Upstream: `customOptOutDirectives` in the plugin config.
+    pub custom_opt_out_directives: Vec<String>,
 }
 
 impl Default for PluginOptions {
@@ -22,6 +26,7 @@ impl Default for PluginOptions {
             panic_threshold: PanicThreshold::AllErrors,
             sources: None,
             ignore_use_no_forget: false,
+            custom_opt_out_directives: Vec::new(),
         }
     }
 }

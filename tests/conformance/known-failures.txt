@@ -192,7 +192,6 @@ context-variable-reassigned-reactive-capture.js
 context-variable-reassigned-two-lambdas.js
 controlled-input.js
 createElement-freeze.js
-custom-opt-out-directive.tsx
 dce-loop.js
 dce-unused-const.js
 dce-unused-postfix-update.js

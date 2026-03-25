@@ -170,7 +170,10 @@ fn compile_program_inner_with_config(
 
     // Check for module-level opt-out directives: 'use no memo' / 'use no forget'
     if !options.ignore_use_no_forget
-        && has_opt_out_directive(Some(parser_ret.program.directives.as_slice()))
+        && has_opt_out_directive(
+            Some(parser_ret.program.directives.as_slice()),
+            &options.custom_opt_out_directives,
+        )
     {
         return CompileResult {
             code: source.to_string(),
@@ -462,7 +465,10 @@ fn try_compile_wrapper_call<'a>(
     match inner {
         Expression::ArrowFunctionExpression(arrow) => {
             if !options.ignore_use_no_forget
-                && has_opt_out_directive(Some(arrow.body.directives.as_slice()))
+                && has_opt_out_directive(
+                    Some(arrow.body.directives.as_slice()),
+                    &options.custom_opt_out_directives,
+                )
             {
                 return;
             }
@@ -771,7 +777,10 @@ fn compile_variable_declaration<'a>(
                 Expression::ArrowFunctionExpression(arrow) => {
                     // Check for "use no memo" directive in arrow body
                     if !options.ignore_use_no_forget
-                        && has_opt_out_directive(Some(arrow.body.directives.as_slice()))
+                        && has_opt_out_directive(
+                            Some(arrow.body.directives.as_slice()),
+                            &options.custom_opt_out_directives,
+                        )
                     {
                         continue;
                     }
@@ -898,8 +907,10 @@ fn discover_in_statement<'a>(
                     options,
                     func.params.items.len(),
                 ) {
-                    let opt_out =
-                        has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
+                    let opt_out = has_opt_out_directive(
+                        func.body.as_ref().map(|b| b.directives.as_slice()),
+                        &options.custom_opt_out_directives,
+                    );
                     functions.push(DiscoveredFunction {
                         name: Some(name),
                         fn_type,
@@ -917,7 +928,8 @@ fn discover_in_statement<'a>(
                 let directives = func.body.as_ref().map(|b| b.directives.as_slice());
 
                 if should_compile_default_export(name.as_deref(), fn_type, directives, options) {
-                    let opt_out = has_opt_out_directive(directives);
+                    let opt_out =
+                        has_opt_out_directive(directives, &options.custom_opt_out_directives);
                     functions.push(DiscoveredFunction { name, fn_type, span: func.span, opt_out });
                 }
             }
@@ -952,8 +964,10 @@ fn discover_in_declaration<'a>(
                     options,
                     func.params.items.len(),
                 ) {
-                    let opt_out =
-                        has_opt_out_directive(func.body.as_ref().map(|b| b.directives.as_slice()));
+                    let opt_out = has_opt_out_directive(
+                        func.body.as_ref().map(|b| b.directives.as_slice()),
+                        &options.custom_opt_out_directives,
+                    );
                     functions.push(DiscoveredFunction {
                         name: Some(name),
                         fn_type,
@@ -1079,7 +1093,9 @@ fn should_compile(
     param_count: usize,
 ) -> bool {
     // Check for opt-out (unless @ignoreUseNoForget is set)
-    if !options.ignore_use_no_forget && has_opt_out_directive(directives) {
+    if !options.ignore_use_no_forget
+        && has_opt_out_directive(directives, &options.custom_opt_out_directives)
+    {
         return false;
     }
 
@@ -1111,7 +1127,9 @@ fn should_compile_default_export(
     options: &PluginOptions,
 ) -> bool {
     // Check for opt-out (unless @ignoreUseNoForget is set)
-    if !options.ignore_use_no_forget && has_opt_out_directive(directives) {
+    if !options.ignore_use_no_forget
+        && has_opt_out_directive(directives, &options.custom_opt_out_directives)
+    {
         return false;
     }
 
@@ -1133,12 +1151,15 @@ fn should_compile_default_export(
     }
 }
 
-fn has_opt_out_directive(directives: Option<&[Directive<'_>]>) -> bool {
+fn has_opt_out_directive(
+    directives: Option<&[Directive<'_>]>,
+    custom_directives: &[String],
+) -> bool {
     directives.is_some_and(|dirs| {
         dirs.iter().any(|d| {
             let s = d.directive.as_str();
             // "use no memo" is the current name; "use no forget" is the legacy name.
-            s == "use no memo" || s == "use no forget"
+            s == "use no memo" || s == "use no forget" || custom_directives.iter().any(|cd| cd == s)
         })
     })
 }
