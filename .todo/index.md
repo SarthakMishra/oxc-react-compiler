@@ -2,88 +2,222 @@
 
 > Last updated: 2026-03-25 (post Phase 133)
 > Conformance: **403/1717 (23.5%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined expected files with `compilationMode: "all"` in Phase 133. Previous expected files used Babel plugin default (`infer` mode), causing ~526 false "we compile, they don't" categorizations. Now the comparison is accurate. Known-failures: 1324.
-> **Note:** Previous "394" count was partially due to false positives from wrong expected files. After rebaseline: 403 true matches, 88 newly passing, 79 newly diverging (previously appeared to match due to wrong expected output).
+> Re-baselined expected files with `compilationMode: "all"` in Phase 133. Known-failures: 1314.
 
 ---
 
-## Open Work
+## Road to 600+ Conformance (403 → 600+, need +197)
+
+### Failure Category Summary
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Both compile, slots DIFFER | 668 (50.8%) | Scope inference accuracy — different cache slot counts |
+| Both compile, slots MATCH | 239 (18.2%) | Same slots, codegen structure diffs (naming, ordering) |
+| We compile, they don't | 223 (17.0%) | Missing validations — we should bail but don't |
+| We bail, they compile | 108 (8.2%) | False-positive bail-outs — we reject valid code |
+| Both no memo (format diff) | 76 (5.8%) | Neither side memoizes, cosmetic output diffs |
+
+---
+
+### Stage 1: Codegen Structure — "Slots MATCH" Fixes (target: +40-60 fixtures)
+
+**Pool:** 239 fixtures where slot count matches upstream but codegen differs.
+**Root causes:** Variable naming (`t0` vs original names), instruction ordering within scopes, scope output placement, dependency list ordering.
+**Risk:** LOW — these are the closest to passing, same semantic structure.
+
+#### Stage 1a: Investigate "Slots MATCH" Patterns (est: 0 fixtures, prerequisite)
+
+- [ ] Sample 20-30 "slots MATCH" fixtures, diff our output vs expected
+- [ ] Categorize into sub-patterns: (a) variable naming, (b) instruction ordering, (c) dependency list ordering, (d) scope boundary placement, (e) other
+- [ ] For each sub-pattern, count affected fixtures and estimate fix difficulty
+- [ ] **Deliverable:** Sub-pattern breakdown with fixture counts, prioritized by ROI
+- **If estimate is wrong:** Re-scope Stage 1b/1c based on actual findings
+
+#### Stage 1b: Fix Dominant "Slots MATCH" Pattern (est: +25-40 fixtures)
+
+- [ ] Implement fix for the most common sub-pattern from 1a
+- [ ] Run conformance, verify gains, update known-failures.txt
+- **If blockers found:** Document in Stage 1d investigation task
+
+#### Stage 1c: Fix Secondary "Slots MATCH" Patterns (est: +15-20 fixtures)
+
+- [ ] Implement fixes for remaining tractable sub-patterns from 1a
+- [ ] Run conformance, verify gains, update known-failures.txt
+
+#### Stage 1d: Replan — "Slots MATCH" Residual (est: 0 fixtures, planning)
+
+- [ ] Categorize remaining "slots MATCH" failures after 1b/1c
+- [ ] If >50 remain, investigate whether they share a common root cause
+- [ ] Update this plan with new sub-tasks or mark as deferred
+
+---
+
+### Stage 2: False-Positive Bail-outs — "We Bail, They Compile" (target: +50-70 fixtures)
+
+**Pool:** 108 fixtures where we incorrectly reject valid code.
+**Risk:** MEDIUM — each bail-out removal must not introduce wrong output.
+
+#### Stage 2a: Investigate Bail-out Categories (est: 0 fixtures, prerequisite)
+
+- [ ] For each of the 108 fixtures, extract our error message/reason for bailing
+- [ ] Group by validation pass: silent (0 scopes), frozen-mutation, ref-access, setState, hooks, reassignment, preserve-memo, other
+- [ ] For "silent bailouts" (est ~51): determine if they're 0-slot functions (no reactive deps) or actual bugs
+- [ ] **Deliverable:** Bail-out breakdown by pass, with fixture lists per group
+
+#### Stage 2b: Silent Bail-outs / 0-Scope Functions (est: +30-40 fixtures)
+
+- [ ] Investigate why these produce 0 reactive scopes with no error
+- [ ] If 0-slot: implement 0-slot function emission (emit original code, no cache wrapper)
+- [ ] If scope inference bug: fix scope creation to not drop valid scopes
+- **Known blocker:** Phase 121 attempted 0-slot emission and got 68 regressions. Must investigate which regressions remain after Phase 130-133 improvements before re-attempting.
+- **If blocker confirmed:** Add investigation task, defer to Stage 5
+
+#### Stage 2c: Frozen Mutation / Ref-Access Relaxation (est: +10-15 fixtures)
+
+- [ ] Review `validate_no_mutation_after_freeze` for over-strict patterns (11 fixtures)
+- [ ] Review `validate_no_ref_access_in_render` for false positives (8 fixtures)
+- [ ] For each, compare our validation logic against upstream's to find divergence
+- [ ] Implement targeted relaxations without losing true-positive detections
+
+#### Stage 2d: Other Bail-out Fixes (est: +10-15 fixtures)
+
+- [ ] Fix remaining false-positive bail-outs: setState (4), hooks (3), reassignment (7), other (17)
+- [ ] Each fix: compare upstream validation logic, adjust our thresholds
+
+#### Stage 2e: Replan — Bail-out Residual (est: 0 fixtures, planning)
+
+- [ ] Categorize remaining "we bail, they compile" after 2b-2d
+- [ ] Update plan with new findings or mark as deferred
+
+---
+
+### Stage 3: Scope Inference — Small Slot Diffs (target: +30-50 fixtures)
+
+**Pool:** 246 fixtures with ±1 slot diff, 55 with ±2 slot diff (301 total).
+**Root causes:** Scope merging too aggressive/conservative, dependency over/under-counting, mutable range gaps.
+**Risk:** HIGH — scope inference changes can cause cascading regressions.
+
+#### Stage 3a: Investigate ±1 Slot Diff Patterns (est: 0 fixtures, prerequisite)
+
+- [ ] Sample 30+ fixtures from the ±1 group
+- [ ] For each: compare scope boundaries, identify which scope is extra/missing
+- [ ] Categorize: (a) extra scope (over-splitting), (b) missing scope (under-splitting), (c) scope merged wrong, (d) dependency miscounted
+- [ ] **Deliverable:** Root cause distribution with fixture counts
+- **Critical:** Must identify whether fixes would cause regressions in currently-passing fixtures
+
+#### Stage 3b: Fix Dominant ±1 Pattern (est: +15-25 fixtures)
+
+- [ ] Implement fix for most common ±1 root cause from 3a
+- [ ] **Regression check:** Run full conformance, verify no currently-passing fixtures break
+- [ ] If regressions: revert, add to 3e investigation
+
+#### Stage 3c: Fix Secondary ±1 Patterns (est: +10-15 fixtures)
+
+- [ ] Fix remaining tractable ±1 patterns from 3a
+- [ ] Regression check on each
+
+#### Stage 3d: ±2 Slot Diff Quick Wins (est: +5-10 fixtures)
+
+- [ ] Sample ±2 fixtures, check if any share root cause with ±1 fixes
+- [ ] Fix only if low regression risk
+
+#### Stage 3e: Replan — Slot Diff Residual (est: 0 fixtures, planning)
+
+- [ ] Analyze remaining slot diff failures
+- [ ] Determine if mutable_range switch (Phase 4d) would help or if deeper scope inference changes needed
+- [ ] Update plan
+
+---
+
+### Stage 4: Validation Gaps — "We Compile, They Don't" (target: +20-30 fixtures)
+
+**Pool:** 223 fixtures where upstream bails with an error but we compile (incorrectly).
+**Risk:** LOW — adding validations is safe (bail-out = pass-through = correct).
+
+#### Stage 4a: Categorize Missing Validations (est: 0 fixtures, prerequisite)
+
+- [ ] For each of 223 fixtures, extract upstream's error message from expected output
+- [ ] Group by validation type: locals-reassigned, direct-props-mutation, jsx-in-try, hooks-in-try, exhaustive-deps, other
+- [ ] Count per validation, estimate implementation difficulty
+- [ ] **Deliverable:** Validation gap breakdown, prioritized by fixture count
+
+#### Stage 4b: Implement Top Missing Validations (est: +15-20 fixtures)
+
+- [ ] Implement the 2-3 highest-count missing validations from 4a
+- [ ] Wire into pipeline, run conformance
+- [ ] Update known-failures.txt
+
+#### Stage 4c: Implement Secondary Validations (est: +5-10 fixtures)
+
+- [ ] Implement remaining tractable validations from 4a
+- [ ] Run conformance, verify
+
+---
+
+### Stage 5: Stretch — Format Diffs and Large Slot Diffs (target: +10-20 fixtures)
+
+**Pool:** 76 "both no memo" + 367 fixtures with ±3+ slot diffs.
+**Risk:** MIXED — format fixes are easy, large slot diffs are hard.
+
+#### Stage 5a: "Both No Memo" Format Fixes (est: +5-10 fixtures)
+
+- [ ] Investigate 76 fixtures where neither side memoizes
+- [ ] Fix cosmetic output diffs (whitespace, semicolons, import ordering)
+
+#### Stage 5b: Large Slot Diff Triage (est: +5-10 fixtures)
+
+- [ ] Sample ±3+ fixtures for any patterns that share root cause with Stage 3 fixes
+- [ ] Cherry-pick easy wins only
+
+---
+
+### Milestone Summary
+
+| Stage | Target | Cumulative | Risk |
+|-------|--------|------------|------|
+| Stage 1: Slots MATCH codegen | +40-60 | 443-463 | LOW |
+| Stage 2: False-positive bails | +50-70 | 493-533 | MEDIUM |
+| Stage 3: ±1/±2 slot diffs | +30-50 | 523-583 | HIGH |
+| Stage 4: Missing validations | +20-30 | 543-613 | LOW |
+| Stage 5: Format + stretch | +10-20 | 553-633 | MIXED |
+| **Total** | **+150-230** | **553-633** | |
+
+**Conservative path to 600:** Stages 1-4 (est 543-613). Stage 3 must deliver well.
+**Optimistic path to 600:** Stages 1-3 alone if estimates hold (est 523-583 + Stage 4 = 543-613).
+
+**Key principle:** Each stage starts with investigation (sub-task "a") that produces a fixture-level breakdown. If the investigation shows estimates are wrong, the plan is updated before implementation begins. No blind implementation.
+
+---
+
+## Deferred / Blocked Work
 
 ### Phase 2 Remaining: Impure Function Handling — DEFERRED
 
 **Files:** `src/inference/infer_mutation_aliasing_effects.rs`, `src/validation/`
-**Status:** Deferred
-
 - Impure function handling in legacy signatures — requires `validate_no_impure_functions_in_render` integration
-- Currently no validation that flags impure function calls in render scope
 
 ### Phase 4c: Remove `validate_no_mutation_after_freeze.rs` — BLOCKED
 
 **Files:** `src/validation/validate_no_mutation_after_freeze.rs`
-**Status:** BLOCKED
+- Cannot remove yet — standalone validator has hook-call-freezes-captures logic not in effects pass
+- Phase 119 gap: LoadGlobal hook names not resolved in id_to_name
 
-Cannot remove yet. The standalone validator has independent hook-call-freezes-captures logic (freezes captured variables of function args passed to hook calls) that the effects pass does not handle. Removing would lose detection of mutations like `x.value += count` after `useIdentity(() => { setPropertyByKey(x, ...) })`. The effects pass would need to gain hook-argument-capture-freezing logic first.
-
-**Note (Phase 119):** The hook-call-freezes-captures logic has a gap: imported hook names (via LoadGlobal) are not resolved in id_to_name. Added LoadGlobal tracking but the error fixtures `error.hook-call-freezes-captured-identifier.tsx` and `error.hook-call-freezes-captured-memberexpr.jsx` still don't trigger bail-out. Deeper investigation needed into how the HIR represents the CallExpression args for these patterns -- the FunctionExpression temp may not be linking to func_captures correctly after passes like inline_load_local_temps.
-
-### Phase 4d: Switch to `mutable_range` — TESTED, NOT READY (Phase 131)
+### Phase 4d: Switch to `mutable_range` — NOT READY
 
 **Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`
-**Status:** Attempt #6 completed. Flag infrastructure added (`use_mutable_range` on EnvironmentConfig, default false). Testing with flag=true showed:
-- +16 newly passing fixtures (from known-failures)
-- -20 new regressions (over-splitting: too many scopes/slots)
-- Render: stable at 23/25
-- Net: -4 conformance, not viable as default
+- 6 failed attempts. Over-splitting regressions. `use_mutable_range` flag preserved for A/B testing.
+- May be revisited after Stage 3 scope inference improvements
 
-**Root cause:** Over-splitting. Mutable ranges are still too narrow for proper scope grouping. The effective_range workaround (max of mutable_range.end, last_use+1) is still needed. The 20 regressions are all over-splitting (e.g. 9 slots expected 1, 8 slots expected 1). Scopes that should merge are not overlapping because mutable ranges don't extend far enough.
+### Phase 5: Fault Tolerance — BLOCKED until 600+
 
-**What would fix this:** The mutable ranges need to be wider — upstream's ranges include more transitive mutation propagation. Investigate which specific fixtures regress and what range extension is missing. The flag is preserved for future A/B testing.
+- PanicThreshold change to CriticalErrors requires ~600+ conformance
+- 132 bail-out fixtures produce wrong output when compiled instead of bailed
 
-### Phase 5: Fault Tolerance & Error Handling — BLOCKED
+### Performance: O(n^2+) Scaling — DEFERRED
 
-**Files:** `src/error.rs`, `src/entrypoint/pipeline.rs`, all validation passes
-**Status:** BLOCKED on compilation quality — do NOT re-attempt until conformance reaches ~600+ fixtures (35%+)
-
-**5a. Accumulate errors instead of early bail:**
-- `Environment` / `ErrorCollector` should accumulate errors across all passes
-- Passes wrapped in `try_record` — a pass failure doesn't stop the pipeline
-- `lower()` (HIR builder) always produces `HIRFunction` even on error
-- Final error check after all passes complete
-
-**5b. Remove local `CompilerError` bail-outs:**
-Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. New pattern: pass records errors and continues. Pipeline checks aggregate errors at the end.
-
-#### Blocker Report: PanicThreshold Default Change (Phase 119)
-
-**Attempted:** Changing default PanicThreshold from AllErrors to CriticalErrors (matching upstream fault tolerance PRs #35872-35888).
-
-**Result:** Conformance dropped 453->269 (-184). Reverted immediately.
-
-**Root cause:** 132 fixtures that bail with AllErrors produce pass-through output matching expected. With CriticalErrors, they compile but produce WRONG output (different scope groupings, wrong slot counts), causing divergences. Upstream can use CriticalErrors because their compilation quality is higher — when they don't bail, they produce correct output.
-
-**Do NOT re-attempt** until conformance reaches ~600+ fixtures (35%+) and the "both compile, slots differ" category drops below 400.
-
-### Phase 8 Remaining: Minor Improvements
-
-- [ ] Try-catch support improvements (for loops, optional/logical in try/catch)
-- [ ] IIFE inlining improvements
-- [ ] Props spread optimization
-- [ ] `ControlDominators.ts` utility (needed by Phase 2)
-- [ ] Emitting 0-slot functions — BLOCKED until more error validations are implemented (68 divergences when attempted in Phase 121)
-
-### Other Open Work
-
-- [ ] Constant propagation and DCE improvements (+25-30 fixtures) — PARTIALLY BLOCKED — most are 0-slot functions
-- [ ] Missing validations — PARTIALLY DONE (Phase 129: 4/54, Phase 132: +4 = 8/54). Phase 133: transitive setState detection in useMemo. "We compile, they don't" category reduced from 749 to 223 after expected file rebaseline (was inflated by wrong compilation mode).
-- [ ] Remaining gating codegen (23 fixtures) — import ordering, @dynamicGating, validation
-- [ ] Remaining silent bailouts (7) — Flow type casts, compilationMode:infer edge cases
-- [ ] Remaining frozen mutation / ref validation (20 fixtures) — effects-level issues, FE data-flow
-
-### Performance: O(n^2+) Scaling in Effects/Aliasing Passes
-
-**Status:** Known regression, not yet addressed
-
-The `infer_mutation_aliasing_effects` worklist-based fixpoint and `infer_mutation_aliasing_ranges` BFS passes introduced O(n^2+) scaling in Phases 113-130. Small fixtures (XS/S) are 5-67x faster than Babel, but medium/large fixtures show regressions (0.2-1.2x). Profiling and algorithmic optimization of these passes is a high-priority item once correctness work stabilizes.
+- Effects/aliasing passes have O(n^2+) scaling
+- Deferred until correctness work stabilizes
 
 ---
 
@@ -91,29 +225,19 @@ The `infer_mutation_aliasing_effects` worklist-based fixpoint and `infer_mutatio
 
 **Read these before making ANY changes.**
 
-### `effective_range` vs `mutable_range` — TESTED, STILL NEEDED (Phase 131)
+### `effective_range` vs `mutable_range` — STILL NEEDED
 File: `src/reactive_scopes/infer_reactive_scope_variables.rs`
-
-Uses `effective_range = max(mutable_range.end, last_use + 1)` because mutable ranges are still too narrow for scope inference. **6 attempts** to switch have all shown regressions. Phase 130 fixed 7 mutation range gaps (+93 fixtures). Phase 131 tested with `use_mutable_range` flag: render was stable (23/25) but conformance showed -20 over-splitting regressions vs +16 newly passing. The effective_range workaround is still needed. The `use_mutable_range` flag on EnvironmentConfig is preserved for future A/B testing.
+Uses `effective_range = max(mutable_range.end, last_use + 1)`. 6 failed switch attempts. The `use_mutable_range` flag on EnvironmentConfig is preserved for A/B testing.
 
 ### `collect_all_scope_declarations` is load-bearing
 File: `src/reactive_scopes/codegen.rs`
-
 Pre-declares ALL scope output variables at function level. Removing it causes render to drop 96%->24%.
 
 ### Block iteration order != source order for loops
-The HIR blocks are stored in creation order, but for-loop constructs create blocks out of source order. The frozen mutation validator uses `frozen_at` instruction ID tracking.
-
-### Render Regression Investigation (23/25 -> 24/25 FIXED)
-
-**Symptom:** After Phase 2 commits, render dropped from 24/25 (96%) to 23/25 (92%). The `multi-step-form` fixture regressed -- `completedFields` useMemo returned `{completed: 0, total: 0}` instead of `{completed: 0, total: 1}`.
-
-**Root cause:** `PostfixUpdate` and `PrefixUpdate` instructions were missing from the side-effect allowlist in `build_inline_map()` (codegen.rs line ~652). Fix: Added them to the side-effect match alongside `PropertyStore`, `StoreLocal`, etc.
-
-**Note (Phase 121):** `command-menu` and `canvas-sidebar` re-regressed to `semantic_divergence`. Root cause NOT from Phase 121 changes. Needs investigation.
+HIR blocks stored in creation order; for-loop constructs create blocks out of source order.
 
 ### Cross-scope `IdentifierId` mismatch
-Nested function bodies have their own `IdentifierId` numbering. Name-based resolution needed for cross-scope tracking.
+Nested function bodies have their own `IdentifierId` numbering. Name-based resolution needed.
 
 ### Build & test
 ```bash
@@ -172,13 +296,13 @@ All paths relative to `crates/oxc_react_compiler/`.
 
 ## Lessons Learned
 
-1. **effective_range is load-bearing.** 6 attempts to switch to mutable_range have shown regressions. Phase 131: render stable but -20 over-splitting regressions (+16 newly passing, net -4). Root cause is over-splitting -- mutable ranges are still too narrow for correct scope grouping without the effective_range extension.
+1. **effective_range is load-bearing.** 6 attempts to switch to mutable_range have shown regressions.
 2. **collect_all_scope_declarations cannot be removed.** It prevents render collapse from 96% to 24%.
 3. **PanicThreshold change to CriticalErrors requires ~600+ conformance.** 132 bail-out fixtures produce wrong output when compiled instead of bailed.
 4. **Emitting 0-slot functions requires more error validations.** 68 divergences when attempted (Phase 121).
-5. **Render regressions can be latent.** The PostfixUpdate/PrefixUpdate codegen bug existed for months but only appeared when the new inference model enabled deeper function body compilation.
-6. **Fix low-risk bail-outs before high-risk scope inference.** The gap analysis shows ~200 fixtures recoverable from validation tuning and codegen fixes vs ~400 from hard scope inference work. Pick the easy wins first.
-7. **"Both compile, slots match" (245 fixtures) are mostly cosmetic.** Variable naming and structural diffs -- lower priority than correctness gaps but good cleanup targets.
-8. **Preserve-memo validation needs `ManualMemoDependency` for full upstream fidelity.** Without source deps on `StartMemoize` and `validateInferredDep`, we can't detect dep mismatch errors. The `start_scope != finish_scope` check was an accidental proxy that caught both true positives (31 error fixtures) and false positives (54 valid fixtures). Removing it trades 31 undetectable errors for 54 recovered compilations.
-9. **Performance regression from Phases 113-130.** O(n^2+) scaling in effects/aliasing analysis passes. Large files slower than Babel. Optimization needed but deferred until correctness work stabilizes.
-10. **Expected file generation must use `compilationMode: "all"`.** The `run-upstream.mjs` script previously used Babel plugin defaults (`infer` mode), which skips non-component/non-hook functions. The upstream test suite uses `all` mode. This caused ~526 false "we compile, they don't" categorizations. Always parse @annotations from fixture comments and pass them to the Babel plugin. Fixed in Phase 133.
+5. **Render regressions can be latent.** The PostfixUpdate/PrefixUpdate codegen bug existed for months.
+6. **Fix low-risk bail-outs before high-risk scope inference.** Easy wins first.
+7. **Preserve-memo validation needs `ManualMemoDependency` for full upstream fidelity.**
+8. **Performance regression from Phases 113-130.** O(n^2+) scaling in effects/aliasing passes. Deferred.
+9. **Expected file generation must use `compilationMode: "all"`.** Fixed in Phase 133.
+10. **Each stage must start with investigation.** Blind implementation wastes effort. Investigate → plan → implement → verify → replan.
