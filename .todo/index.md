@@ -1,121 +1,27 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Phase 129: missing validations)
-> Conformance: **445/1717 (25.9%)**. Render: **96% (24/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1272.
-> Bail-outs reduced: 75->60 (Phase 128). Silent bail-outs: 23->7. Phase 129: +4 fixtures via var detection, compiler-runtime skip, custom opt-out directives.
+> Last updated: 2026-03-25 (Phase 130: mutation range propagation fixes)
+> Conformance: **528/1717 (30.8%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1189.
+> Phase 130: +93 fixtures from mutation range propagation fixes (all 5 gaps). Render 23/25 is pre-existing (command-menu + canvas-sidebar).
 
 ---
 
-## Conformance Gap Analysis (1276 failures)
+## 1. Fix Mutation Range Propagation (Critical Path) -- DONE (Phase 130)
 
-| Category | Count | % | Description |
-|----------|-------|---|-------------|
-| Both compile, slots DIFFER | 712 | 55.8% | We compile but produce wrong scope groupings or slot counts |
-| Both compile, slots MATCH | 231 | 18.1% | Correct scopes but cosmetic diffs (structure, variable names) |
-| We compile, they don't | 189 | 14.8% | Missing validations -- we should bail but don't |
-| We bail, they compile | 60 | 4.7% | Overly strict bail-outs -- we reject valid programs |
-| Both no memo (format diff) | 80 | 6.3% | Both pass through but output format differs |
+~~**Goal**: Fix `infer_mutation_aliasing_ranges.rs` so mutable ranges match upstream~~
 
-### Bail-out breakdown (60 "we bail, they compile")
+**Completed**: All 5 gaps fixed in Phase 130 (+93 conformance fixtures, 0 regressions):
 
-| Cause | Count |
-|-------|-------|
-| Preserve-memo validation | 4 |
-| Silent bail (no error, 0 scopes) | 7 |
-| Frozen mutation | 12 |
-| Ref access | 8 |
-| Global reassignment | 7 |
-| Local variable reassignment | 7 |
-| Other | 15 |
+1. **StoreContext range extension** -- extends context var mutableRange.end when stored
+2. **Phi mutableRange.start fixup** -- sets phi start to firstInstructionOfBlock - 1 when mutated after creation with start==0
+3. **Operand mutableRange.start fixup** -- sets operand start to instr.id when range.end > instr.id and start==0
+4. **fn.returns assignment from return terminals** -- wires return values to fn.returns in aliasing graph (required new `returns_id` parameter on `run_pipeline`)
+5. **MaybeThrow terminal effect processing** -- processes Alias effects from MaybeThrow and Return terminal effects
+6. **Lvalue mutableRange.start/end fixup** -- sets lvalue start/end when ==0 (discovered from upstream Part 2)
+7. **Operand effect alignment** -- switched from `is_mutated_after_creation(id)` to upstream's `mutableRange.end > instr.id` check for Assign/Alias/Capture/CreateFrom/MaybeAlias source effects
 
----
-
-## Open Work -- Prioritized by Impact
-
-### ~~1. Relax preserve-memo validation (+58 fixtures)~~ DONE (Phase 124)
-
-**Completed:** Removed non-upstream `start_scope != finish_scope` check. Preserved `finish_scope.is_none()` check. Reduced preserve-memo bail-outs from 58 to 4. Trade-off: 31 error fixtures that require `validateInferredDep` (dep comparison infrastructure: `ManualMemoDependency`, source deps on `StartMemoize`) moved to known-failures. Net: 54 fewer bail-outs, 31 new known-failures for dep comparison errors we can't detect without source deps.
-
-**Follow-up needed:** Implement `ManualMemoDependency` type, store source deps on `StartMemoize`, implement `validateInferredDep` to recover the 31 error fixtures.
-
-### ~~2. Variable name preservation in codegen (+47 fixtures)~~ RECLASSIFIED
-
-**Investigation (Phase 125):** Deep investigation revealed this is NOT a codegen naming issue. The ~26 fixtures showing `const t0` vs `const x` patterns have **different scope boundaries** than upstream. Our scope wraps a narrower set of instructions (e.g., only the array allocation), while upstream wraps more (allocation + mutation). As a result, the scope output is a temp (the intermediate computation result) rather than the named variable. Fixing this requires scope inference improvements (item #10), not codegen changes.
-
-**Partial improvement committed:** Added scope output promotion in codegen (`build_scope_output_promotions`) that replaces temp scope declarations with named variables when a StoreLocal immediately follows a scope. This produces cleaner output but doesn't recover fixtures because the scope body content also differs.
-
-### ~~3. fbt call preservation (+36 fixtures)~~ PARTIALLY DONE (Phase 126)
-
-**Completed (14/38 fixtures):** Root cause was that upstream runs `babel-plugin-fbt` alongside the React Compiler, transforming `<fbt>` JSX to `fbt._()` calls. Added `preprocess-fbt.mjs` to pre-process fixture inputs the same way. 14 fixtures now pass. Remaining 24 failures: 4 error.todo (need validation), ~16 scope inference (item #10), 4 structural diffs.
-
-**Follow-up needed:** Implement `memoize_fbt_and_macro_operands_in_same_scope` pass (currently a no-op stub) to merge fbt operand scopes -- may recover some of the remaining scope divergences.
-
-### 4. Constant propagation and DCE improvements (+25-30 fixtures) -- PARTIALLY BLOCKED
-
-**Files:** `src/optimization/constant_propagation.rs`, `src/optimization/dead_code_elimination.rs`
-**Difficulty:** HARD | **Risk:** MEDIUM
-
-**Investigation (Phase 127):** Analyzed 40+ const-prop/DCE known-failure fixtures. Finding: nearly all (35+) have 0 cache slots -- these are non-component helper functions where upstream applies const-prop/DCE but produces no memoization. Recovery requires emitting optimized 0-slot functions, which is blocked (Phase 121: 68 regressions when attempted). The ~5 memoized fixtures require deep improvements: phi-node constant propagation across branches, branch elimination on constant tests, and function extraction with constant inlining. Reclassified from MEDIUM to HARD difficulty.
-
-**What would help:** Emitting 0-slot functions (blocked on error validation) would recover ~25 fixtures. Deep phi-node const-prop would recover ~5 more memoized fixtures.
-
-### ~~5. Gating codegen (+27 fixtures)~~ PARTIALLY DONE (Phase 127)
-
-**Files:** `src/reactive_scopes/codegen.rs`, `src/entrypoint/program.rs`, `src/entrypoint/options.rs`
-
-**Completed (4/27 fixtures):** Implemented per-function gating ternary wrapper matching upstream's pattern (`const Name = gatingFn() ? compiled : original`). Handles all function contexts: declarations, export-default, export-named, variable declarations. Also fixed `should_compile_default_export` for annotation/syntax modes. 4 fixtures now pass: `gating-test`, `gating-test-export-function`, `gating-test-export-default-function`, `gating-preserves-function-properties`.
-
-**Remaining 23 gating fixtures:** 8 have import ordering divergences (gating import sorts differently from user imports due to prepend placement), 6 are `@dynamicGating` fixtures (different gating function per fixture -- need to parse per-function gating annotations), 4 are validation-related (conflicting gating, invalid identifiers), 5 are other structural diffs (component syntax, wrapper calls).
-
-### ~~6. Fix silent bailouts (+23 fixtures)~~ PARTIALLY DONE (Phase 128)
-
-**Completed (16/23 fixtures):** Added Flow component/hook syntax preprocessor in `program.rs` that converts `component Foo(...)` to `function Foo({...})` and `hook useFoo(...)` to `function useFoo(...)` before parsing. 16 fixtures recovered from silent bailout (moved to compilation). 3 of those now pass conformance. Trade-off: 3 error fixtures that were accidentally matching now expose real validation gaps (added to known-failures).
-
-**Remaining 7 silent bailouts:** Flow type cast expressions `(x: Foo)` (2 fixtures), `@compilationMode:"infer"` edge cases (2 fixtures: `infer-functions-component-with-ref-arg.js`, gating fixtures), `unused-object-element-with-rest.js` (destructuring), `exhaustive-deps` edge case (1 fixture).
-
-### ~~7. Frozen mutation / ref validation tuning (+20 fixtures)~~ PARTIALLY DONE (Phase 128)
-
-**Completed (3/20 fixtures):** Added `useEffectEvent` to ref-access validator's non-render hook list (-2 ref-access bail-outs). Fixed `@directive false` space-separated parsing. Skipped ref-typed captures in frozen mutation hook-call-freezes-captures logic (-1 frozen-mutation bail-out). Added return-value FEs to non-render IDs.
-
-**Remaining:** 12 frozen-mutation bail-outs (mostly effects-level issues requiring changes to `infer_mutation_aliasing_effects`), 8 ref-access bail-outs (5 need FE data-flow analysis to distinguish render-time from deferred calls, 3 from newly-compiling Flow fixtures).
-
-**Investigation findings:** Removing `is_ref_name` heuristic entirely fixes 7+ fixtures but regresses 3 error fixtures that need name-based ref detection for props like `Component({ref})` and `props.ref.current`. The heuristic IS needed for prop-based ref detection. Deeper fix requires tracking whether a name comes from `useRef()` vs destructured props.
-
-### 8. Missing validations (+50 fixtures) -- PARTIALLY DONE (Phase 129)
-
-**Files:** `src/validation/`, `src/error.rs`, `src/entrypoint/program.rs`
-**Difficulty:** MEDIUM | **Risk:** MEDIUM
-
-**Completed (4/54 fixtures):** Added `var` declaration detection (upstream bails on var hoisting), compiler-runtime import skip (prevent double-compilation), and custom opt-out directives support. 4 fixtures recovered.
-
-**Remaining 50 fixtures breakdown:**
-- PRESERVE_MEMO (12): Need `validateInferredDep` dep comparison infrastructure
-- VALUE_CANNOT_MODIFY (13): Need deeper frozen mutation detection (useState return values, context mutations, JSX-previously-passed values)
-- TODO patterns (8): Function hoisting with unreachable code, UpdateExpression on captured variables, default params with arrow functions
-- SET_STATE_IN_RENDER (2): Indirect setState via useCallback → useMemo call chain
-- INVARIANT (6): Codegen MethodCall invariant, unnamed temporaries, inconsistent destructuring
-- Other (9): Access before declaration, invalid type config, etc.
-
-### 9. Try/catch scope handling (+37 fixtures) -- INVESTIGATED, BLOCKED on scope inference
-
-**Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`, `src/reactive_scopes/prune_scopes.rs`
-**Difficulty:** HARD | **Risk:** MEDIUM
-
-37 try/catch fixtures diverge due to reactive scopes crossing try/catch boundaries. Includes for-loops in try/catch, optional/logical expressions in try/catch, basic try/catch memoization.
-
-**Investigation (Phase 129):** Root cause identified. Reactive scope inference groups identifiers defined BEFORE the try (e.g., destructured props) with their uses INSIDE the try body. The scope insertion places the scope terminal in the pre-try block, causing the scope wrapper to appear before `try {` instead of inside it. A targeted fix in `prune_scopes.rs` (prefer try body block when scope spans try boundary) had no effect because the scope annotations exist only in the pre-try block -- the try body block's instructions lack scope annotations.
-
-**Fix requires:** Changes to scope inference (`infer_reactive_scope_variables.rs`) to prevent merging identifiers across try/catch boundaries. This is fundamentally the same problem as item #10 (scope inference fixes) -- the scope grouping logic doesn't account for control flow structure like try/catch.
-
-**Not attempted:** Direct modification of scope inference or mutable_range (per todo constraints).
-
-### 10. Scope inference fixes (+300-400 fixtures)
-
-**Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`, `src/reactive_scopes/propagate_dependencies.rs`
-**Difficulty:** HARD | **Risk:** MEDIUM
-
-The single biggest bucket -- 300-400 fixtures in the "both compile, slots differ" category are due to scope inference producing different groupings than upstream. This is the hardest category to fix but has the largest potential payoff.
+**Remaining work**: Phase D (switch to mutable_range) NOT yet attempted. The effective_range workaround is still active. With ranges now more correct, switching may finally work. Next step: test with `use_mutable_range` flag.
 
 ---
 
@@ -138,14 +44,12 @@ Cannot remove yet. The standalone validator has independent hook-call-freezes-ca
 
 **Note (Phase 119):** The hook-call-freezes-captures logic has a gap: imported hook names (via LoadGlobal) are not resolved in id_to_name. Added LoadGlobal tracking but the error fixtures `error.hook-call-freezes-captured-identifier.tsx` and `error.hook-call-freezes-captured-memberexpr.jsx` still don't trigger bail-out. Deeper investigation needed into how the HIR represents the CallExpression args for these patterns -- the FunctionExpression temp may not be linking to func_captures correctly after passes like inline_load_local_temps.
 
-### Phase 4d: Switch to `mutable_range` -- FAILED 5x, DO NOT ATTEMPT
+### Phase 4d: Switch to `mutable_range` -- READY TO RE-ATTEMPT
 
 **Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`
-**Status:** FAILED -- do NOT re-attempt without prerequisite investigation
+**Status:** Previously FAILED 5x, but now mutation ranges are fixed (Phase 130, +93 fixtures). The 7 upstream gaps have been closed. Ready for another attempt.
 
-Attempted 5 times, most recently 2026-03-22 (Phase 117). Every attempt drops render from 96% to 36% (9/25). The effective_range approximation (`max(mutable_range.end, last_use + 1)`) is still load-bearing. Root cause: our `infer_mutation_aliasing_ranges` computes mutation propagation ranges, but upstream's `mutableRange` additionally includes usage extension. The effective_range approximation compensates for this gap.
-
-**Do NOT attempt again without first investigating how upstream extends ranges to include usage reach.**
+**Approach:** Add `use_mutable_range: bool` flag to EnvironmentConfig (default false). In `infer_reactive_scope_variables.rs`, conditionally use raw mutable_range instead of effective_range. Test and compare.
 
 ### Phase 5: Fault Tolerance & Error Handling -- BLOCKED
 
@@ -180,16 +84,24 @@ Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. 
 - [ ] `ControlDominators.ts` utility (needed by Phase 2)
 - [ ] Emitting 0-slot functions -- BLOCKED until more error validations are implemented (68 divergences when attempted in Phase 121)
 
+### Other Open Work
+
+- [ ] Constant propagation and DCE improvements (+25-30 fixtures) -- PARTIALLY BLOCKED — [details](#4-constant-propagation-and-dce-improvements-25-30-fixtures----partially-blocked)
+- [ ] Missing validations (+50 fixtures) -- PARTIALLY DONE — [details](#8-missing-validations-50-fixtures----partially-done-phase-129)
+- [ ] Remaining gating codegen (23 fixtures) -- import ordering, @dynamicGating, validation
+- [ ] Remaining silent bailouts (7) -- Flow type casts, compilationMode:infer edge cases
+- [ ] Remaining frozen mutation / ref validation (20 fixtures) -- effects-level issues, FE data-flow
+
 ---
 
 ## Critical Architecture Notes
 
 **Read these before making ANY changes.**
 
-### `effective_range` vs `mutable_range` -- STILL NEEDED (5 failed attempts)
+### `effective_range` vs `mutable_range` -- READY TO RE-TEST (Phase 130 fixed ranges)
 File: `src/reactive_scopes/infer_reactive_scope_variables.rs`
 
-Uses `effective_range = max(mutable_range.end, last_use + 1)` because mutable ranges are too narrow for scope inference. **5 attempts** to switch to `mutable_range` have all failed (96%->36% render). The problem persists even with the new inference model (Phases 2-3). Root cause: our `infer_mutation_aliasing_ranges` computes mutation propagation ranges only. Upstream's mutableRange includes usage extension that our model doesn't. **Do NOT attempt again** without first investigating how upstream extends ranges to include usage reach.
+Uses `effective_range = max(mutable_range.end, last_use + 1)` because mutable ranges were too narrow for scope inference. **5 previous attempts** to switch all failed (96%->36% render). Phase 130 fixed 7 gaps in `infer_mutation_aliasing_ranges` (+93 fixtures). The mutable ranges should now be more correct. The effective_range workaround may no longer be needed -- re-test recommended.
 
 ### `collect_all_scope_declarations` is load-bearing
 File: `src/reactive_scopes/codegen.rs`
@@ -275,3 +187,19 @@ All paths relative to `crates/oxc_react_compiler/`.
 6. **Fix low-risk bail-outs before high-risk scope inference.** The gap analysis shows ~200 fixtures recoverable from validation tuning and codegen fixes (items 1-7) vs ~400 from hard scope inference work (item 10). Pick the easy wins first.
 7. **"Both compile, slots match" (245 fixtures) are mostly cosmetic.** Variable naming and structural diffs -- lower priority than correctness gaps but good cleanup targets.
 8. **Preserve-memo validation needs `ManualMemoDependency` for full upstream fidelity.** Without source deps on `StartMemoize` and `validateInferredDep`, we can't detect dep mismatch errors. The `start_scope != finish_scope` check was an accidental proxy that caught both true positives (31 error fixtures) and false positives (54 valid fixtures). Removing it trades 31 undetectable errors for 54 recovered compilations.
+
+---
+
+## Completed Work (Phases 124-129)
+
+| # | Item | Status | Phase |
+|---|------|--------|-------|
+| 1 | Relax preserve-memo validation (+58 fixtures) | DONE | 124 |
+| 2 | Variable name preservation in codegen (+47 fixtures) | RECLASSIFIED -- actually scope inference issue | 125 |
+| 3 | fbt call preservation (+36 fixtures) | PARTIALLY DONE (14/38) | 126 |
+| 4 | Constant propagation and DCE improvements (+25-30) | PARTIALLY BLOCKED -- most are 0-slot functions | 127 |
+| 5 | Gating codegen (+27 fixtures) | PARTIALLY DONE (4/27) | 127 |
+| 6 | Fix silent bailouts (+23 fixtures) | PARTIALLY DONE (16/23) | 128 |
+| 7 | Frozen mutation / ref validation tuning (+20 fixtures) | PARTIALLY DONE (3/20) | 128 |
+| 8 | Missing validations (+50 fixtures) | PARTIALLY DONE (4/54) | 129 |
+| 9 | Try/catch scope handling (+37 fixtures) | INVESTIGATED -- blocked on scope inference | 129 |

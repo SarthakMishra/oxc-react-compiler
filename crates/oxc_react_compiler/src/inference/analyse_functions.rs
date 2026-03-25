@@ -74,8 +74,10 @@ fn analyse_nested_function(func: &mut HIRFunction, errors: &mut ErrorCollector) 
 
     crate::optimization::dead_code_elimination::dead_code_elimination(&mut func.body);
 
+    let nested_returns_id = Some(func.returns.place.identifier.id);
     crate::inference::infer_mutation_aliasing_ranges::infer_mutation_aliasing_ranges(
         &mut func.body,
+        nested_returns_id,
     );
 
     // Annotate last_use for scope inference (feeds effective_range computation)

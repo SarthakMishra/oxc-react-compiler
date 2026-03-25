@@ -17,6 +17,7 @@ pub fn run_pipeline(
     errors: &mut ErrorCollector,
     param_names: &[String],
     param_ids: &[IdentifierId],
+    returns_id: Option<IdentifierId>,
 ) -> Result<(), ()> {
     let bail_threshold = config.bail_threshold;
     // Phase 0: Reject unsupported patterns (matches upstream BuildHIR Todo errors)
@@ -173,7 +174,9 @@ pub fn run_pipeline(
     crate::optimization::prune_maybe_throws::prune_maybe_throws(hir);
 
     // Pass 20: infer_mutation_aliasing_ranges
-    crate::inference::infer_mutation_aliasing_ranges::infer_mutation_aliasing_ranges(hir);
+    crate::inference::infer_mutation_aliasing_ranges::infer_mutation_aliasing_ranges(
+        hir, returns_id,
+    );
 
     // Pass 20.5: annotate_last_use (stamps identifier.last_use for scope inference)
     crate::inference::infer_mutation_aliasing_ranges::annotate_last_use(hir);
@@ -373,7 +376,8 @@ pub fn run_full_pipeline(
     let param_ids: Vec<IdentifierId> = extract_param_ids(&hir_func.params);
 
     // Run HIR passes (2–46)
-    run_pipeline(&mut hir_func.body, config, errors, &param_names, &param_ids)?;
+    let returns_id = Some(hir_func.returns.place.identifier.id);
+    run_pipeline(&mut hir_func.body, config, errors, &param_names, &param_ids, returns_id)?;
 
     // Pass 47: Build reactive function (CFG → tree IR)
     let mut rf = crate::reactive_scopes::build_reactive_function::build_reactive_function(
@@ -432,7 +436,7 @@ pub fn run_lint_pipeline(
     // Lint mode doesn't have function params available, pass empty slice.
     // Free variable detection in Pass 46 may be less accurate but lint mode
     // doesn't produce output code, so this doesn't affect correctness.
-    run_pipeline(hir, config, errors, &[], &[])?;
+    run_pipeline(hir, config, errors, &[], &[], None)?;
     Ok(())
 }
 

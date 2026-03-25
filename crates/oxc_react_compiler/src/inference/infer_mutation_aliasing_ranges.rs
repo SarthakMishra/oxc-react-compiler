@@ -314,7 +314,7 @@ fn mutate(
 /// 2. Defers all mutation effects
 /// 3. Processes mutations via BFS, extending ranges through the graph
 /// 4. Writes ranges back to HIR identifiers
-pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
+pub fn infer_mutation_aliasing_ranges(hir: &mut HIR, returns_id: Option<IdentifierId>) {
     let mut graph = AliasingGraph::new();
     let mut phi_ids: FxHashSet<IdentifierId> = FxHashSet::default();
     let mut ranges: FxHashMap<IdentifierId, MutableRange> = FxHashMap::default();
@@ -327,6 +327,12 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
 
     let mut index: u32 = 0;
     let mut seen_blocks: FxHashSet<BlockId> = FxHashSet::default();
+
+    // Fix 4: Create fn.returns node in graph (upstream creates it alongside params/context)
+    if let Some(ret_id) = returns_id {
+        graph.create(ret_id);
+        ranges.insert(ret_id, MutableRange { start: InstructionId(0), end: InstructionId(0) });
+    }
 
     // Phase 1: Build the graph and collect mutations
     for (block_id, block) in &hir.blocks {
@@ -510,6 +516,38 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
                 graph.assign(phi_index, from_id, into_id);
             }
         }
+
+        // Fix 4: Assign return value to fn.returns
+        // Upstream: if terminal is return, assign return value → fn.returns
+        if let Some(ret_id) = returns_id
+            && let Terminal::Return { value, .. } = &block.terminal
+        {
+            let from_id = value.identifier.id;
+            ranges.entry(from_id).or_insert(value.identifier.mutable_range);
+            graph.assign(index, from_id, ret_id);
+            index += 1;
+        }
+
+        // Fix 5: Process MaybeThrow and Return terminal effects
+        // Upstream: if terminal is maybe-throw or return with effects,
+        // process Alias effects as graph assignments.
+        let terminal_effects: Option<&Vec<AliasingEffect>> = match &block.terminal {
+            Terminal::MaybeThrow { effects, .. } => effects.as_ref(),
+            Terminal::Return { effects, .. } => effects.as_ref(),
+            _ => None,
+        };
+        if let Some(effects) = terminal_effects {
+            for effect in effects {
+                if let AliasingEffect::Alias { from, into } = effect {
+                    ranges.entry(from.identifier.id).or_insert(from.identifier.mutable_range);
+                    ranges.entry(into.identifier.id).or_insert(into.identifier.mutable_range);
+                    graph.assign(index, from.identifier.id, into.identifier.id);
+                    index += 1;
+                }
+                // Upstream: Freeze effects are just validated (invariant check),
+                // not processed as graph edges. We skip them.
+            }
+        }
     }
 
     // Phase 2: Process all mutations against the completed graph
@@ -547,9 +585,7 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
     //
     // Build a set of all identifiers that are mutated (have range.end > range.start + 1
     // or appear in the mutations list).
-    let mutated_ids: FxHashSet<IdentifierId> = mutations.iter().map(|m| m.place_id).collect();
-
-    annotate_place_effects(hir, &ranges, &mutated_ids, &phi_ids);
+    annotate_place_effects(hir);
 }
 
 // ---------------------------------------------------------------------------
@@ -573,28 +609,25 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR) {
 /// - Mutate → `Store`
 /// - MutateTransitive/Conditional variants → `ConditionallyMutate`
 /// - Freeze → `Freeze`
-fn annotate_place_effects(
-    hir: &mut HIR,
-    ranges: &FxHashMap<IdentifierId, MutableRange>,
-    mutated_ids: &FxHashSet<IdentifierId>,
-    _phi_ids: &FxHashSet<IdentifierId>,
-) {
-    // Helper: is a given identifier mutated after its creation?
-    let is_mutated_after_creation = |id: IdentifierId| -> bool {
-        if let Some(range) = ranges.get(&id) {
-            range.end > InstructionId(range.start.0 + 1) || mutated_ids.contains(&id)
-        } else {
-            false
-        }
-    };
-
+fn annotate_place_effects(hir: &mut HIR) {
     for (_, block) in &mut hir.blocks {
+        // Upstream: firstInstructionIdOfBlock = block.instructions[0]?.id ?? block.terminal.id
+        let first_instr_id_of_block = first_instruction_id_of_block(block);
+
         // Annotate phi nodes
         for phi in &mut block.phis {
             phi.place.effect = Effect::Store;
-            let phi_mutated = is_mutated_after_creation(phi.place.identifier.id);
+            // Upstream: isPhiMutatedAfterCreation = mutableRange.end > firstInstructionId
+            let phi_mutated = phi.place.identifier.mutable_range.end > first_instr_id_of_block;
             for (_, operand) in &mut phi.operands {
                 operand.effect = if phi_mutated { Effect::Capture } else { Effect::Read };
+            }
+            // Fix 2: Phi mutableRange.start fixup
+            // Upstream: if phi is mutated after creation and start==0, set start to
+            // firstInstructionIdOfBlock - 1
+            if phi_mutated && phi.place.identifier.mutable_range.start == InstructionId(0) {
+                phi.place.identifier.mutable_range.start =
+                    InstructionId(first_instr_id_of_block.0.saturating_sub(1));
             }
         }
 
@@ -602,6 +635,15 @@ fn annotate_place_effects(
         for instr in &mut block.instructions {
             // Default lvalue effect
             instr.lvalue.effect = Effect::ConditionallyMutate;
+            // Fix 3b: Lvalue mutableRange.start fixup
+            // Upstream: if lvalue.mutableRange.start == 0, set to instr.id
+            if instr.lvalue.identifier.mutable_range.start == InstructionId(0) {
+                instr.lvalue.identifier.mutable_range.start = instr.id;
+            }
+            // Upstream: if lvalue.mutableRange.end == 0, set to max(instr.id + 1, end)
+            if instr.lvalue.identifier.mutable_range.end == InstructionId(0) {
+                instr.lvalue.identifier.mutable_range.end = InstructionId(instr.id.0 + 1);
+            }
 
             // Build per-operand effect map from instruction effects
             let mut operand_effects: FxHashMap<IdentifierId, Effect> = FxHashMap::default();
@@ -613,10 +655,13 @@ fn annotate_place_effects(
                         | AliasingEffect::Alias { from, into }
                         | AliasingEffect::CreateFrom { from, into }
                         | AliasingEffect::MaybeAlias { from, into } => {
+                            // Upstream: isMutatedOrReassigned = mutableRange.end > instr.id
+                            let is_mutated_or_reassigned =
+                                into.identifier.mutable_range.end > instr.id;
                             // Target gets Store
                             operand_effects.insert(into.identifier.id, Effect::Store);
                             // Source: Capture if target is later mutated, else Read
-                            let source_effect = if is_mutated_after_creation(into.identifier.id) {
+                            let source_effect = if is_mutated_or_reassigned {
                                 Effect::Capture
                             } else {
                                 Effect::Read
@@ -632,8 +677,10 @@ fn annotate_place_effects(
                                 .or_insert(source_effect);
                         }
                         AliasingEffect::Capture { from, into } => {
+                            let is_mutated_or_reassigned =
+                                into.identifier.mutable_range.end > instr.id;
                             operand_effects.insert(into.identifier.id, Effect::Store);
-                            let source_effect = if is_mutated_after_creation(into.identifier.id) {
+                            let source_effect = if is_mutated_or_reassigned {
                                 Effect::Capture
                             } else {
                                 Effect::Read
@@ -667,12 +714,28 @@ fn annotate_place_effects(
                 }
             }
 
+            // Upstream: apply lvalue effects from operandEffects map first
+            if let Some(&eff) = operand_effects.get(&instr.lvalue.identifier.id) {
+                instr.lvalue.effect = eff;
+            }
+
+            // Fix 3: Operand mutableRange.start fixup
+            // Upstream: for each operand, if range.end > instr.id and start==0,
+            // set start = instr.id. This ensures operands used before their mutation
+            // get a proper range start.
+            apply_operand_start_fixup(&mut instr.value, instr.id);
+
             // Apply effects to operand places
             apply_operand_effects(&mut instr.value, &operand_effects);
 
-            // Also apply to lvalue if there's a specific effect for it
-            if let Some(&eff) = operand_effects.get(&instr.lvalue.identifier.id) {
-                instr.lvalue.effect = eff;
+            // Fix 1: StoreContext range extension
+            // Upstream: if instruction is StoreContext and the stored value's
+            // mutableRange.end <= instr.id, extend it to instr.id + 1.
+            // This ensures context variables have their ranges extended when stored.
+            if let InstructionValue::StoreContext { value, .. } = &mut instr.value
+                && value.identifier.mutable_range.end <= instr.id
+            {
+                value.identifier.mutable_range.end = InstructionId(instr.id.0 + 1);
             }
         }
 
@@ -822,6 +885,156 @@ fn apply_operand_effects(
         InstructionValue::FunctionExpression { lowered_func, .. } => {
             for ctx_place in &mut lowered_func.context {
                 update(ctx_place);
+            }
+        }
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::ObjectMethod { .. }
+        | InstructionValue::DeclareLocal { .. }
+        | InstructionValue::DeclareContext { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
+    }
+}
+
+/// Compute the first instruction ID of a block for phi start fixup.
+/// Upstream: `block.instructions.at(0)?.id ?? block.terminal.id`
+/// We don't have terminal IDs, so if block has no instructions, use
+/// last_instruction_id + 1 as an approximation (terminal would follow
+/// the last instruction).
+fn first_instruction_id_of_block(block: &crate::hir::types::BasicBlock) -> InstructionId {
+    if let Some(first) = block.instructions.first() {
+        first.id
+    } else {
+        // Empty block -- use InstructionId(0) as fallback.
+        // In practice, blocks always have at least one instruction.
+        InstructionId(0)
+    }
+}
+
+/// Fix 3: Apply operand mutableRange.start fixup.
+/// Upstream: for each operand, if mutableRange.end > instr.id and start==0,
+/// set start = instr.id.
+fn apply_operand_start_fixup(value: &mut InstructionValue, instr_id: InstructionId) {
+    let fixup = |place: &mut Place| {
+        if place.identifier.mutable_range.end > instr_id
+            && place.identifier.mutable_range.start == InstructionId(0)
+        {
+            place.identifier.mutable_range.start = instr_id;
+        }
+    };
+
+    match value {
+        InstructionValue::LoadLocal { place }
+        | InstructionValue::LoadContext { place }
+        | InstructionValue::TypeCastExpression { value: place, .. }
+        | InstructionValue::UnaryExpression { value: place, .. }
+        | InstructionValue::PostfixUpdate { lvalue: place, .. }
+        | InstructionValue::PrefixUpdate { lvalue: place, .. }
+        | InstructionValue::Await { value: place }
+        | InstructionValue::GetIterator { collection: place }
+        | InstructionValue::NextPropertyOf { value: place } => {
+            fixup(place);
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            fixup(iterator);
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. }
+        | InstructionValue::StoreContext { lvalue, value } => {
+            fixup(lvalue);
+            fixup(value);
+        }
+        InstructionValue::StoreGlobal { value: place, .. } => {
+            fixup(place);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            fixup(left);
+            fixup(right);
+        }
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => {
+            fixup(object);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            fixup(object);
+            fixup(value);
+        }
+        InstructionValue::ComputedLoad { object, property, .. }
+        | InstructionValue::ComputedDelete { object, property } => {
+            fixup(object);
+            fixup(property);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            fixup(object);
+            fixup(property);
+            fixup(value);
+        }
+        InstructionValue::CallExpression { callee, args, .. }
+        | InstructionValue::NewExpression { callee, args } => {
+            fixup(callee);
+            for arg in args.iter_mut() {
+                fixup(arg);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            fixup(receiver);
+            for arg in args.iter_mut() {
+                fixup(arg);
+            }
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties.iter_mut() {
+                if let crate::hir::types::ObjectPropertyKey::Computed(p) = &mut prop.key {
+                    fixup(p);
+                }
+                fixup(&mut prop.value);
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements.iter_mut() {
+                match elem {
+                    crate::hir::types::ArrayElement::Expression(p)
+                    | crate::hir::types::ArrayElement::Spread(p) => fixup(p),
+                    crate::hir::types::ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            fixup(tag);
+            for prop in props.iter_mut() {
+                fixup(&mut prop.value);
+            }
+            for child in children.iter_mut() {
+                fixup(child);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children.iter_mut() {
+                fixup(child);
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for expr in subexpressions.iter_mut() {
+                fixup(expr);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, .. } => {
+            fixup(tag);
+        }
+        InstructionValue::Destructure { value, .. } => {
+            fixup(value);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            fixup(decl);
+            for dep in deps.iter_mut() {
+                fixup(dep);
+            }
+        }
+        InstructionValue::FunctionExpression { lowered_func, .. } => {
+            for ctx_place in &mut lowered_func.context {
+                fixup(ctx_place);
             }
         }
         InstructionValue::Primitive { .. }

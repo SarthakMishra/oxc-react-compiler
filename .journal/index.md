@@ -4,7 +4,7 @@
 
 | File             | Entries | Phases | Notes                                                                  |
 | ---------------- | ------- | ------ | ---------------------------------------------------------------------- |
-| [001.md](001.md) | 129     | 1–129  | Full compiler: HIR foundation → 25.9% conformance. Recent: var declaration detection, compiler-runtime skip, custom opt-out directives, try/catch scope investigation |
+| [001.md](001.md) | 130     | 1–130  | Full compiler: HIR foundation → 30.8% conformance. Recent: mutation range propagation fixes (+93 fixtures), var declaration detection, compiler-runtime skip, custom opt-out directives |
 
 ## Archive
 
