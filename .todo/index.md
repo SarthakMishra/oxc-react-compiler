@@ -1,41 +1,22 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (Phase 131: mutable_range flag infrastructure)
+> Last updated: 2026-03-25 (post Phase 131 cleanup)
 > Conformance: **528/1717 (30.8%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: 1189.
-> Phase 130: +93 fixtures from mutation range propagation fixes (all 5 gaps). Render 23/25 is pre-existing (command-menu + canvas-sidebar).
+> Re-baselined against upstream main on 2026-03-21. Fixture count unchanged (1717) but many files updated. 298 upstream error fixtures. Known-failures: ~1189.
 
 ---
 
-## 1. Fix Mutation Range Propagation (Critical Path) -- DONE (Phase 130)
+## Open Work
 
-~~**Goal**: Fix `infer_mutation_aliasing_ranges.rs` so mutable ranges match upstream~~
-
-**Completed**: All 5 gaps fixed in Phase 130 (+93 conformance fixtures, 0 regressions):
-
-1. **StoreContext range extension** -- extends context var mutableRange.end when stored
-2. **Phi mutableRange.start fixup** -- sets phi start to firstInstructionOfBlock - 1 when mutated after creation with start==0
-3. **Operand mutableRange.start fixup** -- sets operand start to instr.id when range.end > instr.id and start==0
-4. **fn.returns assignment from return terminals** -- wires return values to fn.returns in aliasing graph (required new `returns_id` parameter on `run_pipeline`)
-5. **MaybeThrow terminal effect processing** -- processes Alias effects from MaybeThrow and Return terminal effects
-6. **Lvalue mutableRange.start/end fixup** -- sets lvalue start/end when ==0 (discovered from upstream Part 2)
-7. **Operand effect alignment** -- switched from `is_mutated_after_creation(id)` to upstream's `mutableRange.end > instr.id` check for Assign/Alias/Capture/CreateFrom/MaybeAlias source effects
-
-**Remaining work**: Phase D (switch to mutable_range) NOT yet attempted. The effective_range workaround is still active. With ranges now more correct, switching may finally work. Next step: test with `use_mutable_range` flag.
-
----
-
-## Remaining Phase Work
-
-### Phase 2 Remaining: Impure Function Handling
+### Phase 2 Remaining: Impure Function Handling — DEFERRED
 
 **Files:** `src/inference/infer_mutation_aliasing_effects.rs`, `src/validation/`
 **Status:** Deferred
 
-- Impure function handling in legacy signatures -- requires `validate_no_impure_functions_in_render` integration
+- Impure function handling in legacy signatures — requires `validate_no_impure_functions_in_render` integration
 - Currently no validation that flags impure function calls in render scope
 
-### Phase 4c: Remove `validate_no_mutation_after_freeze.rs` -- BLOCKED
+### Phase 4c: Remove `validate_no_mutation_after_freeze.rs` — BLOCKED
 
 **Files:** `src/validation/validate_no_mutation_after_freeze.rs`
 **Status:** BLOCKED
@@ -44,7 +25,7 @@ Cannot remove yet. The standalone validator has independent hook-call-freezes-ca
 
 **Note (Phase 119):** The hook-call-freezes-captures logic has a gap: imported hook names (via LoadGlobal) are not resolved in id_to_name. Added LoadGlobal tracking but the error fixtures `error.hook-call-freezes-captured-identifier.tsx` and `error.hook-call-freezes-captured-memberexpr.jsx` still don't trigger bail-out. Deeper investigation needed into how the HIR represents the CallExpression args for these patterns -- the FunctionExpression temp may not be linking to func_captures correctly after passes like inline_load_local_temps.
 
-### Phase 4d: Switch to `mutable_range` -- TESTED, NOT READY (Phase 131)
+### Phase 4d: Switch to `mutable_range` — TESTED, NOT READY (Phase 131)
 
 **Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`
 **Status:** Attempt #6 completed. Flag infrastructure added (`use_mutable_range` on EnvironmentConfig, default false). Testing with flag=true showed:
@@ -53,18 +34,18 @@ Cannot remove yet. The standalone validator has independent hook-call-freezes-ca
 - Render: stable at 23/25
 - Net: -4 conformance, not viable as default
 
-**Root cause:** Mutable ranges are still too narrow for proper scope grouping. The effective_range workaround (max of mutable_range.end, last_use+1) is still needed. The 20 regressions are all over-splitting (e.g. 9 slots expected 1, 8 slots expected 1). Scopes that should merge are not overlapping because mutable ranges don't extend far enough.
+**Root cause:** Over-splitting. Mutable ranges are still too narrow for proper scope grouping. The effective_range workaround (max of mutable_range.end, last_use+1) is still needed. The 20 regressions are all over-splitting (e.g. 9 slots expected 1, 8 slots expected 1). Scopes that should merge are not overlapping because mutable ranges don't extend far enough.
 
-**What would fix this:** The mutable ranges need to be wider -- upstream's ranges include more transitive mutation propagation. Investigate which specific fixtures regress and what range extension is missing. The flag is preserved for future A/B testing.
+**What would fix this:** The mutable ranges need to be wider — upstream's ranges include more transitive mutation propagation. Investigate which specific fixtures regress and what range extension is missing. The flag is preserved for future A/B testing.
 
-### Phase 5: Fault Tolerance & Error Handling -- BLOCKED
+### Phase 5: Fault Tolerance & Error Handling — BLOCKED
 
 **Files:** `src/error.rs`, `src/entrypoint/pipeline.rs`, all validation passes
-**Status:** BLOCKED on compilation quality
+**Status:** BLOCKED on compilation quality — do NOT re-attempt until conformance reaches ~600+ fixtures (35%+)
 
 **5a. Accumulate errors instead of early bail:**
 - `Environment` / `ErrorCollector` should accumulate errors across all passes
-- Passes wrapped in `try_record` -- a pass failure doesn't stop the pipeline
+- Passes wrapped in `try_record` — a pass failure doesn't stop the pipeline
 - `lower()` (HIR builder) always produces `HIRFunction` even on error
 - Final error check after all passes complete
 
@@ -77,7 +58,7 @@ Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. 
 
 **Result:** Conformance dropped 453->269 (-184). Reverted immediately.
 
-**Root cause:** 132 fixtures that bail with AllErrors produce pass-through output matching expected. With CriticalErrors, they compile but produce WRONG output (different scope groupings, wrong slot counts), causing divergences. Upstream can use CriticalErrors because their compilation quality is higher -- when they don't bail, they produce correct output.
+**Root cause:** 132 fixtures that bail with AllErrors produce pass-through output matching expected. With CriticalErrors, they compile but produce WRONG output (different scope groupings, wrong slot counts), causing divergences. Upstream can use CriticalErrors because their compilation quality is higher — when they don't bail, they produce correct output.
 
 **Do NOT re-attempt** until conformance reaches ~600+ fixtures (35%+) and the "both compile, slots differ" category drops below 400.
 
@@ -85,18 +66,23 @@ Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. 
 
 - [ ] Try-catch support improvements (for loops, optional/logical in try/catch)
 - [ ] IIFE inlining improvements
-- [x] Improved scope merging for scopes that invalidate together (Phase 123: zero-dep eligibility, updateScopeDeclarations pruning, temporaries-aware output-to-input chain)
 - [ ] Props spread optimization
 - [ ] `ControlDominators.ts` utility (needed by Phase 2)
-- [ ] Emitting 0-slot functions -- BLOCKED until more error validations are implemented (68 divergences when attempted in Phase 121)
+- [ ] Emitting 0-slot functions — BLOCKED until more error validations are implemented (68 divergences when attempted in Phase 121)
 
 ### Other Open Work
 
-- [ ] Constant propagation and DCE improvements (+25-30 fixtures) -- PARTIALLY BLOCKED — [details](#4-constant-propagation-and-dce-improvements-25-30-fixtures----partially-blocked)
-- [ ] Missing validations (+50 fixtures) -- PARTIALLY DONE — [details](#8-missing-validations-50-fixtures----partially-done-phase-129)
-- [ ] Remaining gating codegen (23 fixtures) -- import ordering, @dynamicGating, validation
-- [ ] Remaining silent bailouts (7) -- Flow type casts, compilationMode:infer edge cases
-- [ ] Remaining frozen mutation / ref validation (20 fixtures) -- effects-level issues, FE data-flow
+- [ ] Constant propagation and DCE improvements (+25-30 fixtures) — PARTIALLY BLOCKED — most are 0-slot functions
+- [ ] Missing validations (+50 fixtures) — PARTIALLY DONE (Phase 129: 4/54)
+- [ ] Remaining gating codegen (23 fixtures) — import ordering, @dynamicGating, validation
+- [ ] Remaining silent bailouts (7) — Flow type casts, compilationMode:infer edge cases
+- [ ] Remaining frozen mutation / ref validation (20 fixtures) — effects-level issues, FE data-flow
+
+### Performance: O(n^2+) Scaling in Effects/Aliasing Passes
+
+**Status:** Known regression, not yet addressed
+
+The `infer_mutation_aliasing_effects` worklist-based fixpoint and `infer_mutation_aliasing_ranges` BFS passes introduced O(n^2+) scaling in Phases 113-130. Small fixtures (XS/S) are 5-67x faster than Babel, but medium/large fixtures show regressions (0.2-1.2x). Profiling and algorithmic optimization of these passes is a high-priority item once correctness work stabilizes.
 
 ---
 
@@ -104,7 +90,7 @@ Current pattern: each pass checks `errors.should_bail()` and returns `Err(())`. 
 
 **Read these before making ANY changes.**
 
-### `effective_range` vs `mutable_range` -- TESTED, STILL NEEDED (Phase 131)
+### `effective_range` vs `mutable_range` — TESTED, STILL NEEDED (Phase 131)
 File: `src/reactive_scopes/infer_reactive_scope_variables.rs`
 
 Uses `effective_range = max(mutable_range.end, last_use + 1)` because mutable ranges are still too narrow for scope inference. **6 attempts** to switch have all shown regressions. Phase 130 fixed 7 mutation range gaps (+93 fixtures). Phase 131 tested with `use_mutable_range` flag: render was stable (23/25) but conformance showed -20 over-splitting regressions vs +16 newly passing. The effective_range workaround is still needed. The `use_mutable_range` flag on EnvironmentConfig is preserved for future A/B testing.
@@ -185,27 +171,12 @@ All paths relative to `crates/oxc_react_compiler/`.
 
 ## Lessons Learned
 
-1. **effective_range is load-bearing.** 6 attempts to switch to mutable_range have shown regressions. Phase 131: render stable but -20 over-splitting regressions. Mutable ranges still too narrow for correct scope grouping.
+1. **effective_range is load-bearing.** 6 attempts to switch to mutable_range have shown regressions. Phase 131: render stable but -20 over-splitting regressions (+16 newly passing, net -4). Root cause is over-splitting -- mutable ranges are still too narrow for correct scope grouping without the effective_range extension.
 2. **collect_all_scope_declarations cannot be removed.** It prevents render collapse from 96% to 24%.
 3. **PanicThreshold change to CriticalErrors requires ~600+ conformance.** 132 bail-out fixtures produce wrong output when compiled instead of bailed.
 4. **Emitting 0-slot functions requires more error validations.** 68 divergences when attempted (Phase 121).
 5. **Render regressions can be latent.** The PostfixUpdate/PrefixUpdate codegen bug existed for months but only appeared when the new inference model enabled deeper function body compilation.
-6. **Fix low-risk bail-outs before high-risk scope inference.** The gap analysis shows ~200 fixtures recoverable from validation tuning and codegen fixes (items 1-7) vs ~400 from hard scope inference work (item 10). Pick the easy wins first.
+6. **Fix low-risk bail-outs before high-risk scope inference.** The gap analysis shows ~200 fixtures recoverable from validation tuning and codegen fixes vs ~400 from hard scope inference work. Pick the easy wins first.
 7. **"Both compile, slots match" (245 fixtures) are mostly cosmetic.** Variable naming and structural diffs -- lower priority than correctness gaps but good cleanup targets.
 8. **Preserve-memo validation needs `ManualMemoDependency` for full upstream fidelity.** Without source deps on `StartMemoize` and `validateInferredDep`, we can't detect dep mismatch errors. The `start_scope != finish_scope` check was an accidental proxy that caught both true positives (31 error fixtures) and false positives (54 valid fixtures). Removing it trades 31 undetectable errors for 54 recovered compilations.
-
----
-
-## Completed Work (Phases 124-129)
-
-| # | Item | Status | Phase |
-|---|------|--------|-------|
-| 1 | Relax preserve-memo validation (+58 fixtures) | DONE | 124 |
-| 2 | Variable name preservation in codegen (+47 fixtures) | RECLASSIFIED -- actually scope inference issue | 125 |
-| 3 | fbt call preservation (+36 fixtures) | PARTIALLY DONE (14/38) | 126 |
-| 4 | Constant propagation and DCE improvements (+25-30) | PARTIALLY BLOCKED -- most are 0-slot functions | 127 |
-| 5 | Gating codegen (+27 fixtures) | PARTIALLY DONE (4/27) | 127 |
-| 6 | Fix silent bailouts (+23 fixtures) | PARTIALLY DONE (16/23) | 128 |
-| 7 | Frozen mutation / ref validation tuning (+20 fixtures) | PARTIALLY DONE (3/20) | 128 |
-| 8 | Missing validations (+50 fixtures) | PARTIALLY DONE (4/54) | 129 |
-| 9 | Try/catch scope handling (+37 fixtures) | INVESTIGATED -- blocked on scope inference | 129 |
+9. **Performance regression from Phases 113-130.** O(n^2+) scaling in effects/aliasing analysis passes. Large files slower than Babel. Optimization needed but deferred until correctness work stabilizes.
