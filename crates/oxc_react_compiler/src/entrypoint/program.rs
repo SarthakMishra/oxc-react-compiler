@@ -80,6 +80,19 @@ fn compile_program_inner_with_config(
     config: &EnvironmentConfig,
     generate_source_map: bool,
 ) -> CompileResult {
+    // DIVERGENCE: Preprocess Flow component/hook syntax to regular functions.
+    // Flow's `component Foo(bar: number) {}` is equivalent to
+    // `function Foo({bar}: {bar: number}) {}`. Babel converts these before
+    // the React Compiler sees them; we do a lightweight text-level conversion
+    // because OXC's parser doesn't support Flow component syntax.
+    let preprocessed;
+    let source = if has_flow_component_or_hook_syntax(source) {
+        preprocessed = preprocess_flow_syntax(source);
+        preprocessed.as_str()
+    } else {
+        source
+    };
+
     let allocator = Allocator::default();
     // Always enable TypeScript and JSX parsing regardless of file extension.
     // Many upstream fixtures use `.js` extension but contain TypeScript or Flow
@@ -1214,6 +1227,245 @@ fn has_eslint_suppression_for_rules(source: &str, rules: &[&str]) -> bool {
         }
     }
     false
+}
+
+/// Quick check whether source contains Flow component or hook declaration syntax.
+/// Used to avoid the preprocessing overhead for non-Flow files.
+fn has_flow_component_or_hook_syntax(source: &str) -> bool {
+    // Check for `component ` or `hook ` at the start of a line (possibly preceded by `export default ` or `export `)
+    for line in source.lines() {
+        let trimmed = line.trim();
+        let after_export = trimmed
+            .strip_prefix("export")
+            .map(str::trim_start)
+            .and_then(|s| s.strip_prefix("default").map(str::trim_start).or(Some(s)))
+            .unwrap_or(trimmed);
+        if after_export.starts_with("component ") || after_export.starts_with("hook ") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Preprocess Flow component/hook syntax into standard function declarations.
+///
+/// Transforms:
+/// - `component Foo(bar: T, baz: U) { ... }` → `function Foo({bar, baz}) { ... }`
+/// - `hook useFoo(bar: T) { ... }` → `function useFoo(bar) { ... }`
+/// - Handles `export`, `export default` prefixes
+///
+/// This is a text-level transformation, not a full parser. It handles the common
+/// patterns used in upstream fixtures. Complex cases (nested generics in params,
+/// render types) may not be handled perfectly.
+fn preprocess_flow_syntax(source: &str) -> String {
+    let mut result = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    let mut pos = 0;
+
+    while pos < source.len() {
+        // Find the next potential component/hook declaration
+        let remaining = &source[pos..];
+
+        // Try to match at the current position
+        if let Some((replacement, consumed)) = try_match_flow_decl(remaining) {
+            result.push_str(&replacement);
+            pos += consumed;
+            // Advance chars iterator
+            chars = source[pos..].chars().peekable();
+        } else {
+            // Copy one character
+            if let Some(ch) = chars.next() {
+                result.push(ch);
+                pos += ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+    }
+
+    result
+}
+
+/// Try to match a Flow component or hook declaration at the start of `s`.
+/// Returns (replacement_text, bytes_consumed) if matched.
+fn try_match_flow_decl(s: &str) -> Option<(String, usize)> {
+    // Only match at the start of a line (or start of input)
+    // Check for optional `export` and `export default` prefixes
+    let mut cursor = 0;
+    let trimmed_start = s[cursor..].trim_start();
+    let leading_ws = s.len() - trimmed_start.len();
+    cursor = leading_ws;
+
+    let mut prefix = String::new();
+
+    if s[cursor..].starts_with("export") {
+        let after_export = &s[cursor + 6..];
+        if after_export.starts_with(|c: char| c.is_whitespace()) {
+            prefix.push_str("export ");
+            cursor += 6;
+            // Skip whitespace
+            while cursor < s.len()
+                && s.as_bytes()[cursor].is_ascii_whitespace()
+                && s.as_bytes()[cursor] != b'\n'
+            {
+                cursor += 1;
+            }
+            if s[cursor..].starts_with("default") {
+                let after_default = &s[cursor + 7..];
+                if after_default.starts_with(|c: char| c.is_whitespace()) {
+                    prefix.push_str("default ");
+                    cursor += 7;
+                    while cursor < s.len()
+                        && s.as_bytes()[cursor].is_ascii_whitespace()
+                        && s.as_bytes()[cursor] != b'\n'
+                    {
+                        cursor += 1;
+                    }
+                }
+            }
+        } else {
+            return None;
+        }
+    }
+
+    let is_component = s[cursor..].starts_with("component ");
+    let is_hook = s[cursor..].starts_with("hook ");
+
+    if !is_component && !is_hook {
+        return None;
+    }
+
+    let keyword_len = if is_component { 10 } else { 5 }; // "component " or "hook "
+    cursor += keyword_len;
+
+    // Read the name
+    let name_start = cursor;
+    while cursor < s.len()
+        && (s.as_bytes()[cursor].is_ascii_alphanumeric()
+            || s.as_bytes()[cursor] == b'_'
+            || s.as_bytes()[cursor] == b'$')
+    {
+        cursor += 1;
+    }
+    let name = &s[name_start..cursor];
+    if name.is_empty() {
+        return None;
+    }
+
+    // Skip whitespace
+    while cursor < s.len()
+        && s.as_bytes()[cursor].is_ascii_whitespace()
+        && s.as_bytes()[cursor] != b'\n'
+    {
+        cursor += 1;
+    }
+
+    // Expect '('
+    if cursor >= s.len() || s.as_bytes()[cursor] != b'(' {
+        return None;
+    }
+    cursor += 1; // skip '('
+
+    // Read params until matching ')'
+    let params_start = cursor;
+    let mut depth = 1;
+    while cursor < s.len() && depth > 0 {
+        match s.as_bytes()[cursor] {
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            _ => {}
+        }
+        if depth > 0 {
+            cursor += 1;
+        }
+    }
+    let params_text = &s[params_start..cursor];
+    cursor += 1; // skip closing ')'
+
+    // Parse params: strip Flow type annotations, extract names
+    let param_names = extract_flow_param_names(params_text);
+
+    // Build replacement
+    let ws = &s[..leading_ws];
+    let params_str = if is_component {
+        if param_names.is_empty() {
+            String::new()
+        } else {
+            // Wrap in destructuring: {a, b, c}
+            format!("{{{}}}", param_names.join(", "))
+        }
+    } else {
+        // Hook: keep params as-is (strip types)
+        param_names.join(", ")
+    };
+
+    let replacement = format!("{ws}{prefix}function {name}({params_str})");
+
+    Some((replacement, cursor))
+}
+
+/// Extract parameter names from a Flow parameter list, stripping type annotations.
+///
+/// Handles patterns like:
+/// - `bar: number` → `bar`
+/// - `bar: number, baz: string` → `bar`, `baz`
+/// - `bar?: string` → `bar`
+/// - `onClose: (isConfirmed: boolean) => void` → `onClose`
+/// - Empty params → empty vec
+fn extract_flow_param_names(params: &str) -> Vec<&str> {
+    let trimmed = params.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+
+    let mut names = Vec::new();
+    let bytes = trimmed.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        // Skip leading whitespace
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+
+        // Read the parameter name
+        let name_start = i;
+        while i < bytes.len()
+            && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'$')
+        {
+            i += 1;
+        }
+        let name = &trimmed[name_start..i];
+        if !name.is_empty() {
+            names.push(name);
+        }
+
+        // Skip '?' if present (optional param)
+        if i < bytes.len() && bytes[i] == b'?' {
+            i += 1;
+        }
+
+        // Skip type annotation: everything up to the next top-level comma
+        // Need to track depth of parens, angles, braces
+        let mut depth = 0i32;
+        while i < bytes.len() {
+            match bytes[i] {
+                b',' if depth == 0 => {
+                    i += 1; // skip comma
+                    break;
+                }
+                b'(' | b'[' | b'{' | b'<' => depth += 1,
+                b')' | b']' | b'}' | b'>' => depth -= 1,
+                _ => {}
+            }
+            i += 1;
+        }
+    }
+
+    names
 }
 
 #[cfg(test)]

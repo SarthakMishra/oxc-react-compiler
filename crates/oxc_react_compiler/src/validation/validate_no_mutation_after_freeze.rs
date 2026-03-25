@@ -379,7 +379,15 @@ pub fn validate_no_mutation_after_freeze(
                         });
                         if let Some(captures) = arg_captures {
                             for &captured_name in captures {
-                                frozen_names.insert(captured_name);
+                                // Skip ref-typed captures: useRef() returns are designed
+                                // to be mutable. Freezing them causes false positives
+                                // when callbacks write ref.current inside custom hooks.
+                                let is_ref_capture = ref_ids.iter().any(|&rid| {
+                                    id_to_name.get(&rid).copied() == Some(captured_name)
+                                });
+                                if !is_ref_capture {
+                                    frozen_names.insert(captured_name);
+                                }
                             }
                         }
 

@@ -530,7 +530,8 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig, boo
         let needle = format!("@{name}");
         if let Some(pos) = comment.find(&needle) {
             let after = &comment[pos + needle.len()..];
-            if after.starts_with(":false") {
+            // Handle both `:false` and ` false` formats
+            if after.starts_with(":false") || after.starts_with(" false") {
                 return Some(false);
             }
             // bare @name or @name:true or @name followed by space/end
@@ -1156,6 +1157,25 @@ fn upstream_conformance() {
             frozen_bailouts.sort_unstable();
             println!("--- FROZEN-MUTATION BAIL-OUTS ({} fixtures) ---", frozen_bailouts.len());
             for name in &frozen_bailouts {
+                println!("  {name}");
+            }
+            println!();
+        }
+    }
+
+    // Print ref-access bail-out fixtures
+    {
+        let mut ref_bailouts: Vec<&str> = Vec::new();
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            if !we_memo && r.expected_has_memo && r.first_error.starts_with("Cannot access refs") {
+                ref_bailouts.push(&r.relative_path);
+            }
+        }
+        if !ref_bailouts.is_empty() {
+            ref_bailouts.sort_unstable();
+            println!("--- REF-ACCESS BAIL-OUTS ({} fixtures) ---", ref_bailouts.len());
+            for name in &ref_bailouts {
                 println!("  {name}");
             }
             println!();

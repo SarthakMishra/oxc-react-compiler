@@ -1,9 +1,10 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{HIR, IdentifierId, InstructionValue, Type};
+use crate::hir::types::{HIR, IdentifierId, InstructionValue, Terminal, Type};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Hook names whose first callback argument executes after render.
-const EFFECT_HOOKS: &[&str] = &["useEffect", "useLayoutEffect", "useInsertionEffect"];
+const EFFECT_HOOKS: &[&str] =
+    &["useEffect", "useLayoutEffect", "useInsertionEffect", "useEffectEvent"];
 
 /// Validate that ref values are not accessed during render.
 ///
@@ -199,6 +200,11 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                 }
                 _ => {}
             }
+        }
+        // FEs that are returned from the function execute outside render.
+        // They'll be called by the consumer, not during the current component's render.
+        if let Terminal::Return { value, .. } = &block.terminal {
+            ids.insert(value.identifier.id);
         }
     }
 
