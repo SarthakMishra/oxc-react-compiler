@@ -308,7 +308,6 @@ error.todo-repro-missed-memoization-from-capture-in-invoked-function-inferred-as
 error.todo-repro-unmemoized-callback-captured-in-context-variable.tsx
 error.todo-valid-functiondecl-hoisting.tsx
 error.validate-blocklisted-imports.ts
-error.validate-mutate-ref-arg-in-render.js
 error.validate-object-entries-mutation.js
 error.validate-object-values-mutation.js
 escape-analysis-destructured-rest-element.js

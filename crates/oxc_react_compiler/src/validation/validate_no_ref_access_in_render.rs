@@ -47,11 +47,16 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
                     if place.identifier.type_ == Type::Ref || ref_ids.contains(&place.identifier.id)
                     {
                         ref_ids.insert(instr.lvalue.identifier.id);
+                        // Also track the source place ID — after inline_load_local_temps
+                        // (Pass 9.6), consumers may reference the source directly
+                        // instead of the LoadLocal's lvalue.
+                        ref_ids.insert(place.identifier.id);
                     }
                     if let Some(name) = &place.identifier.name
                         && (is_ref_name(name) || ref_names.contains(name))
                     {
                         ref_ids.insert(instr.lvalue.identifier.id);
+                        ref_ids.insert(place.identifier.id);
                         ref_names.insert(name.clone());
                     }
                 }
@@ -79,10 +84,27 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
         for instr in &block.instructions {
             let is_ref_current = match &instr.value {
                 InstructionValue::PropertyLoad { object, property, .. } => {
-                    property == "current" && ref_ids.contains(&object.identifier.id)
+                    property == "current"
+                        && (ref_ids.contains(&object.identifier.id)
+                            // DIVERGENCE: After inline_load_local_temps (Pass 9.6),
+                            // LoadLocal instructions may be eliminated and consumers
+                            // reference the original named Place directly. Check the
+                            // object's name as a fallback when the ID wasn't tracked
+                            // (e.g., function parameters that have no LoadLocal).
+                            || object.identifier.name.as_deref().is_some_and(|n| {
+                                is_ref_name(n) || ref_names.contains(n)
+                            })
+                            || object.identifier.type_ == Type::Ref)
                 }
                 InstructionValue::PropertyStore { object, property, .. } => {
-                    property == "current" && ref_ids.contains(&object.identifier.id)
+                    property == "current"
+                        && (ref_ids.contains(&object.identifier.id)
+                            || object
+                                .identifier
+                                .name
+                                .as_deref()
+                                .is_some_and(|n| is_ref_name(n) || ref_names.contains(n))
+                            || object.identifier.type_ == Type::Ref)
                 }
                 _ => false,
             };
@@ -323,11 +345,14 @@ fn check_nested_ref_access(
                         || local_ref_ids.contains(&place.identifier.id)
                     {
                         local_ref_ids.insert(instr.lvalue.identifier.id);
+                        // Also track the source place ID (see top-level pass comment)
+                        local_ref_ids.insert(place.identifier.id);
                     }
                     if let Some(name) = &place.identifier.name
                         && (is_ref_name(name) || local_ref_names.contains(name))
                     {
                         local_ref_ids.insert(instr.lvalue.identifier.id);
+                        local_ref_ids.insert(place.identifier.id);
                     }
                 }
                 InstructionValue::StoreLocal { lvalue, value, .. }
@@ -353,10 +378,24 @@ fn check_nested_ref_access(
         for instr in &block.instructions {
             let is_ref_current = match &instr.value {
                 InstructionValue::PropertyLoad { object, property, .. } => {
-                    property == "current" && local_ref_ids.contains(&object.identifier.id)
+                    property == "current"
+                        && (local_ref_ids.contains(&object.identifier.id)
+                            || object
+                                .identifier
+                                .name
+                                .as_deref()
+                                .is_some_and(|n| is_ref_name(n) || local_ref_names.contains(n))
+                            || object.identifier.type_ == Type::Ref)
                 }
                 InstructionValue::PropertyStore { object, property, .. } => {
-                    property == "current" && local_ref_ids.contains(&object.identifier.id)
+                    property == "current"
+                        && (local_ref_ids.contains(&object.identifier.id)
+                            || object
+                                .identifier
+                                .name
+                                .as_deref()
+                                .is_some_and(|n| is_ref_name(n) || local_ref_names.contains(n))
+                            || object.identifier.type_ == Type::Ref)
                 }
                 _ => false,
             };

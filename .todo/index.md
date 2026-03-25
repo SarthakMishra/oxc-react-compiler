@@ -1,9 +1,10 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Stage 4e-B partial)
-> Conformance: **443/1717 (25.8%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 4e-B (in progress): +1 fixture (442->443). Fixed hooks-in-for-loop detection via Terminal::Branch handling in validate_hooks_usage.rs.
-> Known-failures: 1274. Error.* fixtures remaining in KF: 38 (36 top-level + 2 fbt/).
+> Last updated: 2026-03-25 (post Stage 4e-B partial, ref-access fix)
+> Conformance: **444/1717 (25.9%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 4e-B (in progress): +2 fixtures (442->444). Fixed hooks-in-for-loop detection + ref-access detection for `error.validate-mutate-ref-arg-in-render.js`.
+> Known-failures: 1273. Error.* fixtures remaining in KF: 37 (35 top-level + 2 fbt/).
+> Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
 
@@ -49,7 +50,7 @@ The path is clearer but requires significant compiler infrastructure work:
 | Todo error detection (remaining) | 12 | +5-8 | LOW — need hoisting, optional terminals, default params |
 | Frozen-mutation validation fixes | 2 remain | +9 done (Stage 4d) | MEDIUM | 2 remaining need effect callback + JSX capture analysis |
 
-**Conservative estimate:** +134-259 from 442 base = 576-701. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +133-258 from 444 base = 577-702. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
@@ -264,7 +265,7 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 | "Invariant: ..." (upstream internal errors) | 3 | MethodCall codegen (1), inconsistent destructuring (1), unnamed temporary (1) — 3 of original 6 fixed in 4e-A |
 | "Error: This value cannot be modified" | 3 | Frozen-mutation detection — overlaps Stage 4d remaining |
 | "Error: Cannot modify locals after render" | 2 | `validateLocalsNotReassignedAfterRender` gaps |
-| "Error: Cannot access refs during render" | 4 | `validateNoRefAccessInRender` gaps (ref-like-name patterns + pass-ref + mutate-ref) |
+| "Error: Cannot access refs during render" | 3 | `validateNoRefAccessInRender` gaps (1 fixed: mutate-ref-arg. Remaining: `error.invalid-pass-ref-to-function.js` needs ref-through-function-call tracking, 2 others need further investigation) |
 | "Error: setState from useMemo" | 1 | setState-in-render validation gap (already partially fixed in 4cd3b20) |
 | "Error: validate-*" | 3 | validate-blocklisted-imports (1), validate-object-entries/values-mutation (2) |
 | Compiled output (NOT UPSTREAM ERROR) | 5 | Slots-DIFFER/MATCH issues, not bail-out issues |
@@ -272,14 +273,17 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 **Tractable sub-tasks (no new infrastructure needed):**
 
 - [x] **4e-A: Mixed bail-outs — COMPLETE (+7, 435->442)** — implemented 7 new bail-outs across 3 files: hoisted function decls in unreachable code (3 fixtures: `error.todo-hoist-function-decls.js`, `error.todo-hoisted-function-in-unreachable-code.js`, `error.hoisting-simple-function-declaration.js`), fbt parameter name detection (1: `fbt/error.todo-fbt-as-local.js`), default-param arrow/function expressions (1: `error.default-param-accesses-local.js`), catch clause destructuring (1: `error.bug-invariant-couldnt-find-binding-for-decl.js`), hook spread arguments (1: `error.todo-hook-call-spreads-mutable-iterator.js`). Files: `validate_no_unsupported_nodes.rs`, `build.rs`, `known-failures.txt`. **Note:** `error.todo-handle-update-context-identifiers.js` (Group 6, UpdateExpression on context vars) was NOT fixed — nested HIR builders don't emit `LoadContext` instructions, so context variables can't be detected by walking the nested HIR. See blocker report below.
-- [~] **4e-B: Locals-reassigned + ref-access + setState bail-outs (5 fixtures)** — tighten existing validators (`validate_no_ref_access_in_render`, `validate_locals_not_reassigned_after_render`, setState checks, hooks-in-loop) to catch these specific patterns. **Progress:** +1 fixture (hooks-in-for-loop via Terminal::Branch handling in `validate_hooks_usage.rs` `find_conditional_blocks`). Remaining potential gain: +4.
+- [~] **4e-B: Locals-reassigned + ref-access + setState bail-outs (5 fixtures)** — tighten existing validators (`validate_no_ref_access_in_render`, `validate_locals_not_reassigned_after_render`, setState checks, hooks-in-loop) to catch these specific patterns. **Progress:** +2 fixtures (hooks-in-for-loop via Terminal::Branch handling in `validate_hooks_usage.rs`; ref-access detection for `error.validate-mutate-ref-arg-in-render.js` via name-based + Type::Ref fallback in `validate_no_ref_access_in_render.rs`). Remaining potential gain: +3.
 - [ ] **4e-C: Frozen-mutation remaining (3 fixtures)** — overlaps Stage 4d remaining. Need effect callback mutation + JSX capture analysis. Potential gain: +3.
 - [ ] **4e-D: Preserve-memo gaps (11 fixtures)** — overlaps Stage 4b. BLOCKED by `finish_in_scope` issue (see Stage 4b notes). Potential gain: +11 but requires scope inference fix.
 - [ ] **4e-E: Todo remaining (7 fixtures)** — overlaps Stage 4c remaining. Need hoisting (3), optional member expr (2), context var update (1), missing source locs (1). Potential gain: +7 but requires new infrastructure. Context var update BLOCKED by nested HIR LoadContext gap.
 
 **Stage 4e-A done: +7 fixtures gained.**
-**Stage 4e-B progress: +1 fixture gained (443 total).** Fixed hooks-in-for-loop detection: `find_conditional_blocks` in `validate_hooks_usage.rs` now handles `Terminal::Branch` (for-loop continue/break targets), which was previously unmatched, causing the validator to miss hook calls inside for-loops. This is a targeted fix; remaining 4e-B fixtures (locals-reassigned, ref-access, setState patterns) still need investigation.
-**Remaining tractable gain (4e-B): +4 fixtures, no new infrastructure.**
+**Stage 4e-B progress: +2 fixtures gained (444 total).**
+1. Fixed hooks-in-for-loop detection: `find_conditional_blocks` in `validate_hooks_usage.rs` now handles `Terminal::Branch` (for-loop continue/break targets), which was previously unmatched, causing the validator to miss hook calls inside for-loops.
+2. Fixed ref-access detection for `error.validate-mutate-ref-arg-in-render.js`: `validate_no_ref_access_in_render.rs` now uses name-based fallback (`is_ref_name` / `ref_names` set) and `Type::Ref` checks on PropertyLoad/PropertyStore objects, in addition to ID-based tracking. This handles cases where inline_load_local_temps (Pass 9.6) eliminates LoadLocal instructions, causing ref IDs to not propagate. Also tracks source place IDs in LoadLocal (not just lvalue IDs).
+**Remaining tractable gain (4e-B): +3 fixtures, no new infrastructure.**
+**Remaining ref-access fixtures:** `error.invalid-pass-ref-to-function.js` needs ref-through-function-call tracking (detecting when a ref is passed as argument to a function that accesses `.current`). The other ref-access false-positive bail-outs (Stage 2e, 8 fixtures) are a separate category where we incorrectly bail on valid code.
 **Full potential (all remaining sub-tasks): +26 fixtures.**
 **Risk:** LOW for 4e-B. MEDIUM-HIGH for 4e-C/D/E.
 
@@ -351,10 +355,10 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 | Stage 4c: Todo error detection | +15 (done, 5 remain) | 426 | LOW | 22/27 done (15 in 4c + 7 in 4e-A). Remaining 5 need hoisting, optional terminals, context vars. |
 | Stage 4d: Frozen-mutation false negatives | +9 (done) | 435 | MEDIUM | Completed. 7/9 planned + 2 bonus. 2 remain (effect callback, JSX capture). |
 | Stage 4e-A: Upstream error bail-outs | +7 (done) | 442 | LOW | 7/43 done. 4e-B through 4e-E remain. |
-| Stage 4e-B: Locals/ref/setState/hooks | +1 so far | 443 | LOW | 1/5 done (hooks-in-loop). 4 remain. |
+| Stage 4e-B: Locals/ref/setState/hooks | +2 so far | 444 | LOW | 2/5 done (hooks-in-loop, mutate-ref-arg). 3 remain. |
 | Stage 4e-C/D/E: Remaining upstream errors | +21-38 | 464-481 | MED-HIGH | 4e-C (3, MED), 4e-D (11, MED-HIGH), 4e-E (7, HIGH) |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 76 fixtures, new passes needed |
-| **Total remaining** | **+161-311** | **604-754** | | From 443 base |
+| **Total remaining** | **+160-310** | **604-754** | | From 444 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 

@@ -213,24 +213,24 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 | Metric                      | Value        |
 | --------------------------- | ------------ |
 | Total upstream fixtures     | 1717         |
-| Passing (exact match)       | 442 (25.7%)  |
-| Failing (output divergence) | 1275         |
+| Passing (exact match)       | 444 (25.9%)  |
+| Failing (output divergence) | 1273         |
 | Panics / crashes            | 0            |
 | Render equivalence          | 92% (23/25)  |
 
-#### Divergence Breakdown (~1275 known failures)
+#### Divergence Breakdown (~1273 known failures)
 
 | Category                                 | Count | % of known |
 | ---------------------------------------- | ----- | ---------- |
-| Both compile, slots DIFFER               | 690   | 53.8%      |
-| Both compile, slots MATCH (codegen diff) | 235   | 18.3%      |
-| We compile, they don't (validation gaps) | 201   | 15.7%      |
-| We bail, they compile                    | 80    | 6.2%       |
-| Both no memo (format diff)               | 76    | 5.9%       |
+| Both compile, slots DIFFER               | 688   | 54.0%      |
+| Both compile, slots MATCH (codegen diff) | 233   | 18.3%      |
+| We compile, they don't (validation gaps) | 189   | 14.8%      |
+| We bail, they compile                    | 84    | 6.6%       |
+| Both no memo (format diff)               | 79    | 6.2%       |
 
-> Note: In Phase 133, expected files were rebaselined with `compilationMode: "all"` (matching the upstream test suite). Phase 138 added Todo error detection for 5 categories of unsupported syntax (+15 fixtures). Phase 139 added frozen-mutation freeze propagation (phi nodes, store chains, property loads, iterators) gaining +9 fixtures.
+> Note: In Phase 133, expected files were rebaselined with `compilationMode: "all"` (matching the upstream test suite). Phase 138 added Todo error detection for 5 categories of unsupported syntax (+15 fixtures). Phase 139 added frozen-mutation freeze propagation (phi nodes, store chains, property loads, iterators) gaining +9 fixtures. Phase 142 fixed ref-access validation to detect `.current` access after inline_load_local_temps eliminates LoadLocal intermediaries (+1 fixture).
 
-#### Bail-out Breakdown (80 fixtures where we bail but upstream compiles)
+#### Bail-out Breakdown (84 fixtures where we bail but upstream compiles)
 
 | Error                                 | Count |
 | ------------------------------------- | ----- |
@@ -246,25 +246,25 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 | Extra effect dependencies             | 3     |
 | Other                                 | 10    |
 
-#### Slot Diff Distribution (690 fixtures where both compile but slot counts differ)
+#### Slot Diff Distribution (688 fixtures where both compile but slot counts differ)
 
 | Diff             | Count | Notes                     |
 | ---------------- | ----- | ------------------------- |
 | -1 (under-count) | 131   | Scope analysis gaps       |
-| +1 (over-count)  | 124   | Extra scopes or deps      |
+| +1 (over-count)  | 123   | Extra scopes or deps      |
 | +2               | 57    | Extra scopes              |
 | -2               | 120   | Under-memoization         |
-| other            | 258   |                           |
+| other            | 257   |                           |
 
 #### Key Divergence Patterns
 
-Most of the 1275 failures fall into a few root causes:
+Most of the 1273 failures fall into a few root causes:
 
-- **Scope inference / codegen accuracy (690 fixtures)** — The dominant failure category. Both compilers compile the function but produce different slot counts. Improving mutable range propagation, scope merging, and codegen structure is the primary path to higher conformance.
-- **Codegen structure (235 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement). Declaration placement and variable name preservation are the largest sub-patterns.
-- **Missing validations (201 fixtures)** — We compile functions that upstream bails on. Includes preserve-memo gaps (32), remaining Todo patterns (12), and various validation false negatives.
+- **Scope inference / codegen accuracy (688 fixtures)** — The dominant failure category. Both compilers compile the function but produce different slot counts. Improving mutable range propagation, scope merging, and codegen structure is the primary path to higher conformance.
+- **Codegen structure (233 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement). Declaration placement and variable name preservation are the largest sub-patterns.
+- **Missing validations (189 fixtures)** — We compile functions that upstream bails on. Includes preserve-memo gaps (32), remaining Todo patterns (12), and various validation false negatives.
 - **False-positive bail-outs (80 fixtures)** — We reject functions that upstream compiles successfully. Down from 108 through file-level bail-out removal and `_exp` directive handling. Increased from 71 to 80 due to name-based freeze propagation introducing 9 false positives on IIFE and complex patterns.
-- **Format-only divergences (76 fixtures)** — Neither side memoizes, but the output differs. Requires dead-code elimination and constant propagation passes.
+- **Format-only divergences (79 fixtures)** — Neither side memoizes, but the output differs. Requires dead-code elimination and constant propagation passes.
 
 Conformance runs as a non-blocking CI check — failures are tracked in `tests/conformance/known-failures.txt` and ratcheted as improvements land.
 
@@ -454,7 +454,7 @@ node scripts/bench-compare.mjs --iterations 20 --warmup 5
 
 ### General
 
-- **Active development** — Upstream conformance is at 25.7% (442/1717 fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries, validation gaps).
+- **Active development** — Upstream conformance is at 25.9% (444/1717 fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries, validation gaps).
 - **Performance regression on large files** — The mutation/aliasing analysis passes (Phases 113–130) introduced O(n²+) scaling. Small components compile 5–67x faster than Babel, but large components (150+ LOC) are currently slower. This is the highest-priority optimization target.
 - **No oxlint integration** — Lint rules exist in `crates/oxc_react_compiler_lint` and are callable via the NAPI binding, but they are not integrated into the oxlint binary. This would require upstream work in the [oxc repo](https://github.com/oxc-project/oxc) to support external plugin crates.
 - **Source maps** — Source map generation covers compiled function regions with per-line identity mappings for unmodified code. Complex source map chaining with other Vite plugins has not been verified.
