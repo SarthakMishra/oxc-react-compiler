@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post extended investigation)
-> Conformance: **411/1717 (23.9%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 2c (_exp handling): COMPLETE but +0 net conformance. Moved 20 fixtures from bail to compile (now in slots-DIFFER/MATCH pools).
-> Known-failures: 1306.
+> Last updated: 2026-03-25 (post Stage 4c)
+> Conformance: **426/1717 (24.8%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 4c (Todo error detection): PARTIALLY COMPLETE, +15 fixtures (411->426). 15 of 27 Todo-error fixtures now correctly bail on unsupported patterns.
+> Known-failures: 1291.
 
 ---
 
@@ -15,7 +15,7 @@
 |----------|-------|-------------|
 | Both compile, slots DIFFER | ~699 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** |
 | Both compile, slots MATCH | ~237 (18%) | Same slots, codegen structure diffs. **B2 pattern (temps vs original names) dominates: 40 fixtures.** |
-| We compile, they don't | ~225 (17%) | Missing validations. **75 are UPSTREAM ERROR fixtures (already correct). 32 need preserveExistingMemoization. 27 need Todo error detection. 11 need frozen-mutation fix.** |
+| We compile, they don't | ~210 (16%) | Missing validations. **75 are UPSTREAM ERROR fixtures (already correct). 32 need preserveExistingMemoization. 12 remain for Todo error detection (15 done). 11 need frozen-mutation fix.** |
 | We bail, they compile | ~69 (5%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c) |
 | Both no memo (format diff) | 76 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
 
@@ -46,10 +46,10 @@ The path is clearer but requires significant compiler infrastructure work:
 | Variable name preservation in codegen (B2) | 40 | +20-30 | MEDIUM — scope output naming changes |
 | Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — load-bearing code |
 | Remaining bail-out fixes (2d-2g) | ~49 | +15-25 | MEDIUM — per-validation fixes |
-| Todo error detection | 27 | +10-20 | LOW — add bail-outs for unimplemented features |
+| Todo error detection (remaining) | 12 | +5-8 | LOW — need hoisting, optional terminals, default params |
 | Frozen-mutation validation fixes | 11 | +5-8 | MEDIUM |
 
-**Conservative estimate:** +160-288 from 411 base = 571-699. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +150-275 from 426 base = 576-701. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
@@ -200,7 +200,7 @@ Completed 2026-03-25 (extended investigation). Breakdown of ~225 "we compile, th
 |-------------|-------|---------------|
 | UPSTREAM ERROR fixtures (expected output IS the error) | 75 | Must emit matching error message to pass |
 | `validatePreserveExistingMemoizationGuarantees` gaps | 32 | Extend existing preserve-memo validation |
-| `Todo` error detection (unimplemented features) | 27 | Add bail-outs for features we don't support |
+| `Todo` error detection (unimplemented features) | 12 remaining (15 done) | 12 need hoisting, optional terminals, default params, capture analysis |
 | Frozen-mutation detection gaps | 11 | Fix false negatives in mutation validation |
 | Other validation gaps (ref-access, reassignment, hooks) | ~80 | Various per-validation fixes |
 
@@ -212,13 +212,34 @@ Completed 2026-03-25 (extended investigation). Breakdown of ~225 "we compile, th
 - [ ] **Risk:** MEDIUM — our implementation exists but has known gaps
 - [ ] **Potential gain:** +15-25 fixtures (some may also need other fixes)
 
-#### Stage 4c: Add Todo Error Detection (27 fixtures)
+##### Partial Investigation Notes (2026-03-25)
 
-- [ ] Identify which upstream `Todo` errors we silently compile past
-- [ ] Add bail-outs for genuinely unimplemented features (e.g., certain destructuring patterns, complex control flow)
-- [ ] Each bail-out converts "wrong output" to "correct pass-through"
-- [ ] **Risk:** LOW — adding bail-outs is always safe
-- [ ] **Potential gain:** +10-20 fixtures
+An investigation was started but not completed. Key finding: our validation exists at Pass 61 but fails to detect errors because `finish_in_scope` is true -- our scope inference wraps `FinishMemoize` in reactive scopes, which causes the validation to skip checks it should be performing. Additionally, upstream has `validateInferredDep` checks that we skip entirely. These are **prerequisites** for Stage 4b to succeed:
+
+1. Understand why `finish_in_scope` is true (scope inference wrapping `FinishMemoize` instructions)
+2. Port the `validateInferredDep` checks from upstream
+3. May require scope inference adjustments to avoid wrapping `FinishMemoize` in reactive scopes
+
+**Status:** Investigation incomplete. Approach is understood but implementation requires deeper scope inference analysis. Consider doing Stage 4c first (lower risk, no blockers).
+
+#### Stage 4c: Add Todo Error Detection -- PARTIALLY COMPLETE (+15 net, 411->426)
+
+Completed 2026-03-25. Implemented bail-outs for 15 of 27 Todo-error fixtures:
+- Try-without-catch blocks (2 fixtures) — added in `hir/build.rs`
+- Computed object keys (4 fixtures) — added in `hir/build.rs`
+- Value blocks in try/catch (7 fixtures) — added in `validation/validate_no_unsupported_nodes.rs`
+- Throw in try (1 fixture) — added in `validation/validate_no_unsupported_nodes.rs`
+- Fbt local variables (1 fixture) — added in `validation/validate_no_unsupported_nodes.rs`
+
+**Key finding:** The 16 fixtures originally identified as targets were already passing. The actual Todo-error fixtures were in the known-failures list (UPSTREAM ERROR set). Of 27 in that set, 15 fixed, 12 remain.
+
+**Remaining 12 Todo-error fixtures** (require more complex handling):
+- Hoisting patterns (5) — need hoisting infrastructure
+- Optional terminal issues (3) — need optional chaining terminal handling
+- Arrow in default params (1) — need default param lowering
+- Update expression on captured vars (1) — need capture analysis
+- Hook spread (1) — need spread-in-hook detection
+- For-loop context vars (1) — need for-loop context variable handling
 
 #### Stage 4d: Fix Frozen-Mutation False Negatives (11 fixtures)
 
@@ -282,11 +303,11 @@ Completed 2026-03-25 (extended investigation). Breakdown of ~225 "we compile, th
 | B2: Variable name preservation | +20-30 | 464-501 | MEDIUM | 40 fixtures, scope output naming |
 | Stage 3: Scope inference (±1/±2 diffs) | +50-100 | 514-601 | HIGH | ~699 pool, cascading regression risk |
 | Stage 4b: Preserve-memo validation | +15-25 | 529-626 | MEDIUM | 32 fixtures |
-| Stage 4c: Todo error detection | +10-20 | 539-646 | LOW | 27 fixtures, add bail-outs |
+| Stage 4c: Todo error detection | +15 (done, 12 remain) | 426 | LOW | 15/27 done. Remaining 12 need hoisting, optional terminals, etc. |
 | Stage 4d: Frozen-mutation false negatives | +5-8 | 544-654 | MEDIUM | 11 fixtures |
 | Stage 4e: Upstream error matching | +30-50 | 574-704 | LOW-MED | 75 fixtures |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 76 fixtures, new passes needed |
-| **Total remaining** | **+193-343** | **604-754** | | From 411 base |
+| **Total remaining** | **+178-328** | **604-754** | | From 426 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
@@ -300,7 +321,7 @@ Completed 2026-03-25 (extended investigation). Breakdown of ~225 "we compile, th
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
 
-**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +60-103) + codegen fixes (B2 + 1d, +35-60). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~570. Optimistic: 700+.
+**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +45-88 remaining) + codegen fixes (B2 + 1d, +35-60). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~576. Optimistic: 700+.
 
 **Key principle:** Each stage starts with investigation (sub-task "a") that produces a fixture-level breakdown. If the investigation shows estimates are wrong, the plan is updated before implementation begins. No blind implementation.
 
@@ -429,3 +450,5 @@ All paths relative to `crates/oxc_react_compiler/`.
 15. **"Both no memo" requires DCE + constant propagation.** Originally assumed to be cosmetic format diffs. Actually requires dead-code elimination and constant folding passes that don't exist yet. 76 fixtures affected.
 16. **"We compile, they don't" has a large UPSTREAM ERROR sub-pool.** 75 of ~225 fixtures have error messages as expected output. These are a significant conformance opportunity if we match upstream error formats precisely.
 17. **B2 (variable name preservation) is the dominant tractable slots-MATCH pattern.** 40 fixtures where we use temps but upstream preserves original names in scope outputs. Single largest fixable sub-pattern in the 237-fixture slots-MATCH pool.
+18. **Todo error fixtures live in known-failures, not in the "not in KF" set.** The 16 fixtures initially identified as Todo-error targets were already passing. The actual Todo-error fixtures were in the UPSTREAM ERROR subset of known-failures. Always check known-failures.txt for UPSTREAM ERROR fixtures when looking for validation gaps.
+19. **Low-hanging Todo errors yield good ROI.** Stage 4c gained +15 from simple pattern detection (try-without-catch, computed keys, value-blocks-in-try, throw-in-try, fbt locals). The remaining 12 need deeper compiler infrastructure (hoisting, optional terminals, default params).

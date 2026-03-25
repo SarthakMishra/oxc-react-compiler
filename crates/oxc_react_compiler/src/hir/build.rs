@@ -1529,6 +1529,18 @@ impl HIRBuilder {
     }
 
     fn lower_try_statement(&mut self, try_stmt: &ast::TryStatement<'_>) {
+        // Upstream: Todo: (BuildHIR::lowerStatement) Handle TryStatement without a catch clause
+        // try-finally without catch is not supported in the HIR model.
+        if try_stmt.handler.is_none() {
+            self.emit(
+                InstructionValue::UnsupportedNode {
+                    node: "TryStatement_without_catch".to_string(),
+                },
+                try_stmt.span,
+            );
+            return;
+        }
+
         let try_block = self.new_block(BlockKind::Block);
         let handler_block = self.new_block(BlockKind::Catch);
         let fallthrough = self.new_block(BlockKind::Block);
@@ -2594,6 +2606,30 @@ impl HIRBuilder {
                             loc,
                         );
                     }
+                    // Upstream: Todo: Expected Identifier, got CallExpression/SequenceExpression key
+                    // Upstream bails when a computed property key is a non-identifier
+                    // expression (CallExpression, SequenceExpression, MemberExpression call).
+                    // These keys can have side effects that are hard to track.
+                    if prop.computed
+                        && let Some(expr) = property_key_as_expression(&prop.key)
+                        && !matches!(
+                            expr,
+                            Expression::Identifier(_)
+                                | Expression::StringLiteral(_)
+                                | Expression::NumericLiteral(_)
+                                | Expression::BooleanLiteral(_)
+                                | Expression::NullLiteral(_)
+                                | Expression::TemplateLiteral(_)
+                        )
+                    {
+                        return self.emit(
+                            InstructionValue::UnsupportedNode {
+                                node: "ObjectExpression_computed_key".to_string(),
+                            },
+                            loc,
+                        );
+                    }
+
                     if prop.method {
                         // Object method shorthand
                         let value = self.lower_expression(&prop.value);
