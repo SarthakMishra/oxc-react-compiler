@@ -690,6 +690,12 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig, boo
         }
         if let Some(v) = find_directive_bool(comment, "validateNoDerivedComputationsInEffects") {
             env.validate_no_derived_computations_in_effects = v;
+            // DIVERGENCE: Upstream `_exp` suffix means "expect this diagnostic but still
+            // compile." We achieve this by setting panicThreshold to None so errors
+            // from this validation don't cause bail-out.
+            if comment.contains("@validateNoDerivedComputationsInEffects_exp") {
+                opts.panic_threshold = PanicThreshold::None;
+            }
         }
         if let Some(v) = find_directive_bool(comment, "validateNoJsxInTryStatements") {
             env.validate_no_jsx_in_try_statements = v;
