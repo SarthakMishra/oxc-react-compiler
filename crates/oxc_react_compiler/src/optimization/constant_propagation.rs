@@ -1,29 +1,79 @@
-use crate::hir::types::{BinaryOp, HIR, IdentifierId, InstructionValue, Primitive, UnaryOp};
-use rustc_hash::FxHashMap;
+use crate::hir::types::{
+    BinaryOp, BlockId, HIR, IdentifierId, InstructionValue, Primitive, Terminal, UnaryOp,
+};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Propagate known constant values through the HIR and fold constant expressions.
 ///
-/// This pass performs three transformations:
+/// This pass performs four transformations:
 /// 1. Replace `LoadLocal` of known constant identifiers with `Primitive` values
 /// 2. Fold `BinaryExpression` where both operands are constants
 /// 3. Fold `UnaryExpression` where the operand is a constant
+/// 4. Eliminate dead branches when terminal test operands are known constants
+///
+/// When branches are eliminated, the pass loops internally to fixpoint,
+/// running graph cleanup (predecessor rebuild, phi pruning, redundant phi
+/// elimination, block merging, unreachable block removal) after each round.
+/// This mirrors the upstream `constantPropagationImpl` loop in
+/// `ConstantPropagation.ts`.
 ///
 /// Returns the number of instructions changed (for iterative application).
 ///
 /// This is a simple forward dataflow pass (not a full lattice-based analysis).
 /// It does NOT propagate across function boundaries.
 pub fn constant_propagation(hir: &mut HIR) -> usize {
-    let mut changed = 0;
+    let mut total_changed = 0;
+    // Defensive iteration bound to prevent infinite loops from oscillating rewrites.
+    const MAX_ITERATIONS: usize = 100;
 
-    // Phase 1: Collect constants (identifiers assigned exactly one constant value)
-    let mut constants = collect_constants(hir);
+    for _ in 0..MAX_ITERATIONS {
+        // Phase 1: Collect constants (identifiers assigned exactly one constant value)
+        let mut constants = collect_constants(hir);
 
-    if constants.is_empty() {
-        return 0;
+        if constants.is_empty() {
+            break;
+        }
+
+        // Phase 2: Replace LoadLocal with Primitive, fold BinaryExpression/UnaryExpression,
+        // and fold conditional terminals with known-constant test operands.
+        let (instr_changed, terminals_changed) = apply_propagation(hir, &mut constants);
+        total_changed += instr_changed;
+
+        if !terminals_changed {
+            break;
+        }
+
+        // Count terminal folds so callers can detect structural changes too.
+        total_changed += 1;
+
+        // Post-fold cleanup: mirrors upstream constantPropagationImpl sequence.
+        // After folding conditional terminals to Goto, some blocks become unreachable.
+        //
+        // Ordering: remove_unreachable_blocks runs first (uses forward reachability
+        // from entry, does NOT depend on accurate predecessor lists). Then we rebuild
+        // predecessors from the pruned block set, prune phi operands, eliminate
+        // redundant phis, and merge consecutive blocks.
+        crate::optimization::dead_code_elimination::remove_unreachable_blocks(hir);
+        rebuild_predecessors(hir);
+        prune_unreachable_phi_operands(hir);
+        crate::ssa::eliminate_redundant_phi::eliminate_redundant_phi(hir);
+        crate::optimization::merge_consecutive_blocks::merge_consecutive_blocks(hir);
     }
 
-    // Phase 2: Replace LoadLocal with Primitive, fold BinaryExpression/UnaryExpression
+    total_changed
+}
+
+/// Apply constant propagation to instructions and fold conditional terminals.
+/// Returns `(instructions_changed, any_terminal_folded)`.
+fn apply_propagation(
+    hir: &mut HIR,
+    constants: &mut FxHashMap<IdentifierId, Primitive>,
+) -> (usize, bool) {
+    let mut changed = 0;
+    let mut terminals_changed = false;
+
     for (_, block) in &mut hir.blocks {
+        // Instruction propagation (existing logic)
         for instr in &mut block.instructions {
             match &instr.value {
                 InstructionValue::LoadLocal { place } => {
@@ -37,7 +87,6 @@ pub fn constant_propagation(hir: &mut HIR) -> usize {
                         (constants.get(&left.identifier.id), constants.get(&right.identifier.id))
                         && let Some(result) = fold_binary(*op, lv, rv)
                     {
-                        // Record the folded result as a new constant
                         constants.insert(instr.lvalue.identifier.id, result.clone());
                         instr.value = InstructionValue::Primitive { value: result };
                         changed += 1;
@@ -55,9 +104,121 @@ pub fn constant_propagation(hir: &mut HIR) -> usize {
                 _ => {}
             }
         }
+
+        // Terminal branch elimination
+        if try_fold_terminal(&mut block.terminal, constants) {
+            terminals_changed = true;
+        }
     }
 
-    changed
+    (changed, terminals_changed)
+}
+
+/// Attempt to replace a conditional terminal with a `Goto` when the test
+/// operand is a known constant. Returns `true` if the terminal was folded.
+///
+/// Upstream: only handles `if` terminals in `ConstantPropagation.ts`.
+/// We also handle `Branch`, `Ternary`, and `Optional` for completeness.
+fn try_fold_terminal(
+    terminal: &mut Terminal,
+    constants: &FxHashMap<IdentifierId, Primitive>,
+) -> bool {
+    match terminal {
+        // If: test ? consequent : alternate, then fallthrough
+        // Upstream handles this case explicitly.
+        Terminal::If { test, consequent, alternate, .. } => {
+            if let Some(val) = constants.get(&test.identifier.id) {
+                let target = if to_boolean(val) { *consequent } else { *alternate };
+                *terminal = Terminal::Goto { block: target };
+                return true;
+            }
+        }
+        // DIVERGENCE: upstream only folds `if` terminals. We also fold Branch
+        // for completeness since it's a simpler conditional with identical semantics.
+        Terminal::Branch { test, consequent, alternate } => {
+            if let Some(val) = constants.get(&test.identifier.id) {
+                let target = if to_boolean(val) { *consequent } else { *alternate };
+                *terminal = Terminal::Goto { block: target };
+                return true;
+            }
+        }
+        // DIVERGENCE: upstream does not fold Ternary terminals in CP.
+        // Ternary: test ? consequent : alternate, result assigned.
+        // The live branch block writes the result value and falls through to
+        // fallthrough. Replacing with Goto to the live branch is safe because:
+        // (1) The branch block itself handles the value assignment via StoreLocal.
+        // (2) The Ternary's `result` field is only used by `build_reactive_function`
+        //     during codegen, which reads from the terminal — but after this fold,
+        //     the terminal is a Goto and codegen will never see a Ternary here.
+        // (3) The fallthrough block remains reachable via the live branch's own Goto.
+        Terminal::Ternary { test, consequent, alternate, .. } => {
+            if let Some(val) = constants.get(&test.identifier.id) {
+                let target = if to_boolean(val) { *consequent } else { *alternate };
+                *terminal = Terminal::Goto { block: target };
+                return true;
+            }
+        }
+        // DIVERGENCE: upstream does not fold Optional terminals in CP.
+        // Optional: test?.consequent, short-circuits to fallthrough if nullish.
+        Terminal::Optional { test, consequent, fallthrough, .. } => {
+            if let Some(val) = constants.get(&test.identifier.id) {
+                // Optional chaining uses nullish check (null/undefined), not falsiness
+                let is_nullish = matches!(val, Primitive::Null | Primitive::Undefined);
+                let target = if is_nullish { *fallthrough } else { *consequent };
+                *terminal = Terminal::Goto { block: target };
+                return true;
+            }
+        }
+        // TODO: fold Logical terminal when left block result is a known constant
+        // TODO: fold Switch terminal when test and case values are known constants
+        _ => {}
+    }
+    false
+}
+
+/// Rebuild predecessor lists for all blocks from scratch by walking successor edges.
+fn rebuild_predecessors(hir: &mut HIR) {
+    // Build an index from BlockId -> position in hir.blocks for O(1) lookup.
+    let index: FxHashMap<BlockId, usize> =
+        hir.blocks.iter().enumerate().map(|(i, (id, _))| (*id, i)).collect();
+
+    // Clear all predecessor lists
+    for (_, block) in &mut hir.blocks {
+        block.preds.clear();
+    }
+
+    // Collect successor edges (must collect first to avoid borrow conflict)
+    let edges: Vec<(BlockId, Vec<BlockId>)> = hir
+        .blocks
+        .iter()
+        .map(|(id, block)| {
+            (*id, crate::optimization::dead_code_elimination::terminal_successors(&block.terminal))
+        })
+        .collect();
+
+    // Rebuild predecessor lists from edges using the index for O(1) lookup
+    for (pred_id, successors) in edges {
+        for succ_id in successors {
+            if let Some(&idx) = index.get(&succ_id) {
+                let preds = &mut hir.blocks[idx].1.preds;
+                if !preds.contains(&pred_id) {
+                    preds.push(pred_id);
+                }
+            }
+        }
+    }
+}
+
+/// Remove phi operands that reference blocks no longer in the predecessor list.
+/// After branch elimination and unreachable block removal, some phi operands
+/// reference blocks that are no longer predecessors.
+fn prune_unreachable_phi_operands(hir: &mut HIR) {
+    for (_, block) in &mut hir.blocks {
+        let preds: FxHashSet<BlockId> = block.preds.iter().copied().collect();
+        for phi in &mut block.phis {
+            phi.operands.retain(|(pred_id, _)| preds.contains(pred_id));
+        }
+    }
 }
 
 /// Collect identifiers that are assigned exactly one constant value across

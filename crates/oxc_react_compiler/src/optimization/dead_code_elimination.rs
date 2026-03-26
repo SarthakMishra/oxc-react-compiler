@@ -366,7 +366,7 @@ fn has_side_effects(value: &InstructionValue) -> bool {
 }
 
 /// Remove blocks that are not reachable from the entry block.
-fn remove_unreachable_blocks(hir: &mut HIR) {
+pub fn remove_unreachable_blocks(hir: &mut HIR) {
     let reachable = find_reachable_blocks(hir);
     hir.blocks.retain(|(id, _)| reachable.contains(id));
 }
@@ -392,7 +392,7 @@ fn find_reachable_blocks(hir: &HIR) -> FxHashSet<BlockId> {
 }
 
 /// Returns all successor block IDs for a given terminal.
-fn terminal_successors(terminal: &Terminal) -> Vec<BlockId> {
+pub fn terminal_successors(terminal: &Terminal) -> Vec<BlockId> {
     match terminal {
         Terminal::Goto { block } => vec![*block],
         Terminal::If { consequent, alternate, fallthrough, .. } => {

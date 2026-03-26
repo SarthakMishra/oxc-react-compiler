@@ -14,15 +14,15 @@
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Both compile, slots DIFFER | 683 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** Deficit (our < expected): ~400 fixtures. Surplus (our > expected): ~283 fixtures. |
-| Both compile, slots MATCH | 224 (was 237, -6 from 1d Phase 1 moved to matched, -3 from latest fixes) | Same slots, codegen structure diffs. **Dominated by scope inference differences (declaration placement tied to scope inference, not just codegen). B2 pattern (temps vs original names): 40 fixtures.** |
+| Both compile, slots DIFFER | 666 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes. Dominated by variable naming/scope inference.** Deficit (our < expected): ~400 fixtures. Surplus (our > expected): ~283 fixtures. |
+| Both compile, slots MATCH | 243 (was 237, some shifted between categories) | Same slots, codegen structure diffs. **Dominated by variable naming/scope inference (not just codegen). B2 pattern (temps vs original names): 40 fixtures. Codegen-only fixes have reached their ceiling (Stage 1 exhausted).** |
 | We compile, they don't | 191 (15%) | **CORRECTED (2026-03-26): 134 are SCOPE INFERENCE SURPLUS (upstream produces 0 slots, we produce >0), NOT validation gaps.** Upstream compiled these functions but created no reactive scopes. We create scopes where upstream doesn't. These are part of the surplus scope inference problem. Remaining 57: 30 UPSTREAM ERROR (in KF), ~24 preserve-memo, ~3 other. |
 | We bail, they compile | ~70 (was 80, +3 new false-positive bails from scope inference differences in validateInferredDep) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking, +3 from validateInferredDep scope dep resolution mismatch). Sub-breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other. |
-| Both no memo (format diff) | 76 (was 83, -7 from Stage 5a DCE+CP) | Neither side memoizes. **DCE + constant propagation partially implemented (Stage 5a). 7 fixtures now passing. ~76 remain.** |
+| Both no memo (format diff) | ~85 (was 83, -7 from Stage 5a DCE+CP, some shifted in from other categories) | Neither side memoizes. **DCE + CP + dead branch elimination implemented (Stages 5a+5b). 7 fixtures passing. ~85 remain, blocked by 0-slot codegen (our compiler wraps in `_c(0)` structure), NOT by DCE/CP gaps.** |
 
 ### Key Investigation Findings (2026-03-25, updated 2026-03-26)
 
-1. **"Both no memo" (76 remaining, was 83) partially addressed by Stage 5a.** DCE + constant propagation passes now exist and gained +7 fixtures (457->464). The remaining ~76 require dead branch elimination (not yet implemented) and more aggressive constant folding. Pre-validation DCE (Pass 10/18) must NOT remove StoreLocal/DeclareLocal because validators at Pass 21-32 depend on them; extended DCE is placed at Pass 32.5 after all validators.
+1. **"Both no memo" (~85 remaining) — DCE/CP/branch-elimination ceiling reached.** DCE + constant propagation + dead branch elimination passes all implemented (Stages 5a+5b), gained +7 fixtures (457->464). Dead branch elimination (Stage 5b) gained +0 because branch conditions are rarely constant at Pass 32.5. The remaining ~85 fixtures are **blocked by 0-slot codegen** — our compiler wraps functions in `_c(0)` memoization structure even when upstream emits them as passthrough with no memoization. This is a scope inference issue (we create scopes where upstream doesn't), NOT a DCE/CP gap. Further DCE/CP work (binary folding, string concat) has diminishing returns on this pool.
 
 2. **"We compile, they don't" (191 fixtures) CRITICAL CORRECTION (2026-03-26):**
    - **134 are SCOPE INFERENCE SURPLUS, NOT validation gaps.** These fixtures have expected output with 0 `_c()` calls and NO `// UPSTREAM ERROR:` header. Upstream DID compile them (structurally transformed code) but produced 0 reactive scopes. We produce >0 scopes (over-memoization). These OVERLAP with the 286 surplus fixtures in slots-DIFFER. Understanding WHY upstream produces 0 scopes on these is the key to a large conformance gain.
@@ -47,7 +47,7 @@ The path is clearer but requires significant compiler infrastructure work:
 | Work Item | Pool Size | Potential Gain | Difficulty |
 |-----------|-----------|---------------|------------|
 | Scope inference fixes (slots-DIFFER) | 688 | +50-100 | HIGH — cascading regression risk, scope MERGING is bottleneck (see 3b blocker) |
-| DCE + constant propagation (both-no-memo) | 76 remaining (7 done) | +23-43 remaining | MEDIUM-HIGH — passes exist, need dead branch elimination + more aggressive folding |
+| DCE + constant propagation (both-no-memo) | ~85 remaining (7 done) | +5-15 remaining (revised down) | MEDIUM-HIGH — DCE+CP+branch-elim all implemented. Remaining ~85 blocked by 0-slot codegen, not DCE/CP. Binary/string folding may chip away at a few. |
 | `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | +3 done, +12-22 remaining | MEDIUM — 3 sub-types: validateInferredDep (3/32 done, 29 BLOCKED by scope dep resolution), value-memoized, dep-mutated |
 | Variable name preservation in codegen (B2) | 40 | +10-20 | MEDIUM-HIGH — scope output naming changes + scope inference dependency (see lesson #29) |
 | Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — BLOCKED: Phase 2 requires scope inference (Stage 3). Phase 3 (merge decl+init) DONE (+0 dormant). |
@@ -55,7 +55,7 @@ The path is clearer but requires significant compiler infrastructure work:
 | Todo error detection (remaining) | 4 | +2-4 | LOW-MED — need optional-chain-in-ternary, hoisting, context var |
 | Frozen-mutation validation fixes | 1 remains | +10 done (Stage 4d + follow-up) | MEDIUM | 1 remaining needs JSX capture analysis |
 
-**Conservative estimate:** +136-290 from 464 base = 600-754. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +118-272 from 464 base = 582-736. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category). DCE/CP potential revised down from +23-43 to +5-15 after discovering that "both no memo" is blocked by 0-slot codegen, not DCE/CP.
 
 ---
 
@@ -506,10 +506,10 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 
 ### Stage 5: "Both No Memo" — DCE + Constant Propagation (target: +30-50 fixtures)
 
-**Pool:** 79 fixtures where neither side memoizes but output differs.
+**Pool:** ~85 fixtures where neither side memoizes but output differs. (Was 79 pre-Stage 5a; some fixtures shifted categories after DCE changes.)
 **Risk:** HIGH — requires implementing new compiler passes (DCE, constant propagation).
 
-**Investigation finding (2026-03-25, updated 2026-03-26):** These are NOT cosmetic format diffs as originally assumed. Upstream runs dead-code elimination and constant propagation passes that simplify the output. **Stage 5a (2026-03-26) partially addressed this:** extended DCE removes dead StoreLocal/PrefixUpdate/PostfixUpdate, phi-node CP folds constant phis. +7 fixtures gained. ~76 remain, primarily needing dead branch elimination (removing unreachable if/else branches when condition is constant).
+**Investigation finding (2026-03-25, updated 2026-03-26):** These are NOT cosmetic format diffs as originally assumed. Upstream runs dead-code elimination and constant propagation passes that simplify the output. **Stage 5a (2026-03-26) partially addressed this:** extended DCE removes dead StoreLocal/PrefixUpdate/PostfixUpdate, phi-node CP folds constant phis. +7 fixtures gained. **Stage 5b (2026-03-25) added dead branch elimination:** If/Branch/Ternary/Optional terminals handled, but gained +0 because branch conditions are rarely constant at Pass 32.5. The remaining ~85 "both no memo" fixtures are **blocked by 0-slot codegen** (our compiler emitting `_c(0)` or equivalent wrapper structure around code that upstream emits as passthrough), NOT by DCE/CP gaps. Further DCE/CP work has diminishing returns on this pool.
 
 #### Stage 5a: Dead Code Elimination Pass — PARTIALLY COMPLETE (+7, 457->464)
 
@@ -535,12 +535,17 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 - [ ] **Remaining pool:** ~76 "both no memo" fixtures still need further DCE/CP improvements
 - **Files:** `dead_code_elimination.rs`, `constant_propagation.rs`, `pipeline.rs`
 
-#### Stage 5b: Constant Propagation / Folding — PARTIALLY COMPLETE
+#### Stage 5b: Dead Branch Elimination + Constant Propagation — COMPLETE (+0 net, infrastructure correct)
+
+**Implemented 2026-03-25.** Infrastructure correct, 0 net conformance gain. Branch conditions are rarely constant at Pass 32.5. If/Branch/Ternary/Optional terminals handled.
+
+**Dead branch elimination implemented:** When a terminal's condition is a known constant (from constant propagation), the dead branch is eliminated entirely. Handles `If`, `Branch`, `Ternary`, and `Optional` terminals. The live branch's block replaces the conditional, and the dead branch becomes unreachable (removed by subsequent DCE).
 
 **Phi-node constant propagation implemented (2026-03-26):** After the main forward propagation loop, the pass now inspects every phi node operand. If all operands resolve to the same constant value, the phi output is replaced with that constant for all downstream uses. This enables DCE to remove the dead branches that fed the phi.
 
+**Why 0 net conformance gain:** Branch conditions are rarely constant after validation passes (Pass 32.5). The constant propagation pass can fold phi nodes with identical constant operands, but most branch conditions in real fixtures depend on runtime values (props, state, hook returns). The infrastructure is correct and will fire when constants are available, but the supply of constant conditions at Pass 32.5 is very limited.
+
 **What is NOT yet implemented:**
-- [ ] Dead branch elimination (the counterpart to phi CP — when a branch condition is constant, remove the dead branch entirely)
 - [ ] Binary operator folding (e.g., `1 + 2` -> `3`)
 - [ ] String concatenation folding
 - [ ] Upstream reference: `compiler/packages/babel-plugin-react-compiler/src/Optimization/ConstantPropagation.ts`
@@ -578,7 +583,8 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 | Stage 4e-D: Todo-bail (partial) | +3 (done) | 453 | LOW | 3/10 done (for-in-try, bail propagation). 7 remain (optional-chain, hoisting). |
 | Stage 4e-C/D2/E: Remaining upstream errors | +18-35 | 471-488 | MED-HIGH | 4e-C (3, MED), 4e-D2 preserve-memo (11, MED-HIGH), 4e-E (7, HIGH) |
 | Stage 5a: DCE + phi-node CP | +7 (done) | 464 | MEDIUM | Completed. 7 fixtures from dead StoreLocal/Prefix/Postfix removal + phi CP. |
-| Stage 5 remaining: Dead branch elim + more CP | +23-43 | 487-507 | MEDIUM-HIGH | ~76 "both no memo" remain. Need dead branch elimination + aggressive folding. |
+| Stage 5b: Dead branch elimination | +0 (done) | 464 | MEDIUM | Completed. Infrastructure correct, 0 net gain. Branch conditions rarely constant at Pass 32.5. |
+| Stage 5 remaining: Binary/string folding + 0-slot codegen | +23-43 | 487-507 | MEDIUM-HIGH | ~85 "both no memo" remain. **Blocked by 0-slot codegen, not DCE/CP.** Binary/string folding has diminishing returns. |
 | Stage 3a2: Prune test-position scopes | +1 (done) | 457 | LOW | Completed. escape-analysis-not-if-test.js. 3 remaining escape-analysis-not fixtures BLOCKED by scope inference merging (Stage 3b). |
 | **Total remaining** | **+136-290** | **600-754** | | From 464 base |
 
@@ -597,12 +603,12 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 **Key learning from Stage 2e investigation:** Not all bail-out fixes improve conformance. Ref-access false positives free 8 fixtures that land in slots-DIFFER, not matched. Additionally, 2 accidental Flow parse error matches would be lost. Always check where freed fixtures land before pursuing bail-out removal.
 
 **Key learning from extended investigation (2026-03-25):**
-- "Both no memo" partially addressed — DCE + phi-node CP gained +7 (Stage 5a). ~76 remain, need dead branch elimination
+- "Both no memo" DCE/CP/branch-elimination ceiling reached — Stages 5a+5b gained +7 total. ~85 remain, blocked by 0-slot codegen (scope inference), not DCE/CP
 - "We compile, they don't" has 75 UPSTREAM ERROR fixtures — significant untapped pool if we match error formats
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures (3 now fixed via validateInferredDep, 29 BLOCKED by scope dep resolution)
 
-**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +30-73 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant) + remaining DCE/CP (Stage 5, +23-43). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). Stage 3a2 investigation confirmed 0-slot surplus is primarily scope inference (not pruning gaps). Stage 5a DCE+CP gained +7 (457->464); dead branch elimination and aggressive folding are the next DCE frontier. Conservative floor: ~600 from 464 base. Optimistic: 700+.
+**Revised path to 600 (updated 2026-03-25):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +30-73 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant) + remaining DCE/CP (Stage 5, +5-15 revised down). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). Stage 3a2 investigation confirmed 0-slot surplus is primarily scope inference (not pruning gaps). Stage 5a+5b DCE+CP+branch-elimination gained +7 total (457->464); branch elimination infrastructure complete but gains limited by supply of constant conditions. "Both no memo" pool now understood to be blocked by 0-slot codegen (scope inference), not DCE/CP. Conservative floor: ~600 from 464 base. Optimistic: 700+.
 
 **Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
 
@@ -750,7 +756,7 @@ All paths relative to `crates/oxc_react_compiler/`.
 12. **File-level bail-outs are wasteful.** 4 overly aggressive file-level bail-outs (lint mode, incompatible imports, eslint suppression, runtime import) were blocking 19 fixtures unnecessarily. Upstream handles these per-function. Always prefer per-function bail-outs over file-level.
 13. **`validateNoDerivedComputationsInEffects` is the largest single bail-out source.** 20 of 89 remaining false-positive bail-outs come from this one validation. Fixing it is the highest-ROI next step for bail-out reduction.
 14. **Fixing bail-outs yields +0 net conformance if output still differs.** Stage 2c moved 20 fixtures from bail to compile, but all landed in slots-DIFFER/MATCH pools. Bail-out fixes UNBLOCK fixtures for future scope/codegen fixes but do not directly increase conformance. Plan accordingly.
-15. **"Both no memo" requires DCE + constant propagation — PARTIALLY RESOLVED.** Originally assumed to be cosmetic format diffs. DCE and phi-node CP passes now exist (Stage 5a, +7 fixtures). ~76 remain. The key architectural discovery: pre-validation DCE (Pass 10/18) must NOT remove StoreLocal/DeclareLocal because validators at Pass 21-32 depend on them being present. Extended DCE placed at Pass 32.5 after all validators. Dead branch elimination (removing unreachable if/else branches when condition is constant) is the next frontier.
+15. **"Both no memo" requires DCE + constant propagation — DCE/CP CEILING REACHED.** Originally assumed to be cosmetic format diffs. DCE, phi-node CP, and dead branch elimination passes all implemented (Stages 5a+5b, +7 fixtures total). Dead branch elimination gained +0 (branch conditions rarely constant at Pass 32.5). The key architectural discovery: pre-validation DCE (Pass 10/18) must NOT remove StoreLocal/DeclareLocal because validators at Pass 21-32 depend on them being present. Extended DCE placed at Pass 32.5 after all validators. **Updated finding:** Remaining ~85 "both no memo" fixtures are blocked by 0-slot codegen (scope inference creates scopes where upstream doesn't), NOT by DCE/CP gaps.
 16. **"We compile, they don't" has a large UPSTREAM ERROR sub-pool.** 75 of ~225 fixtures have error messages as expected output. These are a significant conformance opportunity if we match upstream error formats precisely.
 17. **B2 (variable name preservation) is the dominant tractable slots-MATCH pattern.** 40 fixtures where we use temps but upstream preserves original names in scope outputs. Single largest fixable sub-pattern in the 237-fixture slots-MATCH pool.
 18. **Todo error fixtures live in known-failures, not in the "not in KF" set.** The 16 fixtures initially identified as Todo-error targets were already passing. The actual Todo-error fixtures were in the UPSTREAM ERROR subset of known-failures. Always check known-failures.txt for UPSTREAM ERROR fixtures when looking for validation gaps.
@@ -774,4 +780,6 @@ All paths relative to `crates/oxc_react_compiler/`.
 36. **Divergence approach for test-position escape analysis works but has limits (2026-03-26).** Upstream uses `ValueKind::Primitive` / escape flags (a type-level system) to prune non-escaping scopes used only in test positions. Our DIVERGENCE uses set-based analysis (collect test-position IDs, subtract write targets, propagate aliases). This works for the simple case (`escape-analysis-not-if-test.js`) where the scope output is directly used as an if-test. It fails for cases where scope inference has already merged the scope with another, making the output identifier appear in non-test contexts. The divergence approach is correct but bounded by scope inference quality.
 37. **Pre-validation DCE must not remove StoreLocal/DeclareLocal (2026-03-26).** Validators at Pass 21-32 depend on StoreLocal and DeclareLocal instructions being present to check for reassignment, mutation, and other patterns. The existing pre-validation DCE (Pass 10 and Pass 18) can safely remove truly unused instructions (where the lvalue is never referenced), but aggressive removal of StoreLocal/DeclareLocal breaks validation. The solution: place extended DCE at Pass 32.5, after all validators have run, where it can safely remove dead stores. This is a fundamental architectural invariant of the pipeline.
 38. **Phi-node constant propagation enables cascading DCE (2026-03-26).** When all operands of a phi node resolve to the same constant value, the phi output can be replaced with that constant. This turns downstream conditional branches into known-constant conditions, which DCE can then eliminate. The iterative CP+DCE loop at Pass 32.5 runs until a fixed point, ensuring these cascading simplifications are fully exploited. Dead branch elimination (removing the unreachable branch entirely) is NOT yet implemented — the current pass only removes dead assignments, not dead control flow.
-39. **"Both no memo" pool still has ~85 fixtures (2026-03-26).** Despite +7 gained by Stage 5a, there are still ~85 "both no memo" fixtures (some may have shifted categories due to the DCE changes improving output structure). The remaining fixtures likely need dead branch elimination (removing unreachable if/else branches when condition is constant) and potentially more aggressive constant folding (binary operators, string concatenation). The `collect_read_identifiers` approach (walking all instructions/terminals and collecting read-position identifiers, excluding write targets) is the correct way to determine which StoreLocal instructions are dead.
+39. **"Both no memo" (~85 fixtures) blocked by 0-slot codegen, NOT DCE/CP (2026-03-26, updated 2026-03-25 session).** Despite implementing DCE + CP + dead branch elimination (Stages 5a+5b, +7 fixtures), ~85 "both no memo" fixtures remain. Dead branch elimination (Stage 5b) gained +0 because branch conditions are rarely constant at Pass 32.5. Investigation confirms the remaining fixtures are blocked by 0-slot codegen: our compiler wraps functions in `_c(0)` memoization structure where upstream emits passthrough. This is scope inference over-creation (same root cause as the 134 zero-slot surplus fixtures in Stage 3a2), not a DCE/CP gap. Further DCE/CP improvements (binary folding, string concat) have diminishing returns on this pool.
+40. **Slots DIFFER (666 fixtures) and slots MATCH (243 fixtures) dominated by variable naming/scope inference (2026-03-25).** These two categories account for the vast majority of remaining failures (909 of ~1253). Both are fundamentally driven by scope inference accuracy — different scope boundaries produce different slot counts (DIFFER) and different declaration placement/variable naming (MATCH). Codegen-only fixes have reached their ceiling (Stage 1 exhausted). The path forward requires scope inference improvements (Stage 3), which carry high regression risk.
+41. **Branch elimination gains limited by supply of constant conditions after validation (2026-03-25).** Dead branch elimination infrastructure is correct (handles If/Branch/Ternary/Optional terminals) but the constant propagation pass at Pass 32.5 produces very few constant branch conditions. Most branch conditions depend on runtime values (props, state, hook returns). The phi-node CP pass can fold identical-constant phis, but the cascading effect to branch conditions is minimal in practice. This makes dead branch elimination a correct-but-low-impact optimization for the current fixture set.
