@@ -1,14 +1,14 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-03-26
-> Conformance: **505/1717 (29.4%)** (known-failures.txt has 1223 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis. Then +3 from validateInferredDep partial implementation (453->456): 3 of 32 preserve-memo error fixtures now pass. Then +1 from prune_non_escaping_scopes test-position detection (456->457): escape-analysis-not-if-test.js now passing. Then +7 from enhanced DCE + phi-node constant propagation (457->464): extended dead code elimination to remove dead StoreLocal/PrefixUpdate/PostfixUpdate, added phi-node constant propagation, iterative CP+DCE loop at Pass 32.5. Then +31 from preserve-memo validation improvements (464->495): removed is_temp_name skip, pre-computed HIR temp resolution map, fixed compare_deps Subpath return. 18 preserve-memo error fixtures + 13 additional error fixtures now passing. Then +4 from validation fixes (495->499): nested setState detection (+1), MethodCall invariant bail-outs (+2), destructuring assignment bail-out (+1). Then +6 from Stage 2g error fixture sweep (499->505): fbt duplicate tags (+2), ref-to-function detection (+1), self-referencing const declarations (+1), dynamic gating invalid identifier validation (+2).
-> Known-failures: 1223. Error.* fixtures remaining in KF: 12 (was 18, -6 fixed: fbt duplicate tags x2, ref-to-function x1, self-referencing const x1, dynamic gating x2). False-positive bails: ~67 (was 70, -3 from removing is_temp_name false-positive skip).
+> Conformance: **507/1717 (29.5%)** (known-failures.txt has 1221 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis. Then +3 from validateInferredDep partial implementation (453->456): 3 of 32 preserve-memo error fixtures now pass. Then +1 from prune_non_escaping_scopes test-position detection (456->457): escape-analysis-not-if-test.js now passing. Then +7 from enhanced DCE + phi-node constant propagation (457->464): extended dead code elimination to remove dead StoreLocal/PrefixUpdate/PostfixUpdate, added phi-node constant propagation, iterative CP+DCE loop at Pass 32.5. Then +31 from preserve-memo validation improvements (464->495): removed is_temp_name skip, pre-computed HIR temp resolution map, fixed compare_deps Subpath return. 18 preserve-memo error fixtures + 13 additional error fixtures now passing. Then +4 from validation fixes (495->499): nested setState detection (+1), MethodCall invariant bail-outs (+2), destructuring assignment bail-out (+1). Then +6 from Stage 2g error fixture sweep (499->505): fbt duplicate tags (+2), ref-to-function detection (+1), self-referencing const declarations (+1), dynamic gating invalid identifier validation (+2). Then +2 from gating directive stripping (505->507): filtered `@gating`/`@dynamicGating` comment lines from compiled output when gating mode is active.
+> Known-failures: 1221 (was 1223, -2 from gating directive stripping). Error.* fixtures remaining in KF: 12 (was 18, -6 fixed: fbt duplicate tags x2, ref-to-function x1, self-referencing const x1, dynamic gating x2). False-positive bails: ~67 (was 70, -3 from removing is_temp_name false-positive skip).
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
 
-## Road to 600+ Conformance (505 → 600+, need +95)
+## Road to 600+ Conformance (507 → 600+, need +93)
 
 ### Failure Category Summary (revised 2026-03-25, fresh data from deep-work session)
 
@@ -40,6 +40,10 @@
 
 7. **Re-enabling removed bail-outs as per-function bails gained +4 (2026-03-26).** Known-incompatible import bail (+3) and ESLint suppression bail (+1) were re-enabled as per-function bails matching upstream behavior. The initial full removal was too aggressive -- upstream bails per-function, not file-level.
 
+8. **Scope inference experiment results confirm merging bottleneck (2026-03-25, re-confirmed 2026-03-26).** Three experiments on `is_allocating_instruction` heuristics all produced net-negative results: removing `last_use > instr_id` gate (-5 net), inclusive gate (no-op), removing `check_nested_method_call_as_argument` (-2 net). The `merge_overlapping_reactive_scopes_hir` pass is the root cause -- it over-merges when given additional sentinel scopes. The SLOTS-MATCH pool (238 fixtures) is dominated by variable naming divergence (~70+), scope boundary ordering (~30+), and declaration placement (~13), confirming that codegen-only fixes have reached their ceiling. No single-session path to 600+ exists; progress requires fundamental scope merging algorithm improvements.
+
+9. **Recursive ref check and PropertyLoad hook-name check are both load-bearing (2026-03-26).** Removing the recursive ref access check in `validate_no_ref_access_in_render` caused -9 regression — many fixtures depend on the recursive check to correctly bail. Separately, modifying the `PropertyLoad` callee-name hook check in `validate_hooks_usage` was net-zero. Additionally, hook-as-value false positives from locally-declared names (e.g., `let useFeature = makeObject()`) were fixed via a `locally_declared_names` set, but the 3 affected fixtures are still caught by a separate PropertyLoad check, so no net conformance change. The PropertyLoad check remains a future opportunity once it can be made more precise without regressions.
+
 ### Revised Path to 600+
 
 The path is clearer but requires significant compiler infrastructure work:
@@ -55,7 +59,7 @@ The path is clearer but requires significant compiler infrastructure work:
 | Todo error detection (remaining) | 4 | +2-4 | LOW-MED — need optional-chain-in-ternary, hoisting, context var |
 | Frozen-mutation validation fixes | 1 remains | +10 done (Stage 4d + follow-up) | MEDIUM | 1 remaining needs JSX capture analysis |
 
-**Conservative estimate:** +95-249 from 505 base = 600-754. Reaching 600 is feasible and closer than before (+41 from preserve-memo + validation fixes + Stage 2g sweep). Remaining gains require scope inference work (the largest and highest-risk category). DCE/CP potential revised down from +23-43 to +5-15 after discovering that "both no memo" is blocked by 0-slot codegen, not DCE/CP.
+**Conservative estimate:** +93-247 from 507 base = 600-754. Reaching 600 is feasible and closer than before (+43 from preserve-memo + validation fixes + Stage 2g sweep + gating directive stripping). Remaining gains require scope inference work (the largest and highest-risk category). DCE/CP potential revised down from +23-43 to +5-15 after discovering that "both no memo" is blocked by 0-slot codegen, not DCE/CP.
 
 ---
 
@@ -108,6 +112,22 @@ Completed 2026-03-26. Five fixture gains from mixed fixes:
 3. **Object property key quoting fix (+1):** Fixed codegen to properly quote object property keys that are reserved words or contain special characters, matching upstream output format. +1 fixture gained (`repro-non-identifier-object-keys.ts` removed from known-failures).
 4. **Stage 1d Phase 3: Merge decl+init implemented (+0, dormant):** Implemented merging of `let t0; t0 = expr;` into `let t0 = expr;` when declaration and first assignment are adjacent. No conformance gain — all affected fixtures also differ in scope inference or naming. The improvement is dormant until scope inference fixes make those fixtures matchable.
 5. **B2 investigation finding (+0):** B2 (variable name preservation, 40 fixtures) was found to be scope-inference dependent, NOT codegen-only. Many B2 fixtures have scope boundary differences that prevent passing even with correct variable names. This downgrades B2 from "largest tractable codegen fix" to "partially tractable, scope-dependent."
+
+#### Stage 1g: Gating Directive Stripping + Hooks Validation Hardening -- COMPLETE (+2, 505->507)
+
+Completed 2026-03-26. Two improvements shipped, netting +2 conformance.
+
+1. **Gating directive comment stripping (+2):** `codegen.rs` `apply_compilation` now filters `// @gating` and `// @dynamicGating` comment lines from compiled output when gating mode is active. Upstream's Babel plugin removes these annotations during compilation; our source-edit-based approach preserved them. The fix iterates over output lines and suppresses those whose trimmed content starts with `@gating` or `@dynamicGating`. Trailing newline preservation also corrected. Fixtures gained: `gating/multi-arrow-expr-export-gating-test.js`, `gating/multi-arrow-expr-gating-test.js`.
+
+2. **Hook-as-value false positive prevention (+0, correctness fix):** `validate_hooks_usage.rs` gained `locally_declared_names` — a `HashSet<String>` populated by walking `DeclareLocal` and `Destructure` instructions (the latter via a new `collect_destructure_names` helper that recursively extracts all bound names from `DestructurePattern`). Rule 3 (hooks-as-values check) now skips `LoadLocal` of any name present in the set, preventing false bails on patterns like `let useFeature = makeObject()`. No net conformance change — the 3 affected fixtures are still caught by the `PropertyLoad` callee-name check (a separate issue), so this is a correctness improvement that prevents future false bails as the hook validation evolves.
+
+3. **Bail-out fixture name tracking (+0, diagnostics):** `conformance_tests.rs` gained per-fixture name display in the bail-out breakdown diagnostic. Each bail-out error category now lists up to 8 fixture names, making it possible to trace which specific test is responsible for each bail-out category without manual investigation.
+
+**Investigated but reverted (net zero):**
+- **PropertyLoad hook-name check modification (net zero):** Attempted to modify how `PropertyLoad` callee names are resolved for hook detection. No conformance change in either direction.
+- **Scope inference `is_allocating_instruction` gate removal (-5, reverted):** Removing the `last_use > instr_id` gate created extra sentinel scopes that `merge_overlapping_reactive_scopes_hir` over-merged, breaking 12 previously-passing fixtures. Documented in Stage 3b Extended Experiment Results.
+- **Recursive ref check removal (-9, reverted):** Attempted removing recursive ref access checks. Caused -9 regression because the check is load-bearing for ref validation correctness.
+- **`check_nested_method_call_as_argument` removal (-2, reverted):** Despite being a false-positive bail for 6 fixtures, removing it caused those 6 to produce bad codegen output. Our codegen genuinely cannot handle nested method calls yet. Documented in Stage 3b Extended Experiment Results.
 
 ---
 
@@ -362,6 +382,31 @@ Key findings for slot-diff (688 fixtures):
 - Scope merging is the bottleneck, not scope sentinel creation
 
 **Do NOT attempt again until:** The scope merging algorithm is understood in detail and a targeted fix for merging is designed. Do not naively remove heuristics from `is_allocating_instruction`.
+
+##### Extended Experiment Results (2026-03-25)
+
+Three additional approaches were tested to validate and expand on the blocker report findings:
+
+1. **Removing `last_use > instr_id` gate entirely:** -5 net (505->500). The gate currently prevents sentinel scope creation for calls whose results are immediately consumed. Removing it creates extra scopes that then get over-merged by `merge_overlapping_reactive_scopes_hir`, inflating counts for 12 previously-passing fixtures. The -1 deficit improved by 4 (146->142) but this was offset by 12 regressions in other categories. **Confirms blocker report conclusion:** scope MERGING is the bottleneck, not scope creation.
+
+2. **`last_use >= instr_id` (inclusive gate):** No effect at all. `last_use` is never exactly equal to `instr_id` in our HIR because `last_use` tracks the RESULT identifier's last reference, which is always a different instruction from the defining instruction. This variant is a no-op.
+
+3. **Removing `check_nested_method_call_as_argument`:** -2 net (505->503). Despite being a false-positive bail for 6 fixtures (upstream compiles them), removing the check causes those 6 to produce bad codegen output. Our codegen actually DOES have the MethodCall property issue -- the bail is load-bearing until codegen handles nested method calls correctly.
+
+**Silent bail analysis (8 fixtures):** 8 fixtures produce 0 scopes but upstream produces scopes. Root causes: (a) IIFE patterns not creating scopes, (b) function inference not triggering on React.memo wrappers, (c) Flow type cast default values. All require scope inference improvements, not bail-out fixes.
+
+**SLOTS-MATCH analysis (238 fixtures, normalized diff patterns):** After normalization, the dominant divergence patterns in the slots-MATCH pool are:
+- **Variable naming (~70+ fixtures):** We use temp names (`t0`, `t1`) where upstream preserves original names. Overlaps with B2 pattern but broader than previously estimated.
+- **Scope boundary ordering (~30+ fixtures):** Our scopes start/end at different instructions than upstream, causing structural output differences even when slot counts match.
+- **Declaration placement (~13 fixtures as first diff):** `const x;` + `x = value;` vs `const x = value;`. Stage 1d Phase 3 implemented but dormant (these fixtures also differ in other ways).
+- **Gating import order (~6 fixtures):** Minor ordering differences in gating imports; 2 fixtures have only 4 diffs total, making them near-passing.
+
+**Honest assessment of 600+ goal:** No single-session path exists. Reaching 600+ requires either:
+- (a) Scope inference fixes that net positive (current best attempt: -5), OR
+- (b) Variable naming preservation (systemic, ~40+ fixtures affected), OR
+- (c) 0-slot codegen (blocked, -52 regression when attempted, ~85 fixtures)
+
+Each path requires fundamental infrastructure work. The most promising remains scope inference (largest pool, ~688 fixtures), but it carries the highest regression risk.
 
 #### Stage 3c: Fix Secondary ±1 Patterns (est: +10-15 fixtures)
 
@@ -687,7 +732,8 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 | Stage 5b: Dead branch elimination | +0 (done) | 464 | MEDIUM | Completed. Infrastructure correct, 0 net gain. Branch conditions rarely constant at Pass 32.5. |
 | Stage 5 remaining: Binary/string folding | +5-15 | 510-520 | MEDIUM-HIGH | ~85 "both no memo" remain. **Blocked by 0-slot codegen (scope inference), not DCE/CP.** 0-slot codegen attempted in Stage 2g and REJECTED (-52 regression). Binary/string folding has diminishing returns. |
 | Stage 3a2: Zero-slot surplus investigation | +1 (done) | 457 | BLOCKED | Completed +1 (escape-analysis-not-if-test.js). Investigation confirmed 134 surplus fixtures require fundamental scope inference changes (mutable range accuracy, scope grouping), not pruning. BLOCKED by Stage 3b prerequisites. See blocker report. |
-| **Total remaining** | **+95-249** | **600-754** | | From 505 base |
+| Stage 1g: Gating directive stripping | +2 (done) | 507 | LOW | Completed. Gating comment filtering +2, hook-as-value false positive fix +0, bail-out diagnostics +0. |
+| **Total remaining** | **+93-247** | **600-754** | | From 507 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
@@ -711,7 +757,7 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 
 **Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +20-63 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant) + remaining DCE/CP (Stage 5, +5-15 revised down). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). **Stage 3a2 investigation (2026-03-26) CONFIRMED: 134 zero-slot surplus fixtures require fundamental scope inference changes, not pruning. Three approaches attempted and failed (see blocker report). BLOCKED by same prerequisites as Stage 3b (mutable range accuracy, scope grouping algorithm).** Stage 5a+5b DCE+CP+branch-elimination gained +7 total (457->464); branch elimination infrastructure complete but gains limited by supply of constant conditions. "Both no memo" pool now understood to be blocked by 0-slot codegen (scope inference), not DCE/CP. **0-slot codegen attempted and REJECTED in Stage 2g: -52 regression when emitting passthrough code for 0-slot functions.** Conservative floor: ~600 from 505 base. Optimistic: 700+.
 
-**Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
+**Key learning from Stage 3b investigation (2026-03-25, extended experiments added):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Three separate experiments confirmed the blocker report: (1) removing `last_use > instr_id` gate: -5 net, improves deficit by 4 but causes 12 regressions from over-merging; (2) inclusive gate (`>=`): no-op because `last_use` never equals `instr_id`; (3) removing `check_nested_method_call_as_argument`: -2 net, our codegen genuinely cannot handle nested method calls yet. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm (`merge_overlapping_reactive_scopes_hir`), not sentinel creation or bail removal. Additionally, 8 silent-bail fixtures require IIFE scope creation, React.memo function inference, and Flow type cast handling -- all scope inference improvements.
 
 **Key learning from "we compile, they don't" re-analysis (2026-03-25):** The 189 fixtures break down as 60 preserve-memo (largest actionable sub-pool), 15 flow-parse (not actionable), 10 todo-bail, 6 invariant, 4 frozen-value. The 60 preserve-memo further split into 3 sub-types, making Stage 4b more tractable than previously thought (clear attack plan per sub-type).
 

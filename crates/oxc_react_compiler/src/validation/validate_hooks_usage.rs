@@ -1,6 +1,9 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::globals::is_hook_name;
-use crate::hir::types::{BlockId, HIR, IdentifierId, InstructionValue, Terminal};
+use crate::hir::types::{
+    BlockId, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId,
+    InstructionValue, Terminal,
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Validate that hooks are called according to the Rules of Hooks:
@@ -65,6 +68,25 @@ pub fn validate_hooks_usage(
         }
     }
 
+    // Collect names declared via DeclareLocal and Destructure (local variables and params).
+    // These are user-defined identifiers, not hook imports. Even if they have hook-like
+    // names (e.g., `let useFeature = makeObject()`), they should not be flagged by
+    // Rule 3 (hooks-as-values). We track names rather than IdentifierIds because
+    // SSA renaming creates distinct IDs for each version of the same variable.
+    let mut locally_declared_names: FxHashSet<String> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+            {
+                locally_declared_names.insert(name.clone());
+            }
+            if let InstructionValue::Destructure { lvalue_pattern, .. } = &instr.value {
+                collect_destructure_names(lvalue_pattern, &mut locally_declared_names);
+            }
+        }
+    }
+
     // Helper: resolve the effective name for an identifier
     let resolve_name = |id: IdentifierId, name: &Option<String>| -> Option<String> {
         name.clone().or_else(|| id_to_name.get(&id).cloned())
@@ -113,6 +135,7 @@ pub fn validate_hooks_usage(
                         && is_hook(name)
                         && !hook_callee_ids.contains(&instr.lvalue.identifier.id)
                         && !hook_callee_ids.contains(&place.identifier.id)
+                        && !locally_declared_names.contains(name.as_str())
                     {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
@@ -429,6 +452,60 @@ fn check_nested_hir_for_hook_calls(
             };
             if let Some(nested_body) = nested_hir {
                 check_nested_hir_for_hook_calls(nested_body, errors, is_hook);
+            }
+        }
+    }
+}
+
+/// Recursively collect all named identifiers from a `DestructurePattern`.
+/// This walks into nested object/array destructuring to find every
+/// leaf `Place` and collects its identifier name.
+fn collect_destructure_names(pattern: &DestructurePattern, out: &mut FxHashSet<String>) {
+    match pattern {
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        if let Some(name) = &place.identifier.name {
+                            out.insert(name.clone());
+                        }
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        collect_destructure_names(nested, out);
+                    }
+                }
+            }
+            if let Some(rest_place) = rest
+                && let Some(name) = &rest_place.identifier.name
+            {
+                out.insert(name.clone());
+            }
+        }
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(target) => match target {
+                        DestructureTarget::Place(place) => {
+                            if let Some(name) = &place.identifier.name {
+                                out.insert(name.clone());
+                            }
+                        }
+                        DestructureTarget::Pattern(nested) => {
+                            collect_destructure_names(nested, out);
+                        }
+                    },
+                    DestructureArrayItem::Spread(place) => {
+                        if let Some(name) = &place.identifier.name {
+                            out.insert(name.clone());
+                        }
+                    }
+                    DestructureArrayItem::Hole => {}
+                }
+            }
+            if let Some(rest_place) = rest
+                && let Some(name) = &rest_place.identifier.name
+            {
+                out.insert(name.clone());
             }
         }
     }

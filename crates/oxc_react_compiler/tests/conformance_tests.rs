@@ -1090,6 +1090,7 @@ fn upstream_conformance() {
     // Diagnostic categorization of known failures
     let known_diverged: Vec<&&FixtureResult> =
         diverged.iter().filter(|r| r.known_failure).collect();
+    let mut bail_fixture_names: HashMap<String, Vec<String>> = HashMap::new(); // debug: track per-error fixture names
     let mut cat_we_bail_they_compile = 0u32;
     let mut cat_we_compile_they_dont = 0u32;
     let mut cat_both_compile_slots_match = 0u32;
@@ -1115,6 +1116,7 @@ fn upstream_conformance() {
                 // Truncate to first 60 chars for grouping
                 r.first_error.chars().take(60).collect::<String>()
             };
+            bail_fixture_names.entry(err_key.clone()).or_default().push(r.relative_path.clone());
             *bail_errors.entry(err_key).or_insert(0) += 1;
         } else if we_memo && !they_memo {
             cat_we_compile_they_dont += 1;
@@ -1185,6 +1187,14 @@ fn upstream_conformance() {
         sorted.sort_by(|a, b| b.1.cmp(&a.1));
         for (err, count) in &sorted {
             println!("  {count:>4}x  {err}");
+            if let Some(names) = bail_fixture_names.get(err) {
+                for name in names.iter().take(8) {
+                    println!("       {name}");
+                }
+                if names.len() > 8 {
+                    println!("       ... and {} more", names.len() - 8);
+                }
+            }
         }
         println!();
     }

@@ -378,8 +378,6 @@ gating/gating-use-before-decl.js
 gating/infer-function-expression-React-memo-gating.js
 gating/invalid-fnexpr-reference.js
 gating/multi-arrow-expr-export-default-gating-test.js
-gating/multi-arrow-expr-export-gating-test.js
-gating/multi-arrow-expr-gating-test.js
 gating/reassigned-fnexpr-variable.js
 global-types/call-spread-argument-set.ts
 global-types/map-constructor.ts

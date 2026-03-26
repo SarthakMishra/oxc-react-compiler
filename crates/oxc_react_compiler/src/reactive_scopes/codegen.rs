@@ -3360,6 +3360,26 @@ pub fn apply_compilation(
         source.replace_range(*start..*end, replacement);
     }
 
+    // When gating is active, strip the gating directive comments from the
+    // source. The directives have been consumed (the gating import and
+    // per-function ternaries are already applied), so they should not appear
+    // in the output. Upstream's Babel plugin removes these annotations during
+    // compilation; we do it here since our approach is source-edit-based.
+    if gating.is_some() {
+        let had_trailing_newline = source.ends_with('\n');
+        source = source
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                !trimmed.starts_with("// @gating") && !trimmed.starts_with("// @dynamicGating")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if had_trailing_newline {
+            source.push('\n');
+        }
+    }
+
     result.push_str(&source);
     result
 }
