@@ -190,7 +190,7 @@ Key findings for slot-diff (688 fixtures):
 - **Both-no-memo (was 79, now ~76 after Stage 5a DCE+CP):** DCE + constant propagation passes partially implemented. 7 fixtures now passing. Remaining need dead branch elimination.
 - **Slot-diff deficit distribution:** -1 (131), -2 (120), -3 (35), -4 (42), -5 (16), -6 (22), -7 (4), -8+ (32). Total deficit: 402. Total surplus: 286.
 
-#### Stage 3a2: Investigate & Fix 0-Slot Surplus Fixtures (134 fixtures, est: +30-80) — PARTIALLY COMPLETE (+1, 456->457)
+#### Stage 3a2: Investigate & Fix 0-Slot Surplus Fixtures (134 fixtures, est: +30-80) — INVESTIGATED/BLOCKED (+1, 456->457)
 
 **Pool:** 134 fixtures where upstream produces 0 cache slots (no memoization) but we produce >0 slots. These are currently miscategorized as "we compile, they don't" but are actually scope inference surplus fixtures where expected_slots = 0.
 
@@ -206,11 +206,7 @@ Key findings for slot-diff (688 fixtures):
 - [x] Investigated 3 remaining `escape-analysis-not-*` fixtures (`conditional-test`, `switch-case`, `switch-test`) — **BLOCKED by scope inference merging (Stage 3b)**. The array scope (`[...].map(...)`) is merged with the result scope at the HIR level, so both map to the same reactive scope and the result identifier never appears isolated in the test position.
 - [x] Investigated root cause of 134 zero-slot surplus fixtures — **primarily scope inference issues (scopes spanning hook calls, over-merging), NOT missing prune logic**. The pruning enhancements can chip away at individual patterns but the dominant root cause is scope inference creating scopes that upstream doesn't create in the first place.
 
-**Remaining investigation plan:**
-- [ ] Sample 30 of the 134 fixtures and for each: (a) check what our scope inference produces (how many scopes, what they contain), (b) hypothesize why upstream produces 0 scopes
-- [ ] Categorize root causes: (a) our pruning misses cases upstream prunes, (b) our scope creation is too aggressive for certain patterns, (c) upstream has a pass we don't have (e.g., DCE eliminates the reactive scope inputs)
-- [ ] If a dominant pattern emerges (>30% of fixtures share one root cause), design a targeted fix
-- [ ] Regression-check any fix on full conformance suite
+**Remaining investigation plan:** ~~SUPERSEDED by blocker report below.~~ The 2026-03-26 deep-work session investigated three approaches (per-function reactive guard, `is_allocating` guard removal, pruning analysis) and confirmed the root cause is scope CREATION (mutable range width), not pruning. No further investigation of pruning-based approaches is warranted. The path forward is Stage 3b (scope merging / mutable range accuracy).
 
 **Upstream files:** `src/ReactiveScopes/PruneNonEscapingScopes.ts`, `src/ReactiveScopes/PruneNonReactiveDependencies.ts`, `src/ReactiveScopes/PruneUnusedScopes.ts`, `src/Optimization/DeadCodeElimination.ts`
 **Our files:** `prune_scopes.rs`, `infer_reactive_scope_variables.rs`
@@ -218,6 +214,46 @@ Key findings for slot-diff (688 fixtures):
 **Why this is high priority:** 134 fixtures is the single largest addressable pool. If even 30% share a common root cause, fixing it yields +40 conformance. Removing scopes (making output more conservative) is SAFER than adding scopes -- less regression risk.
 
 **Key finding (2026-03-26):** The remaining 3 escape-analysis-not fixtures and the broader 134-fixture surplus pool are both dominated by scope inference merging issues. The pruning layer can only eliminate scopes that exist as discrete entities — when scope inference merges two conceptually separate scopes into one, the pruning layer cannot split them back apart. This reinforces that Stage 3b (scope merging fixes) is the critical path for large conformance gains in the surplus pool.
+
+### Blocker Report — Stage 3a2 Zero-Slot Surplus Investigation (2026-03-26)
+
+**Approach attempted:** Three strategies to reduce scope surplus in the 134 zero-slot fixtures:
+
+1. **Per-function reactive guard (`function_has_any_reactive`):** Add an early-exit in scope inference that skips scope creation for functions with no reactive identifiers.
+2. **`prune_unused_scopes` `is_allocating` guard removal:** Remove the guard that prevents pruning of allocating scopes, allowing more scopes to be pruned away.
+3. **Analysis of pruning vs. creation:** Determine whether the surplus comes from missing prune logic or over-aggressive scope creation.
+
+**Assumption that was wrong:** The 134 surplus fixtures were assumed to be fixable via pruning enhancements or simple guards. In reality, the surplus is a scope CREATION problem, not a pruning problem.
+
+**What was discovered:**
+
+1. **Per-function reactive guard:** Too aggressive. Caused -44 regression (464 to 420) because most functions DO have reactive identifiers even when individual scope sets are allocating-only. The guard needs to be per-scope-set, not per-function, but per-scope-set guards require knowing the scope boundaries before they are created (circular dependency).
+
+2. **`prune_unused_scopes` `is_allocating` guard removal:** Gained +3 but caused unresolved reference bug (`setActive` in `semantic_conditional_component`). Root cause: some allocating scopes have declarations whose IDs are not in `scope.declarations` because they are introduced by patterns inside the scope (like destructuring from `useState`). Removing the guard causes scope pruning that drops needed variable bindings.
+
+3. **`prune_non_escaping_scopes` already correctly keeps escaping allocating scopes.** The surplus is not a pruning problem.
+
+4. **The real root cause:** `infer_reactive_scope_variables` creates sentinel scopes for allocating instructions even when those allocations do not need memoization. Upstream avoids this because their scope creation uses narrower mutable ranges that do not group allocating instructions into scopes when they have no reactive deps. Our `last_use_map` extension causes wider ranges that group more instructions into scopes.
+
+**Regression details:**
+- Per-function reactive guard: 464 to 420 (-44 regression)
+- `is_allocating` guard removal: +3 gain but introduced unresolved reference (`setActive` in `semantic_conditional_component` fixture)
+
+**Prerequisites for a successful attempt:**
+
+- Mutable range accuracy must be improved so that `infer_reactive_scope_variables` does not group allocating instructions into scopes when they have no reactive dependencies. This is the same prerequisite as Stage 3b (scope merging).
+- The `last_use_map` extension in `infer_mutation_aliasing_ranges.rs` must be narrowed or replaced. Currently it extends ranges to last USE (not just last MUTATION), which is wider than upstream. But removing it causes codegen regressions because scope containment depends on wide ranges. This requires: (a) receiver mutation effects for MethodCall/Apply, and (b) a reverse scope propagation pass.
+- Per-scope-set reactive analysis (not per-function) would be needed for a guard-based approach, but this creates a circular dependency with scope creation.
+
+**Useful findings to carry forward:**
+
+- `infer_reactive_scope_variables.rs` — the `is_allocating_instruction` function creates sentinel scopes. The upstream equivalent uses narrower mutable ranges that naturally exclude non-reactive allocations.
+- `prune_scopes.rs` — `prune_unused_scopes` has an `is_allocating` guard that is load-bearing: removing it exposes `scope.declarations` incompleteness for destructuring patterns.
+- `prune_non_escaping_scopes` — already correct for escaping allocating scopes. No further pruning gains available here.
+- The 134 zero-slot surplus fixtures overlap with the 286 total surplus fixtures in slots-DIFFER. They are the subset where `expected_slots = 0`.
+- `scope.declarations` does not include all identifiers introduced within a scope (e.g., destructured bindings from `useState`). Any future scope pruning work must account for this.
+
+**Do NOT attempt again until:** Stage 3b (scope merging / mutable range accuracy) prerequisites are resolved. The 134-fixture surplus requires fundamental scope inference changes (`last_use_map` narrowing, scope grouping algorithm), not pruning fixes. This is the same root cause as Stage 3b.
 
 #### Stage 3b: Fix Dominant Slot Diff Patterns (est: +15-25 fixtures, HIGH risk)
 
@@ -585,7 +621,7 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 | Stage 5a: DCE + phi-node CP | +7 (done) | 464 | MEDIUM | Completed. 7 fixtures from dead StoreLocal/Prefix/Postfix removal + phi CP. |
 | Stage 5b: Dead branch elimination | +0 (done) | 464 | MEDIUM | Completed. Infrastructure correct, 0 net gain. Branch conditions rarely constant at Pass 32.5. |
 | Stage 5 remaining: Binary/string folding + 0-slot codegen | +23-43 | 487-507 | MEDIUM-HIGH | ~85 "both no memo" remain. **Blocked by 0-slot codegen, not DCE/CP.** Binary/string folding has diminishing returns. |
-| Stage 3a2: Prune test-position scopes | +1 (done) | 457 | LOW | Completed. escape-analysis-not-if-test.js. 3 remaining escape-analysis-not fixtures BLOCKED by scope inference merging (Stage 3b). |
+| Stage 3a2: Zero-slot surplus investigation | +1 (done) | 457 | BLOCKED | Completed +1 (escape-analysis-not-if-test.js). Investigation confirmed 134 surplus fixtures require fundamental scope inference changes (mutable range accuracy, scope grouping), not pruning. BLOCKED by Stage 3b prerequisites. See blocker report. |
 | **Total remaining** | **+136-290** | **600-754** | | From 464 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
@@ -608,7 +644,7 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures (3 now fixed via validateInferredDep, 29 BLOCKED by scope dep resolution)
 
-**Revised path to 600 (updated 2026-03-25):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +30-73 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant) + remaining DCE/CP (Stage 5, +5-15 revised down). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). Stage 3a2 investigation confirmed 0-slot surplus is primarily scope inference (not pruning gaps). Stage 5a+5b DCE+CP+branch-elimination gained +7 total (457->464); branch elimination infrastructure complete but gains limited by supply of constant conditions. "Both no memo" pool now understood to be blocked by 0-slot codegen (scope inference), not DCE/CP. Conservative floor: ~600 from 464 base. Optimistic: 700+.
+**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +30-73 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant) + remaining DCE/CP (Stage 5, +5-15 revised down). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). **Stage 3a2 investigation (2026-03-26) CONFIRMED: 134 zero-slot surplus fixtures require fundamental scope inference changes, not pruning. Three approaches attempted and failed (see blocker report). BLOCKED by same prerequisites as Stage 3b (mutable range accuracy, scope grouping algorithm).** Stage 5a+5b DCE+CP+branch-elimination gained +7 total (457->464); branch elimination infrastructure complete but gains limited by supply of constant conditions. "Both no memo" pool now understood to be blocked by 0-slot codegen (scope inference), not DCE/CP. Conservative floor: ~600 from 464 base. Optimistic: 700+.
 
 **Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
 
@@ -783,3 +819,4 @@ All paths relative to `crates/oxc_react_compiler/`.
 39. **"Both no memo" (~85 fixtures) blocked by 0-slot codegen, NOT DCE/CP (2026-03-26, updated 2026-03-25 session).** Despite implementing DCE + CP + dead branch elimination (Stages 5a+5b, +7 fixtures), ~85 "both no memo" fixtures remain. Dead branch elimination (Stage 5b) gained +0 because branch conditions are rarely constant at Pass 32.5. Investigation confirms the remaining fixtures are blocked by 0-slot codegen: our compiler wraps functions in `_c(0)` memoization structure where upstream emits passthrough. This is scope inference over-creation (same root cause as the 134 zero-slot surplus fixtures in Stage 3a2), not a DCE/CP gap. Further DCE/CP improvements (binary folding, string concat) have diminishing returns on this pool.
 40. **Slots DIFFER (666 fixtures) and slots MATCH (243 fixtures) dominated by variable naming/scope inference (2026-03-25).** These two categories account for the vast majority of remaining failures (909 of ~1253). Both are fundamentally driven by scope inference accuracy — different scope boundaries produce different slot counts (DIFFER) and different declaration placement/variable naming (MATCH). Codegen-only fixes have reached their ceiling (Stage 1 exhausted). The path forward requires scope inference improvements (Stage 3), which carry high regression risk.
 41. **Branch elimination gains limited by supply of constant conditions after validation (2026-03-25).** Dead branch elimination infrastructure is correct (handles If/Branch/Ternary/Optional terminals) but the constant propagation pass at Pass 32.5 produces very few constant branch conditions. Most branch conditions depend on runtime values (props, state, hook returns). The phi-node CP pass can fold identical-constant phis, but the cascading effect to branch conditions is minimal in practice. This makes dead branch elimination a correct-but-low-impact optimization for the current fixture set.
+42. **Zero-slot surplus (134 fixtures) is a scope CREATION problem, not a pruning problem (2026-03-26).** Three approaches attempted and all failed: (a) per-function reactive guard caused -44 regression because most functions have reactive identifiers even when scopes are allocating-only; (b) `prune_unused_scopes` `is_allocating` guard removal gained +3 but caused unresolved reference bugs because `scope.declarations` is incomplete for destructuring patterns; (c) `prune_non_escaping_scopes` already correctly handles escaping allocating scopes. The root cause is `infer_reactive_scope_variables` creating sentinel scopes for allocating instructions that upstream does not create, because our `last_use_map` extension produces wider mutable ranges than upstream. This is the same root cause as Stage 3b (scope merging). No further pruning-based approaches should be attempted; the fix requires mutable range accuracy improvements.
