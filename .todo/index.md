@@ -105,7 +105,7 @@ Completed 2026-03-26. Five fixture gains from mixed fixes:
 
 1. **Known-incompatible import bail re-enabled (+3):** Re-enabled `has_known_incompatible_import` as a per-function bail-out (was fully removed in Stage 2b initial). Upstream still bails per-function on known-incompatible imports; we need to match that behavior to pass UPSTREAM ERROR fixtures. +3 fixtures gained.
 2. **Custom ESLint suppression bail added (+1):** Re-enabled ESLint suppression detection as a per-function bail. +1 fixture gained.
-3. **Object property key quoting fix (+1):** Fixed codegen to properly quote object property keys that are reserved words or contain special characters, matching upstream output format. +1 fixture gained.
+3. **Object property key quoting fix (+1):** Fixed codegen to properly quote object property keys that are reserved words or contain special characters, matching upstream output format. +1 fixture gained (`repro-non-identifier-object-keys.ts` removed from known-failures).
 4. **Stage 1d Phase 3: Merge decl+init implemented (+0, dormant):** Implemented merging of `let t0; t0 = expr;` into `let t0 = expr;` when declaration and first assignment are adjacent. No conformance gain — all affected fixtures also differ in scope inference or naming. The improvement is dormant until scope inference fixes make those fixtures matchable.
 5. **B2 investigation finding (+0):** B2 (variable name preservation, 40 fixtures) was found to be scope-inference dependent, NOT codegen-only. Many B2 fixtures have scope boundary differences that prevent passing even with correct variable names. This downgrades B2 from "largest tractable codegen fix" to "partially tractable, scope-dependent."
 
@@ -137,12 +137,13 @@ Completed 2026-03-25. Fixed handling of `@validateNoDerivedComputationsInEffects
 These 20 fixtures now compile instead of bailing, but land in slots-DIFFER/MATCH pools (output doesn't match upstream yet).
 Net conformance: +0. But these fixtures are now unblocked for future scope/codegen improvements.
 
-#### Stage 2d: Fix Frozen-Mutation False Positives (11 original + 4 new IIFE = ~15 fixtures)
+#### Stage 2d: Fix Frozen-Mutation False Positives (26 remaining per latest breakdown)
 
 - [ ] Review `validate_no_mutation_after_freeze` / `InferMutableRanges` for over-reporting mutations on frozen values
 - [ ] Compare our validation logic against upstream's to find divergence
 - [ ] Implement targeted relaxations without losing true-positive detections
 - [ ] **NEW (post Stage 4d):** Fix 4 IIFE-pattern false positives introduced by name-based freeze tracking (`capturing-func-alias-*-iife.js`). These fixtures mutate a captured variable inside an IIFE, but the name-based tracker incorrectly treats this as mutation-after-freeze. Future fix: implement scoped name tracking that distinguishes IIFE-internal mutations from true post-freeze mutations.
+- **Note (2026-03-26):** Destructure freeze propagation and Check 4b effect callback analysis were completed as part of Stage 4d follow-up. These were true-positive detection improvements, not false-positive fixes. The 26 remaining false positives in the bail pool are the false-positive problem.
 - **Risk:** MEDIUM — requires mutable range analysis refinements + scoped name tracking for IIFE patterns
 - **Details:** [bail-out-investigation.md](bail-out-investigation.md)
 
@@ -492,7 +493,7 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 
 **Key learning from Stage 2a/2b:** Most bail-outs come from specific validations, not silent/0-scope issues. File-level bail-outs were low-hanging fruit (+1 net from removing 4).
 
-**Key correction (2026-03-26):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-D partial, **34 error.* fixtures remain in known-failures** (32 top-level + 2 fbt/). Down from 43 pre-4e-A, 37 pre-4e-D.
+**Key correction (2026-03-26):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-D partial + freeze follow-up, **33 error.* fixtures remain in known-failures** (31 top-level + 2 fbt/). Down from 43 pre-4e-A, 37 pre-4e-D, 34 pre-freeze-follow-up.
 
 **Important: CompilationMode::All in conformance tests.** The conformance test harness (`tests/conformance_tests.rs`) uses `compilationMode:"all"`, meaning ALL functions in a fixture are compiled (not just those detected as components/hooks). This affects which fixtures pass/fail because validations run on every function body, not just component-shaped ones. When investigating fixture behavior, always account for this mode.
 
@@ -508,7 +509,7 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
 
-**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +34-77 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~600 from 452 base. Optimistic: 700+.
+**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +33-76 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~600 from 453 base. Optimistic: 700+.
 
 **Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
 

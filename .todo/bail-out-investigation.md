@@ -2,7 +2,7 @@
 
 > Completed: 2026-03-25
 > Starting pool: 108 "we bail, they compile" fixtures
-> After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in)
+> After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in), **80 remaining as of 2026-03-26** (per latest conformance breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other)
 > Note: Conformance tests use `compilationMode:"all"` — all functions are compiled, not just detected components/hooks. This affects which bail-out validations fire.
 
 ## Summary
@@ -32,12 +32,12 @@ Of the original 108 fixtures where we bail but upstream compiles:
 - **Initial fix (2026-03-25):** Removed the file-level bail. +1 net at the time.
 - **Follow-up (2026-03-26):** Re-enabled as a custom ESLint suppression per-function bail matching upstream behavior. The per-function bail correctly bails individual functions that have ESLint suppression annotations, rather than bailing the entire file. This gained **+1 net passing fixture** (the suppression bail fixture itself now correctly bails).
 
-## Remaining Bail-out Breakdown (89 fixtures)
+## Remaining Bail-out Breakdown (80 fixtures as of 2026-03-26, was 89)
 
 | Error Category | Count | Fixable? | Notes |
 |---------------|-------|----------|-------|
 | Values derived from props/state (effect-derived-computations validation) | 20 | YES | New validation `validateNoDerivedComputationsInEffects` fires incorrectly; upstream compiles despite this validation |
-| Frozen mutation (false positive) | 15 (11 original + 4 IIFE from Stage 4d) | MEDIUM | `InferMutableRanges` over-reports mutations on frozen values. 4 new IIFE false positives from name-based freeze tracking. |
+| Frozen mutation (false positive) | 26 (per latest breakdown) | MEDIUM | `InferMutableRanges` over-reports mutations on frozen values. Includes 4 IIFE false positives from name-based freeze tracking. Note: Stage 4d follow-up (destructure freeze propagation + Check 4b) improved true-positive detection but did not address false positives. |
 | Cannot reassign outside component | 10 | MEDIUM | `validateLocalsNotReassignedAfterRender` false positives |
 | (no error / silent) | 6 (was 9, 3 gating fixed) | MIXED | Various: ~~gating mode (3)~~ fixed in Stage 1e (conformance harness issue), 0-scope functions (2), misc (4) |
 | Cannot access refs during render | 8 | MEDIUM | `validateNoRefAccessInRender` false positives. Note: separate from Stage 4e-B ref-access *detection* fixes (where we fail to bail on upstream-error fixtures). |
@@ -88,21 +88,31 @@ Of the original 108 fixtures where we bail but upstream compiles:
   - **Fix approach:** Implement scoped name tracking that resets or excludes names within IIFE boundaries from freeze-after-mutation checks.
 - **Risk:** MEDIUM
 
-### Stage 4d: Frozen-mutation false negatives -- COMPLETE (+9 net, 426->435)
+### Stage 4d: Frozen-mutation false negatives -- COMPLETE (+10 net, 426->435 initial, +1 follow-up 452->453)
 
-Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mutation_after_freeze.rs`.
+Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up).
 
-**Approach:** Track frozen identifiers by name (not just IdentifierId) to solve cross-scope identity mismatches where the same logical variable has different IdentifierIds in different scopes.
+**Initial approach (2026-03-25):** Track frozen identifiers by name (not just IdentifierId) to solve cross-scope identity mismatches where the same logical variable has different IdentifierIds in different scopes.
 
-**Results:**
+**Initial results:**
 - 7 of 9 planned fixtures fixed + 2 bonus = 9 total gained
 - 9 fixtures shifted from slots-MATCH/DIFFER to bail (IIFE false positives + other side effects of broader freeze tracking)
 
-**Remaining 2 planned fixtures:**
-- `error.assign-ref-in-effect-hint.js` — requires effect callback mutation checking, not just freeze tracking
+**Follow-up (2026-03-26): Destructure freeze propagation + Check 4b effect callback analysis (+1, 452->453)**
+
+Two improvements in `validate_no_mutation_after_freeze.rs`:
+
+1. **Destructure freeze propagation:** When a frozen value (e.g., props param) is destructured via `Destructure` instruction, the output bindings now inherit frozen status. Previously only top-level parameter names were tracked via `param_names`, missing destructured fields like `{foo}` from `Component({foo})`. The fix iterates over all `Destructure` instructions and propagates frozen status from the destructured value to each output binding.
+
+2. **Check 4b effect callback analysis:** Previously Check 4 (mutation-after-freeze in function expressions) skipped ALL effect callbacks unconditionally. The correct upstream behavior checks effect callbacks for prop/context mutations while excluding ref mutations. The fix re-enables the check for effect callbacks but filters out ref-named identifiers using `is_ref_name` (imported from `validate_no_ref_access_in_render.rs`, made `pub(crate)` for cross-module reuse). This ensures `ref.current = x` in effects does not false-positive, while `props.x = y` in effects correctly errors.
+
+**Fixtures gained in follow-up:**
+- `error.assign-ref-in-effect-hint.js` — effect callback now correctly detects mutation of frozen (non-ref) value
+
+**Remaining 1 planned fixture:**
 - `error.invalid-jsx-captures-context-variable.js` — complex JSX capture pattern needing deeper capture analysis
 
-**Trade-off:** Name-based tracking is coarser than IdentifierId-based tracking. It correctly catches more true positives (the 9 gained) but also catches 4 false positives on IIFE patterns. Net impact is positive.
+**Trade-off:** Name-based tracking is coarser than IdentifierId-based tracking. It correctly catches more true positives (the 10 gained) but also catches 4 false positives on IIFE patterns. Net impact is positive.
 
 ### Stage 2e: Fix ref-access false positives (8 fixtures) — LOW PRIORITY, NO CONFORMANCE IMPACT
 

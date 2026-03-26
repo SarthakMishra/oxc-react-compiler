@@ -669,8 +669,16 @@ pub fn validate_no_mutation_after_freeze(
                 if !is_update {
                     for effect in effects {
                         let mutated_frozen = match effect {
-                            AliasingEffect::Mutate { value, .. }
-                            | AliasingEffect::MutateTransitive { value } => {
+                            AliasingEffect::Mutate { value, .. } => {
+                                is_ssa_frozen(&value.identifier, &frozen_ids)
+                            }
+                            // For call instructions, skip transitive and conditional
+                            // mutation effects — these come from Apply fallback and
+                            // over-approximate, causing false positives when frozen
+                            // params are captured (e.g., `x = {a}` then `mutate(y)`
+                            // where `y.x = x`). Direct Mutate effects still catch
+                            // real mutations.
+                            AliasingEffect::MutateTransitive { value } if !is_call => {
                                 is_ssa_frozen(&value.identifier, &frozen_ids)
                             }
                             AliasingEffect::MutateConditionally { value }
@@ -763,11 +771,19 @@ fn is_known_mutating_method(method: &str) -> bool {
 
 /// Check if a nested function body contains mutations to any frozen value.
 /// Uses both ID-based and name-based tracking for completeness.
+/// Excludes names that are locally declared in the inner function, since
+/// those shadow any outer frozen variable with the same name.
 fn has_mutation_on_frozen(
     hir: &HIR,
     outer_frozen_ids: &FxHashSet<SsaId>,
     outer_frozen_names: &FxHashSet<&str>,
 ) -> bool {
+    // Collect locally declared names to exclude from frozen name matching.
+    // A local `let a = y;` shadows outer frozen `a` from params.
+    let inner_declared = collect_inner_declared_names(hir);
+    let effective_frozen_names: FxHashSet<&str> =
+        outer_frozen_names.iter().copied().filter(|n| !inner_declared.contains(n)).collect();
+
     let mut local_id_map: FxHashMap<IdentifierId, &str> = FxHashMap::default();
 
     for (_, block) in &hir.blocks {
@@ -815,7 +831,7 @@ fn has_mutation_on_frozen(
                             value.identifier.id,
                             &local_id_map,
                             outer_frozen_ids,
-                            outer_frozen_names,
+                            &effective_frozen_names,
                         ),
                         AliasingEffect::MutateConditionally { value }
                         | AliasingEffect::MutateTransitiveConditionally { value }
@@ -825,7 +841,7 @@ fn has_mutation_on_frozen(
                                 value.identifier.id,
                                 &local_id_map,
                                 outer_frozen_ids,
-                                outer_frozen_names,
+                                &effective_frozen_names,
                             )
                         }
                         _ => false,
@@ -838,7 +854,7 @@ fn has_mutation_on_frozen(
 
             // Check instruction-level mutations
             let check_frozen = |id: &IdentifierId| -> bool {
-                is_inner_frozen(*id, &local_id_map, outer_frozen_ids, outer_frozen_names)
+                is_inner_frozen(*id, &local_id_map, outer_frozen_ids, &effective_frozen_names)
             };
             match &instr.value {
                 InstructionValue::MethodCall { receiver, property, .. } => {
@@ -865,7 +881,11 @@ fn has_mutation_on_frozen(
 
             // Recurse into nested functions
             if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
-                && has_mutation_on_frozen(&lowered_func.body, outer_frozen_ids, outer_frozen_names)
+                && has_mutation_on_frozen(
+                    &lowered_func.body,
+                    outer_frozen_ids,
+                    &effective_frozen_names,
+                )
             {
                 return true;
             }

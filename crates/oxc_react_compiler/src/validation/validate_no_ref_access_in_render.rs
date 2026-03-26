@@ -1,10 +1,7 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
+use crate::hir::globals::is_hook_name;
 use crate::hir::types::{HIR, IdentifierId, InstructionValue, Terminal, Type};
 use rustc_hash::{FxHashMap, FxHashSet};
-
-/// Hook names whose first callback argument executes after render.
-const EFFECT_HOOKS: &[&str] =
-    &["useEffect", "useLayoutEffect", "useInsertionEffect", "useEffectEvent"];
 
 /// Validate that ref values are not accessed during render.
 ///
@@ -187,11 +184,18 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                         .as_deref()
                         .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
                     if let Some(name) = callee_name {
-                        if EFFECT_HOOKS.contains(&name) && !args.is_empty() {
-                            ids.insert(args[0].identifier.id);
-                        }
-                        if name == "useCallback" && !args.is_empty() {
-                            ids.insert(args[0].identifier.id);
+                        // Hook call arguments are non-render contexts for ref
+                        // access validation, EXCEPT for hooks whose callbacks
+                        // execute during render:
+                        // - useMemo: callback runs synchronously during render
+                        // - useReducer: reducer + initializer run during render
+                        // - useState: initializer function runs during render
+                        if is_hook_name(name)
+                            && !matches!(name, "useMemo" | "useReducer" | "useState")
+                        {
+                            for arg in args {
+                                ids.insert(arg.identifier.id);
+                            }
                         }
                         // useImperativeHandle(ref, createFn) — createFn runs in effect phase
                         if name == "useImperativeHandle" && args.len() >= 2 {
@@ -200,11 +204,13 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                     }
                 }
                 InstructionValue::MethodCall { property, args, .. } => {
-                    if EFFECT_HOOKS.contains(&property.as_str()) && !args.is_empty() {
-                        ids.insert(args[0].identifier.id);
-                    }
-                    if property == "useCallback" && !args.is_empty() {
-                        ids.insert(args[0].identifier.id);
+                    // Same for method-call hooks (e.g., React.useEffect)
+                    if is_hook_name(property)
+                        && !matches!(property.as_str(), "useMemo" | "useReducer" | "useState")
+                    {
+                        for arg in args {
+                            ids.insert(arg.identifier.id);
+                        }
                     }
                     if property == "useImperativeHandle" && args.len() >= 2 {
                         ids.insert(args[1].identifier.id);
@@ -425,12 +431,24 @@ fn check_nested_ref_access(
     false
 }
 
-/// Collect all function callee names from a nested function body.
-/// Resolves through LoadLocal to find the variable name being called.
+/// Collect all function callee names from a nested function body,
+/// recursing into nested function expressions to find deeply nested calls.
+/// This ensures that e.g. `useLayoutEffect(() => { new ResizeObserver(_ => { updateStyles(); }) })`
+/// correctly identifies `updateStyles` as called from a non-render context.
 fn collect_callee_names(hir: &HIR) -> Vec<String> {
     let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
     let mut names = Vec::new();
 
+    collect_callee_names_recursive(hir, &mut id_to_name, &mut names);
+
+    names
+}
+
+fn collect_callee_names_recursive(
+    hir: &HIR,
+    id_to_name: &mut FxHashMap<IdentifierId, String>,
+    names: &mut Vec<String>,
+) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } =
@@ -451,10 +469,14 @@ fn collect_callee_names(hir: &HIR) -> Vec<String> {
                     names.push(name.clone());
                 }
             }
+            // Recurse into nested function expressions to find deeply nested calls
+            if let InstructionValue::FunctionExpression { lowered_func, .. }
+            | InstructionValue::ObjectMethod { lowered_func } = &instr.value
+            {
+                collect_callee_names_recursive(&lowered_func.body, id_to_name, names);
+            }
         }
     }
-
-    names
 }
 
 /// Check if a name looks like a React ref.
