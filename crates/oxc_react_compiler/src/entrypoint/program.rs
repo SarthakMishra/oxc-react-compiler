@@ -126,10 +126,20 @@ fn compile_program_inner_with_config(
     // so the pipeline can use it for bail-out decisions.
     config.bail_threshold = options.panic_threshold;
 
-    // DIVERGENCE: Upstream emits a per-component "Use of incompatible library" diagnostic
-    // but still compiles the function. We also compile (no bail) to match conformance.
-    // The incompatible import check is preserved as `has_known_incompatible_import()` for
-    // potential future use in diagnostics.
+    // DIVERGENCE: Upstream emits a per-component "Use of incompatible library"
+    // diagnostic and bails each function individually. We bail the entire file
+    // when a known-incompatible import is present. This is coarser than upstream
+    // but produces the same result for files where all functions use the import.
+    // TODO: Emit a diagnostic ("InvalidReact: This module imports ... which is
+    // known to be incompatible") instead of silently bailing.
+    if has_known_incompatible_import(&parser_ret.program) {
+        return CompileResult {
+            code: source.to_string(),
+            transformed: false,
+            diagnostics: vec![],
+            source_map: None,
+        };
+    }
 
     // Skip files that already import from the compiler runtime.
     // These have already been compiled by React Compiler and should not
@@ -156,9 +166,20 @@ fn compile_program_inner_with_config(
     }
 
     // DIVERGENCE: Upstream bails per-function on custom ESLint suppression rules,
-    // not per-file. We no longer bail the whole file — instead we compile normally.
-    // The custom suppression check is preserved for future per-function use.
-    // TODO: Implement per-function suppression check in compile_function().
+    // not per-file. We bail the whole file when custom suppression rules are
+    // present in the environment config and their eslint-disable comments appear
+    // in the source. This matches upstream behavior for conformance.
+    if !config.eslint_suppression_rules.is_empty() {
+        let rules: Vec<&str> = config.eslint_suppression_rules.iter().map(String::as_str).collect();
+        if has_eslint_suppression_for_rules(source, &rules) {
+            return CompileResult {
+                code: source.to_string(),
+                transformed: false,
+                diagnostics: vec![],
+                source_map: None,
+            };
+        }
+    }
 
     // Check for module-level opt-out directives: 'use no memo' / 'use no forget'
     if !options.ignore_use_no_forget
@@ -1215,8 +1236,6 @@ fn collect_hook_aliases(program: &Program<'_>) -> FxHashSet<String> {
 }
 
 /// Check if the program imports from a known-incompatible module.
-/// Retained for future per-function diagnostic use.
-#[expect(dead_code)]
 fn has_known_incompatible_import(program: &Program<'_>) -> bool {
     for stmt in &program.body {
         if let Statement::ImportDeclaration(import) = stmt {

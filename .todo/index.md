@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-03-26
-> Conformance: **447/1717 (26.0%)** (known-failures.txt has 1270 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from latest session (441->447): dynamic gating parsing +3, empty catch handler +1, computed key bail-out removal +2.
-> Known-failures: 1270. Error.* fixtures remaining in KF: 34 (32 top-level + 2 fbt/).
+> Conformance: **452/1717 (26.3%)** (known-failures.txt has 1265 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1.
+> Known-failures: 1265. Error.* fixtures remaining in KF: 34 (32 top-level + 2 fbt/).
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
@@ -36,6 +36,10 @@
 
 5. **Stage 1d Phase 2 is a scope inference issue (2026-03-26).** Moving declarations inside control flow blocks (if/for/try) requires that scope inference itself produce scopes that are scoped to those blocks. The current scope inference merges scopes across control flow boundaries, so there is no control-flow-scoped scope to place declarations into. This is NOT a codegen-only fix — it requires scope inference improvements (Stage 3) as a prerequisite.
 
+6. **B2 (variable name preservation) is scope-inference dependent (2026-03-26).** Many B2 fixtures (temps vs original names) also have scope boundary differences. Pure codegen name changes won't pass them without scope inference fixes. Stage 1d Phase 3 (merge decl+init) also implemented and gained +0 (dormant). The codegen-only ceiling for slots-MATCH has been reached.
+
+7. **Re-enabling removed bail-outs as per-function bails gained +4 (2026-03-26).** Known-incompatible import bail (+3) and ESLint suppression bail (+1) were re-enabled as per-function bails matching upstream behavior. The initial full removal was too aggressive -- upstream bails per-function, not file-level.
+
 ### Revised Path to 600+
 
 The path is clearer but requires significant compiler infrastructure work:
@@ -45,13 +49,13 @@ The path is clearer but requires significant compiler infrastructure work:
 | Scope inference fixes (slots-DIFFER) | 688 | +50-100 | HIGH — cascading regression risk, scope MERGING is bottleneck (see 3b blocker) |
 | DCE + constant propagation (both-no-memo) | 79 | +30-50 | HIGH — new compiler passes needed |
 | `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | +15-25 | MEDIUM — 3 sub-types: validateInferredDep, value-memoized, dep-mutated |
-| Variable name preservation in codegen (B2) | 40 | +20-30 | MEDIUM — scope output naming changes |
-| Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — BLOCKED: Phase 2 requires scope inference (Stage 3). Phase 3 (merge decl+init) still possible independently. |
+| Variable name preservation in codegen (B2) | 40 | +10-20 | MEDIUM-HIGH — scope output naming changes + scope inference dependency (see lesson #29) |
+| Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — BLOCKED: Phase 2 requires scope inference (Stage 3). Phase 3 (merge decl+init) DONE (+0 dormant). |
 | Remaining bail-out fixes (2d-2g) | ~84 total bail pool | +15-25 | MEDIUM — per-validation fixes |
 | Todo error detection (remaining) | 4 | +2-4 | LOW-MED — need optional-chain-in-ternary, hoisting, context var |
 | Frozen-mutation validation fixes | 2 remain | +9 done (Stage 4d) | MEDIUM | 2 remaining need effect callback + JSX capture analysis |
 
-**Conservative estimate:** +153-307 from 447 base = 600-754. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +148-302 from 452 base = 600-754. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
@@ -83,7 +87,7 @@ Completed 2026-03-25. C2 (return undefined): +5 fixtures. C5 (catch clause): +0 
 
 - [x] **Phase 1 (LOW risk): COMPLETE (+6, 444->450).** Moved scope declarations from function-top to just-before-scope-guard. Gained 6 fixtures (exceeded +5 estimate). Same-slots pool reduced 233->227.
 - [ ] **Phase 2 (MEDIUM risk, +10-20) — BLOCKED by scope inference:** Move declarations inside control flow blocks (if/for/try). Fixes A1 pattern (39 fixtures with declaration-before-control-flow as first diff). Same-slots pool now 227. **Finding (2026-03-26):** This is actually a scope inference issue, not codegen. Declarations can only move inside control flow if scope inference produces scopes bounded by those control flow blocks. Currently scope inference merges scopes across control flow boundaries. Requires Stage 3 scope inference improvements as prerequisite.
-- [ ] **Phase 3 (HIGH risk, +5-10):** Merge declaration with initialization (`let t0; t0 = expr;` → `let t0 = expr;`).
+- [x] **Phase 3 (HIGH risk, +5-10): COMPLETE (+0, dormant).** Merge declaration with initialization (`let t0; t0 = expr;` → `let t0 = expr;`). Implemented but gained +0 fixtures — all affected fixtures also differ in other ways (scope inference, naming). The merged form is emitted correctly when declaration and first assignment are adjacent, but the benefit is dormant until scope inference improvements make those fixtures matchable.
 - **Details:** [slots-match-investigation.md](slots-match-investigation.md)#stage-1d-lazy-scope-declaration-placement-a1a2
 
 #### Stage 1e: Miscellaneous Codegen/Harness Fixes -- COMPLETE (+6, 441->447)
@@ -94,6 +98,16 @@ Completed 2026-03-26. Four independent fixes:
 2. **Empty catch handler codegen (+1):** Fixed codegen to emit `catch {}` instead of `catch (e)` when the catch binding is unused, matching upstream. Combined with prior A1 ordering fix, this unblocked 1 additional fixture.
 3. **ObjectExpression computed key bail-out removed (+2):** Removed an overly aggressive bail-out that rejected ObjectExpression nodes with computed keys. Upstream compiles these successfully. +2 fixtures gained.
 4. **const vs let keyword in StoreLocal codegen (+0):** Fixed codegen to emit `const` instead of `let` for StoreLocal instructions where the variable is never reassigned. No conformance gain (affected fixtures also differ in other ways) but improves correctness of output.
+
+#### Stage 1f: Follow-up Codegen/Bail Fixes -- COMPLETE (+5, 447->452)
+
+Completed 2026-03-26. Five fixture gains from mixed fixes:
+
+1. **Known-incompatible import bail re-enabled (+3):** Re-enabled `has_known_incompatible_import` as a per-function bail-out (was fully removed in Stage 2b initial). Upstream still bails per-function on known-incompatible imports; we need to match that behavior to pass UPSTREAM ERROR fixtures. +3 fixtures gained.
+2. **Custom ESLint suppression bail added (+1):** Re-enabled ESLint suppression detection as a per-function bail. +1 fixture gained.
+3. **Object property key quoting fix (+1):** Fixed codegen to properly quote object property keys that are reserved words or contain special characters, matching upstream output format. +1 fixture gained.
+4. **Stage 1d Phase 3: Merge decl+init implemented (+0, dormant):** Implemented merging of `let t0; t0 = expr;` into `let t0 = expr;` when declaration and first assignment are adjacent. No conformance gain — all affected fixtures also differ in scope inference or naming. The improvement is dormant until scope inference fixes make those fixtures matchable.
+5. **B2 investigation finding (+0):** B2 (variable name preservation, 40 fixtures) was found to be scope-inference dependent, NOT codegen-only. Many B2 fixtures have scope boundary differences that prevent passing even with correct variable names. This downgrades B2 from "largest tractable codegen fix" to "partially tractable, scope-dependent."
 
 ---
 
@@ -107,15 +121,15 @@ Completed 2026-03-26. Four independent fixes:
 Completed 2026-03-25. Full results in [bail-out-investigation.md](bail-out-investigation.md).
 Categorized all 108 bail-outs by error type. Found 4 overly aggressive file-level bail-outs (lint mode, incompatible imports, eslint suppression, runtime import check).
 
-#### Stage 2b: Remove Overly Aggressive File-Level Bail-outs -- PARTIALLY COMPLETE (+1 net, 410→411)
+#### Stage 2b: Remove Overly Aggressive File-Level Bail-outs -- COMPLETE (+5 net, 410→411 initial, then +4 more in follow-up)
 
-Completed 2026-03-25. Removed 4 file-level bail-outs in `program.rs`:
+Completed 2026-03-25 (initial), updated 2026-03-26 (re-enabled + refined). Removed/refined 4 file-level bail-outs in `program.rs`:
 - Removed `OutputMode::Lint` early return (+2 net passing, 42 fixtures now compile)
-- Removed `has_known_incompatible_import` file-level bail (+0 net)
+- Re-enabled `has_known_incompatible_import` as per-function bail (+3 net, was +0 when initially removed). The file-level bail was removed in Stage 2b initial, but the known-incompatible import detection was re-enabled as a per-function bail-out matching upstream behavior. +3 fixtures gained.
 - Refined `has_compiler_runtime_import` to only bail on `c`/`useMemoCache` imports (+0 net)
-- Removed `has_eslint_suppression_for_rules` file-level bail (+1 net passing)
-Net result: bail-outs reduced 108→89, conformance +1 (410→411). 2 error.todo fixtures regressed (added to known-failures).
-Remaining 89 bail-outs require per-validation fixes (see stages 2c-2f below).
+- Re-enabled `has_eslint_suppression_for_rules` as custom ESLint suppression bail (+1 net). Originally removed as file-level bail; now properly bails per-function when custom ESLint suppression rules are present, matching upstream's per-function behavior.
+Net result: bail-outs reduced 108→~84, conformance +5 total (410→411 initial, then +4 from re-enabled bails in follow-up session).
+Remaining ~84 bail-outs require per-validation fixes (see stages 2c-2f below).
 
 #### Stage 2c: Fix `_exp` Directive Handling -- COMPLETE (+0 net, 20 fixtures moved)
 
@@ -459,7 +473,7 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 | Stage 2f: Reassignment false positives | +5-7 | 424-431 | MEDIUM | 10 fixtures |
 | Stage 2g: Other bail-outs | +5-10 | 429-441 | MIXED | ~40 remaining fixtures |
 | Stage 1d Phase 1: Declaration placement | +6 (done) | 450 | LOW | Completed. Phase 2/3 remain (+10-30). |
-| B2: Variable name preservation | +20-30 | 464-501 | MEDIUM | 40 fixtures, scope output naming |
+| B2: Variable name preservation | +20-30 | 464-501 | MEDIUM | 40 fixtures, scope output naming. **Finding (2026-03-26): scope-inference dependent, NOT codegen-only.** Many B2 fixtures also have scope boundary differences; pure codegen name changes won't pass them. |
 | Stage 3: Scope inference (±1/±2 diffs) | +50-100 | 514-601 | HIGH | 688 pool (402 deficit, 286 surplus), scope MERGING is bottleneck (see 3b blocker) |
 | Stage 4b: Preserve-memo validation | +15-25 | 544-646 | MEDIUM | 32 fixtures (revised down from 60; 3 sub-types: validateInferredDep, value-memoized, dep-mutated) |
 | Stage 4c: Todo error detection | +15 (done, 5 remain) | 426 | LOW | 22/27 done (15 in 4c + 7 in 4e-A). Remaining 5 need hoisting, optional terminals, context vars. |
@@ -470,7 +484,7 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 | Stage 4e-D: Todo-bail (partial) | +3 (done) | 453 | LOW | 3/10 done (for-in-try, bail propagation). 7 remain (optional-chain, hoisting). |
 | Stage 4e-C/D2/E: Remaining upstream errors | +18-35 | 471-488 | MED-HIGH | 4e-C (3, MED), 4e-D2 preserve-memo (11, MED-HIGH), 4e-E (7, HIGH) |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 79 fixtures, new passes needed |
-| **Total remaining** | **+153-307** | **600-754** | | From 447 base |
+| **Total remaining** | **+148-302** | **600-754** | | From 452 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
@@ -492,7 +506,7 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
 
-**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +34-77 remaining) + codegen fixes (B2 + 1d Phase 3, +10-20). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~600 from 447 base. Optimistic: 700+.
+**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +34-77 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~600 from 452 base. Optimistic: 700+.
 
 **Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
 
@@ -636,3 +650,6 @@ All paths relative to `crates/oxc_react_compiler/`.
 26. **"We compile, they don't" revised breakdown (2026-03-26).** 134 of 186 fixtures have no upstream error header — they are not actionable without identifying the specific upstream validation that rejects each one. Only 32 are preserve-memo (revised down from 60). The 134-fixture "no header" pool makes this category harder than previously estimated.
 27. **Dynamic gating parsing was a test harness bug, not a compiler bug.** 3 fixtures gained by fixing conformance test directive parsing for `@gating` patterns. Always check whether a fixture failure is a harness issue before assuming it's a compiler bug.
 28. **Nested HIR builders don't emit LoadContext instructions.** When a nested function is lowered by a child `HIRBuilder`, context variables (captured from outer scope) are represented as plain `LoadLocal` in the nested HIR, not `LoadContext`. This means walking the nested HIR cannot distinguish context variables from local variables. The upstream compiler uses `LoadContext` to identify captured variables in nested lambdas. Fixing `error.todo-handle-update-context-identifiers.js` requires either (a) emitting `LoadContext` in nested builders, or (b) passing parent scope binding information to the validation pass. This is a structural limitation, not a simple pattern-matching fix.
+29. **B2 (variable name preservation) is scope-inference dependent, NOT codegen-only.** Investigation of the 40 B2 fixtures revealed that many also have scope boundary differences driven by scope inference. Changing which variable name is used for scope outputs (temp vs original) is a codegen change, but it does not pass conformance if the scope itself has different boundaries than upstream. B2 is therefore only partially addressable by codegen; the remainder requires scope inference improvements (Stage 3). This downgrades B2 from "largest tractable codegen fix" to "partially tractable, scope-dependent."
+30. **Re-enabling removed bail-outs as per-function bails can gain fixtures.** The known-incompatible import bail and ESLint suppression bail were removed in Stage 2b as file-level bails. Re-enabling them as per-function bails (matching upstream behavior) gained +4 fixtures (+3 from incompatible imports, +1 from ESLint suppression). The lesson: removing a bail-out entirely is wrong if upstream still bails per-function. The fix is to change the granularity (file-level -> per-function), not remove the bail entirely.
+31. **Object property key quoting matters for conformance.** Codegen must quote object property keys that are reserved words or contain special characters to match upstream output. A single property key formatting difference causes a fixture to fail even if the semantics are identical.

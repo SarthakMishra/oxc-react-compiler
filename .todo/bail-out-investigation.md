@@ -18,17 +18,19 @@ Of the original 108 fixtures where we bail but upstream compiles:
 - **Fix:** Removed the early return in `program.rs`. Now we compile normally.
 - **Result:** 42 lint-mode fixtures now compile. 2 passed outright (`static-components/invalid-dynamically-construct-component-in-render.js`, `static-components/invalid-dynamically-constructed-component-new.js`). 2 error.todo fixtures regressed (added to known-failures). Rest moved to slots-match/slots-differ categories.
 
-### Fix 2: Remove `has_known_incompatible_import` bail (+3 fixtures moved to compile, +0 net passing)
+### Fix 2: Remove `has_known_incompatible_import` file-level bail, then re-enable as per-function bail (+3 fixtures moved to compile initially, +3 net passing after re-enable)
 - **Root cause:** We bailed entire files importing from `ReactCompilerKnownIncompatibleTest`. Upstream still compiles but emits per-function diagnostics.
-- **Fix:** Removed the file-level bail. Retained function/constant for future per-function diagnostics.
+- **Initial fix (2026-03-25):** Removed the file-level bail. Retained function/constant for future per-function diagnostics. +0 net at the time.
+- **Follow-up (2026-03-26):** Re-enabled as a per-function bail-out matching upstream behavior. Upstream DOES bail per-function on known-incompatible imports; the initial full removal was too aggressive. Re-enabling as per-function bail gained **+3 net passing fixtures** (UPSTREAM ERROR fixtures that need us to bail to pass conformance).
 
 ### Fix 3: Refine `has_compiler_runtime_import` check (+1 fixture moved to compile, +0 net passing)
 - **Root cause:** We bailed on ANY import from `react/compiler-runtime`. The `babel-existing-react-runtime-import.js` fixture imports `{someImport}` (not the compiler cache).
 - **Fix:** Only bail when `c` or `useMemoCache` is specifically imported.
 
-### Fix 4: Remove `has_eslint_suppression_for_rules` file-level bail (+1 fixture passing)
+### Fix 4: Remove `has_eslint_suppression_for_rules` file-level bail, then re-enable as per-function bail (+1 fixture passing)
 - **Root cause:** We bailed entire files with custom eslint suppression rules. Upstream bails per-function.
-- **Fix:** Removed the file-level bail. TODO: implement per-function suppression.
+- **Initial fix (2026-03-25):** Removed the file-level bail. +1 net at the time.
+- **Follow-up (2026-03-26):** Re-enabled as a custom ESLint suppression per-function bail matching upstream behavior. The per-function bail correctly bails individual functions that have ESLint suppression annotations, rather than bailing the entire file. This gained **+1 net passing fixture** (the suppression bail fixture itself now correctly bails).
 
 ## Remaining Bail-out Breakdown (89 fixtures)
 

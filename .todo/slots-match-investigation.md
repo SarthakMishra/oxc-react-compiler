@@ -36,11 +36,13 @@
 
 **Estimated impact:** Directly fixes naming in 48+ fixtures. Combined with other improvements, could help 60-80.
 
-### B2: Temps where upstream uses original names (40 fixtures — DOMINANT TRACTABLE PATTERN)
+### B2: Temps where upstream uses original names (40 fixtures — PARTIALLY TRACTABLE, SCOPE-INFERENCE DEPENDENT)
 
 **Problem:** We assign to a temp variable and then assign to the original; upstream assigns directly to the original.
 
 **Extended investigation (2026-03-25):** This is the SINGLE LARGEST TRACTABLE sub-pattern in the entire 237-fixture slots-MATCH pool. Revised count: 40 fixtures (up from initial 34 estimate). These fixtures have matching slot counts and would pass if we preserved original variable names in scope outputs instead of using temps.
+
+**Revised finding (2026-03-26): B2 is scope-inference dependent, NOT codegen-only.** Investigation revealed that many B2 fixtures also have scope boundary differences driven by scope inference. Changing which variable name is used for scope outputs (temp vs original) is a codegen change, but it does not pass conformance if the scope itself has different boundaries than upstream. B2 is therefore only partially addressable by codegen; the remainder requires scope inference improvements (Stage 3). This downgrades B2 from "largest tractable codegen fix" to "partially tractable, scope-dependent."
 
 **Example (type-test-field-store.js):**
 ```
@@ -48,9 +50,9 @@
 // Theirs: let x; ... x = {...}; ... const z = x.t;
 ```
 
-**Root cause:** Our codegen doesn't preserve original variable names for scope outputs when possible. Upstream tries to reuse the original declaration name.
+**Root cause:** Our codegen doesn't preserve original variable names for scope outputs when possible. Upstream tries to reuse the original declaration name. However, the scope boundaries themselves often differ, making name changes alone insufficient.
 
-**Fix complexity:** MEDIUM-HIGH — Requires changes to how scope outputs are emitted. The `collect_all_scope_declarations` system complicates this. However, this is more tractable than the full A1 (declaration placement) redesign because it only requires changing WHICH variable is used for scope outputs, not WHERE declarations are placed.
+**Fix complexity:** HIGH — Requires both codegen changes (scope output naming) AND scope inference improvements (scope boundary accuracy). The codegen-only portion may fix a subset of the 40 fixtures, but the majority also need scope inference fixes.
 
 ### B3: Original names where upstream uses temps (23 fixtures)
 
@@ -148,11 +150,15 @@ Edge cases with `t0` vs `t1` numbering within scopes, different `$` conflict res
 
 **Status:** BLOCKED until scope inference improvements (Stage 3) can produce control-flow-scoped scopes.
 
-#### Phase 3 (HIGH risk, +5-10): Merge declaration with initialization — NOT STARTED
+#### Phase 3 (HIGH risk, +5-10): Merge declaration with initialization — COMPLETE (+0, dormant)
 
-- Instead of `let t0; ... t0 = expr;`, emit `let t0 = expr;` when possible.
-- Pattern: `const q ;` → `const q =` (see `capture-indirect-mutate-alias.js`, `capture_mutate-across-fns.js`)
-- Only merge when the declaration and first assignment are adjacent.
+**Completed 2026-03-26.** Implemented merging of `let t0; t0 = expr;` into `let t0 = expr;` when the declaration and first assignment are adjacent. The merged form is emitted correctly.
+
+**Result: +0 fixtures.** All affected fixtures also differ in other ways (scope inference, naming). The improvement is dormant — it produces correct output for the merge pattern, but no fixture has this as its sole remaining difference. The benefit will materialize once scope inference improvements (Stage 3) resolve the other differences in these fixtures.
+
+~~- Instead of `let t0; ... t0 = expr;`, emit `let t0 = expr;` when possible.~~
+~~- Pattern: `const q ;` → `const q =` (see `capture-indirect-mutate-alias.js`, `capture_mutate-across-fns.js`)~~
+~~- Only merge when the declaration and first assignment are adjacent.~~
 
 **Key files:**
 - `codegen.rs` — `collect_all_scope_declarations` and lazy declaration placement logic
@@ -174,6 +180,8 @@ Edge cases with `t0` vs `t1` numbering within scopes, different `$` conflict res
 
 **Stage 1e COMPLETE (2026-03-26):** +6 fixtures gained (441->447). Dynamic gating parsing +3 (harness fix), empty catch handler +1, ObjectExpression computed key bail-out +2, const/let codegen +0.
 
+**Stage 1f COMPLETE (2026-03-26):** +5 fixtures gained (447->452). Known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Also: Phase 3 (merge decl+init) implemented +0 dormant, B2 found to be scope-inference dependent (not codegen-only).
+
 ### Key Finding (2026-03-26): Slots-MATCH Pool Dominated by Scope Inference
 
 After completing all tractable codegen fixes (Stages 1b through 1e), the remaining 227-fixture slots-MATCH pool is dominated by **scope inference differences**, not codegen formatting issues. The major remaining patterns all trace back to scope inference:
@@ -182,4 +190,4 @@ After completing all tractable codegen fixes (Stages 1b through 1e), the remaini
 2. **Variable name preservation (B2, 40 fixtures):** Partially a scope output assignment issue, but many B2 fixtures also have scope boundary differences driven by scope inference.
 3. **Instruction ordering within scopes:** The order of instructions inside scope guards depends on which instructions scope inference groups together.
 
-**Implication:** Further slots-MATCH gains require Stage 3 (scope inference improvements), not more codegen fixes. The codegen-only approach has been exhausted for this pool. B2 (variable name preservation) is the only remaining codegen-addressable sub-pattern with meaningful fixture count.
+**Implication:** Further slots-MATCH gains require Stage 3 (scope inference improvements), not more codegen fixes. The codegen-only approach has been exhausted for this pool. B2 (variable name preservation) was previously thought to be the last remaining codegen-addressable sub-pattern, but investigation (2026-03-26) found it too is scope-inference dependent — many B2 fixtures have scope boundary differences that prevent passing even with correct variable names. Phase 3 (merge decl+init) was also implemented and gained +0 (dormant until scope inference fixes). The codegen-only ceiling has been reached.

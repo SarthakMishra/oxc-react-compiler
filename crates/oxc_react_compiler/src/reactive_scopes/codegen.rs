@@ -24,6 +24,38 @@ type InlineMap = FxHashMap<String, String>;
 /// be emitted as a bare statement (`foo();`) without a `let tN =` prefix.
 const STMT_ONLY_SENTINEL: &str = "\x01STMT";
 
+/// Check if a string needs quoting when used as an object property key.
+/// Returns true for strings that are NOT valid JS identifiers (contain dots,
+/// spaces, operators, start with a digit, etc.).
+fn needs_object_key_quoting(name: &str) -> bool {
+    if name.is_empty() {
+        return true;
+    }
+    let mut chars = name.chars();
+    // First char must be a letter, underscore, or dollar sign
+    let first = chars.next().unwrap();
+    if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return true;
+    }
+    // Remaining chars must be alphanumeric, underscore, or dollar sign
+    for c in chars {
+        if !c.is_ascii_alphanumeric() && c != '_' && c != '$' {
+            return true;
+        }
+    }
+    false
+}
+
+/// Format an object property key for codegen output. Quotes the key if it's
+/// not a valid JS identifier (e.g., "a.b", "a b", "a+b").
+fn format_object_key(name: &str) -> Cow<'_, str> {
+    if needs_object_key_quoting(name) {
+        Cow::Owned(format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\"")))
+    } else {
+        Cow::Borrowed(name)
+    }
+}
+
 /// Returns `true` when the identifier corresponds to a compiler-generated
 /// temporary (unnamed, printed as `tN`).
 fn is_temp_place(place: &Place) -> bool {
@@ -870,6 +902,58 @@ fn should_skip_scope_promotion(idx: usize, skip_indices: &FxHashSet<usize>) -> b
     skip_indices.contains(&idx)
 }
 
+/// Build the set of DeclareLocal instruction indices that can be merged with
+/// their immediately following StoreLocal. When merged, the DeclareLocal is
+/// suppressed and the StoreLocal emits the declaration keyword inline
+/// (`let x = expr;` instead of `let x;\nx = expr;`).
+fn build_declare_merge_set(
+    instructions: &[ReactiveInstruction],
+    scope_skip_indices: &FxHashSet<usize>,
+    pre_declared: &FxHashSet<String>,
+    name_promotions: &FxHashMap<String, String>,
+) -> FxHashSet<usize> {
+    let mut merge_set = FxHashSet::default();
+    for i in 0..instructions.len().saturating_sub(1) {
+        // Already handled by scope output promotions — skip
+        if scope_skip_indices.contains(&i) {
+            continue;
+        }
+        // Must be a DeclareLocal instruction
+        let ReactiveInstruction::Instruction(decl_instr) = &instructions[i] else {
+            continue;
+        };
+        let InstructionValue::DeclareLocal { lvalue: decl_lvalue, .. } = &decl_instr.value else {
+            continue;
+        };
+        let decl_name = place_name(decl_lvalue);
+        // Must NOT already be declared (scope output pre-declaration)
+        if pre_declared.contains(decl_name.as_ref()) {
+            continue;
+        }
+        let next_i = i + 1;
+        // Next instruction must not be folded into scope promotion
+        if scope_skip_indices.contains(&next_i) {
+            continue;
+        }
+        // Next must be a StoreLocal for the same variable
+        let ReactiveInstruction::Instruction(store_instr) = &instructions[next_i] else {
+            continue;
+        };
+        let InstructionValue::StoreLocal { lvalue: target, .. } = &store_instr.value else {
+            continue;
+        };
+        if place_name(target) != decl_name {
+            continue;
+        }
+        // Must not be a promotion-skip StoreLocal (name-promoted away)
+        if should_skip_for_promotion(store_instr, name_promotions) {
+            continue;
+        }
+        merge_set.insert(i);
+    }
+    merge_set
+}
+
 /// Generate the RHS expression string for an inlinable instruction value,
 /// resolving any operand temps via `inline_map`.
 ///
@@ -979,7 +1063,11 @@ fn expr_string(
                         if prop.shorthand {
                             parts.push(name.clone());
                         } else {
-                            parts.push(format!("{}: {}", name, resolve(&prop.value)));
+                            parts.push(format!(
+                                "{}: {}",
+                                format_object_key(name),
+                                resolve(&prop.value)
+                            ));
                         }
                     }
                     crate::hir::types::ObjectPropertyKey::Computed(k) => {
@@ -1544,9 +1632,23 @@ fn codegen_block(
     // stored to a named variable, use the named variable as the scope declaration.
     let (scope_output_promotions, scope_skip_indices) =
         build_scope_output_promotions(&block.instructions);
+    // Build declare-merge set: DeclareLocal instructions that are immediately
+    // followed by a StoreLocal for the same variable can be merged into a single
+    // `let/const/var x = expr;` statement. We skip the DeclareLocal and let the
+    // StoreLocal emit the declaration keyword (since the name won't be in `declared`).
+    let declare_merge_set = build_declare_merge_set(
+        &block.instructions,
+        &scope_skip_indices,
+        declared,
+        &name_promotions,
+    );
     for (idx, instr) in block.instructions.iter().enumerate() {
         // Skip instructions that were folded into scope output promotions
         if should_skip_scope_promotion(idx, &scope_skip_indices) {
+            continue;
+        }
+        // Skip DeclareLocal instructions that will be merged into their following StoreLocal
+        if declare_merge_set.contains(&idx) {
             continue;
         }
         match instr {
@@ -2076,7 +2178,7 @@ fn codegen_instruction(
                             } else {
                                 output.push_str(&format!(
                                     "{}: {}",
-                                    name,
+                                    format_object_key(name),
                                     resolve_place(&prop.value, inline_map)
                                 ));
                             }

@@ -275,7 +275,6 @@ effect-derived-computations/invalid-derived-state-from-destructured-props.js
 effect-derived-computations/ref-conditional-in-effect-no-error.js
 effect-derived-computations/usestate-derived-from-prop-no-show-in-data-flow-tree.js
 error.assign-ref-in-effect-hint.js
-error.bailout-on-suppression-of-custom-rule.js
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-unnamed-temporary.js
@@ -285,9 +284,6 @@ error.hoist-optional-member-expression-with-conditional-optional.js
 error.hoist-optional-member-expression-with-conditional.js
 error.invalid-hoisting-setstate.js
 error.invalid-jsx-captures-context-variable.js
-error.invalid-known-incompatible-function.js
-error.invalid-known-incompatible-hook-return-property.js
-error.invalid-known-incompatible-hook.js
 error.invalid-optional-member-expression-as-memo-dep-non-optional-in-body.js
 error.invalid-pass-mutable-function-as-prop.js
 error.invalid-pass-ref-to-function.js
