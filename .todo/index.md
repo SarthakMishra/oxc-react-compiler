@@ -55,7 +55,7 @@ The path is clearer but requires significant compiler infrastructure work:
 | Todo error detection (remaining) | 4 | +2-4 | LOW-MED — need optional-chain-in-ternary, hoisting, context var |
 | Frozen-mutation validation fixes | 1 remains | +10 done (Stage 4d + follow-up) | MEDIUM | 1 remaining needs JSX capture analysis |
 
-**Conservative estimate:** +144-298 from 456 base = 600-754. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +143-297 from 457 base = 600-754. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
@@ -190,7 +190,7 @@ Key findings for slot-diff (688 fixtures):
 - **Both-no-memo (79):** Requires DCE + constant propagation (new passes). NOT cosmetic.
 - **Slot-diff deficit distribution:** -1 (131), -2 (120), -3 (35), -4 (42), -5 (16), -6 (22), -7 (4), -8+ (32). Total deficit: 402. Total surplus: 286.
 
-#### Stage 3a2: Investigate 0-Slot Surplus Fixtures (134 fixtures, est: +30-80)
+#### Stage 3a2: Investigate & Fix 0-Slot Surplus Fixtures (134 fixtures, est: +30-80) — PARTIALLY COMPLETE (+1, 456->457)
 
 **Pool:** 134 fixtures where upstream produces 0 cache slots (no memoization) but we produce >0 slots. These are currently miscategorized as "we compile, they don't" but are actually scope inference surplus fixtures where expected_slots = 0.
 
@@ -201,7 +201,12 @@ Key findings for slot-diff (688 fixtures):
 - `call-spread-argument-mutable-iterator.js`: Upstream produces passthrough-like output, 0 slots.
 - `block-scoping-switch-dead-code.js`: Upstream transforms switch/dead-code structure, 0 slots.
 
-**Investigation plan:**
+**Completed work (2026-03-26):**
+- [x] Enhanced `prune_non_escaping_scopes` to detect condition-test-only scope declarations and prune those scopes (+1 fixture: `escape-analysis-not-if-test.js`). Added ~300 lines: `collect_test_position_ids`, `collect_value_use_ids`, `propagate_alias_chains`, `is_scope_only_test_used`. This is a DIVERGENCE from upstream (which uses `ValueKind::Primitive` / escape flags); we use set-based analysis instead.
+- [x] Investigated 3 remaining `escape-analysis-not-*` fixtures (`conditional-test`, `switch-case`, `switch-test`) — **BLOCKED by scope inference merging (Stage 3b)**. The array scope (`[...].map(...)`) is merged with the result scope at the HIR level, so both map to the same reactive scope and the result identifier never appears isolated in the test position.
+- [x] Investigated root cause of 134 zero-slot surplus fixtures — **primarily scope inference issues (scopes spanning hook calls, over-merging), NOT missing prune logic**. The pruning enhancements can chip away at individual patterns but the dominant root cause is scope inference creating scopes that upstream doesn't create in the first place.
+
+**Remaining investigation plan:**
 - [ ] Sample 30 of the 134 fixtures and for each: (a) check what our scope inference produces (how many scopes, what they contain), (b) hypothesize why upstream produces 0 scopes
 - [ ] Categorize root causes: (a) our pruning misses cases upstream prunes, (b) our scope creation is too aggressive for certain patterns, (c) upstream has a pass we don't have (e.g., DCE eliminates the reactive scope inputs)
 - [ ] If a dominant pattern emerges (>30% of fixtures share one root cause), design a targeted fix
@@ -211,6 +216,8 @@ Key findings for slot-diff (688 fixtures):
 **Our files:** `prune_scopes.rs`, `infer_reactive_scope_variables.rs`
 
 **Why this is high priority:** 134 fixtures is the single largest addressable pool. If even 30% share a common root cause, fixing it yields +40 conformance. Removing scopes (making output more conservative) is SAFER than adding scopes -- less regression risk.
+
+**Key finding (2026-03-26):** The remaining 3 escape-analysis-not fixtures and the broader 134-fixture surplus pool are both dominated by scope inference merging issues. The pruning layer can only eliminate scopes that exist as discrete entities — when scope inference merges two conceptually separate scopes into one, the pruning layer cannot split them back apart. This reinforces that Stage 3b (scope merging fixes) is the critical path for large conformance gains in the surplus pool.
 
 #### Stage 3b: Fix Dominant Slot Diff Patterns (est: +15-25 fixtures, HIGH risk)
 
@@ -550,7 +557,8 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 | Stage 4e-D: Todo-bail (partial) | +3 (done) | 453 | LOW | 3/10 done (for-in-try, bail propagation). 7 remain (optional-chain, hoisting). |
 | Stage 4e-C/D2/E: Remaining upstream errors | +18-35 | 471-488 | MED-HIGH | 4e-C (3, MED), 4e-D2 preserve-memo (11, MED-HIGH), 4e-E (7, HIGH) |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 79 fixtures, new passes needed |
-| **Total remaining** | **+144-298** | **600-754** | | From 456 base |
+| Stage 3a2: Prune test-position scopes | +1 (done) | 457 | LOW | Completed. escape-analysis-not-if-test.js. 3 remaining escape-analysis-not fixtures BLOCKED by scope inference merging (Stage 3b). |
+| **Total remaining** | **+143-297** | **600-754** | | From 457 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
@@ -572,7 +580,7 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures (3 now fixed via validateInferredDep, 29 BLOCKED by scope dep resolution)
 
-**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +30-73 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~600 from 456 base. Optimistic: 700+.
+**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +30-73 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). Stage 3a2 investigation confirmed 0-slot surplus is primarily scope inference (not pruning gaps). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~600 from 457 base. Optimistic: 700+.
 
 **Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
 
@@ -738,3 +746,5 @@ All paths relative to `crates/oxc_react_compiler/`.
 32. **Scope dep IdentifierIds don't match original variable names after SSA.** Scope dependencies captured by reactive scopes have IdentifierIds that correspond to SSA temporaries (e.g., `t1`, `t2`), not the original source-level named variables (e.g., `props.x`). This prevents `validateInferredDep` from matching scope deps against manual memo deps (which use original names). The same problem affects any feature that needs to resolve a scope dep back to its original variable identity. Root cause: `propagate_dependencies.rs` does not preserve the original dependency path through SSA. This is a cross-cutting blocker that affects validateInferredDep (29 fixtures), and potentially B2 variable name preservation and other scope-dep-dependent features.
 33. **validateInferredDep partial success pattern.** Of 32 target error fixtures, only 3 pass because their deps happen to be simple named variables that survive SSA without temp indirection. The remaining 29 fail because their deps go through PropertyLoad chains that produce SSA temps. The algorithm itself is correct; the resolution layer is the blocker.
 34. **134 "no error header" fixtures are SCOPE INFERENCE SURPLUS, not validation gaps (2026-03-26).** Previously described as "not actionable without identifying specific upstream validations." Investigation revealed upstream DID compile these fixtures -- it produced structurally transformed output with 0 reactive scopes. We produce >0 scopes (over-memoization). These are part of the 286-fixture surplus pool where our_slots > expected_slots, specifically the subset where expected_slots = 0. This makes scope inference surplus the DOMINANT conformance gap: 134 (zero-slot surplus) + 152 (non-zero surplus where our_slots > expected_slots) = 286 surplus fixtures total. Understanding why upstream produces 0 scopes on the 134 is the key investigation for large conformance gains.
+35. **Pruning cannot fix scope inference merging problems (2026-03-26).** The `prune_non_escaping_scopes` enhancement (test-position detection) gained +1 fixture but the remaining 3 `escape-analysis-not-*` fixtures are BLOCKED because scope inference merges the array scope with the result scope. The pruning layer operates on reactive scopes as they exist after inference -- it cannot split a merged scope. The 134 zero-slot surplus fixtures are similarly dominated by scope inference issues (scopes spanning hook calls, over-merging), not missing prune logic. This means the scope inference merging algorithm (Stage 3b) is the gating factor for both the escape-analysis fixtures and the broader surplus pool.
+36. **Divergence approach for test-position escape analysis works but has limits (2026-03-26).** Upstream uses `ValueKind::Primitive` / escape flags (a type-level system) to prune non-escaping scopes used only in test positions. Our DIVERGENCE uses set-based analysis (collect test-position IDs, subtract write targets, propagate aliases). This works for the simple case (`escape-analysis-not-if-test.js`) where the scope output is directly used as an if-test. It fails for cases where scope inference has already merged the scope with another, making the output identifier appear in non-test contexts. The divergence approach is correct but bounded by scope inference quality.

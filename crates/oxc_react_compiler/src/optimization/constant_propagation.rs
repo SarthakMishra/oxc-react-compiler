@@ -104,6 +104,48 @@ fn collect_constants(hir: &HIR) -> FxHashMap<IdentifierId, Primitive> {
         }
     }
 
+    // Phase 2: Propagate constants through phi nodes.
+    // If all operands of a phi are the same constant, the phi result is that constant.
+    // Iterate to fixed point since phi chains may depend on each other.
+    loop {
+        let mut changed = false;
+        for (_, block) in &hir.blocks {
+            for phi in &block.phis {
+                let phi_id = phi.place.identifier.id;
+                // Skip if already resolved
+                if constants.contains_key(&phi_id) {
+                    continue;
+                }
+                // Check if all operands map to the same constant
+                let mut phi_const: Option<&Primitive> = None;
+                let mut all_same = true;
+                for (_, operand) in &phi.operands {
+                    if let Some(Some(c)) = constants.get(&operand.identifier.id) {
+                        match phi_const {
+                            None => phi_const = Some(c),
+                            Some(existing) if existing == c => {}
+                            _ => {
+                                all_same = false;
+                                break;
+                            }
+                        }
+                    } else {
+                        // Operand is not a constant (or is poisoned)
+                        all_same = false;
+                        break;
+                    }
+                }
+                if all_same && let Some(c) = phi_const {
+                    constants.insert(phi_id, Some(c.clone()));
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
     constants.into_iter().filter_map(|(id, val)| val.map(|v| (id, v))).collect()
 }
 

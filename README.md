@@ -2,7 +2,7 @@
 
 Native [OXC](https://oxc.rs/) port of Meta's [React Compiler](https://github.com/facebook/react/tree/main/compiler/packages/babel-plugin-react-compiler) for the Rolldown/Vite pipeline, plus React 19 compiler-based lint rules for oxlint.
 
-> **Status:** This is an active port — 140+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 26.6% (457/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
+> **Status:** This is an active port — 140+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 26.6% (464/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
 
 ## Vite Plugin Usage
 
@@ -213,8 +213,8 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 | Metric                      | Value        |
 | --------------------------- | ------------ |
 | Total upstream fixtures     | 1717         |
-| Passing (exact match)       | 457 (26.6%)  |
-| Failing (output divergence) | 1260         |
+| Passing (exact match)       | 464 (27.0%)  |
+| Failing (output divergence) | 1253         |
 | Panics / crashes            | 0            |
 | Render equivalence          | 92% (23/25)  |
 

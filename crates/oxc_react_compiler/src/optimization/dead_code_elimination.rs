@@ -23,6 +23,14 @@ pub fn dead_code_elimination_with_unused_declares(hir: &mut HIR) -> usize {
 
 fn dead_code_elimination_inner(hir: &mut HIR, remove_unused_declares: bool) -> usize {
     let used = collect_used_identifiers(hir);
+    // For extended DCE, build a read-only set that excludes write targets
+    // (StoreLocal lvalue, DeclareLocal lvalue). This allows detecting when
+    // a variable is only written to but never read.
+    let read_used = if remove_unused_declares {
+        collect_read_identifiers(hir)
+    } else {
+        FxHashSet::default() // Not needed; avoid the cost
+    };
     let mut removed = 0;
 
     for (_, block) in &mut hir.blocks {
@@ -30,13 +38,27 @@ fn dead_code_elimination_inner(hir: &mut HIR, remove_unused_declares: bool) -> u
         block.instructions.retain(|instr| {
             // Keep instructions with side effects
             if has_side_effects(&instr.value) {
-                // When remove_unused_declares is true, allow removing DeclareLocal
-                // for variables that are never read or stored to.
-                // DIVERGENCE: upstream removes unused DeclareLocal instructions.
-                if remove_unused_declares
-                    && let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value
-                {
-                    return used.contains(&lvalue.identifier.id);
+                // Extended DCE (only safe AFTER validation passes):
+                if remove_unused_declares {
+                    // DeclareLocal: remove when the declared variable is never read
+                    if let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value {
+                        return read_used.contains(&lvalue.identifier.id);
+                    }
+                    // StoreLocal: remove when the stored-to variable is never read.
+                    // Uses read_used to avoid self-referential "used" from the store itself.
+                    if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value {
+                        return read_used.contains(&lvalue.identifier.id);
+                    }
+                    // PrefixUpdate/PostfixUpdate: remove when the result is never used.
+                    // In SSA, the update creates a new version; if that version is never
+                    // read, the update is dead.
+                    if matches!(
+                        &instr.value,
+                        InstructionValue::PrefixUpdate { .. }
+                            | InstructionValue::PostfixUpdate { .. }
+                    ) {
+                        return used.contains(&instr.lvalue.identifier.id);
+                    }
                 }
                 return true;
             }
@@ -69,6 +91,56 @@ fn collect_used_identifiers(hir: &HIR) -> FxHashSet<IdentifierId> {
     }
 
     used
+}
+
+/// Collect IdentifierIds that are READ (not just written) anywhere.
+/// Excludes write targets: StoreLocal lvalue, DeclareLocal lvalue.
+/// Used for extended DCE to detect variables that are stored but never read.
+fn collect_read_identifiers(hir: &HIR) -> FxHashSet<IdentifierId> {
+    let mut used = FxHashSet::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            collect_read_in_instruction_value(&instr.value, &mut used);
+        }
+        collect_used_in_terminal(&block.terminal, &mut used);
+        for phi in &block.phis {
+            for (_, operand) in &phi.operands {
+                used.insert(operand.identifier.id);
+            }
+        }
+    }
+
+    used
+}
+
+/// Like collect_used_in_instruction_value but excludes write targets
+/// (StoreLocal lvalue, DeclareLocal lvalue, DeclareContext lvalue).
+fn collect_read_in_instruction_value(value: &InstructionValue, used: &mut FxHashSet<IdentifierId>) {
+    let mut add = |place: &crate::hir::types::Place| {
+        used.insert(place.identifier.id);
+    };
+
+    match value {
+        InstructionValue::LoadLocal { place } => add(place),
+        InstructionValue::StoreLocal { value, .. } => {
+            // Only the value (rhs) is a read; lvalue is a write target
+            add(value);
+        }
+        InstructionValue::LoadContext { place } => add(place),
+        InstructionValue::StoreContext { lvalue, value } => {
+            add(lvalue);
+            add(value);
+        }
+        InstructionValue::DeclareLocal { .. } => {
+            // lvalue is a write target, not a read
+        }
+        InstructionValue::DeclareContext { .. } => {
+            // lvalue is a write target, not a read
+        }
+        // All other cases delegate to the standard collector
+        other => collect_used_in_instruction_value(other, used),
+    }
 }
 
 fn collect_used_in_instruction_value(value: &InstructionValue, used: &mut FxHashSet<IdentifierId>) {

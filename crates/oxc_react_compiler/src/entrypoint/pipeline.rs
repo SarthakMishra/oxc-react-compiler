@@ -78,7 +78,8 @@ pub fn run_pipeline(
     inline_load_local_temps(hir);
 
     // Phase 3: Optimization & Type Inference
-    // Pass 10: Constant propagation (with binary/unary expression folding)
+    // Pass 10: Constant propagation (with binary/unary expression folding
+    // and phi-node constant propagation)
     crate::optimization::constant_propagation::constant_propagation(hir);
 
     // Pass 11: Infer types
@@ -172,10 +173,9 @@ pub fn run_pipeline(
         crate::optimization::optimize_for_ssr::optimize_for_ssr(hir);
     }
 
-    // Pass 18: Dead code elimination (extended: also removes unused DeclareLocal).
-    // Safe to use the extended version here because all validation passes have
-    // already run, so we won't remove declarations that validators depend on.
-    crate::optimization::dead_code_elimination::dead_code_elimination_with_unused_declares(hir);
+    // Pass 18: Dead code elimination (basic: does NOT remove DeclareLocal/StoreLocal
+    // because later validators need them). Only removes pure unused instructions.
+    crate::optimization::dead_code_elimination::dead_code_elimination(hir);
 
     // Pass 19: prune_maybe_throws (2nd pass)
     crate::optimization::prune_maybe_throws::prune_maybe_throws(hir);
@@ -292,6 +292,21 @@ pub fn run_pipeline(
 
     // Pass 32: validate_static_components
     crate::validation::validate_static_components::validate_static_components(hir, errors);
+
+    // Pass 32.5: Extended optimization loop (constant propagation + extended DCE).
+    // Safe to run here because ALL validation passes have completed.
+    // Constant propagation may fold phi nodes, which combined with DCE
+    // removes dead stores, unused declares, and dead update expressions.
+    for _ in 0..8 {
+        let cp = crate::optimization::constant_propagation::constant_propagation(hir);
+        let dce =
+            crate::optimization::dead_code_elimination::dead_code_elimination_with_unused_declares(
+                hir,
+            );
+        if cp == 0 && dce == 0 {
+            break;
+        }
+    }
 
     // Phase 8: Reactive Scope Construction
     // Pass 33: infer_reactive_scope_variables

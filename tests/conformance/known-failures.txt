@@ -89,7 +89,6 @@ call-args-destructuring-assignment.js
 call-spread-argument-mutable-iterator.js
 call-spread.js
 call-with-independently-memoizable-arg.js
-call.js
 capture-indirect-mutate-alias-iife.js
 capture-indirect-mutate-alias.js
 capture-param-mutate.js
@@ -113,8 +112,6 @@ capturing-func-alias-receiver-computed-mutate-iife.js
 capturing-func-alias-receiver-computed-mutate.js
 capturing-func-alias-receiver-mutate-iife.js
 capturing-func-alias-receiver-mutate.js
-capturing-func-mutate-2.js
-capturing-func-mutate-3.js
 capturing-func-mutate.js
 capturing-func-no-mutate.js
 capturing-func-simple-alias-iife.js
@@ -138,7 +135,6 @@ capturing-function-shadow-captured.js
 capturing-function-skip-computed-path.js
 capturing-function-within-block.js
 capturing-member-expr.js
-capturing-nested-member-call.js
 capturing-nested-member-expr-in-nested-func.js
 capturing-nested-member-expr.js
 capturing-reference-changes-type.js
@@ -181,7 +177,6 @@ constant-propagation-unary-number.js
 constant-propagation-unary.js
 constant-propagation-while.js
 constant-propagation.js
-constructor.js
 context-variable-as-jsx-element-tag.js
 context-variable-reactive-explicit-control-flow.js
 context-variable-reactive-implicit-control-flow.js
@@ -504,7 +499,6 @@ interdependent-across-if.js
 interdependent.js
 invalid-jsx-in-catch-in-outer-try-with-catch.js
 invalid-jsx-in-try-with-catch.js
-invalid-jsx-lowercase-localvar.jsx
 invalid-set-state-in-effect-verbose-derived-event.js
 invalid-set-state-in-effect-verbose-force-update.js
 invalid-set-state-in-effect-verbose-non-local-derived.js
@@ -1066,7 +1060,6 @@ simple-function-1.js
 simple.js
 ssa-arrayexpression.js
 ssa-call-jsx-2.js
-ssa-call-jsx.js
 ssa-cascading-eliminated-phis.js
 ssa-complex-multiple-if.js
 ssa-complex-single-if.js
