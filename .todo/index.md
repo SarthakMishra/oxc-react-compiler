@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-03-25 (post Stage 1d Phase 1 — lazy scope declaration placement)
-> Conformance: **450/1717 (26.2%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Stage 1d Phase 1 (complete): +6 fixtures (444->450). Lazy scope declaration placement — declarations emitted just before scope guard instead of function top. Same-slots pool: 233->227.
-> Known-failures: 1267. Error.* fixtures remaining in KF: 37 (35 top-level + 2 fbt/).
+> Last updated: 2026-03-26 (post Stage 4e-D partial — todo-bail fixtures + file-level bail propagation)
+> Conformance: **453/1717 (26.4%)**. Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Stage 4e-D partial: +3 fixtures (450->453). Fixed 3 of 10 todo-bail fixtures via Terminal::For detection (for-in-try) and file-level bail propagation (ANY_FUNCTION_BAILED thread-local). 7 remain.
+> Known-failures: 1264. Error.* fixtures remaining in KF: 34 (32 top-level + 2 fbt/).
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
@@ -16,7 +16,7 @@
 |----------|-------|-------------|
 | Both compile, slots DIFFER | 688 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** Deficit (our < expected): 402 fixtures. Surplus (our > expected): 286 fixtures. |
 | Both compile, slots MATCH | 227 (was 237, -6 from 1d Phase 1 moved to matched) | Same slots, codegen structure diffs. **B2 pattern (temps vs original names) dominates: 40 fixtures.** |
-| We compile, they don't | 189 (15%) | Missing validations. **Breakdown: 60 preserve-memo, 15 flow-parse, 10 todo-bail, 6 invariant, 4 frozen-value, rest mixed.** |
+| We compile, they don't | 186 (15%) | Missing validations. **Breakdown: 60 preserve-memo, 15 flow-parse, 7 todo-bail (was 10, 3 fixed in 4e-D), 6 invariant, 4 frozen-value, rest mixed.** |
 | We bail, they compile | 84 (6%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking) |
 | Both no memo (format diff) | 79 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
 
@@ -27,7 +27,7 @@
 2. **"We compile, they don't" (189 fixtures, revised 2026-03-25) breakdown:**
    - **60 are preserve-memo** — `validatePreserveExistingMemoizationGuarantees` gaps. Sub-types: 26 need `validateInferredDep` (not implemented), 17 need "value was memoized" check improvement, 17 need "dependency may be mutated" tracking.
    - **15 are flow-parse** — Flow type annotation parsing failures (not actionable without Flow support)
-   - **10 are todo-bail** — upstream emits `Todo` errors for unimplemented features; we silently compile
+   - **7 are todo-bail** (was 10, 3 fixed in 4e-D) — upstream emits `Todo` errors for unimplemented features; we silently compile
    - **6 are invariant** — upstream internal assertion failures we don't replicate
    - **4 are frozen-value** — frozen-mutation detection gaps
    - Remaining: mixed validation gaps (ref-access, reassignment, hooks, etc.)
@@ -48,10 +48,10 @@ The path is clearer but requires significant compiler infrastructure work:
 | Variable name preservation in codegen (B2) | 40 | +20-30 | MEDIUM — scope output naming changes |
 | Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — load-bearing code |
 | Remaining bail-out fixes (2d-2g) | ~84 total bail pool | +15-25 | MEDIUM — per-validation fixes |
-| Todo error detection (remaining) | 12 | +5-8 | LOW — need hoisting, optional terminals, default params |
+| Todo error detection (remaining) | 4 | +2-4 | LOW-MED — need optional-chain-in-ternary, hoisting, context var |
 | Frozen-mutation validation fixes | 2 remain | +9 done (Stage 4d) | MEDIUM | 2 remaining need effect callback + JSX capture analysis |
 
-**Conservative estimate:** +127-252 from 450 base = 577-702. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +124-249 from 453 base = 577-702. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
@@ -247,7 +247,7 @@ Key findings for slot-diff (688 fixtures):
 
 ### Stage 4: Validation Gaps — "We Compile, They Don't" (target: +50-75 fixtures)
 
-**Pool:** 189 fixtures where upstream bails with an error but we compile (incorrectly). Breakdown: 60 preserve-memo, 15 flow-parse, 10 todo-bail, 6 invariant, 4 frozen-value, rest mixed.
+**Pool:** 186 fixtures where upstream bails with an error but we compile (incorrectly). Breakdown: 60 preserve-memo, 15 flow-parse, 7 todo-bail (was 10, 3 fixed in 4e-D), 6 invariant, 4 frozen-value, rest mixed.
 **Risk:** LOW — adding validations is safe (bail-out = pass-through = correct).
 
 #### Stage 4a: Categorize Missing Validations -- COMPLETE (investigation)
@@ -258,7 +258,7 @@ Completed 2026-03-25 (extended investigation). Breakdown of ~225 "we compile, th
 |-------------|-------|---------------|
 | UPSTREAM ERROR fixtures (expected output IS the error) | 29 remaining in KF (was 75, 22 fixed in Stages 4c+4e-A, others already passing) | Must bail (not transform) to pass — error message matching NOT required |
 | `validatePreserveExistingMemoizationGuarantees` gaps | 32 | Extend existing preserve-memo validation |
-| `Todo` error detection (unimplemented features) | 5 remaining (22 done) | 5 need hoisting, optional terminals, context var detection |
+| `Todo` error detection (unimplemented features) | 4 remaining (25 done, +3 from 4e-D) | 4 need optional-chain-in-ternary (2), hoisting (1), context var detection (1) |
 | Frozen-mutation detection gaps | 2 remain (9 fixed) | 9 fixed in Stage 4d; 2 remain (effect callback, JSX capture) |
 | Other validation gaps (ref-access, reassignment, hooks) | ~80 | Various per-validation fixes |
 
@@ -317,16 +317,16 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
   - `error.invalid-jsx-captures-context-variable.js` — complex JSX capture pattern, needs deeper analysis
 - **New regression:** 4 IIFE-pattern fixtures (`capturing-func-alias-*-iife.js`) now falsely bail. See Stage 2d note below.
 
-#### Stage 4e: UPSTREAM ERROR Fixture Handling (39 error.* remain in KF post 4e-A, was 43)
+#### Stage 4e: UPSTREAM ERROR Fixture Handling (36 error.* remain in KF post 4e-D partial, was 43)
 
 **Critical correction (2026-03-25):** The conformance test does NOT require matching exact error messages. It only checks `!compile_result.transformed` (line 781 of conformance_tests.rs). To pass an UPSTREAM ERROR fixture, we just need to bail (not transform). This is much simpler than originally described.
 
-**Revised breakdown of 39 error.* fixtures remaining in known-failures (post Stage 4e-A):**
+**Revised breakdown of 36 error.* fixtures remaining in known-failures (post Stage 4e-D partial):**
 
 | Sub-category | Count | What we need to bail |
 |-------------|-------|---------------------|
 | "Compilation Skipped: preserve-memo" | 11 | `validatePreserveExistingMemoizationGuarantees` must detect and bail — overlaps Stage 4b |
-| "Todo: hoisting/optional/context-var/etc" | 7 | Remaining unsupported patterns: hoisting (3), optional member expr (2), context var update (1), missing source locs (1) — need deeper compiler infra |
+| "Todo: hoisting/optional/context-var/etc" | 4 | Remaining unsupported patterns (was 7, 3 fixed in 4e-D): optional-chain-in-ternary (2), hoisting (1), context var update (1) — need deeper compiler infra |
 | "Invariant: ..." (upstream internal errors) | 3 | MethodCall codegen (1), inconsistent destructuring (1), unnamed temporary (1) — 3 of original 6 fixed in 4e-A |
 | "Error: This value cannot be modified" | 3 | Frozen-mutation detection — overlaps Stage 4d remaining |
 | "Error: Cannot modify locals after render" | 2 | `validateLocalsNotReassignedAfterRender` gaps |
@@ -340,11 +340,13 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 - [x] **4e-A: Mixed bail-outs — COMPLETE (+7, 435->442)** — implemented 7 new bail-outs across 3 files: hoisted function decls in unreachable code (3 fixtures: `error.todo-hoist-function-decls.js`, `error.todo-hoisted-function-in-unreachable-code.js`, `error.hoisting-simple-function-declaration.js`), fbt parameter name detection (1: `fbt/error.todo-fbt-as-local.js`), default-param arrow/function expressions (1: `error.default-param-accesses-local.js`), catch clause destructuring (1: `error.bug-invariant-couldnt-find-binding-for-decl.js`), hook spread arguments (1: `error.todo-hook-call-spreads-mutable-iterator.js`). Files: `validate_no_unsupported_nodes.rs`, `build.rs`, `known-failures.txt`. **Note:** `error.todo-handle-update-context-identifiers.js` (Group 6, UpdateExpression on context vars) was NOT fixed — nested HIR builders don't emit `LoadContext` instructions, so context variables can't be detected by walking the nested HIR. See blocker report below.
 - [~] **4e-B: Locals-reassigned + ref-access + setState bail-outs (5 fixtures)** — tighten existing validators (`validate_no_ref_access_in_render`, `validate_locals_not_reassigned_after_render`, setState checks, hooks-in-loop) to catch these specific patterns. **Progress:** +2 fixtures (hooks-in-for-loop via Terminal::Branch handling in `validate_hooks_usage.rs`; ref-access detection for `error.validate-mutate-ref-arg-in-render.js` via name-based + Type::Ref fallback in `validate_no_ref_access_in_render.rs`). Remaining potential gain: +3.
 - [ ] **4e-C: Frozen-mutation remaining (3 fixtures)** — overlaps Stage 4d remaining. Need effect callback mutation + JSX capture analysis. Potential gain: +3.
-- [ ] **4e-D: Preserve-memo gaps (11 fixtures)** — overlaps Stage 4b. BLOCKED by `finish_in_scope` issue (see Stage 4b notes). Potential gain: +11 but requires scope inference fix.
-- [ ] **4e-E: Todo remaining (7 fixtures)** — overlaps Stage 4c remaining. Need hoisting (3), optional member expr (2), context var update (1), missing source locs (1). Potential gain: +7 but requires new infrastructure. Context var update BLOCKED by nested HIR LoadContext gap.
+- [~] **4e-D: Todo-bail fixtures (10 fixtures) — PARTIALLY COMPLETE (+3, 450->453).** Fixed 3 of 10: `repro-declaration-for-all-identifiers.js` (for-in-try detection via Terminal::For), `repro-for-loop-in-try.js` (same), `repro-nested-try-catch-in-usememo.js` (file-level bail propagation via ANY_FUNCTION_BAILED thread-local). **7 remaining:** `optional-call-chain-in-ternary.ts`, `todo-optional-call-chain-in-optional.ts`, `propagate-scope-deps-hir-fork/todo-optional-call-chain-in-optional.ts`, `error.dont-hoist-inline-reference.js`, and ~3 others. See new gap notes below.
+- [ ] **4e-D2: Preserve-memo gaps (11 fixtures)** — overlaps Stage 4b. BLOCKED by `finish_in_scope` issue (see Stage 4b notes). Potential gain: +11 but requires scope inference fix.
+- [ ] **4e-E: Todo remaining (4 fixtures, was 7, 3 fixed in 4e-D)** — overlaps Stage 4c remaining. Need optional-chain-in-ternary (2), hoisting (1), context var update (1). Potential gain: +4 but requires new infrastructure. Context var update BLOCKED by nested HIR LoadContext gap. Optional-chain-in-ternary needs new validation pattern (see gap note below).
 
 **Stage 4e-A done: +7 fixtures gained.**
-**Stage 4e-B progress: +2 fixtures gained (444 total).**
+**Stage 4e-B progress: +2 fixtures gained (444 total, pre-1d).**
+**Stage 4e-D partial: +3 fixtures gained (450->453).** Fixed via Terminal::For detection + file-level bail propagation.
 1. Fixed hooks-in-for-loop detection: `find_conditional_blocks` in `validate_hooks_usage.rs` now handles `Terminal::Branch` (for-loop continue/break targets), which was previously unmatched, causing the validator to miss hook calls inside for-loops.
 2. Fixed ref-access detection for `error.validate-mutate-ref-arg-in-render.js`: `validate_no_ref_access_in_render.rs` now uses name-based fallback (`is_ref_name` / `ref_names` set) and `Type::Ref` checks on PropertyLoad/PropertyStore objects, in addition to ID-based tracking. This handles cases where inline_load_local_temps (Pass 9.6) eliminates LoadLocal instructions, causing ref IDs to not propagate. Also tracks source place IDs in LoadLocal (not just lvalue IDs).
 **Remaining tractable gain (4e-B): +3 fixtures, no new infrastructure.**
@@ -369,6 +371,34 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 - Pass parent scope binding names to the validation and compare by name (fragile but possible)
 
 **Do NOT attempt again until:** The HIR builder's nested function lowering is enhanced to distinguish context variables, or a post-scope-inference validation hook exists.
+
+#### Gap: Optional Chain in Ternary Detection (2 fixtures)
+
+**Fixtures:** `optional-call-chain-in-ternary.ts`, `todo-optional-call-chain-in-optional.ts` (also `propagate-scope-deps-hir-fork/todo-optional-call-chain-in-optional.ts`)
+
+**What upstream does:** Upstream emits a `Todo` error when it encounters optional chaining (`?.()` or `?.`) inside ternary expressions within try blocks (or similar patterns). This is an unimplemented feature that upstream explicitly bails on.
+
+**Current state:** Our validation does not check for optional chaining inside ternary expressions. We silently compile these fixtures instead of bailing. The existing `validate_no_unsupported_nodes` checks for some Todo patterns (try-without-catch, computed keys, etc.) but does not cover this pattern.
+
+**What's needed:** Add detection for optional call chains (`?.()`) and optional member expressions (`?.`) when they appear inside conditional/ternary expressions within try blocks. This likely requires walking expression nodes during HIR lowering or validation to detect the specific pattern.
+
+**Depends on:** None (standalone validation addition), but the detection pattern is non-trivial because the optional chaining may be nested arbitrarily deep inside the ternary operands.
+
+#### Gap: Hoisting Inline Reference Detection (1 fixture)
+
+**Fixture:** `error.dont-hoist-inline-reference.js`
+
+**Current state:** Not investigated. Upstream bails with an error related to hoisting inline references. We compile instead. The specific upstream validation that catches this pattern has not been identified.
+
+**What's needed:** Investigation to determine which upstream validation catches this pattern and what our gap is.
+
+**Depends on:** Investigation needed before implementation.
+
+#### Cross-Cutting Fix: File-Level Bail Propagation (ANY_FUNCTION_BAILED)
+
+**Implemented in 4e-D (2026-03-26).** When ANY function in a file bails during compilation (e.g., due to a try-catch Todo error), the bail-out now propagates to the file level via an `ANY_FUNCTION_BAILED` thread-local flag. This ensures that fixtures where upstream bails the entire file (because one function has an unsupported pattern) are correctly handled by our compiler. Previously, we would bail on the individual function but still emit a transformed result for the file, causing the conformance test to see `transformed = true` when it should be `false`.
+
+**Impact:** This is a cross-cutting improvement that affects ALL fixtures in the "we compile, upstream bails" category where the upstream bail comes from a nested function within the file. The 3 fixtures gained in 4e-D (+3, 450->453) were directly enabled by this propagation mechanism.
 
 ---
 
@@ -421,15 +451,16 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 | Stage 4d: Frozen-mutation false negatives | +9 (done) | 435 | MEDIUM | Completed. 7/9 planned + 2 bonus. 2 remain (effect callback, JSX capture). |
 | Stage 4e-A: Upstream error bail-outs | +7 (done) | 442 | LOW | 7/43 done. 4e-B through 4e-E remain. |
 | Stage 4e-B: Locals/ref/setState/hooks | +2 so far | 444 (pre-1d) | LOW | 2/5 done (hooks-in-loop, mutate-ref-arg). 3 remain. |
-| Stage 4e-C/D/E: Remaining upstream errors | +21-38 | 464-481 | MED-HIGH | 4e-C (3, MED), 4e-D (11, MED-HIGH), 4e-E (7, HIGH) |
+| Stage 4e-D: Todo-bail (partial) | +3 (done) | 453 | LOW | 3/10 done (for-in-try, bail propagation). 7 remain (optional-chain, hoisting). |
+| Stage 4e-C/D2/E: Remaining upstream errors | +18-35 | 471-488 | MED-HIGH | 4e-C (3, MED), 4e-D2 preserve-memo (11, MED-HIGH), 4e-E (7, HIGH) |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 79 fixtures, new passes needed |
-| **Total remaining** | **+154-304** | **604-754** | | From 450 base |
+| **Total remaining** | **+151-301** | **604-754** | | From 453 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
 **Key learning from Stage 2a/2b:** Most bail-outs come from specific validations, not silent/0-scope issues. File-level bail-outs were low-hanging fruit (+1 net from removing 4).
 
-**Key correction (2026-03-25):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-B partial, **37 error.* fixtures remain in known-failures** (35 top-level + 2 fbt/). Down from 43 pre-4e-A.
+**Key correction (2026-03-26):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-D partial, **34 error.* fixtures remain in known-failures** (32 top-level + 2 fbt/). Down from 43 pre-4e-A, 37 pre-4e-D.
 
 **Important: CompilationMode::All in conformance tests.** The conformance test harness (`tests/conformance_tests.rs`) uses `compilationMode:"all"`, meaning ALL functions in a fixture are compiled (not just those detected as components/hooks). This affects which fixtures pass/fail because validations run on every function body, not just component-shaped ones. When investigating fixture behavior, always account for this mode.
 
@@ -445,7 +476,7 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
 
-**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +37-80 remaining) + codegen fixes (B2 + 1d Phases 2-3, +30-50). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~577 from 450 base. Optimistic: 700+.
+**Revised path to 600:** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +34-77 remaining) + codegen fixes (B2 + 1d Phases 2-3, +30-50). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~577 from 453 base. Optimistic: 700+.
 
 **Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
 
@@ -582,4 +613,6 @@ All paths relative to `crates/oxc_react_compiler/`.
 19. **Low-hanging Todo errors yield good ROI.** Stage 4c gained +15 from simple pattern detection (try-without-catch, computed keys, value-blocks-in-try, throw-in-try, fbt locals). The remaining 12 need deeper compiler infrastructure (hoisting, optional terminals, default params).
 20. **UPSTREAM ERROR conformance only checks `!transformed`, not error message content.** The conformance test (line 775-781 of conformance_tests.rs) passes an UPSTREAM ERROR fixture if `compile_result.transformed` is false. We do NOT need to match the exact upstream error string. This makes the task much simpler: just bail, don't need error format matching.
 21. **Name-based freeze tracking trades false negatives for false positives.** Stage 4d gained +9 by tracking frozen identifiers by name (solving cross-scope IdentifierId mismatch), but introduced 4 IIFE-pattern false positives where captured variables are mutated inside IIFEs. Net gain is still positive (+9 gained, -4 shifted to bail = +5 net new passing + 4 category shifts). Future improvement: scoped name tracking that understands IIFE boundaries.
+23. **File-level bail propagation is necessary for conformance.** When a nested function bails (e.g., try-catch Todo error), upstream treats the entire file as "not transformed." Our compiler was bailing the individual function but still reporting the file as transformed. The `ANY_FUNCTION_BAILED` thread-local flag (added in 4e-D) propagates any function-level bail to the file level, matching upstream behavior. This cross-cutting fix enabled 3 fixtures and may enable more as we add new per-function bail-outs.
+24. **Optional chaining in ternary/conditional expressions is a distinct Todo pattern.** Upstream bails on `?.()` and `?.` inside ternary expressions in try blocks. This is not covered by our existing Todo-pattern detection. The 2 remaining optional-chain fixtures (`optional-call-chain-in-ternary.ts`, `todo-optional-call-chain-in-optional.ts`) need a new detection path.
 22. **Nested HIR builders don't emit LoadContext instructions.** When a nested function is lowered by a child `HIRBuilder`, context variables (captured from outer scope) are represented as plain `LoadLocal` in the nested HIR, not `LoadContext`. This means walking the nested HIR cannot distinguish context variables from local variables. The upstream compiler uses `LoadContext` to identify captured variables in nested lambdas. Fixing `error.todo-handle-update-context-identifiers.js` requires either (a) emitting `LoadContext` in nested builders, or (b) passing parent scope binding information to the validation pass. This is a structural limitation, not a simple pattern-matching fix.

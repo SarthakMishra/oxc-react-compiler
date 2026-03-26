@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_diagnostics::OxcDiagnostic;
@@ -16,6 +18,13 @@ use crate::reactive_scopes::codegen::{
     has_cache_slots,
 };
 use rustc_hash::FxHashSet;
+
+// DIVERGENCE: Upstream treats any Todo/Invariant bail in any function as file-level
+// failure. We use a thread-local flag to propagate this without modifying all
+// intermediate function signatures in the compilation call chain.
+thread_local! {
+    static ANY_FUNCTION_BAILED: Cell<bool> = const { Cell::new(false) };
+}
 
 /// Result of compiling a program.
 pub struct CompileResult {
@@ -189,6 +198,9 @@ fn compile_program_inner_with_config(
     let mut function_source_maps: Vec<(Span, SourceMap)> = Vec::new();
     let mut diagnostics = Vec::new();
 
+    // Reset file-level bail flag before compiling functions.
+    ANY_FUNCTION_BAILED.with(|b| b.set(false));
+
     // Walk the AST and compile each discovered function in place.
     for stmt in &parser_ret.program.body {
         compile_statement(
@@ -203,7 +215,13 @@ fn compile_program_inner_with_config(
         );
     }
 
-    if compiled_functions.is_empty() {
+    // DIVERGENCE: Upstream treats any Todo/Invariant bail in any function as
+    // file-level failure. If any function's pipeline bailed, don't transform the
+    // file — even if other functions compiled successfully. This matches upstream
+    // where a Todo error in one component/hook prevents the whole module output.
+    let any_bail = ANY_FUNCTION_BAILED.with(Cell::get);
+
+    if compiled_functions.is_empty() || any_bail {
         return CompileResult {
             code: source.to_string(),
             transformed: false,
@@ -366,6 +384,9 @@ fn try_compile_function(
         diagnostics.extend(errors.into_diagnostics());
         Some((code, sm))
     } else {
+        // Pipeline bailed — signal file-level failure.
+        // Note: flag is reset at the top of compile_program_inner_with_config.
+        ANY_FUNCTION_BAILED.with(|b| b.set(true));
         diagnostics.extend(errors.into_diagnostics());
         None
     }
@@ -400,6 +421,9 @@ fn try_compile_arrow(
         diagnostics.extend(errors.into_diagnostics());
         Some((code, sm))
     } else {
+        // Pipeline bailed — signal file-level failure.
+        // Note: flag is reset at the top of compile_program_inner_with_config.
+        ANY_FUNCTION_BAILED.with(|b| b.set(true));
         diagnostics.extend(errors.into_diagnostics());
         None
     }

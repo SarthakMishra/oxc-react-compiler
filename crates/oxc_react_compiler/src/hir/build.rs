@@ -1282,7 +1282,16 @@ impl HIRBuilder {
         let update_block = self.new_block(BlockKind::Block);
         let fallthrough = self.new_block(BlockKind::Block);
 
-        self.emit_terminal(Terminal::Goto { block: init_block });
+        // Emit structured For terminal (like ForIn/ForOf) so that passes
+        // can identify for-loops structurally — in particular
+        // check_value_blocks_in_try needs to detect for-loops inside try bodies.
+        self.emit_terminal(Terminal::For {
+            init: init_block,
+            test: test_block,
+            update: Some(update_block),
+            body: body_block,
+            fallthrough,
+        });
 
         // Init
         self.switch_block(init_block);

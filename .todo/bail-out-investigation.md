@@ -103,6 +103,28 @@ Completed 2026-03-25. Implemented name-based freeze tracking in `validate_no_mut
 - `validateLocalsNotReassignedAfterRender` false positives
 - **Risk:** MEDIUM
 
+### Stage 4e-D: Todo-Bail Fixtures — PARTIALLY COMPLETE (+3, 450->453)
+
+Completed 2026-03-26. Fixed 3 of 10 todo-bail fixtures from the "we compile, they don't" category:
+
+**Fixtures fixed:**
+- `repro-declaration-for-all-identifiers.js` — for-in-try detection via Terminal::For
+- `repro-for-loop-in-try.js` — same Terminal::For detection
+- `repro-nested-try-catch-in-usememo.js` — file-level bail propagation (ANY_FUNCTION_BAILED thread-local)
+
+**Cross-cutting fix: file-level bail propagation.** Added `ANY_FUNCTION_BAILED` thread-local flag in `program.rs` that propagates any per-function bail-out to the file level. This matches upstream behavior where a file-level bail from any nested function means the entire file is treated as "not transformed." This mechanism is reusable and will automatically benefit future per-function bail-outs that affect file-level transformation status.
+
+**7 remaining todo-bail fixtures:**
+- `optional-call-chain-in-ternary.ts` — optional chaining inside ternary in try block, not detected by current validation
+- `todo-optional-call-chain-in-optional.ts` — same pattern
+- `propagate-scope-deps-hir-fork/todo-optional-call-chain-in-optional.ts` — same pattern (duplicate in subfolder)
+- `error.dont-hoist-inline-reference.js` — hoisting validation gap, not investigated
+- ~3 others (need re-enumeration)
+
+**New gaps discovered:**
+1. **Optional chain in ternary detection:** Our validation does not detect `?.()` or `?.` inside ternary expressions within try blocks. Upstream bails on this pattern. Requires new detection in `validate_no_unsupported_nodes.rs` or `build.rs`.
+2. **Hoisting inline reference:** `error.dont-hoist-inline-reference.js` — upstream error not replicated, needs investigation.
+
 ## Silent Bail-out Detail (9 remaining)
 
 1. `babel-existing-react-runtime-import.js` — imports `{someImport}` from runtime (our refined check still correctly bails because the expected output has `c as _c` import, meaning upstream adds it alongside the existing import; we'd need smarter import merging)
