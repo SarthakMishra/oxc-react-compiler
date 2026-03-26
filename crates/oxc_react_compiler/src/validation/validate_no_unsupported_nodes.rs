@@ -96,11 +96,11 @@ pub fn validate_no_unsupported_nodes(hir: &HIR, errors: &mut ErrorCollector) {
         }
     }
 
-    // Check for value blocks and throw statements inside try/catch.
-    // Upstream: Todo: Support value blocks (conditional, logical, optional chaining, etc)
-    // within a try/catch statement
-    // Upstream: Todo: (BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch
-    check_value_blocks_in_try(hir, errors);
+    // DIVERGENCE: Upstream (pre-compilationMode:"all") bailed on value blocks inside
+    // try/catch (for-loops, ternaries, logical/optional chaining) AND throw statements.
+    // With compilationMode:"all", upstream now compiles value blocks successfully, but
+    // throw-in-try is still an error. We only check for throw statements now.
+    check_throw_in_try(hir, errors);
 
     // Check for function declarations in unreachable code (after return/throw).
     // Upstream: Todo: Support functions with unreachable code that may contain hoisted declarations
@@ -254,6 +254,56 @@ fn check_hoisted_function_in_unreachable_code(hir: &HIR, errors: &mut ErrorColle
 /// blocks reachable from the try body (not the handler), and check if any of
 /// those blocks contain terminals that create value blocks (conditional, logical,
 /// optional, for/for-in/for-of).
+/// Check for ThrowStatement inside try bodies. Upstream still bails on this
+/// even with compilationMode:"all". Value blocks (for, ternary, logical, optional)
+/// are now handled correctly and no longer cause bail.
+fn check_throw_in_try(hir: &HIR, errors: &mut ErrorCollector) {
+    let block_map: rustc_hash::FxHashMap<BlockId, &crate::hir::types::BasicBlock> =
+        hir.blocks.iter().map(|(id, block)| (*id, block)).collect();
+
+    for (_, block) in &hir.blocks {
+        if let Terminal::Try { block: try_body, handler, fallthrough } = &block.terminal {
+            let loc = block.instructions.last().map_or(oxc_span::SPAN, |i| i.loc);
+
+            if has_throw_in_try_body(&block_map, *try_body, *handler, *fallthrough) {
+                errors.push(CompilerError::todo(
+                    loc,
+                    "(BuildHIR::lowerStatement) Support ThrowStatement inside of try/catch"
+                        .to_string(),
+                ));
+            }
+        }
+    }
+}
+
+/// Walk blocks reachable from `start` (within the try body) looking for Throw terminals.
+fn has_throw_in_try_body(
+    block_map: &rustc_hash::FxHashMap<BlockId, &crate::hir::types::BasicBlock>,
+    start: BlockId,
+    handler: BlockId,
+    fallthrough: BlockId,
+) -> bool {
+    let mut visited = rustc_hash::FxHashSet::default();
+    let mut stack = vec![start];
+    while let Some(block_id) = stack.pop() {
+        if block_id == handler || block_id == fallthrough {
+            continue;
+        }
+        if !visited.insert(block_id) {
+            continue;
+        }
+        let Some(block) = block_map.get(&block_id) else {
+            continue;
+        };
+        if matches!(&block.terminal, Terminal::Throw { .. }) {
+            return true;
+        }
+        collect_terminal_successors(&block.terminal, &mut stack);
+    }
+    false
+}
+
+#[expect(dead_code)]
 fn check_value_blocks_in_try(hir: &HIR, errors: &mut ErrorCollector) {
     // Build a lookup table for O(1) block access instead of O(n) linear scan.
     let block_map: rustc_hash::FxHashMap<BlockId, &crate::hir::types::BasicBlock> =
