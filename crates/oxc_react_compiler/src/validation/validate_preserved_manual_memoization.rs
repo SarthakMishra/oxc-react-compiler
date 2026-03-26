@@ -36,9 +36,19 @@ frequently than expected.";
 ///
 /// DIVERGENCE: Upstream's Check 3 ("dep mutated later") requires `identifier.scope`
 /// populated on StartMemoize operands, which we don't currently store. Skipped.
-pub fn validate_preserved_manual_memoization(func: &ReactiveFunction, errors: &mut ErrorCollector) {
-    // Pass 1: Build the full temporaries map from ALL instructions
+pub(crate) fn validate_preserved_manual_memoization(
+    func: &ReactiveFunction,
+    errors: &mut ErrorCollector,
+    pre_inline_temporaries: Option<&TempResolutionMap>,
+) {
+    // Pass 1: Build the full temporaries map from ALL instructions.
+    // If a pre-computed map (built before inline_load_locals) is provided,
+    // merge it with the current map so we can resolve temps whose LoadLocal
+    // instructions were removed by inlining.
     let mut temporaries: FxHashMap<IdentifierId, ResolvedDep> = FxHashMap::default();
+    if let Some(pre) = pre_inline_temporaries {
+        temporaries.extend(pre.iter().map(|(k, v)| (*k, v.clone())));
+    }
     build_temporaries_map(&func.body, &mut temporaries);
 
     // Pass 2: Walk in evaluation order, checking memo regions and scope deps
@@ -95,11 +105,14 @@ struct MemoRegion {
 
 /// Resolved temporary: maps a temp identifier to its named source dep.
 #[derive(Debug, Clone)]
-struct ResolvedDep {
-    root_name: String,
-    is_global: bool,
-    path: Vec<DependencyPathEntry>,
+pub(crate) struct ResolvedDep {
+    pub(crate) root_name: String,
+    pub(crate) is_global: bool,
+    pub(crate) path: Vec<DependencyPathEntry>,
 }
+
+/// Type alias for the pre-computed temp resolution map.
+pub(crate) type TempResolutionMap = FxHashMap<IdentifierId, ResolvedDep>;
 
 /// State threaded through the reactive block walker (pass 2).
 #[derive(Debug)]
@@ -113,10 +126,10 @@ struct WalkerState {
 
 // ── Pass 1: Build temporaries map ──────────────────────────────────────────
 
-/// Recursively walk all instructions in the reactive function to build
-/// the full temporaries resolution map. This must run before dep validation
-/// because scope deps may reference identifiers whose LoadLocal/PropertyLoad
-/// instructions are inside the scope block itself.
+/// Walk reactive function instructions to build the temporaries resolution map.
+///
+/// Public so the pipeline can pre-compute this before `inline_load_locals`
+/// removes LoadLocal instructions needed for temp resolution.
 fn build_temporaries_map(
     block: &ReactiveBlock,
     temporaries: &mut FxHashMap<IdentifierId, ResolvedDep>,
@@ -185,6 +198,22 @@ fn record_temporary(instr: &Instruction, temporaries: &mut FxHashMap<IdentifierI
             }
         }
         _ => {}
+    }
+}
+
+/// Build a temp resolution map from an HIR (CFG form), before RF conversion.
+/// Build a temp resolution map from an HIR (CFG form), before RF conversion.
+///
+/// Captures LoadLocal → named-local mappings that will be lost after
+/// `build_reactive_function` and `inline_load_locals`.
+pub(crate) fn build_temporaries_map_from_hir(
+    hir: &crate::hir::types::HIR,
+    temporaries: &mut FxHashMap<IdentifierId, ResolvedDep>,
+) {
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            record_temporary(instr, temporaries);
+        }
     }
 }
 
@@ -355,13 +384,13 @@ fn validate_scope_deps(
                 None => return false,
             };
 
-            // Skip unresolved temporaries (SSA temps like "t0", "t14").
-            // DIVERGENCE: Our scope inference sometimes leaves deps as temps that
-            // upstream would have resolved to named locals. Skip these to avoid
-            // false positive errors from incomplete dep resolution.
-            if is_temp_name(&resolved.root_name) {
-                return false;
-            }
+            // DIVERGENCE: Upstream's scope deps reference named variables directly,
+            // but ours sometimes reference SSA temps (whose LoadLocal defining
+            // instructions were removed by RF optimization passes). If the temp
+            // can't be resolved to a named local, it won't match any source dep
+            // (source deps are always named variables like `propA`, `propA.x`).
+            // This correctly flags a mismatch — the compiler couldn't preserve
+            // the manual memoization when it can't even identify the dep.
 
             // Compare against source deps
             !matches_any_source_dep(&resolved, source_deps)
@@ -460,9 +489,16 @@ fn compare_deps(inferred: &ResolvedDep, source: &ManualMemoDependency) -> Compar
             || source_path.iter().any(|e| e.property == "current");
         if has_current { CompareDepsResult::RefAccessDifference } else { CompareDepsResult::Ok }
     } else if inferred_path.len() < source_path.len() {
-        // Inferred is a strict prefix of source — OK (less specific is fine)
+        // Inferred is less specific than source (e.g. inferred `propA` vs source
+        // `propA.x`). Upstream treats this as Subpath — the compiler's inferred dep
+        // is a broader scope, which means it may invalidate more often than the
+        // manual memo specifies. This is a preservation failure.
         let has_current = source_path.iter().any(|e| e.property == "current");
-        if has_current { CompareDepsResult::RefAccessDifference } else { CompareDepsResult::Ok }
+        if has_current {
+            CompareDepsResult::RefAccessDifference
+        } else {
+            CompareDepsResult::Subpath
+        }
     } else {
         // Inferred is more specific than source — subpath issue
         let has_current = inferred_path.iter().any(|e| e.property == "current");
@@ -472,11 +508,6 @@ fn compare_deps(inferred: &ResolvedDep, source: &ManualMemoDependency) -> Compar
             CompareDepsResult::Subpath
         }
     }
-}
-
-/// Check if a name looks like an SSA temporary (e.g. "t0", "t14").
-fn is_temp_name(name: &str) -> bool {
-    name.starts_with('t') && name.len() > 1 && name[1..].chars().all(|c| c.is_ascii_digit())
 }
 
 /// Walk all blocks within a reactive terminal.

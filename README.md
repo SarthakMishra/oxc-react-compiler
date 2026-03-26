@@ -2,7 +2,7 @@
 
 Native [OXC](https://oxc.rs/) port of Meta's [React Compiler](https://github.com/facebook/react/tree/main/compiler/packages/babel-plugin-react-compiler) for the Rolldown/Vite pipeline, plus React 19 compiler-based lint rules for oxlint.
 
-> **Status:** This is an active port — 140+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 26.6% (464/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
+> **Status:** This is an active port — 140+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 28.8% (495/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
 
 ## Vite Plugin Usage
 
@@ -213,24 +213,24 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 | Metric                      | Value        |
 | --------------------------- | ------------ |
 | Total upstream fixtures     | 1717         |
-| Passing (exact match)       | 464 (27.0%)  |
-| Failing (output divergence) | 1253         |
+| Passing (exact match)       | 495 (28.8%)  |
+| Failing (output divergence) | 1222         |
 | Panics / crashes            | 0            |
 | Render equivalence          | 92% (23/25)  |
 
-#### Divergence Breakdown (~1261 known failures)
+#### Divergence Breakdown (~1222 known failures)
 
 | Category                                 | Count | % of known |
 | ---------------------------------------- | ----- | ---------- |
-| Both compile, slots DIFFER               | 690   | 54.7%      |
-| Both compile, slots MATCH (codegen diff) | 227   | 18.0%      |
-| We compile, they don't (validation gaps) | 191   | 15.2%      |
-| We bail, they compile                    | 70    | 5.6%       |
-| Both no memo (format diff)               | 83    | 6.6%       |
+| Both compile, slots DIFFER               | 620   | 50.7%      |
+| Both compile, slots MATCH (codegen diff) | 241   | 19.7%      |
+| We compile, they don't (validation gaps) | 151   | 12.4%      |
+| We bail, they compile                    | 119   | 9.7%       |
+| Both no memo (format diff)               | 91    | 7.4%       |
 
-> Note: In Phase 133, expected files were rebaselined with `compilationMode: "all"` (matching the upstream test suite). Phase 138 added Todo error detection for 5 categories of unsupported syntax (+15 fixtures). Phase 139 added frozen-mutation freeze propagation (phi nodes, store chains, property loads, iterators) gaining +9 fixtures. Phase 142 fixed ref-access validation to detect `.current` access after inline_load_local_temps eliminates LoadLocal intermediaries (+1 fixture). Phase 150 implemented validateInferredDep (source dep extraction and comparison) for preserve-memo validation (+3 fixtures).
+> Note: In Phase 133, expected files were rebaselined with `compilationMode: "all"` (matching the upstream test suite). Phase 138 added Todo error detection for 5 categories of unsupported syntax (+15 fixtures). Phase 139 added frozen-mutation freeze propagation (phi nodes, store chains, property loads, iterators) gaining +9 fixtures. Phase 142 fixed ref-access validation to detect `.current` access after inline_load_local_temps eliminates LoadLocal intermediaries (+1 fixture). Phase 150 implemented validateInferredDep (source dep extraction and comparison) for preserve-memo validation (+3 fixtures). Phase 155 fixed preserve-memo validation by pre-computing HIR temp map before inline_load_locals, correcting Subpath comparison, and removing `is_temp_name` skip that suppressed all dep mismatch detection (+31 fixtures).
 
-#### Bail-out Breakdown (70 fixtures where we bail but upstream compiles)
+#### Bail-out Breakdown (119 fixtures where we bail but upstream compiles)
 
 | Error                                 | Count |
 | ------------------------------------- | ----- |
@@ -259,13 +259,13 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 
 #### Key Divergence Patterns
 
-Most of the 1267 failures fall into a few root causes:
+Most of the 1222 failures fall into a few root causes:
 
-- **Scope inference / codegen accuracy (690 fixtures)** — The dominant failure category. Both compilers compile the function but produce different slot counts. Improving mutable range propagation, scope merging, and codegen structure is the primary path to higher conformance.
-- **Codegen structure (233 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement). Declaration placement and variable name preservation are the largest sub-patterns.
-- **Missing validations (189 fixtures)** — We compile functions that upstream bails on. Includes preserve-memo gaps (32), remaining Todo patterns (12), and various validation false negatives.
-- **False-positive bail-outs (80 fixtures)** — We reject functions that upstream compiles successfully. Down from 108 through file-level bail-out removal and `_exp` directive handling. Increased from 71 to 80 due to name-based freeze propagation introducing 9 false positives on IIFE and complex patterns.
-- **Format-only divergences (79 fixtures)** — Neither side memoizes, but the output differs. Requires dead-code elimination and constant propagation passes.
+- **Scope inference / codegen accuracy (620 fixtures)** — The dominant failure category. Both compilers compile the function but produce different slot counts. Improving mutable range propagation, scope merging, and codegen structure is the primary path to higher conformance.
+- **Codegen structure (241 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement). Declaration placement and variable name preservation are the largest sub-patterns.
+- **Missing validations (151 fixtures)** — We compile functions that upstream bails on. Down from 191 after Phase 155 fixed preserve-memo dep mismatch detection (+31 fixtures).
+- **False-positive bail-outs (119 fixtures)** — We reject functions that upstream compiles successfully. Increased from 70 to 119 due to preserve-memo validation now correctly detecting dep mismatches for some non-error fixtures too. Many are legitimate preserve-memo errors that will be resolved by improving scope dep resolution.
+- **Format-only divergences (91 fixtures)** — Neither side memoizes, but the output differs. Requires dead-code elimination and constant propagation passes.
 
 Conformance runs as a non-blocking CI check — failures are tracked in `tests/conformance/known-failures.txt` and ratcheted as improvements land.
 

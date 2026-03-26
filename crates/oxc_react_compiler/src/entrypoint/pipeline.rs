@@ -403,6 +403,23 @@ pub fn run_full_pipeline(
     let returns_id = Some(hir_func.returns.place.identifier.id);
     run_pipeline(&mut hir_func.body, config, errors, &param_names, &param_ids, returns_id)?;
 
+    // Pre-compute the temp resolution map from the HIR BEFORE RF conversion
+    // consumes it. This map captures LoadLocal → named-local and PropertyLoad
+    // chains that will be lost after build_reactive_function and inline_load_locals.
+    // Used by preserve-memo validation to resolve scope dep identifiers.
+    let hir_temp_map = if config.enable_preserve_existing_memoization_guarantees
+        || config.validate_preserve_existing_memoization_guarantees
+    {
+        use crate::validation::validate_preserved_manual_memoization::{
+            TempResolutionMap, build_temporaries_map_from_hir,
+        };
+        let mut map: TempResolutionMap = TempResolutionMap::default();
+        build_temporaries_map_from_hir(&hir_func.body, &mut map);
+        Some(map)
+    } else {
+        None
+    };
+
     // Pass 47: Build reactive function (CFG → tree IR)
     let mut rf = crate::reactive_scopes::build_reactive_function::build_reactive_function(
         hir_func.body,
@@ -423,6 +440,7 @@ pub fn run_full_pipeline(
     crate::reactive_scopes::merge_scopes::merge_reactive_scopes_that_invalidate_together(&mut rf);
     crate::reactive_scopes::prune_scopes::prune_always_invalidating_scopes(&mut rf);
     crate::reactive_scopes::prune_scopes::propagate_early_returns(&mut rf);
+
     crate::reactive_scopes::prune_scopes::inline_load_locals(&mut rf);
     crate::reactive_scopes::prune_scopes::prune_unused_lvalues(&mut rf);
     crate::reactive_scopes::prune_scopes::promote_used_temporaries(&mut rf);
@@ -439,7 +457,7 @@ pub fn run_full_pipeline(
     if config.enable_preserve_existing_memoization_guarantees
         || config.validate_preserve_existing_memoization_guarantees
     {
-        crate::validation::validate_preserved_manual_memoization::validate_preserved_manual_memoization(&rf, errors);
+        crate::validation::validate_preserved_manual_memoization::validate_preserved_manual_memoization(&rf, errors, hir_temp_map.as_ref());
     }
 
     // Check for errors after RF passes

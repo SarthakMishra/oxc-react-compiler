@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-03-26
-> Conformance: **464/1717 (27.0%)** (known-failures.txt has 1253 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis. Then +3 from validateInferredDep partial implementation (453->456): 3 of 32 preserve-memo error fixtures now pass. Then +1 from prune_non_escaping_scopes test-position detection (456->457): escape-analysis-not-if-test.js now passing. Then +7 from enhanced DCE + phi-node constant propagation (457->464): extended dead code elimination to remove dead StoreLocal/PrefixUpdate/PostfixUpdate, added phi-node constant propagation, iterative CP+DCE loop at Pass 32.5.
-> Known-failures: 1253. Error.* fixtures remaining in KF: 30 (28 top-level + 2 fbt/). False-positive bails: 70 (up from 67, +3 from scope inference differences in validateInferredDep).
+> Conformance: **495/1717 (28.8%)** (known-failures.txt has 1222 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis. Then +3 from validateInferredDep partial implementation (453->456): 3 of 32 preserve-memo error fixtures now pass. Then +1 from prune_non_escaping_scopes test-position detection (456->457): escape-analysis-not-if-test.js now passing. Then +7 from enhanced DCE + phi-node constant propagation (457->464): extended dead code elimination to remove dead StoreLocal/PrefixUpdate/PostfixUpdate, added phi-node constant propagation, iterative CP+DCE loop at Pass 32.5. Then +31 from preserve-memo validation improvements (464->495): removed is_temp_name skip, pre-computed HIR temp resolution map, fixed compare_deps Subpath return. 18 preserve-memo error fixtures + 13 additional error fixtures now passing.
+> Known-failures: 1222. Error.* fixtures remaining in KF: ~12 (was 30, -18 preserve-memo errors now passing). False-positive bails: ~67 (was 70, -3 from removing is_temp_name false-positive skip).
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
@@ -16,18 +16,18 @@
 |----------|-------|-------------|
 | Both compile, slots DIFFER | 666 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes. Dominated by variable naming/scope inference.** Deficit (our < expected): ~400 fixtures. Surplus (our > expected): ~283 fixtures. |
 | Both compile, slots MATCH | 243 (was 237, some shifted between categories) | Same slots, codegen structure diffs. **Dominated by variable naming/scope inference (not just codegen). B2 pattern (temps vs original names): 40 fixtures. Codegen-only fixes have reached their ceiling (Stage 1 exhausted).** |
-| We compile, they don't | 191 (15%) | **CORRECTED (2026-03-26): 134 are SCOPE INFERENCE SURPLUS (upstream produces 0 slots, we produce >0), NOT validation gaps.** Upstream compiled these functions but created no reactive scopes. We create scopes where upstream doesn't. These are part of the surplus scope inference problem. Remaining 57: 30 UPSTREAM ERROR (in KF), ~24 preserve-memo, ~3 other. |
-| We bail, they compile | ~70 (was 80, +3 new false-positive bails from scope inference differences in validateInferredDep) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking, +3 from validateInferredDep scope dep resolution mismatch). Sub-breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other. |
+| We compile, they don't | ~160 (revised down from 191, -31 from preserve-memo fixes) | **CORRECTED (2026-03-26): 134 are SCOPE INFERENCE SURPLUS (upstream produces 0 slots, we produce >0), NOT validation gaps.** Remaining ~26: ~12 UPSTREAM ERROR (in KF), ~11 preserve-memo (value-memoized + dep-mutated sub-types remaining), ~3 other. |
+| We bail, they compile | ~67 (was 70, -3 from removing is_temp_name false-positive skip) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking, -3 from fixing is_temp_name false-positive bails). Sub-breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other. |
 | Both no memo (format diff) | ~85 (was 83, -7 from Stage 5a DCE+CP, some shifted in from other categories) | Neither side memoizes. **DCE + CP + dead branch elimination implemented (Stages 5a+5b). 7 fixtures passing. ~85 remain, blocked by 0-slot codegen (our compiler wraps in `_c(0)` structure), NOT by DCE/CP gaps.** |
 
 ### Key Investigation Findings (2026-03-25, updated 2026-03-26)
 
 1. **"Both no memo" (~85 remaining) — DCE/CP/branch-elimination ceiling reached.** DCE + constant propagation + dead branch elimination passes all implemented (Stages 5a+5b), gained +7 fixtures (457->464). Dead branch elimination (Stage 5b) gained +0 because branch conditions are rarely constant at Pass 32.5. The remaining ~85 fixtures are **blocked by 0-slot codegen** — our compiler wraps functions in `_c(0)` memoization structure even when upstream emits them as passthrough with no memoization. This is a scope inference issue (we create scopes where upstream doesn't), NOT a DCE/CP gap. Further DCE/CP work (binary folding, string concat) has diminishing returns on this pool.
 
-2. **"We compile, they don't" (191 fixtures) CRITICAL CORRECTION (2026-03-26):**
+2. **"We compile, they don't" (~160 fixtures, revised from 191 after preserve-memo +31) CRITICAL CORRECTION (2026-03-26):**
    - **134 are SCOPE INFERENCE SURPLUS, NOT validation gaps.** These fixtures have expected output with 0 `_c()` calls and NO `// UPSTREAM ERROR:` header. Upstream DID compile them (structurally transformed code) but produced 0 reactive scopes. We produce >0 scopes (over-memoization). These OVERLAP with the 286 surplus fixtures in slots-DIFFER. Understanding WHY upstream produces 0 scopes on these is the key to a large conformance gain.
-   - **30 are UPSTREAM ERROR** (in known-failures) — must bail to pass.
-   - **~24 are preserve-memo** — `validatePreserveExistingMemoizationGuarantees` gaps (29 BLOCKED by scope dep resolution, 3 done).
+   - **~12 are UPSTREAM ERROR** (in known-failures) — must bail to pass.
+   - **~11 are preserve-memo** — `validatePreserveExistingMemoizationGuarantees` remaining gaps (value-memoized + dep-mutated sub-types). The validateInferredDep sub-type is now LARGELY COMPLETE (+31 fixtures, see Stage 4b).
    - **~3 remaining:** mixed (flow-parse not actionable, other validation gaps).
 
 3. **"Slots MATCH" (227 fixtures) is dominated by scope inference differences, not just codegen.** The B2 pattern (40 fixtures, temps vs original names) remains the largest tractable sub-pattern, but the broader pool is driven by scope inference accuracy. Stage 1d Phase 2 (declaration placement inside control flow) was found to be a scope inference issue, not a codegen issue — declarations can only move inside control flow if scope inference correctly places scope boundaries within those blocks.
@@ -48,14 +48,14 @@ The path is clearer but requires significant compiler infrastructure work:
 |-----------|-----------|---------------|------------|
 | Scope inference fixes (slots-DIFFER) | 688 | +50-100 | HIGH — cascading regression risk, scope MERGING is bottleneck (see 3b blocker) |
 | DCE + constant propagation (both-no-memo) | ~85 remaining (7 done) | +5-15 remaining (revised down) | MEDIUM-HIGH — DCE+CP+branch-elim all implemented. Remaining ~85 blocked by 0-slot codegen, not DCE/CP. Binary/string folding may chip away at a few. |
-| `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | +3 done, +12-22 remaining | MEDIUM — 3 sub-types: validateInferredDep (3/32 done, 29 BLOCKED by scope dep resolution), value-memoized, dep-mutated |
+| `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | +31 done (18 preserve-memo + 13 other), +5-15 remaining | MEDIUM — validateInferredDep LARGELY COMPLETE (+31). Remaining: value-memoized + dep-mutated sub-types. Further validateInferredDep gains LIMITED by fundamental scope dep model difference (see lesson #43). |
 | Variable name preservation in codegen (B2) | 40 | +10-20 | MEDIUM-HIGH — scope output naming changes + scope inference dependency (see lesson #29) |
 | Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — BLOCKED: Phase 2 requires scope inference (Stage 3). Phase 3 (merge decl+init) DONE (+0 dormant). |
 | Remaining bail-out fixes (2d-2g) | ~84 total bail pool | +15-25 | MEDIUM — per-validation fixes |
 | Todo error detection (remaining) | 4 | +2-4 | LOW-MED — need optional-chain-in-ternary, hoisting, context var |
 | Frozen-mutation validation fixes | 1 remains | +10 done (Stage 4d + follow-up) | MEDIUM | 1 remaining needs JSX capture analysis |
 
-**Conservative estimate:** +118-272 from 464 base = 582-736. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category). DCE/CP potential revised down from +23-43 to +5-15 after discovering that "both no memo" is blocked by 0-slot codegen, not DCE/CP.
+**Conservative estimate:** +105-241 from 495 base = 600-736. Reaching 600 is feasible and closer than before (+31 from preserve-memo). Remaining gains require scope inference work (the largest and highest-risk category). DCE/CP potential revised down from +23-43 to +5-15 after discovering that "both no memo" is blocked by 0-slot codegen, not DCE/CP.
 
 ---
 
