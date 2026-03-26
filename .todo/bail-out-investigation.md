@@ -37,7 +37,7 @@ Of the original 108 fixtures where we bail but upstream compiles:
 | Values derived from props/state (effect-derived-computations validation) | 20 | YES | New validation `validateNoDerivedComputationsInEffects` fires incorrectly; upstream compiles despite this validation |
 | Frozen mutation (false positive) | 15 (11 original + 4 IIFE from Stage 4d) | MEDIUM | `InferMutableRanges` over-reports mutations on frozen values. 4 new IIFE false positives from name-based freeze tracking. |
 | Cannot reassign outside component | 10 | MEDIUM | `validateLocalsNotReassignedAfterRender` false positives |
-| (no error / silent) | 9 | MIXED | Various: gating mode (3), 0-scope functions (2), misc (4) |
+| (no error / silent) | 6 (was 9, 3 gating fixed) | MIXED | Various: ~~gating mode (3)~~ fixed in Stage 1e (conformance harness issue), 0-scope functions (2), misc (4) |
 | Cannot access refs during render | 8 | MEDIUM | `validateNoRefAccessInRender` false positives. Note: separate from Stage 4e-B ref-access *detection* fixes (where we fail to bail on upstream-error fixtures). |
 | setState in useEffect (synchronous) | 7 | HARD | New validation that doesn't exist upstream or fires incorrectly |
 | Cannot call setState during render | 4 | MEDIUM | `validateNoSetStateInRender` false positives |
@@ -47,6 +47,24 @@ Of the original 108 fixtures where we bail but upstream compiles:
 | Other (1-2 each) | 10 | VARIES | Various edge cases |
 
 ## Recommended Next Steps
+
+### Stage 1e: Dynamic Gating Parsing Fix -- COMPLETE (+3, harness fix)
+
+**Completed 2026-03-26.** The 3 gating-mode "silent bail-out" fixtures were actually a conformance test harness parsing issue, not a compiler bug. The `@gating` directive was not being parsed correctly for dynamic import patterns. Fixing the harness parsing logic gained +3 fixtures.
+
+**Fixtures fixed:** 3 gating fixtures (exact names TBD — these moved from "silent bail-out" to passing).
+
+### ObjectExpression Computed Key Bail-out Removed -- COMPLETE (+2)
+
+**Completed 2026-03-26.** Removed an overly aggressive bail-out in HIR lowering that rejected `ObjectExpression` nodes with computed keys. Upstream compiles these patterns successfully. Our bail-out was a false positive from an early conservatism guard.
+
+### Empty Catch Handler Codegen Fix -- COMPLETE (+1)
+
+**Completed 2026-03-26.** Fixed an additional catch handler codegen issue that, combined with the Stage 1d Phase 1 declaration placement fix, unblocked 1 more fixture. The catch handler now correctly emits `catch {}` in contexts where both ordering and empty-handler requirements are met.
+
+### const vs let Keyword in StoreLocal Codegen -- COMPLETE (+0)
+
+**Completed 2026-03-26.** Fixed codegen to emit `const` instead of `let` for `StoreLocal` instructions where the variable is never reassigned. No conformance gain because affected fixtures also differ in other ways (scope inference, naming), but this is a correctness improvement that will contribute to matches once those other differences are resolved.
 
 ### Stage 2c (was 2b): Fix `_exp` Directive Handling -- COMPLETE
 
@@ -128,8 +146,8 @@ Completed 2026-03-26. Fixed 3 of 10 todo-bail fixtures from the "we compile, the
 ## Silent Bail-out Detail (9 remaining)
 
 1. `babel-existing-react-runtime-import.js` — imports `{someImport}` from runtime (our refined check still correctly bails because the expected output has `c as _c` import, meaning upstream adds it alongside the existing import; we'd need smarter import merging)
-2. `gating/infer-function-expression-React-memo-gating.js` — `@gating` mode not supported
-3. `gating/invalid-fnexpr-reference.js` — `@gating` mode not supported
+2. ~~`gating/infer-function-expression-React-memo-gating.js` — `@gating` mode not supported~~ ✅ Fixed in Stage 1e (conformance harness parsing issue)
+3. ~~`gating/invalid-fnexpr-reference.js` — `@gating` mode not supported~~ ✅ Fixed in Stage 1e (conformance harness parsing issue)
 4. `infer-functions-component-with-ref-arg.js` — `@compilationMode:"infer"`, function with ref arg not detected as compilable
 5. `unused-object-element-with-rest.js` — 0 scopes survive pipeline (scope inference gap)
 6. `invalid-jsx-in-catch-in-outer-try-with-catch.js` — try-catch in HIR lowering issue

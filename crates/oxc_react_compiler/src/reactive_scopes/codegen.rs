@@ -1839,14 +1839,20 @@ fn codegen_instruction(
             let keyword = if already_declared {
                 ""
             } else {
-                // Use `let` for Const/HoistedConst/Let/HoistedFunction because the
-                // compiler's scope logic may reassign these variables in scope
-                // reload branches. `var` is preserved for hoisting semantics.
+                // Use `const` for Const/HoistedConst when the variable hasn't been
+                // pre-declared by codegen_scope (not a scope output). Scope output
+                // variables are pre-declared with `let` and already in `declared`,
+                // so they get bare assignment above. Non-scope-output variables
+                // keep their original `const` keyword matching upstream behavior.
+                // `let` and `var` are preserved as-is. HoistedFunction uses `let`
+                // because function declarations may be reassigned in some patterns.
                 let kw = match type_ {
                     Some(
                         crate::hir::types::InstructionKind::Const
-                        | crate::hir::types::InstructionKind::HoistedConst
-                        | crate::hir::types::InstructionKind::Let
+                        | crate::hir::types::InstructionKind::HoistedConst,
+                    ) => "const ",
+                    Some(
+                        crate::hir::types::InstructionKind::Let
                         | crate::hir::types::InstructionKind::HoistedFunction,
                     ) => "let ",
                     Some(crate::hir::types::InstructionKind::Var) => "var ",
@@ -2543,7 +2549,16 @@ fn codegen_terminal(
             } else {
                 output.push_str(&format!("{indent_str}}} catch {{\n"));
             }
+            let handler_start = output.len();
             codegen_block(handler, output, cache_slot, indent + 1, declared, tag_constants);
+            // DIVERGENCE: Strip implicit `return undefined;` from catch handler.
+            // When the catch handler body is just `return undefined;\n`, upstream
+            // emits an empty catch block. This matches JS implicit return behavior.
+            let handler_content = &output[handler_start..];
+            let handler_trimmed = handler_content.trim();
+            if handler_trimmed == "return undefined;" {
+                output.truncate(handler_start);
+            }
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::Label { block, label, .. } => {

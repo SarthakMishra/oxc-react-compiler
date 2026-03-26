@@ -596,12 +596,35 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig, boo
             });
         }
 
-        // @dynamicGating — also activates gating behavior
-        if find_directive_bool(comment, "dynamicGating").unwrap_or(false) {
-            opts.gating = Some(GatingConfig {
-                import_source: "ReactForgetFeatureFlag".to_string(),
-                function_name: "isForgetEnabled_Fixtures".to_string(),
-            });
+        // @dynamicGating:{"source":"module-name"} — dynamic gating with custom source
+        // Also requires "use memo if(funcName)" directive in the function body.
+        // The source module and function name come from the directives, not hardcoded.
+        if let Some(pos) = comment.find("@dynamicGating") {
+            let after = &comment[pos + "@dynamicGating".len()..];
+            // Parse JSON-like {"source":"module-name"} to extract the source
+            let import_source = if let Some(src_pos) = after.find("\"source\"") {
+                let after_key = &after[src_pos + "\"source\"".len()..];
+                // Skip :"
+                let after_colon =
+                    after_key.trim_start_matches(|c: char| c == ':' || c.is_whitespace());
+                if let Some(rest) = after_colon.strip_prefix('"') {
+                    let end = rest.find('"').unwrap_or(rest.len());
+                    rest[..end].to_string()
+                } else {
+                    "ReactForgetFeatureFlag".to_string()
+                }
+            } else {
+                "ReactForgetFeatureFlag".to_string()
+            };
+            // Parse "use memo if(funcName)" from the source to get the function name
+            let function_name = if let Some(memo_pos) = source.find("use memo if(") {
+                let rest = &source[memo_pos + "use memo if(".len()..];
+                let end = rest.find(')').unwrap_or(rest.len());
+                rest[..end].to_string()
+            } else {
+                "isForgetEnabled_Fixtures".to_string()
+            };
+            opts.gating = Some(GatingConfig { import_source, function_name });
         }
 
         // @ignoreUseNoForget — compile despite 'use no forget' directives
@@ -1227,6 +1250,52 @@ fn upstream_conformance() {
             }
             println!();
         }
+    }
+
+    // Print "we compile, they don't" breakdown by upstream error
+    if cat_we_compile_they_dont > 0 {
+        let mut upstream_errors: std::collections::BTreeMap<String, Vec<&str>> =
+            std::collections::BTreeMap::new();
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            if we_memo && !r.expected_has_memo {
+                // Read the expected file to get the upstream error
+                let base = std::path::Path::new(&r.relative_path);
+                let stem = base.with_extension("expected");
+                let expected_path = format!("{}/{}", fixtures_dir.display(), stem.display());
+                let error_key = if let Ok(content) = std::fs::read_to_string(&expected_path) {
+                    if let Some(line) = content.lines().next() {
+                        if line.starts_with("// UPSTREAM ERROR:") {
+                            let err = line.trim_start_matches("// UPSTREAM ERROR:").trim();
+                            // Truncate to first 80 chars for grouping
+                            err.chars().take(80).collect::<String>()
+                        } else {
+                            "(no UPSTREAM ERROR header)".to_string()
+                        }
+                    } else {
+                        "(empty expected file)".to_string()
+                    }
+                } else {
+                    "(cannot read expected file)".to_string()
+                };
+                upstream_errors.entry(error_key).or_default().push(&r.relative_path);
+            }
+        }
+        println!(
+            "--- WE COMPILE, THEY DON'T ({cat_we_compile_they_dont} fixtures) - UPSTREAM ERROR BREAKDOWN ---"
+        );
+        let mut entries: Vec<_> = upstream_errors.iter().collect();
+        entries.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+        for (err, fixtures) in &entries {
+            println!("  {}x  {}", fixtures.len(), err);
+            for f in fixtures.iter().take(3) {
+                println!("       {f}");
+            }
+            if fixtures.len() > 3 {
+                println!("       ... and {} more", fixtures.len() - 3);
+            }
+        }
+        println!();
     }
 
     // Print specific fixtures in each actionable category

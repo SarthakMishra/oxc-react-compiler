@@ -137,12 +137,16 @@ Edge cases with `t0` vs `t1` numbering within scopes, different `$` conflict res
 
 **Risk was LOW as predicted.** No regressions. All unit tests pass. Render rate and E2E rate unchanged.
 
-#### Phase 2 (MEDIUM risk, +10-20): Move declarations inside control flow — NOT STARTED
+#### Phase 2 (MEDIUM risk, +10-20): Move declarations inside control flow — BLOCKED BY SCOPE INFERENCE
 
 - For scopes inside if/for/try blocks, emit declarations at the start of the control flow block.
 - This is where the risk increases — must ensure no "already declared" errors or "assignment to const" issues.
 - **Verify:** run full conformance after each change, check for regressions.
 - **Impact analysis:** 39 fixtures have A1 (declaration-before-control-flow) as first diff. Total same-slots pool now 227 fixtures.
+
+**Finding (2026-03-26): This is a scope inference issue, not codegen.** Investigation revealed that declarations cannot move inside control flow blocks purely via codegen changes. The prerequisite is that scope inference itself must produce scopes that are bounded by the control flow block. Currently, scope inference merges scopes across control flow boundaries (e.g., a scope that starts before an `if` and ends inside it). The codegen cannot place a declaration inside the `if` block if the scope that owns the declaration spans across the `if` boundary. This makes Phase 2 dependent on Stage 3 (scope inference improvements). The slots-MATCH pool is therefore dominated by scope inference accuracy, not codegen formatting.
+
+**Status:** BLOCKED until scope inference improvements (Stage 3) can produce control-flow-scoped scopes.
 
 #### Phase 3 (HIGH risk, +5-10): Merge declaration with initialization — NOT STARTED
 
@@ -167,3 +171,15 @@ Edge cases with `t0` vs `t1` numbering within scopes, different `$` conflict res
 **Revised total from Stage 1:** +2 (1b) + 5 (1c) + 6 (1d Phase 1) + TBD (1d Phases 2-3) = +13 so far, +10-30 remaining from Phases 2-3.
 
 **Stage 1d Phase 1 COMPLETE (2026-03-25):** +6 fixtures gained (exceeded +5 estimate). Same-slots pool reduced 233 -> 227. Phases 2-3 remain for broader A1 pattern (39 fixtures with declaration-before-control-flow as first diff).
+
+**Stage 1e COMPLETE (2026-03-26):** +6 fixtures gained (441->447). Dynamic gating parsing +3 (harness fix), empty catch handler +1, ObjectExpression computed key bail-out +2, const/let codegen +0.
+
+### Key Finding (2026-03-26): Slots-MATCH Pool Dominated by Scope Inference
+
+After completing all tractable codegen fixes (Stages 1b through 1e), the remaining 227-fixture slots-MATCH pool is dominated by **scope inference differences**, not codegen formatting issues. The major remaining patterns all trace back to scope inference:
+
+1. **Declaration placement (A1, 39 fixtures):** Phase 2 requires scope inference to produce control-flow-scoped scopes (BLOCKED, see Phase 2 section above).
+2. **Variable name preservation (B2, 40 fixtures):** Partially a scope output assignment issue, but many B2 fixtures also have scope boundary differences driven by scope inference.
+3. **Instruction ordering within scopes:** The order of instructions inside scope guards depends on which instructions scope inference groups together.
+
+**Implication:** Further slots-MATCH gains require Stage 3 (scope inference improvements), not more codegen fixes. The codegen-only approach has been exhausted for this pool. B2 (variable name preservation) is the only remaining codegen-addressable sub-pattern with meaningful fixture count.

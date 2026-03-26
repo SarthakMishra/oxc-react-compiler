@@ -25,10 +25,8 @@ const REJECTED_UNSUPPORTED_NODES: &[&str] = &[
     "ClassExpression",
     // Upstream: Todo: (BuildHIR::lowerStatement) Handle TryStatement without a catch clause
     "TryStatement_without_catch",
-    // Upstream: Todo: (BuildHIR::lowerExpression) Expected Identifier, got CallExpression/SequenceExpression key in ObjectExpression
     // Note: ThrowStatement in try/catch is detected via CFG walk in check_value_blocks_in_try,
     // not via UnsupportedNode markers, so it doesn't appear in this list.
-    "ObjectExpression_computed_key",
     // Upstream: Invariant: (BuildHIR::lowerAssignment) Could not find binding for declaration.
     // Destructured catch clause parameters (e.g. `catch ({status})`) are not supported.
     "CatchClause_destructured_param",

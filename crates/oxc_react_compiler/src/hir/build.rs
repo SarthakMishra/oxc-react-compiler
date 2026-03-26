@@ -2663,36 +2663,24 @@ impl HIRBuilder {
                             loc,
                         );
                     }
-                    // Upstream: Todo: Expected Identifier, got CallExpression/SequenceExpression key
-                    // Upstream bails when a computed property key is a non-identifier
-                    // expression (CallExpression, SequenceExpression, MemberExpression call).
-                    // These keys can have side effects that are hard to track.
-                    if prop.computed
-                        && let Some(expr) = property_key_as_expression(&prop.key)
-                        && !matches!(
-                            expr,
-                            Expression::Identifier(_)
-                                | Expression::StringLiteral(_)
-                                | Expression::NumericLiteral(_)
-                                | Expression::BooleanLiteral(_)
-                                | Expression::NullLiteral(_)
-                                | Expression::TemplateLiteral(_)
-                        )
-                    {
-                        return self.emit(
-                            InstructionValue::UnsupportedNode {
-                                node: "ObjectExpression_computed_key".to_string(),
-                            },
-                            loc,
-                        );
-                    }
+                    // Previously bailed on non-identifier computed keys (CallExpression,
+                    // SequenceExpression, etc.) — upstream compiles these, so we do too.
+                    // lower_obj_property_key handles them via ObjectPropertyKey::Computed(Place).
 
-                    if prop.method {
-                        // Object method shorthand
+                    if prop.computed {
+                        // For computed keys, lower key FIRST to preserve JS evaluation order:
+                        // `{ [keyExpr]: valueExpr }` evaluates keyExpr before valueExpr.
+                        let key = self.lower_obj_property_key(&prop.key);
+                        let value = self.lower_expression(&prop.value);
+                        properties.push(ObjectProperty { key, value, shorthand: false });
+                    } else if prop.method {
+                        // Object method shorthand (non-computed)
                         let value = self.lower_expression(&prop.value);
                         let key = self.lower_obj_property_key(&prop.key);
                         properties.push(ObjectProperty { key, value, shorthand: false });
                     } else {
+                        // Non-computed, non-method: key is a static identifier or literal,
+                        // so evaluation order between key and value doesn't matter.
                         let value = self.lower_expression(&prop.value);
                         let key = self.lower_obj_property_key(&prop.key);
                         properties.push(ObjectProperty { key, value, shorthand: prop.shorthand });

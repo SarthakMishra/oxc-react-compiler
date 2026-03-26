@@ -274,7 +274,6 @@ effect-derived-computations/invalid-derived-state-from-computed-props.js
 effect-derived-computations/invalid-derived-state-from-destructured-props.js
 effect-derived-computations/ref-conditional-in-effect-no-error.js
 effect-derived-computations/usestate-derived-from-prop-no-show-in-data-flow-tree.js
-empty-catch-statement.ts
 error.assign-ref-in-effect-hint.js
 error.bailout-on-suppression-of-custom-rule.js
 error.bug-invariant-codegen-methodcall.js
@@ -396,10 +395,7 @@ gating/arrow-function-expr-gating-test.js
 gating/codegen-instrument-forget-gating-test.js
 gating/component-syntax-ref-gating.flow.js
 gating/conflicting-gating-fn.js
-gating/dynamic-gating-annotation.js
 gating/dynamic-gating-bailout-nopanic.js
-gating/dynamic-gating-disabled.js
-gating/dynamic-gating-enabled.js
 gating/dynamic-gating-invalid-identifier-nopanic.js
 gating/dynamic-gating-invalid-multiple.js
 gating/dynamic-gating-noemit.js
@@ -672,12 +668,10 @@ object-expression-captures-function-with-global-mutation.js
 object-expression-computed-key-constant-number.js
 object-expression-computed-key-constant-string.js
 object-expression-computed-key-modified-during-after-construction-sequence-expr.js
-object-expression-computed-key-modified-during-after-construction.js
 object-expression-computed-key-mutate-key-while-constructing-object.js
 object-expression-computed-key-non-reactive.js
 object-expression-computed-key.js
 object-expression-computed-member.js
-object-expression-member-expr-call.js
 object-keys.js
 object-literal-method-call-in-ternary-test.js
 object-literal-method-derived-in-ternary-consequent.js

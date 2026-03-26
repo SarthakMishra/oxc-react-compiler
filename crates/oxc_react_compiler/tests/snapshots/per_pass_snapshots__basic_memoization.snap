@@ -9,7 +9,7 @@ function Doubler(t0) {
   let { value } = t0;
   let t1;
   if ($[0] !== value) {
-    let doubled = (value * 2);
+    const doubled = (value * 2);
     t1 = <span>{doubled}</span>;
     $[0] = value;
     $[1] = t1;
