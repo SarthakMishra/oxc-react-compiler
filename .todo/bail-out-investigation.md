@@ -2,7 +2,7 @@
 
 > Completed: 2026-03-25
 > Starting pool: 108 "we bail, they compile" fixtures
-> After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in), **~70 remaining as of 2026-03-26** (per latest conformance breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other; +3 new false-positive bails from validateInferredDep scope dep resolution mismatch)
+> After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in), **~64 remaining as of 2026-03-26** (per latest conformance breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other; +3 new false-positive bails from validateInferredDep scope dep resolution mismatch; -6 from Stage 2g error fixture sweep: fbt duplicate tags +2, ref-to-function +1, self-referencing const +1, dynamic gating +2)
 > Note: Conformance tests use `compilationMode:"all"` — all functions are compiled, not just detected components/hooks. This affects which bail-out validations fire.
 
 ## Summary
@@ -242,3 +242,50 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 - The 31 error.* regressions from approach 3 are a mix of preserve-memo, frozen-mutation, ref-access, and reassignment errors that upstream detects via their respective validators, but our compiler only catches via the accidental "tN" dep mismatch in validateInferredDep
 
 **Do NOT attempt again until:** Either (a) codegen quality improves for preserve-memo fixtures (slot mismatches resolved), OR (b) `propagate_scope_dependencies_hir` is enhanced to resolve more operand types through temp_map, OR (c) the error.* fixtures that bail "by accident" are made to bail via their correct validation paths. Without one of these prerequisites, any attempt to reduce the 55 false bails will cause a net conformance regression.
+
+---
+
+## Stage 2g: Error Fixture Bail-out Sweep (2026-03-26, +6 fixtures, 499->505)
+
+Four new bail-out validations targeting error.* fixtures in known-failures.
+
+### Fix 5: Duplicate fbt/fbs sub-tag detection (+2)
+
+**Fixtures:** `fbt/error.todo-fbt-unknown-enum-value.js`, `fbt/error.todo-multiple-fbt-plural.tsx`
+**File:** `validate_no_unsupported_nodes.rs` — `check_fbt_duplicate_tags`
+**Upstream:** `Todo: Support duplicate fbt tags`
+
+Two-pass analysis: Pass 1 collects identifiers named `fbt` or `fbs` via `LoadLocal`/`LoadContext`/`LoadGlobal`. Pass 2 counts `_enum`/`_plural`/`_pronoun` MethodCall sub-tags on those identifiers. If any sub-tag type appears 2+ times, bails with a Todo error.
+
+**Important note:** `import fbt from 'fbt'` creates a `LoadLocal` instruction, not `LoadGlobal`, because `fbt` is not in the built-in globals list (`GlobalCollector`). The implementation handles both paths, but future fbt work must be aware of this distinction.
+
+### Fix 6: Ref-to-function detection (+1)
+
+**Fixture:** `error.invalid-pass-ref-to-function.js`
+**File:** `validate_no_ref_access_in_render.rs`
+**Upstream:** `Cannot access refs during render. Passing a ref to a function may read its value during render.`
+
+Added a check in Pass 2 for `CallExpression` instructions: if any argument is a tracked ref identifier (by ID, by `Type::Ref`, or by name matching `is_ref_name`/`ref_names`) AND the callee is not a hook (determined by `is_hook_name`), the function bails with a ref-access-in-render error. MethodCall is excluded (method calls on objects are a different pattern).
+
+### Fix 7: Self-referencing const declarations (+1)
+
+**Fixture:** `error.dont-hoist-inline-reference.js`
+**File:** `validate_no_unsupported_nodes.rs` — `check_self_referencing_declarations`
+**Upstream:** `Todo: [hoisting] EnterSSA: Expected identifier to be defined before being used`
+
+Detects `const x = identity(x)` pattern: for each `DeclareLocal` with `InstructionKind::Const`, scans forward until the matching `StoreLocal`, checking if any `LoadLocal` references the same `IdentifierId`. Fires a Todo error if found. Only checks non-temp identifiers (skips `t0`, `t1`, ...). Stops at `DeclareLocal`/`Destructure` boundaries to avoid scanning too far.
+
+**Limitation:** Only handles `Const` kind, not `Let`. JavaScript `let` also has TDZ semantics, but no current conformance fixtures test this. See Deferred section in index.md.
+
+**Regression avoided:** An initial broader version that also checked function params and destructured bindings caused -11 regression. The final version is scoped to `DeclareLocal Const` with exact `IdentifierId` matching.
+
+### Fix 8: Dynamic gating invalid identifier validation (+2)
+
+**Fixtures:** `gating/dynamic-gating-invalid-identifier-nopanic.js`, `gating/error.dynamic-gating-invalid-identifier.js`
+**File:** `program.rs` — `is_valid_js_identifier`
+
+Validates the condition in `'use memo if(cond)'` / `'use forget if(cond)'` directives against JavaScript identifier rules: must start with ASCII letter/`_`/`$`, subsequent chars must be ASCII alphanumeric/`_`/`$`, must not be a JS reserved keyword or literal (`true`, `false`, `null`, `undefined`, etc.). When the condition fails validation, compilation bails with an error instead of attempting to lower the invalid condition.
+
+### Attempted but REJECTED: 0-slot codegen
+
+**Result: -52 regression (505->453)**. Attempted emitting passthrough code (no `_c()` wrapper) for functions producing 0 cache slots. Failed because many 0-slot expected outputs contain structural transformations (extracted arrow functions, renamed variables) that differ from simple passthrough. Documented in index.md Deferred section.
