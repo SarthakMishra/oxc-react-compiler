@@ -311,7 +311,6 @@ escape-analysis-non-escaping-interleaved-allocating-dependency.js
 escape-analysis-non-escaping-interleaved-allocating-nested-dependency.js
 escape-analysis-non-escaping-interleaved-primitive-dependency.js
 escape-analysis-not-conditional-test.js
-escape-analysis-not-if-test.js
 escape-analysis-not-switch-case.js
 escape-analysis-not-switch-test.js
 evaluation-order-mutate-call-after-dependency-load.ts

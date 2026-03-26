@@ -28,8 +28,49 @@ pub fn prune_non_escaping_scopes(rf: &mut ReactiveFunction) {
     let mut used_ids = FxHashSet::default();
     collect_used_ids(&rf.body, &mut used_ids);
 
-    // Remove scopes whose declarations are never used anywhere
-    prune_scopes_in_block(&mut rf.body, &used_ids);
+    // Collect IDs that are ONLY used as condition tests (if/switch/ternary test
+    // positions) and never as values. Per upstream's PruneNonEscapingScopes.ts,
+    // a scope whose declarations are only used as condition tests does not
+    // "escape" — the test discards the value (only truthiness matters).
+    // DIVERGENCE: upstream tracks this at the type level; we approximate by
+    // collecting test-position IDs and subtracting value-position IDs, then
+    // propagating through alias chains (StoreLocal/LoadLocal).
+    let mut test_only_ids = FxHashSet::default();
+    collect_test_position_ids(&rf.body, &mut test_only_ids);
+    let mut value_used_ids = FxHashSet::default();
+    collect_value_used_ids(&rf.body, &mut value_used_ids);
+    // test_only = appears in test position AND never in value position
+    test_only_ids.retain(|id| !value_used_ids.contains(id));
+
+    // Propagate test-only status through alias chains: if `const x = t0` and x
+    // is test-only, and t0 is only used in this store, then t0 is also test-only.
+    let mut alias_info: FxHashMap<IdentifierId, Vec<IdentifierId>> = FxHashMap::default();
+    let mut use_counts: FxHashMap<IdentifierId, usize> = FxHashMap::default();
+    collect_alias_info(&rf.body, &mut alias_info, &mut use_counts);
+    // Fixed-point propagation
+    loop {
+        let mut changed = false;
+        for (value_id, target_ids) in &alias_info {
+            if test_only_ids.contains(value_id) {
+                continue; // already test-only
+            }
+            // Check if ALL targets are test-only and this value is only used
+            // in stores to those targets (use_count == number of store targets)
+            let store_count = target_ids.len();
+            let total_uses = use_counts.get(value_id).copied().unwrap_or(0);
+            let all_targets_test_only = target_ids.iter().all(|t| test_only_ids.contains(t));
+            if all_targets_test_only && total_uses == store_count {
+                test_only_ids.insert(*value_id);
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    // Remove scopes whose declarations are never used anywhere (or only as tests)
+    prune_scopes_in_block(&mut rf.body, &used_ids, &test_only_ids);
 }
 
 /// Collect all identifier IDs referenced as operands anywhere in the tree.
@@ -263,33 +304,433 @@ fn collect_used_in_terminal(terminal: &ReactiveTerminal, used: &mut FxHashSet<Id
     }
 }
 
-fn prune_scopes_in_block(block: &mut ReactiveBlock, used_ids: &FxHashSet<IdentifierId>) {
+/// Collect IDs that appear in condition-test positions (if test, switch test,
+/// conditional/ternary test). These positions only evaluate truthiness — the
+/// value itself does not escape.
+fn collect_test_position_ids(block: &ReactiveBlock, test_ids: &mut FxHashSet<IdentifierId>) {
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Scope(scope_block) => {
+                collect_test_position_ids(&scope_block.instructions, test_ids);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                collect_test_ids_in_terminal(terminal, test_ids);
+            }
+            ReactiveInstruction::Instruction(_) => {}
+        }
+    }
+}
+
+fn collect_test_ids_in_terminal(
+    terminal: &ReactiveTerminal,
+    test_ids: &mut FxHashSet<IdentifierId>,
+) {
+    match terminal {
+        ReactiveTerminal::If { test, consequent, alternate, .. } => {
+            test_ids.insert(test.identifier.id);
+            collect_test_position_ids(consequent, test_ids);
+            collect_test_position_ids(alternate, test_ids);
+        }
+        ReactiveTerminal::Switch { test, cases, .. } => {
+            test_ids.insert(test.identifier.id);
+            for (_, block) in cases {
+                collect_test_position_ids(block, test_ids);
+            }
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            collect_test_position_ids(init, test_ids);
+            collect_test_position_ids(test, test_ids);
+            if let Some(upd) = update {
+                collect_test_position_ids(upd, test_ids);
+            }
+            collect_test_position_ids(body, test_ids);
+        }
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            collect_test_position_ids(init, test_ids);
+            collect_test_position_ids(test, test_ids);
+            collect_test_position_ids(body, test_ids);
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { body, test, .. } => {
+            collect_test_position_ids(test, test_ids);
+            collect_test_position_ids(body, test_ids);
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            collect_test_position_ids(block, test_ids);
+            collect_test_position_ids(handler, test_ids);
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            collect_test_position_ids(block, test_ids);
+        }
+        ReactiveTerminal::Logical { right, .. } => {
+            collect_test_position_ids(right, test_ids);
+        }
+        ReactiveTerminal::Return { .. }
+        | ReactiveTerminal::Throw { .. }
+        | ReactiveTerminal::Continue { .. }
+        | ReactiveTerminal::Break { .. } => {}
+    }
+}
+
+/// Collect alias information for propagating test-only status through
+/// StoreLocal/DeclareLocal chains. For `StoreLocal { lvalue: x, value: t0 }`,
+/// records that t0 aliases to x. Also counts total uses of each ID.
+fn collect_alias_info(
+    block: &ReactiveBlock,
+    aliases: &mut FxHashMap<IdentifierId, Vec<IdentifierId>>,
+    use_counts: &mut FxHashMap<IdentifierId, usize>,
+) {
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                // Track alias chains through StoreLocal and LoadLocal
+                match &instruction.value {
+                    InstructionValue::StoreLocal { lvalue, value, .. } => {
+                        // source (value) is stored into target (lvalue)
+                        aliases.entry(value.identifier.id).or_default().push(lvalue.identifier.id);
+                    }
+                    InstructionValue::LoadLocal { place } => {
+                        // source (place) is loaded into target (instruction.lvalue)
+                        aliases
+                            .entry(place.identifier.id)
+                            .or_default()
+                            .push(instruction.lvalue.identifier.id);
+                    }
+                    _ => {}
+                }
+                // Count READ uses of each ID (excludes write targets)
+                collect_read_use_counts(&instruction.value, use_counts);
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                collect_alias_info(&scope_block.instructions, aliases, use_counts);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                collect_alias_info_in_terminal(terminal, aliases, use_counts);
+            }
+        }
+    }
+}
+
+fn collect_alias_info_in_terminal(
+    terminal: &ReactiveTerminal,
+    aliases: &mut FxHashMap<IdentifierId, Vec<IdentifierId>>,
+    use_counts: &mut FxHashMap<IdentifierId, usize>,
+) {
+    match terminal {
+        ReactiveTerminal::If { test, consequent, alternate, .. } => {
+            *use_counts.entry(test.identifier.id).or_insert(0) += 1;
+            collect_alias_info(consequent, aliases, use_counts);
+            collect_alias_info(alternate, aliases, use_counts);
+        }
+        ReactiveTerminal::Switch { test, cases, .. } => {
+            *use_counts.entry(test.identifier.id).or_insert(0) += 1;
+            for (_, block) in cases {
+                collect_alias_info(block, aliases, use_counts);
+            }
+        }
+        ReactiveTerminal::Return { value, .. } | ReactiveTerminal::Throw { value, .. } => {
+            *use_counts.entry(value.identifier.id).or_insert(0) += 1;
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            collect_alias_info(init, aliases, use_counts);
+            collect_alias_info(test, aliases, use_counts);
+            if let Some(upd) = update {
+                collect_alias_info(upd, aliases, use_counts);
+            }
+            collect_alias_info(body, aliases, use_counts);
+        }
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            collect_alias_info(init, aliases, use_counts);
+            collect_alias_info(test, aliases, use_counts);
+            collect_alias_info(body, aliases, use_counts);
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { body, test, .. } => {
+            collect_alias_info(test, aliases, use_counts);
+            collect_alias_info(body, aliases, use_counts);
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            collect_alias_info(block, aliases, use_counts);
+            collect_alias_info(handler, aliases, use_counts);
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            collect_alias_info(block, aliases, use_counts);
+        }
+        ReactiveTerminal::Logical { right, result, .. } => {
+            collect_alias_info(right, aliases, use_counts);
+            if let Some(r) = result {
+                *use_counts.entry(r.identifier.id).or_insert(0) += 1;
+            }
+        }
+        ReactiveTerminal::Continue { .. } | ReactiveTerminal::Break { .. } => {}
+    }
+}
+
+/// Count READ uses of each IdentifierId in an instruction (excludes write
+/// targets like StoreLocal lvalue). Each operand occurrence is counted
+/// separately (e.g. `x + x` counts `x` twice).
+fn collect_read_use_counts(value: &InstructionValue, counts: &mut FxHashMap<IdentifierId, usize>) {
+    // Collect read operand IDs, then count each occurrence
+    let mut temp = FxHashSet::default();
+    collect_read_operand_ids(value, &mut temp);
+    for id in temp {
+        *counts.entry(id).or_insert(0) += 1;
+    }
+}
+
+/// Collect IDs used as values (NOT as condition tests). This includes:
+/// - Instruction READ operands (excluding write targets like StoreLocal lvalue)
+/// - Return/Throw values
+/// - Terminal body blocks (recursively)
+///
+/// But EXCLUDES condition test positions in If/Switch terminals.
+fn collect_value_used_ids(block: &ReactiveBlock, used: &mut FxHashSet<IdentifierId>) {
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                // Use read-only operand collection (excludes write targets)
+                collect_read_operand_ids(&instruction.value, used);
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                collect_value_used_ids(&scope_block.instructions, used);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                collect_value_used_in_terminal(terminal, used);
+            }
+        }
+    }
+}
+
+/// Like `collect_instruction_operand_ids` but only collects READ operands.
+/// Excludes write-target positions like StoreLocal lvalue, DeclareLocal lvalue.
+fn collect_read_operand_ids(value: &InstructionValue, used: &mut FxHashSet<IdentifierId>) {
+    fn add(place: &Place, used: &mut FxHashSet<IdentifierId>) {
+        used.insert(place.identifier.id);
+    }
+
+    match value {
+        InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+            add(place, used);
+        }
+        InstructionValue::StoreLocal { value, .. }
+        | InstructionValue::StoreContext { value, .. } => {
+            // Only the VALUE is a read; lvalue is a write target
+            add(value, used);
+        }
+        InstructionValue::DeclareLocal { .. } | InstructionValue::DeclareContext { .. } => {
+            // lvalue is a write target, not a read
+        }
+        InstructionValue::Destructure { value, .. } => {
+            add(value, used);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            add(left, used);
+            add(right, used);
+        }
+        InstructionValue::UnaryExpression { value, .. } => add(value, used),
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            add(lvalue, used); // lvalue is both read and written
+        }
+        InstructionValue::CallExpression { callee, args, .. }
+        | InstructionValue::NewExpression { callee, args } => {
+            add(callee, used);
+            for arg in args {
+                add(arg, used);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            add(receiver, used);
+            for arg in args {
+                add(arg, used);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. }
+        | InstructionValue::PropertyDelete { object, .. } => {
+            add(object, used);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            add(object, used);
+            add(value, used);
+        }
+        InstructionValue::ComputedLoad { object, property, .. } => {
+            add(object, used);
+            add(property, used);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            add(object, used);
+            add(property, used);
+            add(value, used);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            add(object, used);
+            add(property, used);
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                add(&prop.value, used);
+                if let ObjectPropertyKey::Computed(key) = &prop.key {
+                    add(key, used);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    ArrayElement::Expression(p) | ArrayElement::Spread(p) => add(p, used),
+                    ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            add(tag, used);
+            for attr in props {
+                add(&attr.value, used);
+            }
+            for child in children {
+                add(child, used);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                add(child, used);
+            }
+        }
+        InstructionValue::Await { value }
+        | InstructionValue::GetIterator { collection: value }
+        | InstructionValue::IteratorNext { iterator: value, .. }
+        | InstructionValue::NextPropertyOf { value }
+        | InstructionValue::TypeCastExpression { value, .. } => {
+            add(value, used);
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                add(sub, used);
+            }
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            add(tag, used);
+            for sub in &value.subexpressions {
+                add(sub, used);
+            }
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            add(decl, used);
+            for dep in deps {
+                add(dep, used);
+            }
+        }
+        InstructionValue::StoreGlobal { value, .. } => add(value, used),
+        InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. }
+        | InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. } => {}
+    }
+}
+
+/// Like `collect_used_in_terminal` but EXCLUDES condition test positions.
+fn collect_value_used_in_terminal(terminal: &ReactiveTerminal, used: &mut FxHashSet<IdentifierId>) {
+    match terminal {
+        ReactiveTerminal::Return { value, .. } | ReactiveTerminal::Throw { value, .. } => {
+            used.insert(value.identifier.id);
+        }
+        ReactiveTerminal::If { consequent, alternate, .. } => {
+            // NOTE: test is intentionally NOT inserted — it's a condition test position
+            collect_value_used_ids(consequent, used);
+            collect_value_used_ids(alternate, used);
+        }
+        ReactiveTerminal::Switch { cases, .. } => {
+            // NOTE: test is intentionally NOT inserted
+            for (_, block) in cases {
+                collect_value_used_ids(block, used);
+            }
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            collect_value_used_ids(init, used);
+            collect_value_used_ids(test, used);
+            if let Some(upd) = update {
+                collect_value_used_ids(upd, used);
+            }
+            collect_value_used_ids(body, used);
+        }
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            collect_value_used_ids(init, used);
+            collect_value_used_ids(test, used);
+            collect_value_used_ids(body, used);
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { body, test, .. } => {
+            collect_value_used_ids(test, used);
+            collect_value_used_ids(body, used);
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            collect_value_used_ids(block, used);
+            collect_value_used_ids(handler, used);
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            collect_value_used_ids(block, used);
+        }
+        ReactiveTerminal::Logical { right, result, .. } => {
+            collect_value_used_ids(right, used);
+            if let Some(r) = result {
+                used.insert(r.identifier.id);
+            }
+        }
+        ReactiveTerminal::Continue { .. } | ReactiveTerminal::Break { .. } => {}
+    }
+}
+
+fn prune_scopes_in_block(
+    block: &mut ReactiveBlock,
+    used_ids: &FxHashSet<IdentifierId>,
+    test_only_ids: &FxHashSet<IdentifierId>,
+) {
     let mut new_instructions = Vec::new();
 
     for instr in std::mem::take(&mut block.instructions) {
         match instr {
             ReactiveInstruction::Scope(mut scope_block) => {
-                // Check if any declaration of this scope is used outside
-                let any_decl_used =
-                    scope_block.scope.declarations.iter().any(|(id, _)| used_ids.contains(id));
+                // Check if any declaration of this scope is used outside,
+                // excluding declarations that are ONLY used as condition tests
+                // (if test, switch test) — those don't truly "escape" the scope.
+                let any_decl_used = scope_block
+                    .scope
+                    .declarations
+                    .iter()
+                    .any(|(id, _)| used_ids.contains(id) && !test_only_ids.contains(id));
                 // Also check if any reassignment target is used outside
                 // (upstream checks both declarations and reassignments)
-                let any_reassign_used = scope_block
-                    .scope
-                    .reassignments
-                    .iter()
-                    .any(|ident| used_ids.contains(&ident.id));
+                let any_reassign_used = scope_block.scope.reassignments.iter().any(|ident| {
+                    used_ids.contains(&ident.id) && !test_only_ids.contains(&ident.id)
+                });
 
-                prune_scopes_in_block(&mut scope_block.instructions, used_ids);
+                prune_scopes_in_block(&mut scope_block.instructions, used_ids, test_only_ids);
+
+                // Check if ALL declarations are test-only (used only as condition tests)
+                let all_decls_test_only = !scope_block.scope.declarations.is_empty()
+                    && scope_block
+                        .scope
+                        .declarations
+                        .iter()
+                        .all(|(id, _)| test_only_ids.contains(id));
 
                 // Keep if: any declaration or reassignment escapes, OR empty declarations
-                // (handled by PropagateEarlyReturns later), OR is allocating/sentinel scope,
-                // OR has an early return value.
+                // (handled by PropagateEarlyReturns later), OR is allocating/sentinel scope
+                // (unless ALL declarations are test-only — in that case the allocation
+                // result is discarded and the scope can be pruned per upstream's
+                // PruneNonEscapingScopes), OR has an early return value.
                 if any_decl_used
                     || any_reassign_used
                     || (scope_block.scope.declarations.is_empty()
                         && scope_block.scope.reassignments.is_empty())
-                    || scope_block.scope.is_allocating
+                    || (scope_block.scope.is_allocating && !all_decls_test_only)
                     || scope_block.scope.early_return_value.is_some()
                 {
                     new_instructions.push(ReactiveInstruction::Scope(scope_block));
@@ -301,7 +742,7 @@ fn prune_scopes_in_block(block: &mut ReactiveBlock, used_ids: &FxHashSet<Identif
                 }
             }
             ReactiveInstruction::Terminal(mut terminal) => {
-                prune_scopes_in_terminal(&mut terminal, used_ids);
+                prune_scopes_in_terminal(&mut terminal, used_ids, test_only_ids);
                 new_instructions.push(ReactiveInstruction::Terminal(terminal));
             }
             other => {
@@ -313,45 +754,49 @@ fn prune_scopes_in_block(block: &mut ReactiveBlock, used_ids: &FxHashSet<Identif
     block.instructions = new_instructions;
 }
 
-fn prune_scopes_in_terminal(terminal: &mut ReactiveTerminal, used_ids: &FxHashSet<IdentifierId>) {
+fn prune_scopes_in_terminal(
+    terminal: &mut ReactiveTerminal,
+    used_ids: &FxHashSet<IdentifierId>,
+    test_only_ids: &FxHashSet<IdentifierId>,
+) {
     match terminal {
         ReactiveTerminal::If { consequent, alternate, .. } => {
-            prune_scopes_in_block(consequent, used_ids);
-            prune_scopes_in_block(alternate, used_ids);
+            prune_scopes_in_block(consequent, used_ids, test_only_ids);
+            prune_scopes_in_block(alternate, used_ids, test_only_ids);
         }
         ReactiveTerminal::Switch { cases, .. } => {
             for (_, block) in cases {
-                prune_scopes_in_block(block, used_ids);
+                prune_scopes_in_block(block, used_ids, test_only_ids);
             }
         }
         ReactiveTerminal::For { init, test, update, body, .. } => {
-            prune_scopes_in_block(init, used_ids);
-            prune_scopes_in_block(test, used_ids);
+            prune_scopes_in_block(init, used_ids, test_only_ids);
+            prune_scopes_in_block(test, used_ids, test_only_ids);
             if let Some(upd) = update {
-                prune_scopes_in_block(upd, used_ids);
+                prune_scopes_in_block(upd, used_ids, test_only_ids);
             }
-            prune_scopes_in_block(body, used_ids);
+            prune_scopes_in_block(body, used_ids, test_only_ids);
         }
         ReactiveTerminal::ForOf { init, test, body, .. }
         | ReactiveTerminal::ForIn { init, test, body, .. } => {
-            prune_scopes_in_block(init, used_ids);
-            prune_scopes_in_block(test, used_ids);
-            prune_scopes_in_block(body, used_ids);
+            prune_scopes_in_block(init, used_ids, test_only_ids);
+            prune_scopes_in_block(test, used_ids, test_only_ids);
+            prune_scopes_in_block(body, used_ids, test_only_ids);
         }
         ReactiveTerminal::While { test, body, .. }
         | ReactiveTerminal::DoWhile { body, test, .. } => {
-            prune_scopes_in_block(test, used_ids);
-            prune_scopes_in_block(body, used_ids);
+            prune_scopes_in_block(test, used_ids, test_only_ids);
+            prune_scopes_in_block(body, used_ids, test_only_ids);
         }
         ReactiveTerminal::Try { block, handler, .. } => {
-            prune_scopes_in_block(block, used_ids);
-            prune_scopes_in_block(handler, used_ids);
+            prune_scopes_in_block(block, used_ids, test_only_ids);
+            prune_scopes_in_block(handler, used_ids, test_only_ids);
         }
         ReactiveTerminal::Label { block, .. } => {
-            prune_scopes_in_block(block, used_ids);
+            prune_scopes_in_block(block, used_ids, test_only_ids);
         }
         ReactiveTerminal::Logical { right, .. } => {
-            prune_scopes_in_block(right, used_ids);
+            prune_scopes_in_block(right, used_ids, test_only_ids);
         }
         ReactiveTerminal::Return { .. }
         | ReactiveTerminal::Throw { .. }

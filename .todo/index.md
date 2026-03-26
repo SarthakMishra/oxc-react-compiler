@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-03-26
-> Conformance: **456/1717 (26.6%)** (known-failures.txt has 1261 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis. Then +3 from validateInferredDep partial implementation (453->456): 3 of 32 preserve-memo error fixtures now pass.
-> Known-failures: 1261. Error.* fixtures remaining in KF: 30 (28 top-level + 2 fbt/). False-positive bails: 70 (up from 67, +3 from scope inference differences in validateInferredDep).
+> Conformance: **457/1717 (26.6%)** (known-failures.txt has 1260 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis. Then +3 from validateInferredDep partial implementation (453->456): 3 of 32 preserve-memo error fixtures now pass. Then +1 from prune_non_escaping_scopes test-position detection (456->457): escape-analysis-not-if-test.js now passing.
+> Known-failures: 1260. Error.* fixtures remaining in KF: 30 (28 top-level + 2 fbt/). False-positive bails: 70 (up from 67, +3 from scope inference differences in validateInferredDep).
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
@@ -16,7 +16,7 @@
 |----------|-------|-------------|
 | Both compile, slots DIFFER | 683 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** Deficit (our < expected): ~400 fixtures. Surplus (our > expected): ~283 fixtures. |
 | Both compile, slots MATCH | 224 (was 237, -6 from 1d Phase 1 moved to matched, -3 from latest fixes) | Same slots, codegen structure diffs. **Dominated by scope inference differences (declaration placement tied to scope inference, not just codegen). B2 pattern (temps vs original names): 40 fixtures.** |
-| We compile, they don't | 194 (15%) | Missing validations. **Revised breakdown (2026-03-26): 134 have no upstream error header (not actionable without specific validation ports), 32 are preserve-memo, rest mixed.** Previously: 60 preserve-memo, 15 flow-parse, 7 todo-bail, 6 invariant, 4 frozen-value. |
+| We compile, they don't | 191 (15%) | **CORRECTED (2026-03-26): 134 are SCOPE INFERENCE SURPLUS (upstream produces 0 slots, we produce >0), NOT validation gaps.** Upstream compiled these functions but created no reactive scopes. We create scopes where upstream doesn't. These are part of the surplus scope inference problem. Remaining 57: 30 UPSTREAM ERROR (in KF), ~24 preserve-memo, ~3 other. |
 | We bail, they compile | ~70 (was 80, +3 new false-positive bails from scope inference differences in validateInferredDep) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking, +3 from validateInferredDep scope dep resolution mismatch). Sub-breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other. |
 | Both no memo (format diff) | 83 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
 
@@ -24,11 +24,11 @@
 
 1. **"Both no memo" (79 fixtures) is NOT low-hanging fruit.** These require dead-code elimination and constant propagation compiler passes. Neither pass exists yet. This is significant compiler work, not cosmetic format fixes as originally assumed.
 
-2. **"We compile, they don't" (186 fixtures) revised breakdown (2026-03-26):**
-   - **134 have no upstream error header** — these fixtures have no `@expectedError` or similar marker in the upstream expected output. They are NOT actionable without identifying the specific upstream validation that rejects them.
-   - **32 are preserve-memo** — `validatePreserveExistingMemoizationGuarantees` gaps (revised down from 60; previous count included fixtures that are actually in other categories).
-   - **15 are flow-parse** — Flow type annotation parsing failures (not actionable without Flow support)
-   - **Remaining:** mixed validation gaps (todo-bail, invariant, frozen-value, ref-access, reassignment, hooks, etc.)
+2. **"We compile, they don't" (191 fixtures) CRITICAL CORRECTION (2026-03-26):**
+   - **134 are SCOPE INFERENCE SURPLUS, NOT validation gaps.** These fixtures have expected output with 0 `_c()` calls and NO `// UPSTREAM ERROR:` header. Upstream DID compile them (structurally transformed code) but produced 0 reactive scopes. We produce >0 scopes (over-memoization). These OVERLAP with the 286 surplus fixtures in slots-DIFFER. Understanding WHY upstream produces 0 scopes on these is the key to a large conformance gain.
+   - **30 are UPSTREAM ERROR** (in known-failures) — must bail to pass.
+   - **~24 are preserve-memo** — `validatePreserveExistingMemoizationGuarantees` gaps (29 BLOCKED by scope dep resolution, 3 done).
+   - **~3 remaining:** mixed (flow-parse not actionable, other validation gaps).
 
 3. **"Slots MATCH" (227 fixtures) is dominated by scope inference differences, not just codegen.** The B2 pattern (40 fixtures, temps vs original names) remains the largest tractable sub-pattern, but the broader pool is driven by scope inference accuracy. Stage 1d Phase 2 (declaration placement inside control flow) was found to be a scope inference issue, not a codegen issue — declarations can only move inside control flow if scope inference correctly places scope boundaries within those blocks.
 
@@ -190,6 +190,28 @@ Key findings for slot-diff (688 fixtures):
 - **Both-no-memo (79):** Requires DCE + constant propagation (new passes). NOT cosmetic.
 - **Slot-diff deficit distribution:** -1 (131), -2 (120), -3 (35), -4 (42), -5 (16), -6 (22), -7 (4), -8+ (32). Total deficit: 402. Total surplus: 286.
 
+#### Stage 3a2: Investigate 0-Slot Surplus Fixtures (134 fixtures, est: +30-80)
+
+**Pool:** 134 fixtures where upstream produces 0 cache slots (no memoization) but we produce >0 slots. These are currently miscategorized as "we compile, they don't" but are actually scope inference surplus fixtures where expected_slots = 0.
+
+**Critical insight (2026-03-26):** These fixtures were previously described as "no upstream error header -- not actionable without specific validation ports." This was WRONG. Investigation revealed upstream DID compile them successfully -- it just produced 0 reactive scopes. The expected output files contain structurally transformed code (e.g., extracted arrow functions, renamed variables) but zero `_c()` calls. We produce memoized output with cache slots.
+
+**Examples:**
+- `arrow-function-one-line-directive.js`: Upstream extracts arrow to `_temp` function, 0 slots. We memoize with slots.
+- `call-spread-argument-mutable-iterator.js`: Upstream produces passthrough-like output, 0 slots.
+- `block-scoping-switch-dead-code.js`: Upstream transforms switch/dead-code structure, 0 slots.
+
+**Investigation plan:**
+- [ ] Sample 30 of the 134 fixtures and for each: (a) check what our scope inference produces (how many scopes, what they contain), (b) hypothesize why upstream produces 0 scopes
+- [ ] Categorize root causes: (a) our pruning misses cases upstream prunes, (b) our scope creation is too aggressive for certain patterns, (c) upstream has a pass we don't have (e.g., DCE eliminates the reactive scope inputs)
+- [ ] If a dominant pattern emerges (>30% of fixtures share one root cause), design a targeted fix
+- [ ] Regression-check any fix on full conformance suite
+
+**Upstream files:** `src/ReactiveScopes/PruneNonEscapingScopes.ts`, `src/ReactiveScopes/PruneNonReactiveDependencies.ts`, `src/ReactiveScopes/PruneUnusedScopes.ts`, `src/Optimization/DeadCodeElimination.ts`
+**Our files:** `prune_scopes.rs`, `infer_reactive_scope_variables.rs`
+
+**Why this is high priority:** 134 fixtures is the single largest addressable pool. If even 30% share a common root cause, fixing it yields +40 conformance. Removing scopes (making output more conservative) is SAFER than adding scopes -- less regression risk.
+
 #### Stage 3b: Fix Dominant Slot Diff Patterns (est: +15-25 fixtures, HIGH risk)
 
 **This is the critical-path task for reaching 600+.** The 688 slot-diff pool is the only category large enough to bridge the gap.
@@ -271,7 +293,7 @@ Key findings for slot-diff (688 fixtures):
 
 ### Stage 4: Validation Gaps — "We Compile, They Don't" (target: +50-75 fixtures)
 
-**Pool:** 186 fixtures where upstream bails with an error but we compile (incorrectly). **Revised breakdown (2026-03-26):** 134 have no upstream error header (not directly actionable), 32 are preserve-memo, 15 flow-parse, remaining: todo-bail, invariant, frozen-value, mixed.
+**Pool:** 191 fixtures where we produce memoized output but upstream doesn't. **CORRECTED (2026-03-26):** 134 are scope inference surplus (upstream compiles with 0 slots, NOT validation gaps -- see Stage 3a2). Remaining 57: 30 UPSTREAM ERROR (in KF, need bail), ~24 preserve-memo, ~3 other.
 **Risk:** LOW — adding validations is safe (bail-out = pass-through = correct).
 
 #### Stage 4a: Categorize Missing Validations -- COMPLETE (investigation)
@@ -279,13 +301,13 @@ Key findings for slot-diff (688 fixtures):
 Completed 2026-03-25 (extended investigation), revised 2026-03-26.
 
 **Revised breakdown (2026-03-26):** Of the ~186 "we compile, they don't" fixtures:
-- **134 have no upstream error header** — these are NOT actionable without identifying the specific upstream validation that rejects each one. This is the dominant sub-pool and is harder than previously estimated.
+- **134 are scope inference surplus** — upstream compiles with 0 reactive scopes, we produce >0. NOT validation gaps. See Stage 3a2 investigation.
 - **32 are preserve-memo** — `validatePreserveExistingMemoizationGuarantees` gaps (revised down from 60).
 - **Remaining ~20:** todo-bail (4), frozen-value (2), flow-parse (15, not actionable), mixed.
 
 | Sub-category | Count | Action Needed |
 |-------------|-------|---------------|
-| No upstream error header | 134 | NOT directly actionable — need per-fixture investigation to identify which upstream validation rejects each |
+| Scope inference surplus (0 expected slots) | 134 | Scope inference issue — upstream compiles with 0 reactive scopes, we over-memoize. See Stage 3a2. |
 | UPSTREAM ERROR fixtures (expected output IS the error) | 29 remaining in KF (was 75, 22 fixed in Stages 4c+4e-A, others already passing) | Must bail (not transform) to pass — error message matching NOT required |
 | `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | Extend existing preserve-memo validation |
 | `Todo` error detection (unimplemented features) | 4 remaining (25 done, +3 from 4e-D) | 4 need optional-chain-in-ternary (2), hoisting (1), context var detection (1) |
@@ -707,7 +729,7 @@ All paths relative to `crates/oxc_react_compiler/`.
 23. **Optional chaining in ternary/conditional expressions is a distinct Todo pattern.** Upstream bails on `?.()` and `?.` inside ternary expressions in try blocks. This is not covered by our existing Todo-pattern detection. The 2 remaining optional-chain fixtures (`optional-call-chain-in-ternary.ts`, `todo-optional-call-chain-in-optional.ts`) need a new detection path.
 24. **Stage 1d Phase 2 (declaration placement) is a scope inference problem, not codegen.** Moving declarations inside control flow blocks (if/for/try) requires scope inference to produce scopes bounded by those blocks. Currently scope inference merges scopes across control flow boundaries. Phase 2 is BLOCKED until Stage 3 scope inference improvements.
 25. **Slots-MATCH pool is dominated by scope inference differences.** While B2 (variable name preservation, 40 fixtures) is the largest single tractable pattern, the broader 227-fixture pool cannot be substantially reduced by codegen changes alone. Most differences trace back to scope inference producing differently-shaped scopes than upstream.
-26. **"We compile, they don't" revised breakdown (2026-03-26).** 134 of 186 fixtures have no upstream error header — they are not actionable without identifying the specific upstream validation that rejects each one. Only 32 are preserve-memo (revised down from 60). The 134-fixture "no header" pool makes this category harder than previously estimated.
+26. **"We compile, they don't" CORRECTED (2026-03-26).** 134 of 191 fixtures are scope inference SURPLUS (upstream compiles with 0 reactive scopes, not validation gaps). Previously mischaracterized as "no upstream error header -- not actionable." Upstream DID compile these fixtures but produced 0 cache slots. We produce >0 slots (over-memoization). This makes scope inference the dominant problem in this category. Only ~57 of the 191 are actual validation gaps (30 UPSTREAM ERROR, ~24 preserve-memo, ~3 other).
 27. **Dynamic gating parsing was a test harness bug, not a compiler bug.** 3 fixtures gained by fixing conformance test directive parsing for `@gating` patterns. Always check whether a fixture failure is a harness issue before assuming it's a compiler bug.
 28. **Nested HIR builders don't emit LoadContext instructions.** When a nested function is lowered by a child `HIRBuilder`, context variables (captured from outer scope) are represented as plain `LoadLocal` in the nested HIR, not `LoadContext`. This means walking the nested HIR cannot distinguish context variables from local variables. The upstream compiler uses `LoadContext` to identify captured variables in nested lambdas. Fixing `error.todo-handle-update-context-identifiers.js` requires either (a) emitting `LoadContext` in nested builders, or (b) passing parent scope binding information to the validation pass. This is a structural limitation, not a simple pattern-matching fix.
 29. **B2 (variable name preservation) is scope-inference dependent, NOT codegen-only.** Investigation of the 40 B2 fixtures revealed that many also have scope boundary differences driven by scope inference. Changing which variable name is used for scope outputs (temp vs original) is a codegen change, but it does not pass conformance if the scope itself has different boundaries than upstream. B2 is therefore only partially addressable by codegen; the remainder requires scope inference improvements (Stage 3). This downgrades B2 from "largest tractable codegen fix" to "partially tractable, scope-dependent."
@@ -715,3 +737,4 @@ All paths relative to `crates/oxc_react_compiler/`.
 31. **Object property key quoting matters for conformance.** Codegen must quote object property keys that are reserved words or contain special characters to match upstream output. A single property key formatting difference causes a fixture to fail even if the semantics are identical.
 32. **Scope dep IdentifierIds don't match original variable names after SSA.** Scope dependencies captured by reactive scopes have IdentifierIds that correspond to SSA temporaries (e.g., `t1`, `t2`), not the original source-level named variables (e.g., `props.x`). This prevents `validateInferredDep` from matching scope deps against manual memo deps (which use original names). The same problem affects any feature that needs to resolve a scope dep back to its original variable identity. Root cause: `propagate_dependencies.rs` does not preserve the original dependency path through SSA. This is a cross-cutting blocker that affects validateInferredDep (29 fixtures), and potentially B2 variable name preservation and other scope-dep-dependent features.
 33. **validateInferredDep partial success pattern.** Of 32 target error fixtures, only 3 pass because their deps happen to be simple named variables that survive SSA without temp indirection. The remaining 29 fail because their deps go through PropertyLoad chains that produce SSA temps. The algorithm itself is correct; the resolution layer is the blocker.
+34. **134 "no error header" fixtures are SCOPE INFERENCE SURPLUS, not validation gaps (2026-03-26).** Previously described as "not actionable without identifying specific upstream validations." Investigation revealed upstream DID compile these fixtures -- it produced structurally transformed output with 0 reactive scopes. We produce >0 scopes (over-memoization). These are part of the 286-fixture surplus pool where our_slots > expected_slots, specifically the subset where expected_slots = 0. This makes scope inference surplus the DOMINANT conformance gap: 134 (zero-slot surplus) + 152 (non-zero surplus where our_slots > expected_slots) = 286 surplus fixtures total. Understanding why upstream produces 0 scopes on the 134 is the key investigation for large conformance gains.
