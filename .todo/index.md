@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-03-26
-> Conformance: **453/1717 (26.4%)** (known-failures.txt has 1264 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis.
-> Known-failures: 1264. Error.* fixtures remaining in KF: 33 (31 top-level + 2 fbt/).
+> Conformance: **456/1717 (26.6%)** (known-failures.txt has 1261 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis. Then +3 from validateInferredDep partial implementation (453->456): 3 of 32 preserve-memo error fixtures now pass.
+> Known-failures: 1261. Error.* fixtures remaining in KF: 30 (28 top-level + 2 fbt/). False-positive bails: 70 (up from 67, +3 from scope inference differences in validateInferredDep).
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
@@ -17,7 +17,7 @@
 | Both compile, slots DIFFER | 683 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes.** Deficit (our < expected): ~400 fixtures. Surplus (our > expected): ~283 fixtures. |
 | Both compile, slots MATCH | 224 (was 237, -6 from 1d Phase 1 moved to matched, -3 from latest fixes) | Same slots, codegen structure diffs. **Dominated by scope inference differences (declaration placement tied to scope inference, not just codegen). B2 pattern (temps vs original names): 40 fixtures.** |
 | We compile, they don't | 194 (15%) | Missing validations. **Revised breakdown (2026-03-26): 134 have no upstream error header (not actionable without specific validation ports), 32 are preserve-memo, rest mixed.** Previously: 60 preserve-memo, 15 flow-parse, 7 todo-bail, 6 invariant, 4 frozen-value. |
-| We bail, they compile | 80 (5%) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking). Sub-breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other. |
+| We bail, they compile | ~70 (was 80, +3 new false-positive bails from scope inference differences in validateInferredDep) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking, +3 from validateInferredDep scope dep resolution mismatch). Sub-breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other. |
 | Both no memo (format diff) | 83 (6%) | Neither side memoizes. **Requires DCE + constant propagation passes — NOT quick wins.** |
 
 ### Key Investigation Findings (2026-03-25, updated 2026-03-26)
@@ -48,14 +48,14 @@ The path is clearer but requires significant compiler infrastructure work:
 |-----------|-----------|---------------|------------|
 | Scope inference fixes (slots-DIFFER) | 688 | +50-100 | HIGH — cascading regression risk, scope MERGING is bottleneck (see 3b blocker) |
 | DCE + constant propagation (both-no-memo) | 79 | +30-50 | HIGH — new compiler passes needed |
-| `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | +15-25 | MEDIUM — 3 sub-types: validateInferredDep, value-memoized, dep-mutated |
+| `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | +3 done, +12-22 remaining | MEDIUM — 3 sub-types: validateInferredDep (3/32 done, 29 BLOCKED by scope dep resolution), value-memoized, dep-mutated |
 | Variable name preservation in codegen (B2) | 40 | +10-20 | MEDIUM-HIGH — scope output naming changes + scope inference dependency (see lesson #29) |
 | Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — BLOCKED: Phase 2 requires scope inference (Stage 3). Phase 3 (merge decl+init) DONE (+0 dormant). |
 | Remaining bail-out fixes (2d-2g) | ~84 total bail pool | +15-25 | MEDIUM — per-validation fixes |
 | Todo error detection (remaining) | 4 | +2-4 | LOW-MED — need optional-chain-in-ternary, hoisting, context var |
 | Frozen-mutation validation fixes | 1 remains | +10 done (Stage 4d + follow-up) | MEDIUM | 1 remaining needs JSX capture analysis |
 
-**Conservative estimate:** +147-301 from 453 base = 600-754. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
+**Conservative estimate:** +144-298 from 456 base = 600-754. Reaching 600 is feasible but requires scope inference work (the largest and highest-risk category).
 
 ---
 
@@ -296,28 +296,69 @@ Completed 2026-03-25 (extended investigation), revised 2026-03-26.
 
 **Updated breakdown (2026-03-26, revised down from 60 to 32):** The preserve-memo fixtures in the "we compile, they don't" category. Previous count of 60 included fixtures that are actually in other categories. Revised to 32 after re-analysis. These break into 3 distinct sub-types:
 
-| Sub-type | Count | What's needed |
-|----------|-------|---------------|
-| `validateInferredDep` not implemented | 26 | Port upstream's `validateInferredDep` checks — validates that inferred dependencies match manual memo deps |
-| "value was memoized" check improvement | 17 | Improve detection of whether a value was actually memoized by the compiler (our check is too permissive) |
-| "dependency may be mutated" tracking | 17 | Track whether dependencies of manual memos may be mutated, triggering preserve-memo bail-out |
+| Sub-type | Count | Status | What's needed |
+|----------|-------|--------|---------------|
+| `validateInferredDep` not implemented | 26 | **PARTIALLY COMPLETE** — 3 of 32 target error fixtures pass; 29 BLOCKED by scope dep resolution | Port upstream's `validateInferredDep` checks — validates that inferred dependencies match manual memo deps |
+| "value was memoized" check improvement | 17 | Not started | Improve detection of whether a value was actually memoized by the compiler (our check is too permissive) |
+| "dependency may be mutated" tracking | 17 | Not started | Track whether dependencies of manual memos may be mutated, triggering preserve-memo bail-out |
 
-- [ ] Audit our `validate_preserved_manual_memoization.rs` against upstream
-- [ ] Port `validateInferredDep` checks (26 fixtures — largest sub-type)
+- [x] Audit our `validate_preserved_manual_memoization.rs` against upstream
+- [~] Port `validateInferredDep` checks (26 fixtures — largest sub-type) — **3 of 32 target error fixtures now pass, 29 BLOCKED by scope dep IdentifierId mismatch (see blocker report below)**
 - [ ] Fix "value was memoized" detection (17 fixtures)
 - [ ] Add "dependency may be mutated" tracking (17 fixtures)
 - [ ] **Risk:** MEDIUM — our implementation exists but has known gaps
-- [ ] **Potential gain:** +30-45 fixtures (some may also need other fixes)
+- [ ] **Potential gain:** +30-45 fixtures (some may also need other fixes), but validateInferredDep remaining 29 are BLOCKED
 
-##### Partial Investigation Notes (2026-03-25)
+##### validateInferredDep Implementation Notes (2026-03-26)
 
-An investigation was started but not completed. Key finding: our validation exists at Pass 61 but fails to detect errors because `finish_in_scope` is true -- our scope inference wraps `FinishMemoize` in reactive scopes, which causes the validation to skip checks it should be performing. Additionally, upstream has `validateInferredDep` checks that we skip entirely. These are **prerequisites** for Stage 4b to succeed:
+**What was implemented:** Ported the core `validateInferredDep` algorithm from upstream `validatePreserveExistingMemoizationGuarantees.ts`. The implementation:
+- Extracts inferred dependencies from scope declarations associated with `FinishMemoize` instructions
+- Compares inferred deps against manual deps from `StartMemoize` instructions
+- Emits `CannotPreserveMemoization` error when an inferred dep is not found in the manual dep list
+- Handles the `pruned` flag on `FinishMemoize` to skip validation when the compiler already pruned the scope
 
-1. Understand why `finish_in_scope` is true (scope inference wrapping `FinishMemoize` instructions)
-2. Port the `validateInferredDep` checks from upstream (affects 26 fixtures)
-3. May require scope inference adjustments to avoid wrapping `FinishMemoize` in reactive scopes
+**What works (3 fixtures passing):** Cases where scope deps happen to use resolved variable names that match manual memo deps. These are cases where the dependency is a simple named variable that survives SSA without being renamed to a temp.
 
-**Status:** Investigation incomplete. Approach is understood but implementation requires deeper scope inference analysis. The 3-sub-type breakdown provides clear attack plan once the `finish_in_scope` prerequisite is resolved.
+**What's blocked (29 fixtures):** Scope dependencies after SSA have IdentifierIds that correspond to SSA temporaries (e.g., `t1`, `t2`), NOT the original named variables. When `validateInferredDep` tries to match a scope dep against a manual memo dep (which uses the original variable name like `props.x`), the comparison fails because the scope dep's IdentifierId resolves to a temp name, not `props.x`. This is the fundamental scope dep resolution blocker.
+
+**New false-positive bails (+3, 67->70 total):** The validateInferredDep implementation correctly fires on some fixtures but incorrectly fires on others due to the dep name mismatch. 3 fixtures that previously compiled now incorrectly bail because their scope deps appear unmatched (when they actually do match, just under different IdentifierIds).
+
+##### Blocker Report — Scope dep IdentifierIds don't resolve to named locals after SSA (2026-03-26)
+
+**Approach attempted:** Implemented `validateInferredDep` by iterating over scope declarations and comparing their dependency IdentifierIds against manual memo dep IdentifierIds. Used `identifier_name` (the HIR identifier's name field) to resolve deps back to named variables for comparison.
+
+**Assumption that was wrong:** Assumed that scope dependency IdentifierIds would resolve to the original named variable (e.g., `props`, `x`, `obj.a`). In reality, after SSA renaming, scope dep IdentifierIds point to SSA temporaries (e.g., `t1`, `t2`) because the dependency was computed through a chain of instructions (LoadLocal -> PropertyLoad -> etc.) and the scope dep captures the final temp, not the original source variable.
+
+**What was discovered:** The scope dep resolution problem is structural:
+1. Scope dependencies are captured as `Place` references with IdentifierIds
+2. These IdentifierIds are assigned during HIR construction and then renumbered during SSA
+3. After SSA, the IdentifierId on a scope dep points to a temporary that holds the computed value (e.g., the result of `LoadLocal props` + `PropertyLoad .x`)
+4. Manual memo deps reference the original source-level names (e.g., `props.x`)
+5. There is no reverse mapping from SSA temp IdentifierIds back to the original source-level property path
+6. Upstream solves this by maintaining richer dependency tracking through `PropagateScopeDependencies` that preserves the original property access path. Our `propagate_dependencies.rs` does not preserve this path information.
+
+**Regression details:** +3 new false-positive bails (67->70 total). These are fixtures where `validateInferredDep` fires incorrectly because it cannot match scope deps (SSA temps) to manual deps (named variables).
+
+**Prerequisites for a successful attempt (remaining 29 fixtures):**
+- Scope dep resolution must be able to map from an SSA temp IdentifierId back to the original named variable / property path
+- This likely requires `propagate_dependencies.rs` to preserve the original dependency path (e.g., `props.x`) alongside or instead of just the final temp IdentifierId
+- Alternatively, a post-SSA reverse mapping pass could trace each temp back through its definition chain to find the original source variable
+- This is the same fundamental problem that affects B2 variable name preservation — SSA temps obscure original variable identity
+
+**Useful findings to carry forward:**
+- The `validateInferredDep` algorithm itself is correctly ported — the issue is purely in dep resolution, not validation logic
+- `validate_preserved_manual_memoization.rs` is the implementation file
+- Manual memo deps come from `StartMemoize` instruction's `deps` field
+- Scope deps come from the reactive scope's `declarations` map
+- The 3 passing fixtures are cases where deps happen to be simple named variables that survive SSA without temp indirection
+
+**Do NOT attempt to fix the remaining 29 until:** Scope dep resolution is improved to map SSA temp IdentifierIds back to original named variable paths. This may require changes to `propagate_dependencies.rs` or a new reverse-mapping utility.
+
+##### Previous Investigation Notes (2026-03-25)
+
+~~An investigation was started but not completed. Key finding: our validation exists at Pass 61 but fails to detect errors because `finish_in_scope` is true -- our scope inference wraps `FinishMemoize` in reactive scopes, which causes the validation to skip checks it should be performing. Additionally, upstream has `validateInferredDep` checks that we skip entirely.~~
+
+**Resolved (2026-03-26):** The `finish_in_scope` issue was addressed during the validateInferredDep implementation. The core validation logic now correctly processes FinishMemoize instructions regardless of scope wrapping. The remaining blocker is scope dep IdentifierId resolution (see blocker report above).
 
 #### Stage 4c: Add Todo Error Detection -- PARTIALLY COMPLETE (+15 net, 411->426)
 
@@ -349,15 +390,15 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
   - `error.invalid-jsx-captures-context-variable.js` — complex JSX capture pattern, needs deeper analysis
 - **New regression:** 4 IIFE-pattern fixtures (`capturing-func-alias-*-iife.js`) now falsely bail. See Stage 2d note below.
 
-#### Stage 4e: UPSTREAM ERROR Fixture Handling (36 error.* remain in KF post 4e-D partial, was 43)
+#### Stage 4e: UPSTREAM ERROR Fixture Handling (30 error.* remain in KF post validateInferredDep partial, was 36)
 
 **Critical correction (2026-03-25):** The conformance test does NOT require matching exact error messages. It only checks `!compile_result.transformed` (line 781 of conformance_tests.rs). To pass an UPSTREAM ERROR fixture, we just need to bail (not transform). This is much simpler than originally described.
 
-**Revised breakdown of 36 error.* fixtures remaining in known-failures (post Stage 4e-D partial):**
+**Revised breakdown of 30 error.* fixtures remaining in known-failures (post validateInferredDep partial, was 36):**
 
 | Sub-category | Count | What we need to bail |
 |-------------|-------|---------------------|
-| "Compilation Skipped: preserve-memo" | 11 | `validatePreserveExistingMemoizationGuarantees` must detect and bail — overlaps Stage 4b |
+| "Compilation Skipped: preserve-memo" | 8 (was 11, 3 fixed by validateInferredDep) | `validatePreserveExistingMemoizationGuarantees` must detect and bail — overlaps Stage 4b. Remaining 8 BLOCKED by scope dep resolution. |
 | "Todo: hoisting/optional/context-var/etc" | 4 | Remaining unsupported patterns (was 7, 3 fixed in 4e-D): optional-chain-in-ternary (2), hoisting (1), context var update (1) — need deeper compiler infra |
 | "Invariant: ..." (upstream internal errors) | 3 | MethodCall codegen (1), inconsistent destructuring (1), unnamed temporary (1) — 3 of original 6 fixed in 4e-A |
 | "Error: This value cannot be modified" | 2 | Frozen-mutation detection — overlaps Stage 4d remaining (1 fixed: effect callback Check 4b) |
@@ -373,7 +414,7 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 - [~] **4e-B: Locals-reassigned + ref-access + setState bail-outs (5 fixtures)** — tighten existing validators (`validate_no_ref_access_in_render`, `validate_locals_not_reassigned_after_render`, setState checks, hooks-in-loop) to catch these specific patterns. **Progress:** +2 fixtures (hooks-in-for-loop via Terminal::Branch handling in `validate_hooks_usage.rs`; ref-access detection for `error.validate-mutate-ref-arg-in-render.js` via name-based + Type::Ref fallback in `validate_no_ref_access_in_render.rs`). Remaining potential gain: +3.
 - [~] **4e-C: Frozen-mutation remaining (2 fixtures, was 3)** — overlaps Stage 4d remaining. 1 fixed (effect callback Check 4b, 2026-03-26). Remaining: `error.invalid-jsx-captures-context-variable.js` (JSX capture analysis) + 1 other. Potential gain: +2.
 - [~] **4e-D: Todo-bail fixtures (10 fixtures) — PARTIALLY COMPLETE (+3, 450->453).** Fixed 3 of 10: `repro-declaration-for-all-identifiers.js` (for-in-try detection via Terminal::For), `repro-for-loop-in-try.js` (same), `repro-nested-try-catch-in-usememo.js` (file-level bail propagation via ANY_FUNCTION_BAILED thread-local). **7 remaining:** `optional-call-chain-in-ternary.ts`, `todo-optional-call-chain-in-optional.ts`, `propagate-scope-deps-hir-fork/todo-optional-call-chain-in-optional.ts`, `error.dont-hoist-inline-reference.js`, and ~3 others. See new gap notes below.
-- [ ] **4e-D2: Preserve-memo gaps (11 fixtures)** — overlaps Stage 4b. BLOCKED by `finish_in_scope` issue (see Stage 4b notes). Potential gain: +11 but requires scope inference fix.
+- [~] **4e-D2: Preserve-memo gaps (11 fixtures)** — overlaps Stage 4b. `finish_in_scope` issue resolved; validateInferredDep partially implemented (+3 passing). Remaining fixtures BLOCKED by scope dep resolution (SSA temp IdentifierIds don't resolve to named variables). Potential gain: +8 remaining but requires scope dep resolution fix.
 - [ ] **4e-E: Todo remaining (4 fixtures, was 7, 3 fixed in 4e-D)** — overlaps Stage 4c remaining. Need optional-chain-in-ternary (2), hoisting (1), context var update (1). Potential gain: +4 but requires new infrastructure. Context var update BLOCKED by nested HIR LoadContext gap. Optional-chain-in-ternary needs new validation pattern (see gap note below).
 
 **Stage 4e-A done: +7 fixtures gained.**
@@ -478,7 +519,7 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 | Stage 1d Phase 1: Declaration placement | +6 (done) | 450 | LOW | Completed. Phase 2/3 remain (+10-30). |
 | B2: Variable name preservation | +20-30 | 464-501 | MEDIUM | 40 fixtures, scope output naming. **Finding (2026-03-26): scope-inference dependent, NOT codegen-only.** Many B2 fixtures also have scope boundary differences; pure codegen name changes won't pass them. |
 | Stage 3: Scope inference (±1/±2 diffs) | +50-100 | 514-601 | HIGH | 688 pool (402 deficit, 286 surplus), scope MERGING is bottleneck (see 3b blocker) |
-| Stage 4b: Preserve-memo validation | +15-25 | 544-646 | MEDIUM | 32 fixtures (revised down from 60; 3 sub-types: validateInferredDep, value-memoized, dep-mutated) |
+| Stage 4b: Preserve-memo validation | +3 done, +12-22 remaining | 544-646 | MEDIUM | 32 fixtures (revised down from 60; 3 sub-types: validateInferredDep (3/32 done, 29 BLOCKED by scope dep resolution), value-memoized, dep-mutated) |
 | Stage 4c: Todo error detection | +15 (done, 5 remain) | 426 | LOW | 22/27 done (15 in 4c + 7 in 4e-A). Remaining 5 need hoisting, optional terminals, context vars. |
 | Stage 4d: Frozen-mutation false negatives | +10 (done) | 435+1 | MEDIUM | Completed. 7/9 planned + 2 bonus + 1 follow-up (Check 4b). 1 remains (JSX capture). |
 | Stage 4e-A: Upstream error bail-outs | +7 (done) | 442 | LOW | 7/43 done. 4e-B through 4e-E remain. |
@@ -487,13 +528,13 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 | Stage 4e-D: Todo-bail (partial) | +3 (done) | 453 | LOW | 3/10 done (for-in-try, bail propagation). 7 remain (optional-chain, hoisting). |
 | Stage 4e-C/D2/E: Remaining upstream errors | +18-35 | 471-488 | MED-HIGH | 4e-C (3, MED), 4e-D2 preserve-memo (11, MED-HIGH), 4e-E (7, HIGH) |
 | Stage 5: DCE + constant propagation | +30-50 | 604-754 | HIGH | 79 fixtures, new passes needed |
-| **Total remaining** | **+147-301** | **600-754** | | From 453 base |
+| **Total remaining** | **+144-298** | **600-754** | | From 456 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
 **Key learning from Stage 2a/2b:** Most bail-outs come from specific validations, not silent/0-scope issues. File-level bail-outs were low-hanging fruit (+1 net from removing 4).
 
-**Key correction (2026-03-26):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-D partial + freeze follow-up, **33 error.* fixtures remain in known-failures** (31 top-level + 2 fbt/). Down from 43 pre-4e-A, 37 pre-4e-D, 34 pre-freeze-follow-up.
+**Key correction (2026-03-26):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-D partial + freeze follow-up + validateInferredDep partial, **30 error.* fixtures remain in known-failures** (28 top-level + 2 fbt/). Down from 43 pre-4e-A, 37 pre-4e-D, 34 pre-freeze-follow-up, 33 pre-validateInferredDep.
 
 **Important: CompilationMode::All in conformance tests.** The conformance test harness (`tests/conformance_tests.rs`) uses `compilationMode:"all"`, meaning ALL functions in a fixture are compiled (not just those detected as components/hooks). This affects which fixtures pass/fail because validations run on every function body, not just component-shaped ones. When investigating fixture behavior, always account for this mode.
 
@@ -507,9 +548,9 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 - "Both no memo" is NOT format diffs — requires DCE + constant propagation (new compiler passes)
 - "We compile, they don't" has 75 UPSTREAM ERROR fixtures — significant untapped pool if we match error formats
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
-- `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures
+- `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures (3 now fixed via validateInferredDep, 29 BLOCKED by scope dep resolution)
 
-**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +33-76 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~600 from 453 base. Optimistic: 700+.
+**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +30-73 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). DCE/constant propagation (Stage 5) could push well past 600 but is the hardest work. Conservative floor: ~600 from 456 base. Optimistic: 700+.
 
 **Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
 
@@ -525,6 +566,19 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 
 **Files:** `src/inference/infer_mutation_aliasing_effects.rs`, `src/validation/`
 - Impure function handling in legacy signatures — requires `validate_no_impure_functions_in_render` integration
+
+### Scope Dep Resolution (SSA temp -> named variable mapping) — BLOCKED
+
+**Affects:** Stage 4b validateInferredDep (29 remaining fixtures), potentially B2 variable name preservation, and any feature needing to resolve scope deps back to original source-level names.
+
+**Problem:** After SSA, scope dependency IdentifierIds point to temporaries, not original named variables. No reverse mapping exists from SSA temp IdentifierIds back to the property access path (e.g., `props.x`) that produced them. `propagate_dependencies.rs` does not preserve this path information.
+
+**Resolution options:**
+1. Enhance `propagate_dependencies.rs` to carry the original dependency path (property access chain) alongside the IdentifierId
+2. Build a post-SSA reverse mapping pass that traces each temp back through LoadLocal/PropertyLoad chains to the original source variable
+3. Port upstream's richer `ReactiveScopeDependency` type which includes the full access path
+
+**See:** Stage 4b blocker report in this file for full details.
 
 ### Phase 4c: Remove `validate_no_mutation_after_freeze.rs` — BLOCKED
 
@@ -567,6 +621,9 @@ HIR blocks stored in creation order; for-loop constructs create blocks out of so
 
 ### Cross-scope `IdentifierId` mismatch
 Nested function bodies have their own `IdentifierId` numbering. Name-based resolution needed.
+
+### Scope dep IdentifierIds are SSA temps, not source names
+After SSA, scope dependency IdentifierIds point to temporaries (e.g., `t1`), not original source variables (e.g., `props.x`). This blocks `validateInferredDep` (29 fixtures), B2 variable name preservation, and any feature needing to resolve scope deps to source-level names. See "Scope Dep Resolution" in Deferred/Blocked section.
 
 ### Build & test
 ```bash
@@ -656,3 +713,5 @@ All paths relative to `crates/oxc_react_compiler/`.
 29. **B2 (variable name preservation) is scope-inference dependent, NOT codegen-only.** Investigation of the 40 B2 fixtures revealed that many also have scope boundary differences driven by scope inference. Changing which variable name is used for scope outputs (temp vs original) is a codegen change, but it does not pass conformance if the scope itself has different boundaries than upstream. B2 is therefore only partially addressable by codegen; the remainder requires scope inference improvements (Stage 3). This downgrades B2 from "largest tractable codegen fix" to "partially tractable, scope-dependent."
 30. **Re-enabling removed bail-outs as per-function bails can gain fixtures.** The known-incompatible import bail and ESLint suppression bail were removed in Stage 2b as file-level bails. Re-enabling them as per-function bails (matching upstream behavior) gained +4 fixtures (+3 from incompatible imports, +1 from ESLint suppression). The lesson: removing a bail-out entirely is wrong if upstream still bails per-function. The fix is to change the granularity (file-level -> per-function), not remove the bail entirely.
 31. **Object property key quoting matters for conformance.** Codegen must quote object property keys that are reserved words or contain special characters to match upstream output. A single property key formatting difference causes a fixture to fail even if the semantics are identical.
+32. **Scope dep IdentifierIds don't match original variable names after SSA.** Scope dependencies captured by reactive scopes have IdentifierIds that correspond to SSA temporaries (e.g., `t1`, `t2`), not the original source-level named variables (e.g., `props.x`). This prevents `validateInferredDep` from matching scope deps against manual memo deps (which use original names). The same problem affects any feature that needs to resolve a scope dep back to its original variable identity. Root cause: `propagate_dependencies.rs` does not preserve the original dependency path through SSA. This is a cross-cutting blocker that affects validateInferredDep (29 fixtures), and potentially B2 variable name preservation and other scope-dep-dependent features.
+33. **validateInferredDep partial success pattern.** Of 32 target error fixtures, only 3 pass because their deps happen to be simple named variables that survive SSA without temp indirection. The remaining 29 fail because their deps go through PropertyLoad chains that produce SSA temps. The algorithm itself is correct; the resolution layer is the blocker.

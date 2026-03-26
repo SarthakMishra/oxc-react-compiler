@@ -5,7 +5,8 @@
 # Format: <relative-path-from-upstream-fixtures/>
 # Known upstream fixtures that our compiler does not yet match.
 # One fixture filename per line. Lines starting with '#' are comments.
-# Phase 124: +31 error fixtures (validateInferredDep dep comparison not implemented)
+# Phase 124: +28 error fixtures (validateInferredDep partial - 3 now pass with dep comparison)
+# Phase 148: +3 fixtures pass (validateInferredDep source dep extraction and comparison)
 # Re-baselined: 2026-03-21 against upstream main (facebook/react)
 # fbt preprocessing: +14 fixtures (fbt JSX pre-transformed via babel-plugin-fbt)
 alias-capture-in-method-receiver.js
@@ -298,7 +299,6 @@ error.todo-for-loop-with-context-variable-iterator.js
 error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-nested-method-calls-lower-property-load-into-temporary.js
-error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js
 error.todo-repro-missed-memoization-from-capture-in-invoked-function-inferred-as-mutation.js
 error.todo-repro-unmemoized-callback-captured-in-context-variable.tsx
 error.todo-valid-functiondecl-hoisting.tsx
@@ -724,7 +724,6 @@ preserve-memo-deps-conditional-property-chain.js
 preserve-memo-deps-optional-property-chain.js
 preserve-memo-validation/error.false-positive-useMemo-dropped-infer-always-invalidating.ts
 preserve-memo-validation/error.false-positive-useMemo-infer-mutate-deps.ts
-preserve-memo-validation/error.false-positive-useMemo-overlap-scopes.ts
 preserve-memo-validation/error.hoist-useCallback-conditional-access-own-scope.ts
 preserve-memo-validation/error.hoist-useCallback-infer-conditional-value-block.ts
 preserve-memo-validation/error.invalid-useCallback-captures-reassigned-context.ts
@@ -740,7 +739,6 @@ preserve-memo-validation/error.useMemo-infer-less-specific-conditional-access.ts
 preserve-memo-validation/error.useMemo-infer-less-specific-conditional-value-block.ts
 preserve-memo-validation/error.useMemo-property-call-chained-object.ts
 preserve-memo-validation/error.useMemo-property-call-dep.ts
-preserve-memo-validation/error.useMemo-unrelated-mutation-in-depslist.ts
 preserve-memo-validation/error.useMemo-with-refs.flow.js
 preserve-memo-validation/maybe-invalid-useMemo-no-memoblock-sideeffect.ts
 preserve-memo-validation/preserve-use-callback-stable-built-ins.ts

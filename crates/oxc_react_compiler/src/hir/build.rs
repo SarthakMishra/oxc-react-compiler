@@ -2184,8 +2184,14 @@ impl HIRBuilder {
         {
             let memo_id = self.next_memo_id;
             self.next_memo_id += 1;
+            // Extract source deps from AST before lowering
+            let source_deps = extract_source_deps(&call.arguments);
             self.emit(
-                InstructionValue::StartMemoize { manual_memo_id: memo_id, has_invalid_deps: false },
+                InstructionValue::StartMemoize {
+                    manual_memo_id: memo_id,
+                    has_invalid_deps: false,
+                    source_deps,
+                },
                 loc,
             );
             let callee = self.lower_expression(&call.callee);
@@ -3210,4 +3216,80 @@ fn collapse_jsx_whitespace(text: &str) -> String {
     }
 
     parts.join(" ")
+}
+
+/// Extract source dependencies from a useMemo/useCallback dep array AST node.
+/// Walks each element of the array expression and builds `ManualMemoDependency` items.
+/// Returns `None` if no dep array argument is present; `Some(vec)` if the dep array exists.
+fn extract_source_deps(args: &[Argument<'_>]) -> Option<Vec<ManualMemoDependency>> {
+    // useMemo(fn, [deps]) / useCallback(fn, [deps])
+    // args[0] = callback, args[1] = dep array
+    if args.len() < 2 {
+        return None; // No dep array → None
+    }
+    let dep_arg = match &args[1] {
+        Argument::SpreadElement(_) => return None,
+        _ => args[1].to_expression(),
+    };
+    let array_expr = match dep_arg {
+        Expression::ArrayExpression(arr) => arr,
+        _ => return None, // Not an array expression
+    };
+    let mut deps = Vec::new();
+    for element in &array_expr.elements {
+        match element {
+            ArrayExpressionElement::SpreadElement(_) | ArrayExpressionElement::Elision(_) => {
+                // Skip spread/elision elements — can't extract a clean dep
+                continue;
+            }
+            _ => {
+                if let Some(dep) = extract_dep_from_expression(element.to_expression()) {
+                    deps.push(dep);
+                }
+            }
+        }
+    }
+    Some(deps)
+}
+
+/// Recursively extract a `ManualMemoDependency` from a single expression in the dep array.
+fn extract_dep_from_expression(expr: &Expression<'_>) -> Option<ManualMemoDependency> {
+    match expr {
+        Expression::Identifier(ident) => {
+            let name = ident.name.to_string();
+            let root = if is_global_name(&name) {
+                ManualMemoDependencyRoot::Global { name }
+            } else {
+                ManualMemoDependencyRoot::NamedLocal { name }
+            };
+            Some(ManualMemoDependency { root, path: Vec::new() })
+        }
+        Expression::StaticMemberExpression(member) => {
+            let mut dep = extract_dep_from_expression(&member.object)?;
+            dep.path.push(DependencyPathEntry {
+                property: member.property.name.to_string(),
+                optional: false,
+            });
+            Some(dep)
+        }
+        Expression::ChainExpression(chain) => {
+            use oxc_ast::ast::ChainElement;
+            match &chain.expression {
+                ChainElement::StaticMemberExpression(member) => {
+                    let mut dep = extract_dep_from_expression(&member.object)?;
+                    dep.path.push(DependencyPathEntry {
+                        property: member.property.name.to_string(),
+                        optional: member.optional,
+                    });
+                    Some(dep)
+                }
+                _ => None, // ComputedMemberExpression, CallExpression — can't extract
+            }
+        }
+        Expression::TSNonNullExpression(inner) => extract_dep_from_expression(&inner.expression),
+        Expression::TSAsExpression(inner) => extract_dep_from_expression(&inner.expression),
+        Expression::TSSatisfiesExpression(inner) => extract_dep_from_expression(&inner.expression),
+        Expression::TSTypeAssertion(inner) => extract_dep_from_expression(&inner.expression),
+        _ => None, // Unsupported expression form
+    }
 }

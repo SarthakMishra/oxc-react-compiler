@@ -474,6 +474,10 @@ pub enum InstructionValue {
         /// errors with ValidatePreservedManualMemoization so it won't re-report
         /// the same dependency issue.
         has_invalid_deps: bool,
+        /// Source dependencies extracted from the useMemo/useCallback dep array AST.
+        /// `None` means no dep array was provided; `Some(vec)` means a dep array was
+        /// present (possibly empty `[]`).
+        source_deps: Option<Vec<ManualMemoDependency>>,
     },
     FinishMemoize {
         manual_memo_id: u32,
@@ -1207,6 +1211,25 @@ pub struct ReactiveScopeDeclaration {
 pub struct DependencyPathEntry {
     pub property: String,
     pub optional: bool,
+}
+
+/// A source dependency extracted from useMemo/useCallback dep array AST.
+/// Mirrors upstream ManualMemoDependency.
+#[derive(Debug, Clone)]
+pub struct ManualMemoDependency {
+    pub root: ManualMemoDependencyRoot,
+    /// Property path from the root, e.g. `[{property: "y", optional: false}]`
+    /// for `x.y`.
+    pub path: Vec<DependencyPathEntry>,
+}
+
+/// Root of a manual memo dependency.
+#[derive(Debug, Clone)]
+pub enum ManualMemoDependencyRoot {
+    /// A named local variable.
+    NamedLocal { name: String },
+    /// A global variable reference (e.g. `Math`, `Object`).
+    Global { name: String },
 }
 
 #[derive(Debug, Clone)]

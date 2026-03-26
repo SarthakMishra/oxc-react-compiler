@@ -2,7 +2,7 @@
 
 > Completed: 2026-03-25
 > Starting pool: 108 "we bail, they compile" fixtures
-> After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in), **80 remaining as of 2026-03-26** (per latest conformance breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other)
+> After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in), **~70 remaining as of 2026-03-26** (per latest conformance breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other; +3 new false-positive bails from validateInferredDep scope dep resolution mismatch)
 > Note: Conformance tests use `compilationMode:"all"` — all functions are compiled, not just detected components/hooks. This affects which bail-out validations fire.
 
 ## Summary
@@ -32,7 +32,7 @@ Of the original 108 fixtures where we bail but upstream compiles:
 - **Initial fix (2026-03-25):** Removed the file-level bail. +1 net at the time.
 - **Follow-up (2026-03-26):** Re-enabled as a custom ESLint suppression per-function bail matching upstream behavior. The per-function bail correctly bails individual functions that have ESLint suppression annotations, rather than bailing the entire file. This gained **+1 net passing fixture** (the suppression bail fixture itself now correctly bails).
 
-## Remaining Bail-out Breakdown (80 fixtures as of 2026-03-26, was 89)
+## Remaining Bail-out Breakdown (~70 fixtures as of 2026-03-26, was 80, +3 new from validateInferredDep false positives)
 
 | Error Category | Count | Fixable? | Notes |
 |---------------|-------|----------|-------|
@@ -167,3 +167,13 @@ Completed 2026-03-26. Fixed 3 of 10 todo-bail fixtures from the "we compile, the
 8. `valid-set-state-in-useEffect-from-ref.js` — setState-in-effect validation fires
 9. `valid-setState-in-effect-from-ref-arithmetic.js` — same
 (Note: some may have shifted between categories after the lint-mode fix)
+
+## validateInferredDep False Positive Bails (+3 new, 2026-03-26)
+
+The `validateInferredDep` implementation in `validate_preserved_manual_memoization.rs` introduced 3 new false-positive bail-outs. These occur because scope dependency IdentifierIds resolve to SSA temporaries instead of the original named variables. When the dep name (e.g., `t1`) doesn't match any manual memo dep name (e.g., `props.x`), the validation incorrectly fires `CannotPreserveMemoization`.
+
+**Root cause:** Scope dep IdentifierIds after SSA don't map back to original variable names. See Stage 4b blocker report in `index.md` for full details.
+
+**Impact:** 3 fixtures moved from "both compile" to "we bail, they compile" category. These are a known regression from the validateInferredDep implementation and will be resolved when scope dep resolution is fixed.
+
+**These false positives are expected to disappear when:** The scope dep resolution blocker is addressed (mapping SSA temp IdentifierIds back to original named variable paths).
