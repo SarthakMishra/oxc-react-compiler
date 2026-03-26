@@ -20,6 +20,7 @@ use crate::hir::types::{
     AliasingEffect, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, Identifier,
     IdentifierId, InstructionValue, Place,
 };
+use crate::validation::validate_no_ref_access_in_render::is_ref_name;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// SSA-unique key: (IdentifierId, ssa_version). After SSA, each reassignment
@@ -479,6 +480,25 @@ pub fn validate_no_mutation_after_freeze(
                         frozen_at.entry(sid).or_insert(instr.id);
                     }
                 }
+                // Propagate freeze through Destructure: if the destructured value
+                // is frozen (e.g., props param), all output variables are also frozen.
+                InstructionValue::Destructure { value, lvalue_pattern } => {
+                    let val_frozen = is_ssa_frozen(&value.identifier, &frozen_ids)
+                        || resolve_name(
+                            value.identifier.id,
+                            &id_to_name,
+                            value.identifier.name.as_deref(),
+                        )
+                        .is_some_and(|n| frozen_names.contains(n));
+                    if val_frozen {
+                        collect_frozen_ids_from_destructure(
+                            lvalue_pattern,
+                            &mut frozen_ids,
+                            &mut frozen_names,
+                            &ref_ids,
+                        );
+                    }
+                }
                 _ => {}
             }
 
@@ -591,16 +611,38 @@ pub fn validate_no_mutation_after_freeze(
             // their mutations are checked by the normal instruction-level checks.
             if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
                 && (!frozen_ids.is_empty() || !frozen_names.is_empty())
-                && !effect_callback_ids.contains(&instr.lvalue.identifier.id)
                 && !iife_ids.contains(&instr.lvalue.identifier.id)
-                && has_mutation_on_frozen(&lowered_func.body, &frozen_ids, &frozen_names)
             {
-                errors.push(CompilerError::invalid_react_with_kind(
-                    instr.loc,
-                    FROZEN_MUTATION_ERROR,
-                    DiagnosticKind::ImmutabilityViolation,
-                ));
-                return;
+                if effect_callback_ids.contains(&instr.lvalue.identifier.id) {
+                    // Check 4b: Even in effect callbacks, mutating frozen props
+                    // is still an error. Props (and their destructured properties)
+                    // are always frozen and should never be mutated even in effects.
+                    // We use the full frozen set — refs are already excluded from
+                    // frozen_ids (line 312), so `ref.current = x` in effects won't
+                    // false-positive. But ref NAMES might still be in frozen_names,
+                    // so we build a ref-excluded name set for safety.
+                    let non_ref_frozen_names: FxHashSet<&str> =
+                        frozen_names.iter().copied().filter(|n| !is_ref_name(n)).collect();
+                    if has_mutation_on_frozen(
+                        &lowered_func.body,
+                        &frozen_ids,
+                        &non_ref_frozen_names,
+                    ) {
+                        errors.push(CompilerError::invalid_react_with_kind(
+                            instr.loc,
+                            FROZEN_MUTATION_ERROR,
+                            DiagnosticKind::ImmutabilityViolation,
+                        ));
+                        return;
+                    }
+                } else if has_mutation_on_frozen(&lowered_func.body, &frozen_ids, &frozen_names) {
+                    errors.push(CompilerError::invalid_react_with_kind(
+                        instr.loc,
+                        FROZEN_MUTATION_ERROR,
+                        DiagnosticKind::ImmutabilityViolation,
+                    ));
+                    return;
+                }
             }
 
             // Check 5: Mutate effects on frozen values (catches cases where

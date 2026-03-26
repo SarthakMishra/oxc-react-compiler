@@ -274,7 +274,6 @@ effect-derived-computations/invalid-derived-state-from-computed-props.js
 effect-derived-computations/invalid-derived-state-from-destructured-props.js
 effect-derived-computations/ref-conditional-in-effect-no-error.js
 effect-derived-computations/usestate-derived-from-prop-no-show-in-data-flow-tree.js
-error.assign-ref-in-effect-hint.js
 error.bug-invariant-codegen-methodcall.js
 error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-unnamed-temporary.js
@@ -1016,7 +1015,6 @@ repro-nested-try-catch-in-usememo.js
 repro-no-declarations-in-reactive-scope-with-early-return.js
 repro-no-value-for-temporary-reactive-scope-with-early-return.js
 repro-no-value-for-temporary.js
-repro-non-identifier-object-keys.ts
 repro-object-expression-computed-key-modified-during-after-construction-hoisted-sequence-expr.js
 repro-object-fromEntries-entries.js
 repro-preds-undefined-try-catch-return-primitive.js

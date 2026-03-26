@@ -458,6 +458,6 @@ fn collect_callee_names(hir: &HIR) -> Vec<String> {
 }
 
 /// Check if a name looks like a React ref.
-fn is_ref_name(name: &str) -> bool {
+pub(crate) fn is_ref_name(name: &str) -> bool {
     name.ends_with("Ref") || name.ends_with("ref") || name == "ref"
 }
