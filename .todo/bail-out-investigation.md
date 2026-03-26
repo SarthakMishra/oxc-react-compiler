@@ -32,21 +32,21 @@ Of the original 108 fixtures where we bail but upstream compiles:
 - **Initial fix (2026-03-25):** Removed the file-level bail. +1 net at the time.
 - **Follow-up (2026-03-26):** Re-enabled as a custom ESLint suppression per-function bail matching upstream behavior. The per-function bail correctly bails individual functions that have ESLint suppression annotations, rather than bailing the entire file. This gained **+1 net passing fixture** (the suppression bail fixture itself now correctly bails).
 
-## Remaining Bail-out Breakdown (~70 fixtures as of 2026-03-26, was 80, +3 new from validateInferredDep false positives)
+## Remaining Bail-out Breakdown (119 fixtures as of 2026-03-26, CORRECTED from ~70 — validateInferredDep introduced +51 false-positive bails, not +3)
 
 | Error Category | Count | Fixable? | Notes |
 |---------------|-------|----------|-------|
-| Values derived from props/state (effect-derived-computations validation) | 20 | YES | New validation `validateNoDerivedComputationsInEffects` fires incorrectly; upstream compiles despite this validation |
-| Frozen mutation (false positive) | 26 (per latest breakdown) | MEDIUM | `InferMutableRanges` over-reports mutations on frozen values. Includes 4 IIFE false positives from name-based freeze tracking. Note: Stage 4d follow-up (destructure freeze propagation + Check 4b) improved true-positive detection but did not address false positives. |
-| Cannot reassign outside component | 10 | MEDIUM | `validateLocalsNotReassignedAfterRender` false positives |
-| (no error / silent) | 6 (was 9, 3 gating fixed) | MIXED | Various: ~~gating mode (3)~~ fixed in Stage 1e (conformance harness issue), 0-scope functions (2), misc (4) |
-| Cannot access refs during render | 8 | MEDIUM | `validateNoRefAccessInRender` false positives. Note: separate from Stage 4e-B ref-access *detection* fixes (where we fail to bail on upstream-error fixtures). |
-| setState in useEffect (synchronous) | 7 | HARD | New validation that doesn't exist upstream or fires incorrectly |
+| Existing memo preservation (preserve-memo) | **55** (was 4; +51 from validateInferredDep regression) | **HIGH PRIORITY** | `validateInferredDep` scope dep resolution failures — scope deps resolve to SSA temps, not named variables. Fixing dep resolution would eliminate ~51 false positives. **SINGLE LARGEST BAIL-OUT CATEGORY.** |
+| Frozen mutation (false positive) | 15 | MEDIUM | `InferMutableRanges` over-reports mutations on frozen values. Includes IIFE false positives from name-based freeze tracking. |
+| Cannot reassign outside component | 11 | BLOCKED | `validateLocalsNotReassignedAfterRender` false positives. Stage 2f attempted and FAILED (-4 net). Requires DeclareContext/StoreContext HIR lowering. |
+| (no error / silent) | 8 | MIXED | Various |
+| Local variable reassignment | 6+1 | MEDIUM | Overlaps with "cannot reassign" |
+| Cannot access refs during render | 6 | MEDIUM | `validateNoRefAccessInRender` false positives |
 | Cannot call setState during render | 4 | MEDIUM | `validateNoSetStateInRender` false positives |
-| Existing memo preservation | 4 | HARD | `preserveExistingMemoization` validation gaps |
-| Extra effect dependencies | 3 | MEDIUM | `validateExhaustiveDeps` false positives |
 | Hooks as normal values | 3 | MEDIUM | Hooks validation false positives |
-| Other (1-2 each) | 10 | VARIES | Various edge cases |
+| setState in useEffect (synchronous) | 2 | HARD | |
+| BuildHIR unsupported | 2 | MEDIUM | DefaultParam nonreorderable |
+| Other (1 each) | 6 | VARIES | Various edge cases |
 
 ## Recommended Next Steps
 
@@ -76,7 +76,7 @@ Of the original 108 fixtures where we bail but upstream compiles:
 - These fixtures are unblocked for future scope/codegen improvements
 - **Key learning:** Bail-out fixes move fixtures between pools but don't directly increase conformance when output still differs
 
-### Stage 2d: Fix frozen-mutation false positives (11 original + 4 new IIFE = ~15 fixtures)
+### Stage 2d: Fix frozen-mutation false positives (11 original + 4 new IIFE = ~15 fixtures) -- BLOCKED
 - `InferMutableRanges` incorrectly reports mutations on frozen values
 - Requires mutable range analysis refinements
 - **NEW (post Stage 4d):** 4 additional IIFE-pattern false positives introduced by name-based freeze tracking:
@@ -86,7 +86,40 @@ Of the original 108 fixtures where we bail but upstream compiles:
   - `capturing-func-alias-property-iife.js`
   - These shifted from slots-MATCH/DIFFER to bail category. The name-based tracker sees mutations inside IIFEs as post-freeze mutations because it doesn't track scope boundaries.
   - **Fix approach:** Implement scoped name tracking that resets or excludes names within IIFE boundaries from freeze-after-mutation checks.
-- **Risk:** MEDIUM
+- **Risk:** HIGH — blocked, see blocker report below
+
+### Blocker Report — Stage 2d Frozen-Mutation False-Positive Bails (2026-03-26)
+
+**Approach attempted:** Three strategies were tried to eliminate the 26 false-positive MutateFrozen bails:
+
+1. **IIFE detection improvement (two-pass per-block approach):** Improved IIFE detection to identify call instructions that target function expressions defined in the same block. This was kept as a safe code quality improvement, but it is a no-op for the 26 false positives — the root cause lies elsewhere.
+
+2. **IIFE skip in Check 1 for MutateFrozen:** Attempted to skip MutateFrozen effects that originate from IIFE call instructions in Check 1 of `validate_no_mutation_after_freeze`. This had no effect because the false positives do not come from the IIFE call instruction itself.
+
+3. **Cross-checking MutateFrozen against frozen_ids:** Attempted to filter MutateFrozen effects by verifying the mutated identifier is actually in the `frozen_ids` set. Result: **-2 regression** (lost 2 true positives that were correctly detected via transitive freeze status but whose identifiers were not directly in `frozen_ids`).
+
+**Assumption that was wrong:** Assumed the false positives came from the IIFE call instruction itself. Actually, they come from `mutate(y)` where `y` is transitively MaybeFrozen via capture chains in the aliasing pass. The IIFE call is not the source of the bad effect — the aliasing pass's transitive freeze propagation is.
+
+**What was discovered:** All 26 false positives come from Check 1 (MutateFrozen effects emitted by `infer_mutation_aliasing_effects`). Root cause: when a mutable container `y` captures frozen data through `y.x = x` (a PropertyStore or Capture effect), `y` becomes MaybeFrozen in the abstract state of the aliasing pass. Then any subsequent Mutate effect on `y` gets upgraded to MutateFrozen by the aliasing pass. The fix needs to happen in one of two places:
+- The aliasing pass's `mutate()` method (around line 225 of `infer_mutation_aliasing_effects.rs`), where Mutate effects are upgraded to MutateFrozen based on transitive freeze status
+- The PropertyStore/Capture effect handling that propagates frozen status from captured values to their containers
+
+**Regression details:** Cross-checking MutateFrozen against `frozen_ids` caused -2 regression — lost 2 true positives where the identifier was correctly flagged via transitive freeze status but was not directly present in the `frozen_ids` set.
+
+**Prerequisites for a successful attempt:**
+
+- Either fix the aliasing pass's transitive freeze propagation to distinguish "container holds frozen data" from "container itself is frozen" (complex, high regression risk — the aliasing pass is a core pass that affects many downstream analyses)
+- Or build a more sophisticated validator-level filter in `validate_no_mutation_after_freeze` that can distinguish direct freezes (parameter is frozen) from transitive freezes (container captured a frozen value) without losing the true positives that rely on transitive detection
+
+**Useful findings to carry forward:**
+
+- All 26 false positives are Check 1 (MutateFrozen from `infer_mutation_aliasing_effects`), not Check 2/3/4
+- The IIFE detection improvement (two-pass per-block approach) was kept — it is safe and improves code quality even though it does not fix these specific false positives
+- `infer_mutation_aliasing_effects.rs` line ~225 is where `mutate()` upgrades Mutate to MutateFrozen based on abstract state
+- The `frozen_ids` set in `validate_no_mutation_after_freeze.rs` tracks directly frozen identifiers (params, context) but NOT transitively frozen containers — this is why the cross-check approach loses true positives
+- The upstream aliasing pass likely has a more nuanced freeze propagation model that does not over-promote containers to MaybeFrozen
+
+**Do NOT attempt again until:** Either (a) the aliasing pass's freeze propagation semantics are better understood by detailed comparison with the upstream TypeScript `InferMutationAliasingEffects` pass, or (b) a mechanism exists to distinguish direct vs transitive freeze status in the validator without regressing true positives.
 
 ### Stage 4d: Frozen-mutation false negatives -- COMPLETE (+10 net, 426->435 initial, +1 follow-up 452->453)
 
@@ -177,3 +210,35 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 **Impact:** 3 fixtures moved from "both compile" to "we bail, they compile" category. These are a known regression from the validateInferredDep implementation and will be resolved when scope dep resolution is fixed.
 
 **These false positives are expected to disappear when:** The scope dep resolution blocker is addressed (mapping SSA temp IdentifierIds back to original named variable paths).
+
+### Blocker Report — Stage 2i (Preserve-Memo False Bails) (2026-03-26)
+
+**Approach attempted:** Three strategies to reduce the 55 false-positive "Existing memoization could not be preserved" bails:
+
+1. **Build temp resolution map before `inline_load_local_temps`:** Hypothesis was that building the pre-inline temporaries map earlier would capture more LoadLocal/PropertyLoad chains before they were inlined away. Result: no effect — the map contained the same entries regardless of timing, because the relevant instruction chains were never present in the first place (the operands are CallExpression/MethodCall/BinaryExpression/Destructure results, not LoadLocal targets).
+
+2. **Skip unnamed deps in `propagate_scope_dependencies_hir`:** Hypothesis was that filtering out deps with unnamed/temp identifiers at the source (propagation) would prevent them from reaching the validation pass. Result: **-15 conformance regression**. Many legitimate scope dependencies are unnamed at propagation time and get named later by `promote_used_temporaries`. Filtering them out at propagation time removes real dependencies that downstream passes need.
+
+3. **Skip compiler temp names ("tN") in `resolve_scope_dep` validation only:** Hypothesis was that deps whose resolved name matches the pattern `t\d+` (compiler temporaries) could be safely excluded from the validateInferredDep mismatch check. Result: reduced false bails from 55 to 7, but caused **-31 conformance regression** from error.* fixtures. Root cause: many error.* fixtures (that should bail with upstream errors) currently bail "by accident" because their scope deps resolve to "tN" temps, triggering the validateInferredDep mismatch. This is the "right behavior for the wrong reason" — skipping "tN" deps in validation causes those fixtures to stop bailing, and they then produce compiled output that doesn't match the expected error output.
+
+**Root cause:** 4000+ unnamed deps are created in `propagate_scope_dependencies_hir` because operands reference unnamed instruction results (CallExpression, MethodCall, StoreLocal, BinaryExpression, Destructure results). These are NOT LoadLocal/PropertyLoad targets, so `temp_map` (the pre-inline temporaries resolution map) cannot resolve them back to named variables. The `promote_used_temporaries` pass then names these deps with compiler-generated names like "t0", "t1", etc. Even when the 55 false bails are eliminated (approach 3), the 48 de-bailed fixtures have codegen differences (slot mismatches) and do not pass conformance — they were hidden behind the false bail.
+
+**Assumption that was wrong:** Assumed that fixing false bails would yield net conformance improvement. In reality: (a) the de-bailed fixtures have codegen differences that prevent them from passing, and (b) ~31 error.* fixtures rely on the "tN" dep mismatch to bail correctly (right outcome, wrong mechanism).
+
+**Regression details:**
+- Approach 2 (skip unnamed in propagation): -15 net conformance
+- Approach 3 (skip "tN" in validation): 55→7 false bails eliminated, but -31 net conformance from error.* fixtures that stop bailing
+
+**Prerequisites for a successful attempt:**
+- Codegen quality must improve for preserve-memo fixtures so that de-bailed fixtures actually pass conformance (slot mismatches must be resolved first)
+- OR: `propagate_scope_dependencies_hir` must be enhanced to resolve more operand types through `temp_map` — handle CallExpression results, phi outputs, Destructure outputs, BinaryExpression results, etc. — so that deps resolve to real variable names instead of compiler temps
+- OR: error.* fixtures that currently bail "by accident" via "tN" dep mismatch must be made to bail via their correct validation path (e.g., frozen-mutation, ref-access, reassignment validations), so that fixing the false bails does not regress them
+
+**Useful findings to carry forward:**
+- `propagate_scope_dependencies_hir` in `propagate_dependencies.rs` creates 4000+ unnamed deps per fixture — this is the upstream divergence point
+- `temp_map` (built by `build_temporaries_map_from_hir`) only covers LoadLocal → PropertyLoad chains; it does NOT cover CallExpression, MethodCall, StoreLocal, BinaryExpression, or Destructure instruction results
+- `promote_used_temporaries` (Pass 29) names unnamed identifiers with "tN" pattern — these are the deps that cause false bails
+- The 48 de-bailed fixtures (from approach 3) all land in slots-DIFFER, not slots-MATCH — they need scope inference fixes before they can pass
+- The 31 error.* regressions from approach 3 are a mix of preserve-memo, frozen-mutation, ref-access, and reassignment errors that upstream detects via their respective validators, but our compiler only catches via the accidental "tN" dep mismatch in validateInferredDep
+
+**Do NOT attempt again until:** Either (a) codegen quality improves for preserve-memo fixtures (slot mismatches resolved), OR (b) `propagate_scope_dependencies_hir` is enhanced to resolve more operand types through temp_map, OR (c) the error.* fixtures that bail "by accident" are made to bail via their correct validation paths. Without one of these prerequisites, any attempt to reduce the 55 false bails will cause a net conformance regression.

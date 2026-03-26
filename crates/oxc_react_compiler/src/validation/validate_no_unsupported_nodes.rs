@@ -36,6 +36,10 @@ const REJECTED_UNSUPPORTED_NODES: &[&str] = &[
     // Upstream: Todo: Expression type `ArrowFunctionExpression` cannot be safely reordered
     // Default parameter values that are arrow/function expressions cannot be reordered.
     "DefaultParam_nonreorderable_expression",
+    // Upstream: Invariant: Const declaration cannot be referenced as an expression
+    // Nested destructuring in assignment expressions (e.g. `([[x]] = makeObject())`)
+    // causes an invariant failure in upstream's codegen.
+    "NestedDestructuringAssignment",
 ];
 
 /// Validate that the HIR contains no `UnsupportedNode` instructions for patterns
@@ -103,6 +107,12 @@ pub fn validate_no_unsupported_nodes(hir: &HIR, errors: &mut ErrorCollector) {
     // Check for function declarations in unreachable code (after return/throw).
     // Upstream: Todo: Support functions with unreachable code that may contain hoisted declarations
     check_hoisted_function_in_unreachable_code(hir, errors);
+
+    // DIVERGENCE: Upstream codegen fails with "Invariant: [Codegen] Internal error:
+    // MethodCall::property must be an unpromoted + unmemoized MemberExpression" when
+    // a MethodCall result is used as an argument to another MethodCall. We detect this
+    // pattern early and bail to match upstream's behavior.
+    check_nested_method_call_as_argument(hir, errors);
 }
 
 /// Check if an instruction declares a `var` variable.
@@ -467,5 +477,51 @@ fn collect_terminal_successors(terminal: &Terminal, successors: &mut Vec<BlockId
             successors.push(*fallthrough);
         }
         Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => {}
+    }
+}
+
+/// Check for nested MethodCall results used as arguments to other MethodCalls.
+///
+/// Upstream codegen fails with:
+///   "Invariant: [Codegen] Internal error: MethodCall::property must be an
+///    unpromoted + unmemoized MemberExpression"
+/// when a MethodCall result is used as an argument to another MethodCall.
+/// Examples:
+///   - `Math.max(2, items.push(5), ...other)` — push() result is arg to max()
+///   - `Math.floor(diff.bar())` — bar() result is arg to floor()
+///
+/// We detect this early and bail to match upstream behavior.
+fn check_nested_method_call_as_argument(hir: &HIR, errors: &mut ErrorCollector) {
+    // Pass 1: Collect all lvalue IDs that are results of MethodCall instructions
+    let mut method_call_result_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if matches!(instr.value, InstructionValue::MethodCall { .. }) {
+                method_call_result_ids.insert(instr.lvalue.identifier.id);
+            }
+        }
+    }
+
+    if method_call_result_ids.is_empty() {
+        return;
+    }
+
+    // Pass 2: Check if any MethodCall has an argument whose ID is a MethodCall result
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::MethodCall { args, .. } = &instr.value {
+                for arg in args {
+                    if method_call_result_ids.contains(&arg.identifier.id) {
+                        errors.push(CompilerError::invariant(
+                            instr.loc,
+                            "[Codegen] Internal error: MethodCall::property must be an \
+                             unpromoted + unmemoized MemberExpression"
+                                .to_string(),
+                        ));
+                        return;
+                    }
+                }
+            }
+        }
     }
 }

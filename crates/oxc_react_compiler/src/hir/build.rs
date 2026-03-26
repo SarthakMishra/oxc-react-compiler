@@ -2276,6 +2276,19 @@ impl HIRBuilder {
         assign: &ast::AssignmentExpression<'_>,
         loc: Span,
     ) -> Place {
+        // DIVERGENCE: Upstream fails with "Invariant: Const declaration cannot be
+        // referenced as an expression" on nested destructuring assignments like
+        // `([[x]] = makeObject())`. Detect nested destructuring in assignment
+        // targets and bail to match upstream behavior.
+        if has_nested_destructuring_target(&assign.left) {
+            return self.emit(
+                InstructionValue::UnsupportedNode {
+                    node: "NestedDestructuringAssignment".to_string(),
+                },
+                loc,
+            );
+        }
+
         let rhs = self.lower_expression(&assign.right);
 
         // For compound assignment (+=, etc.), compute the new value
@@ -3291,5 +3304,73 @@ fn extract_dep_from_expression(expr: &Expression<'_>) -> Option<ManualMemoDepend
         Expression::TSSatisfiesExpression(inner) => extract_dep_from_expression(&inner.expression),
         Expression::TSTypeAssertion(inner) => extract_dep_from_expression(&inner.expression),
         _ => None, // Unsupported expression form
+    }
+}
+
+/// Check if an assignment target contains nested destructuring patterns.
+///
+/// Returns true for patterns like `[[x]] = expr` (array inside array) or
+/// `[{x}] = expr` (object inside array), which upstream fails to handle
+/// with "Invariant: Const declaration cannot be referenced as an expression."
+fn has_nested_destructuring_target(target: &AssignmentTarget<'_>) -> bool {
+    match target {
+        AssignmentTarget::ArrayAssignmentTarget(array_target) => {
+            // Check if any element is itself a destructuring pattern
+            for element in &array_target.elements {
+                let Some(element) = element else { continue };
+                let inner = match element {
+                    ast::AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(wd) => {
+                        &wd.binding
+                    }
+                    _ => {
+                        if let Some(t) = element.as_assignment_target() {
+                            t
+                        } else {
+                            continue;
+                        }
+                    }
+                };
+                if matches!(
+                    inner,
+                    AssignmentTarget::ArrayAssignmentTarget(_)
+                        | AssignmentTarget::ObjectAssignmentTarget(_)
+                ) {
+                    return true;
+                }
+            }
+            false
+        }
+        AssignmentTarget::ObjectAssignmentTarget(obj_target) => {
+            // Check if any value target is a destructuring pattern
+            for prop in &obj_target.properties {
+                match prop {
+                    ast::AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(_) => {}
+                    ast::AssignmentTargetProperty::AssignmentTargetPropertyProperty(p) => {
+                        // Extract the inner target, handling default values
+                        let inner = match &p.binding {
+                            ast::AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(wd) => {
+                                &wd.binding
+                            }
+                            _ => {
+                                if let Some(t) = p.binding.as_assignment_target() {
+                                    t
+                                } else {
+                                    continue;
+                                }
+                            }
+                        };
+                        if matches!(
+                            inner,
+                            AssignmentTarget::ArrayAssignmentTarget(_)
+                                | AssignmentTarget::ObjectAssignmentTarget(_)
+                        ) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            false
+        }
+        _ => false,
     }
 }

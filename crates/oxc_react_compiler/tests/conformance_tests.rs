@@ -1189,6 +1189,66 @@ fn upstream_conformance() {
         println!();
     }
 
+    // Print both-no-memo format-diff fixtures with first diffs
+    {
+        let mut samples: Vec<(&str, &str, usize)> = Vec::new();
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            let they_memo = r.expected_has_memo;
+            if !we_memo && !they_memo {
+                samples.push((&r.relative_path, &r.first_diff, r.total_diffs));
+            }
+        }
+        samples.sort_unstable();
+        println!(
+            "--- BOTH-NO-MEMO FORMAT-DIFF ({} fixtures, first 20 with diffs) ---",
+            samples.len()
+        );
+        for (name, diff, total) in samples.iter().take(20) {
+            println!("  {name} ({total} diffs): {diff}");
+        }
+        println!();
+    }
+
+    // Print slots-MATCH sample fixtures with first diffs
+    {
+        let mut samples: Vec<(&str, &str, usize)> = Vec::new();
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            if we_memo && r.expected_has_memo && r.our_slots == r.expected_slots {
+                samples.push((&r.relative_path, &r.first_diff, r.total_diffs));
+            }
+        }
+        samples.sort_unstable();
+        println!("--- SLOTS-MATCH SAMPLES ({} fixtures, first 15 with diffs) ---", samples.len());
+        for (name, diff, total) in samples.iter().take(15) {
+            println!("  {name} ({total} diffs): {diff}");
+        }
+        println!();
+    }
+
+    // Print preserve-memo bail-out fixtures
+    {
+        let mut preserve_bailouts: Vec<&str> = Vec::new();
+        for r in &known_diverged {
+            let we_memo = r.our_transformed && r.our_slots > 0;
+            if !we_memo
+                && r.expected_has_memo
+                && r.first_error.starts_with("Existing memoization could not be preserved")
+            {
+                preserve_bailouts.push(&r.relative_path);
+            }
+        }
+        if !preserve_bailouts.is_empty() {
+            preserve_bailouts.sort_unstable();
+            println!("--- PRESERVE-MEMO BAIL-OUTS ({} fixtures) ---", preserve_bailouts.len());
+            for name in &preserve_bailouts {
+                println!("  {name}");
+            }
+            println!();
+        }
+    }
+
     // Print frozen-mutation bail-out fixtures
     {
         let mut frozen_bailouts: Vec<&str> = Vec::new();

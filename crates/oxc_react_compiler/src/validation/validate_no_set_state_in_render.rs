@@ -5,6 +5,13 @@ use crate::hir::types::{
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
+/// Error message for setState-during-render violations.
+const SET_STATE_IN_RENDER_ERROR: &str = "Cannot call setState during render. \
+    Calling setState during render may trigger an infinite loop. \
+    * To reset state based on a condition, check if state is already \
+    set and early return.\n\
+    * To derive data from props/state, calculate it during render.";
+
 /// Validate that setState is not called unconditionally during render.
 ///
 /// Calling setState during render causes infinite re-render loops.
@@ -226,6 +233,25 @@ pub fn validate_no_set_state_in_render(
                         functions_calling_set_state.insert(instr.lvalue.identifier.id);
                     }
                 }
+                // DIVERGENCE: Propagate setState-calling through useCallback/useReducer
+                // wrapper calls. If `const fn = useCallback(() => { setState(x) })`,
+                // the FunctionExpression arg is in functions_calling_set_state but the
+                // useCallback return (assigned to fn) is not. We propagate through
+                // useCallback so that fn is also marked as calling setState.
+                InstructionValue::CallExpression { args, .. } => {
+                    // Simple approach: if any argument is a function that calls setState,
+                    // propagate to the call result. This handles useCallback, useReducer,
+                    // etc. without needing to resolve the callee name to a specific hook.
+                    for arg in args {
+                        if functions_calling_set_state.contains(&arg.identifier.id) {
+                            functions_calling_set_state.insert(instr.lvalue.identifier.id);
+                            if let Some(name) = &instr.lvalue.identifier.name {
+                                func_name_calls_set_state.insert(name.clone());
+                            }
+                            break;
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -313,6 +339,67 @@ pub fn validate_no_set_state_in_render(
         }
     }
 
+    // Pass 1.75: Check useMemo callbacks for transitive setState calls.
+    // DIVERGENCE: Upstream detects "Calling setState from useMemo" as a separate
+    // error path. We detect it by checking useMemo callback FunctionExpressions
+    // for calls to functions that transitively call setState (resolved in the
+    // fixpoint above). This catches patterns like:
+    //   const fn = useCallback(() => { setState(init); });
+    //   useMemo(() => { fn(); }, [dep]);
+    {
+        // Build a map from FunctionExpression lvalue IDs to their HIR bodies
+        let mut func_expr_bodies: FxHashMap<IdentifierId, &HIR> = FxHashMap::default();
+        // Build a callee name map for resolving hook call names
+        let mut callee_id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                match &instr.value {
+                    InstructionValue::FunctionExpression { lowered_func, .. } => {
+                        func_expr_bodies.insert(instr.lvalue.identifier.id, &lowered_func.body);
+                    }
+                    InstructionValue::LoadGlobal { binding } => {
+                        callee_id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                    }
+                    InstructionValue::LoadLocal { place }
+                    | InstructionValue::LoadContext { place } => {
+                        if let Some(name) = &place.identifier.name {
+                            callee_id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Find useMemo CallExpressions and check their callback arguments
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                if let InstructionValue::CallExpression { callee, args, .. } = &instr.value {
+                    let callee_name = callee.identifier.name.as_deref().or_else(|| {
+                        callee_id_to_name.get(&callee.identifier.id).map(String::as_str)
+                    });
+                    if matches!(callee_name, Some("useMemo"))
+                        && let Some(first_arg) = args.first()
+                        && let Some(callback_body) = func_expr_bodies.get(&first_arg.identifier.id)
+                        && check_nested_calls_set_state_transitively(
+                            callback_body,
+                            &set_state_names,
+                            &func_name_calls_set_state,
+                            enable_name_heuristic,
+                        )
+                    {
+                        errors.push(CompilerError::invalid_react_with_kind(
+                            instr.loc,
+                            SET_STATE_IN_RENDER_ERROR.to_string(),
+                            DiagnosticKind::SetStateInRender,
+                        ));
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     // Pass 2: Check for unconditional setState calls (direct or transitive)
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -324,12 +411,7 @@ pub fn validate_no_set_state_in_render(
                 if is_direct_set_state || is_transitive_set_state {
                     errors.push(CompilerError::invalid_react_with_kind(
                         instr.loc,
-                        "Cannot call setState during render. \
-                         Calling setState during render may trigger an infinite loop. \
-                         * To reset state based on a condition, check if state is already \
-                         set and early return.\n\
-                         * To derive data from props/state, calculate it during render."
-                            .to_string(),
+                        SET_STATE_IN_RENDER_ERROR.to_string(),
                         DiagnosticKind::SetStateInRender,
                     ));
                     return;
@@ -415,6 +497,84 @@ fn check_nested_set_state_call(
     }
 
     (calls_set_state, called_funcs)
+}
+
+/// Check if a nested function body calls setState or a function that transitively
+/// calls setState. Unlike `check_nested_set_state_call`, this function has access
+/// to the fully-resolved `func_name_calls_set_state` set (after the fixpoint loop),
+/// so it can detect indirect calls like `fn()` where `fn` was defined via
+/// `useCallback(() => { setState(x) })`.
+fn check_nested_calls_set_state_transitively(
+    hir: &HIR,
+    set_state_names: &FxHashSet<String>,
+    func_name_calls_set_state: &FxHashSet<String>,
+    enable_name_heuristic: bool,
+) -> bool {
+    // Build local ID → name map and collect local setState IDs
+    let mut local_set_state_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if instr.lvalue.identifier.type_ == Type::SetState {
+                local_set_state_ids.insert(instr.lvalue.identifier.id);
+            }
+            if enable_name_heuristic
+                && let Some(name) = &instr.lvalue.identifier.name
+                && is_set_state_name(name)
+            {
+                local_set_state_ids.insert(instr.lvalue.identifier.id);
+            }
+            match &instr.value {
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if let Some(name) = &place.identifier.name {
+                        id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+                    }
+                    if place.identifier.type_ == Type::SetState
+                        || local_set_state_ids.contains(&place.identifier.id)
+                    {
+                        local_set_state_ids.insert(instr.lvalue.identifier.id);
+                    }
+                    // Check names from outer scope
+                    if let Some(name) = &place.identifier.name
+                        && (set_state_names.contains(name)
+                            || (enable_name_heuristic && is_set_state_name(name)))
+                    {
+                        local_set_state_ids.insert(instr.lvalue.identifier.id);
+                    }
+                }
+                InstructionValue::LoadGlobal { binding } => {
+                    id_to_name.insert(instr.lvalue.identifier.id, binding.name.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Check for calls to setState or functions that transitively call setState
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value {
+                // Direct setState call
+                if local_set_state_ids.contains(&callee.identifier.id) {
+                    return true;
+                }
+                // Transitive: callee is a function that calls setState
+                let callee_name = callee
+                    .identifier
+                    .name
+                    .as_deref()
+                    .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+                if let Some(name) = callee_name
+                    && func_name_calls_set_state.contains(name)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }
 
 /// Check if a name looks like a setState function (setX where X is uppercase).

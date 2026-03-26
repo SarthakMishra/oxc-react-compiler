@@ -192,16 +192,39 @@ pub fn validate_no_mutation_after_freeze(
     // IIFEs execute during render (same as inline code), so mutations inside
     // them should NOT be flagged as frozen mutations. Complex IIFEs that capture
     // outer variables are not inlined by Pass 6, so we must detect them here.
+    //
+    // DIVERGENCE: Previous implementation only detected IIFEs where the
+    // FunctionExpression and CallExpression were consecutive instructions.
+    // The HIR may insert intervening instructions (StoreLocal, etc.) between
+    // the function definition and its invocation. Use a two-pass approach:
+    // first collect all FunctionExpression lvalue IDs per block, then check
+    // if any CallExpression in the same block calls one of them.
     let mut iife_ids: FxHashSet<IdentifierId> = FxHashSet::default();
     for (_, block) in &hir.blocks {
-        for i in 1..block.instructions.len() {
-            if let InstructionValue::CallExpression { callee, .. } = &block.instructions[i].value {
-                let prev = &block.instructions[i - 1];
-                if callee.identifier.id == prev.lvalue.identifier.id
-                    && matches!(prev.value, InstructionValue::FunctionExpression { .. })
-                {
-                    iife_ids.insert(prev.lvalue.identifier.id);
+        // Pass 1: collect FunctionExpression lvalue IDs in this block
+        let fn_expr_ids: FxHashSet<IdentifierId> = block
+            .instructions
+            .iter()
+            .filter_map(|i| {
+                if matches!(i.value, InstructionValue::FunctionExpression { .. }) {
+                    Some(i.lvalue.identifier.id)
+                } else {
+                    None
                 }
+            })
+            .collect();
+
+        if fn_expr_ids.is_empty() {
+            continue;
+        }
+
+        // Pass 2: any CallExpression whose callee was defined as a
+        // FunctionExpression in the same block is an IIFE
+        for instr in &block.instructions {
+            if let InstructionValue::CallExpression { callee, .. } = &instr.value
+                && fn_expr_ids.contains(&callee.identifier.id)
+            {
+                iife_ids.insert(callee.identifier.id);
             }
         }
     }
@@ -355,6 +378,16 @@ pub fn validate_no_mutation_after_freeze(
             {
                 for effect in effects {
                     if matches!(effect, AliasingEffect::MutateFrozen { .. }) {
+                        // DIVERGENCE: Skip MutateFrozen from CallExpression on IIFEs.
+                        // IIFEs execute during render (not post-render), so mutations
+                        // inside them are safe. The aliasing pass may generate
+                        // MutateFrozen for the IIFE call when captured values are
+                        // transitively frozen.
+                        if let InstructionValue::CallExpression { callee, .. } = &instr.value
+                            && iife_ids.contains(&callee.identifier.id)
+                        {
+                            continue;
+                        }
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             FROZEN_MUTATION_ERROR,

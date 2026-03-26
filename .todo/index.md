@@ -137,14 +137,15 @@ Completed 2026-03-25. Fixed handling of `@validateNoDerivedComputationsInEffects
 These 20 fixtures now compile instead of bailing, but land in slots-DIFFER/MATCH pools (output doesn't match upstream yet).
 Net conformance: +0. But these fixtures are now unblocked for future scope/codegen improvements.
 
-#### Stage 2d: Fix Frozen-Mutation False Positives (26 remaining per latest breakdown)
+#### Stage 2d: Fix Frozen-Mutation False Positives (26 remaining per latest breakdown) -- BLOCKED
 
 - [ ] Review `validate_no_mutation_after_freeze` / `InferMutableRanges` for over-reporting mutations on frozen values
 - [ ] Compare our validation logic against upstream's to find divergence
 - [ ] Implement targeted relaxations without losing true-positive detections
 - [ ] **NEW (post Stage 4d):** Fix 4 IIFE-pattern false positives introduced by name-based freeze tracking (`capturing-func-alias-*-iife.js`). These fixtures mutate a captured variable inside an IIFE, but the name-based tracker incorrectly treats this as mutation-after-freeze. Future fix: implement scoped name tracking that distinguishes IIFE-internal mutations from true post-freeze mutations.
 - **Note (2026-03-26):** Destructure freeze propagation and Check 4b effect callback analysis were completed as part of Stage 4d follow-up. These were true-positive detection improvements, not false-positive fixes. The 26 remaining false positives in the bail pool are the false-positive problem.
-- **Risk:** MEDIUM — requires mutable range analysis refinements + scoped name tracking for IIFE patterns
+- **BLOCKED (2026-03-26):** Three approaches attempted and failed. Root cause is transitive freeze propagation in aliasing pass. See [bail-out-investigation.md](bail-out-investigation.md) for full blocker report.
+- **Risk:** HIGH — requires aliasing pass changes with high regression risk
 - **Details:** [bail-out-investigation.md](bail-out-investigation.md)
 
 #### Stage 2e: Fix Ref-Access False Positives (8 fixtures) — LOW PRIORITY, NO CONFORMANCE IMPACT
@@ -153,22 +154,61 @@ Net conformance: +0. But these fixtures are now unblocked for future scope/codeg
 - **Decision:** Deprioritized until scope inference improvements (Stage 3) make freed fixtures matchable.
 - **Details:** [bail-out-investigation.md](bail-out-investigation.md)
 
-#### Stage 2f: Fix Reassignment False Positives (10 fixtures)
+#### Stage 2f: Fix Reassignment False Positives (10 fixtures) -- FAILED (2026-03-26)
 
 - [ ] Review `validateLocalsNotReassignedAfterRender` for false positives
 - [ ] Compare against upstream validation
 - **Risk:** MEDIUM
 - **Details:** [bail-out-investigation.md](bail-out-investigation.md)
 
-#### Stage 2g: Other Bail-out Fixes (remaining ~40 fixtures)
+##### Blocker Report -- Stage 2f validateLocalsNotReassignedAfterRender (2026-03-26)
 
-- [ ] Fix remaining false-positive bail-outs: setState-in-render (4), setState-in-effect (7), hooks (3), preserve-memo (4), exhaustive-deps (3), silent (9), other (10)
+**Approach attempted:** Relaxing the `validateLocalsNotReassignedAfterRender` check to reduce false positives.
+
+**What was discovered:** Relaxing the check caused 5 regressions vs 1 gain (-4 net). The validation fires on patterns involving `DeclareContext`/`StoreContext` HIR instructions which we do not lower. Without correct context variable tracking in the HIR, the validator cannot distinguish legitimate reassignments from false positives.
+
+**Prerequisites for a successful attempt:**
+- `DeclareContext`/`StoreContext` HIR lowering must be implemented so the validator can correctly identify context variables
+- This is the same prerequisite as the nested HIR LoadContext gap (Stage 4e-E)
+
+**Do NOT attempt again until:** DeclareContext/StoreContext HIR lowering is implemented.
+
+#### Stage 2g: Other Bail-out Fixes (remaining ~40 fixtures, excluding preserve-memo)
+
+- [ ] Fix remaining false-positive bail-outs: setState-in-render (4), setState-in-effect (2), hooks (3), exhaustive-deps (1), silent (8), other (6)
 - [ ] Each fix: compare upstream validation logic, adjust our thresholds
 - [ ] Re-categorize after 2c-2f to identify new patterns
 
-#### Stage 2h: Replan — Bail-out Residual (est: 0 fixtures, planning)
+#### Stage 2i: Fix Preserve-Memo False-Positive Bails (55 fixtures) -- BLOCKED (2026-03-26)
 
-- [ ] Categorize remaining "we bail, they compile" after 2c-2g
+**BLOCKED:** Three approaches attempted (pre-inline temp map, skip unnamed in propagation, skip "tN" in validation) all failed. Best approach (skip "tN") reduced bails 55→7 but caused -31 conformance regression because error.* fixtures that should bail lose their accidental bail path. De-bailed fixtures land in slots-DIFFER (codegen mismatch), not passing. Requires scope inference/codegen improvement OR propagate_dependencies enhancement OR correct-path bailing for error.* fixtures first. See [bail-out-investigation.md](bail-out-investigation.md)#blocker-report--stage-2i-preserve-memo-false-bails-2026-03-26.
+
+**Pool:** 55 "Existing memoization could not be preserved" false-positive bails (was 4 pre-validateInferredDep, +51 introduced by Stage 4b). Single largest bail-out category.
+
+**Root cause:** `validate_preserved_manual_memoization.rs` `validate_scope_deps` fires incorrectly because scope dep IdentifierIds resolve to SSA temporaries (via `resolve_scope_dep`), not original named variables. When the resolved dep's name is a temp (e.g., `t5`) that doesn't match any manual memo dep (e.g., `props.x`), the check incorrectly reports a mismatch.
+
+**Fix approach:** Improve the `build_temporaries_map` / `build_temporaries_map_from_hir` to cover more instruction chains. The current map handles LoadLocal -> PropertyLoad chains but may miss:
+- Chains broken by SSA phi nodes (the HIR temp's defining LoadLocal is in a different block)
+- Chains involving Destructure instructions
+- Chains where intermediate instructions were removed by optimization passes before the pre-inline map was captured
+- Cases where the scope dep identifier has a name but it's a temp name (e.g., `t5`), not the original variable name
+
+**Investigation steps:**
+1. List all 55 false-positive bail fixtures by name
+2. Sample 10 fixtures and trace which scope deps fail resolution
+3. Categorize: (a) dep in temporaries map but wrong name, (b) dep NOT in temporaries map, (c) dep resolved correctly but comparison logic wrong
+4. Fix the most common resolution failure pattern
+
+**Upstream:** `compiler/packages/babel-plugin-react-compiler/src/Validation/ValidatePreserveExistingMemoization.ts`
+**Our file:** `crates/oxc_react_compiler/src/validation/validate_preserved_manual_memoization.rs`
+
+**Potential gain:** Eliminating 51 false-positive bails. Even if only 20-30% of freed fixtures match upstream output, that's +10-15 direct conformance gain. The rest move from bail to slots-DIFFER/MATCH, unblocked for future scope inference fixes.
+
+**Why this WAS the top priority (now BLOCKED):** It is the single largest bail-out category (55 fixtures), but three implementation attempts confirmed that fixing the false bails causes -31 net regression because error.* fixtures lose their accidental bail path, and de-bailed fixtures land in slots-DIFFER. See blocker report in [bail-out-investigation.md](bail-out-investigation.md).
+
+#### Stage 2h: Replan -- Bail-out Residual (est: 0 fixtures, planning)
+
+- [ ] Categorize remaining "we bail, they compile" after 2c-2g+2i
 - [ ] Update plan with new findings or mark as deferred
 
 ---
@@ -386,7 +426,7 @@ Completed 2026-03-25 (extended investigation), revised 2026-03-26.
 
 **What's blocked (29 fixtures):** Scope dependencies after SSA have IdentifierIds that correspond to SSA temporaries (e.g., `t1`, `t2`), NOT the original named variables. When `validateInferredDep` tries to match a scope dep against a manual memo dep (which uses the original variable name like `props.x`), the comparison fails because the scope dep's IdentifierId resolves to a temp name, not `props.x`. This is the fundamental scope dep resolution blocker.
 
-**New false-positive bails (+3, 67->70 total):** The validateInferredDep implementation correctly fires on some fixtures but incorrectly fires on others due to the dep name mismatch. 3 fixtures that previously compiled now incorrectly bail because their scope deps appear unmatched (when they actually do match, just under different IdentifierIds).
+**New false-positive bails (CORRECTED 2026-03-26: +51, not +3):** Conformance run shows **55 total** "Existing memoization could not be preserved" false-positive bails in the "we bail, they compile" category. Pre-validateInferredDep baseline was only **4**. So the validateInferredDep implementation introduced **51 new false-positive bails**, not the 3 originally documented. The original +3 count was based on manual inspection of a few fixtures; the actual regression is much larger. Despite this, the net conformance impact was still positive (+31 from 464->495) because the implementation correctly bails on many true-positive cases. **Fixing the scope dep resolution problem would eliminate up to 51 false-positive bails and potentially recover +10-30 conformance** (depending on how many freed fixtures match upstream output).
 
 ##### Blocker Report — Scope dep IdentifierIds don't resolve to named locals after SSA (2026-03-26)
 
@@ -603,7 +643,7 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 | Stage 2a: Bail-out investigation | +0 (done) | 410 | -- | Completed. |
 | Stage 2b: File-level bail-outs | +1 (done) | 411 | LOW | Completed. 108→89 bail-outs. |
 | Stage 2c: `_exp` directive handling | +0 (done) | 411 | LOW | Completed. 20 fixtures moved to compile pools. |
-| Stage 2d: Frozen-mutation false positives | +5-8 | 416-419 | MEDIUM | 11 fixtures |
+| Stage 2d: Frozen-mutation false positives | +5-8 | 416-419 | **BLOCKED** | 26 fixtures. Root cause: transitive freeze propagation in aliasing pass. See blocker report. |
 | Stage 2e: Ref-access false positives | +0 (no impact) | -- | LOW | 8 fixtures, freed land in slots-DIFFER. Deprioritized. |
 | Stage 2f: Reassignment false positives | +5-7 | 424-431 | MEDIUM | 10 fixtures |
 | Stage 2g: Other bail-outs | +5-10 | 429-441 | MIXED | ~40 remaining fixtures |
@@ -820,3 +860,5 @@ All paths relative to `crates/oxc_react_compiler/`.
 40. **Slots DIFFER (666 fixtures) and slots MATCH (243 fixtures) dominated by variable naming/scope inference (2026-03-25).** These two categories account for the vast majority of remaining failures (909 of ~1253). Both are fundamentally driven by scope inference accuracy — different scope boundaries produce different slot counts (DIFFER) and different declaration placement/variable naming (MATCH). Codegen-only fixes have reached their ceiling (Stage 1 exhausted). The path forward requires scope inference improvements (Stage 3), which carry high regression risk.
 41. **Branch elimination gains limited by supply of constant conditions after validation (2026-03-25).** Dead branch elimination infrastructure is correct (handles If/Branch/Ternary/Optional terminals) but the constant propagation pass at Pass 32.5 produces very few constant branch conditions. Most branch conditions depend on runtime values (props, state, hook returns). The phi-node CP pass can fold identical-constant phis, but the cascading effect to branch conditions is minimal in practice. This makes dead branch elimination a correct-but-low-impact optimization for the current fixture set.
 42. **Zero-slot surplus (134 fixtures) is a scope CREATION problem, not a pruning problem (2026-03-26).** Three approaches attempted and all failed: (a) per-function reactive guard caused -44 regression because most functions have reactive identifiers even when scopes are allocating-only; (b) `prune_unused_scopes` `is_allocating` guard removal gained +3 but caused unresolved reference bugs because `scope.declarations` is incomplete for destructuring patterns; (c) `prune_non_escaping_scopes` already correctly handles escaping allocating scopes. The root cause is `infer_reactive_scope_variables` creating sentinel scopes for allocating instructions that upstream does not create, because our `last_use_map` extension produces wider mutable ranges than upstream. This is the same root cause as Stage 3b (scope merging). No further pruning-based approaches should be attempted; the fix requires mutable range accuracy improvements.
+43. **validateInferredDep false-positive count is 51, not 3 (CORRECTED 2026-03-26).** Conformance run shows 55 total "Existing memoization could not be preserved" false-positive bails. Pre-validateInferredDep baseline was 4. The +51 regression was far larger than the 3 originally documented (which was based on manual inspection of a small sample). Despite this, net conformance was still positive (+31) because the implementation correctly bails on many UPSTREAM ERROR fixtures. **Fixing scope dep resolution is the single highest-leverage task**: it would eliminate ~51 false-positive bails, potentially recover +10-30 conformance from freed fixtures matching upstream, AND unblock the remaining 29 UPSTREAM ERROR preserve-memo fixtures.
+44. **Stage 2f (validateLocalsNotReassignedAfterRender relaxation) FAILED (2026-03-26).** Approach of relaxing the check caused 5 regressions vs 1 gain (-4 net). Root cause: the validator fires on patterns involving DeclareContext/StoreContext HIR instructions which we do not lower. Requires DeclareContext/StoreContext HIR lowering as a prerequisite. Do not attempt again until that infrastructure exists.
