@@ -43,7 +43,7 @@ Of the original 108 fixtures where we bail but upstream compiles:
 | Local variable reassignment | 6+1 | MEDIUM | Overlaps with "cannot reassign" |
 | Cannot access refs during render | 6 | MEDIUM | `validateNoRefAccessInRender` false positives |
 | Cannot call setState during render | 4 | MEDIUM | `validateNoSetStateInRender` false positives |
-| Hooks as normal values | 3 | MEDIUM | Hooks validation false positives |
+| Hooks as normal values | 3 | MEDIUM | Hooks validation false positives. `locally_declared_names` fix (2026-03-26) addresses LoadLocal vector; PropertyLoad callee-name vector remains. |
 | setState in useEffect (synchronous) | 2 | HARD | |
 | BuildHIR unsupported | 2 | MEDIUM | DefaultParam nonreorderable |
 | Other (1 each) | 6 | VARIES | Various edge cases |
@@ -67,6 +67,16 @@ Of the original 108 fixtures where we bail but upstream compiles:
 ### const vs let Keyword in StoreLocal Codegen -- COMPLETE (+0)
 
 **Completed 2026-03-26.** Fixed codegen to emit `const` instead of `let` for `StoreLocal` instructions where the variable is never reassigned. No conformance gain because affected fixtures also differ in other ways (scope inference, naming), but this is a correctness improvement that will contribute to matches once those other differences are resolved.
+
+### Gating Directive Comment Stripping -- COMPLETE (+2, 505->507)
+
+**Completed 2026-03-26.** `codegen.rs` `apply_compilation` now filters `// @gating` and `// @dynamicGating` comment lines from compiled output when gating mode is active. Upstream's Babel plugin removes these annotations during compilation; our source-edit-based approach was preserving them. The fix iterates over output lines and suppresses those whose trimmed content starts with `@gating` or `@dynamicGating`. Fixtures gained: `gating/multi-arrow-expr-export-gating-test.js`, `gating/multi-arrow-expr-gating-test.js`.
+
+### Hooks-as-Value False Positive Fix (locally_declared_names) -- COMPLETE (+0, correctness)
+
+**Completed 2026-03-26.** `validate_hooks_usage.rs` Rule 3 (hooks-as-values check) now skips `LoadLocal` of names present in a `locally_declared_names` set. The set is populated by walking `DeclareLocal` and `Destructure` instructions (with recursive `collect_destructure_names` helper for nested destructuring). This prevents false bails on patterns like `let useFeature = makeObject()` where a locally-declared variable has a hook-like name but is not actually a hook import. No net conformance change because the 3 affected fixtures (listed in the "Hooks as normal values" row above) are also caught by the `PropertyLoad` callee-name check, which is a separate false positive. This fix is a correctness guard for future work.
+
+**Note:** The 3 "Hooks as normal values" bail-outs from the table above are NOT fully resolved. The `locally_declared_names` fix addresses one vector (LoadLocal of locally-declared hook-like names). The remaining false positives come from PropertyLoad instructions where the property name looks like a hook (e.g., `obj.useHook`). Fixing the PropertyLoad check was attempted in this session but was net-zero. These 3 fixtures remain in the bail-out pool.
 
 ### Stage 2c (was 2b): Fix `_exp` Directive Handling -- COMPLETE
 

@@ -108,10 +108,12 @@ pub fn validate_no_unsupported_nodes(hir: &HIR, errors: &mut ErrorCollector) {
     // Upstream: Todo: Support functions with unreachable code that may contain hoisted declarations
     check_hoisted_function_in_unreachable_code(hir, errors);
 
-    // DIVERGENCE: Upstream codegen fails with "Invariant: [Codegen] Internal error:
-    // MethodCall::property must be an unpromoted + unmemoized MemberExpression" when
-    // a MethodCall result is used as an argument to another MethodCall. We detect this
-    // pattern early and bail to match upstream's behavior.
+    // DIVERGENCE: Our codegen has issues with MethodCall results used as arguments to
+    // other MethodCalls (e.g., Object.keys(record).map(...)). Upstream compiles these
+    // patterns successfully, but removing this check causes -2 net regression because
+    // our codegen produces incorrect output for some of these patterns. The check
+    // bails 6 fixtures that upstream compiles — fixing the underlying codegen issue
+    // would allow removing this check for a +6 gain.
     check_nested_method_call_as_argument(hir, errors);
 
     // Upstream: Todo: [hoisting] EnterSSA: Expected identifier to be defined before being used

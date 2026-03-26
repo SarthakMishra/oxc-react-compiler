@@ -50,7 +50,7 @@ The path is clearer but requires significant compiler infrastructure work:
 
 | Work Item | Pool Size | Potential Gain | Difficulty |
 |-----------|-----------|---------------|------------|
-| Scope inference fixes (slots-DIFFER) | 688 | +50-100 | HIGH — cascading regression risk, scope MERGING is bottleneck (see 3b blocker) |
+| Scope inference fixes (slots-DIFFER) | 688 | +50-100 | HIGH — cascading regression risk, scope MERGING is bottleneck (see 3b blocker reports: heuristic removal 2026-03-25, merging investigation 2026-03-26). Three additional approaches failed (-17 to -107 net). Requires mutable range accuracy + dep.reactive audit first. |
 | DCE + constant propagation (both-no-memo) | ~85 remaining (7 done) | +5-15 remaining (revised down) | MEDIUM-HIGH — DCE+CP+branch-elim all implemented. Remaining ~85 blocked by 0-slot codegen, not DCE/CP. Binary/string folding may chip away at a few. |
 | `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | +31 done (18 preserve-memo + 13 other), +5-15 remaining | MEDIUM — validateInferredDep LARGELY COMPLETE (+31). Remaining: value-memoized + dep-mutated sub-types. Further validateInferredDep gains LIMITED by fundamental scope dep model difference (see lesson #43). |
 | Variable name preservation in codegen (B2) | 40 | +10-20 | MEDIUM-HIGH — scope output naming changes + scope inference dependency (see lesson #29) |
@@ -382,6 +382,43 @@ Key findings for slot-diff (688 fixtures):
 - Scope merging is the bottleneck, not scope sentinel creation
 
 **Do NOT attempt again until:** The scope merging algorithm is understood in detail and a targeted fix for merging is designed. Do not naively remove heuristics from `is_allocating_instruction`.
+
+##### Blocker Report — Scope Inference Merging Investigation (2026-03-26)
+
+**Approach attempted:** Three approaches from the Stage 3b plan were implemented and tested:
+
+1. **Operand liveness change (Step 1):** Changed Phase 2 operand liveness check to use `mutable_range.end` instead of `effective_range` (max(mutable_range.end, last_use+1)). Two variants tested:
+   - Blanket change (all instructions): -24 net (2 new passes, 26 regressions). Massive over-splitting — fixtures showed ours=_c(3) vs expected=_c(1).
+   - Targeted change (allocating instructions only): -17 net (0 new passes, 17 regressions). Still over-splits because even allocating instruction operands have narrow mutable ranges.
+
+2. **0-slot function codegen:** Attempted outputting DCE'd code for 0-slot functions by removing `has_cache_slots` check and conditionally adding runtime import. -51 net regression. Codegen output format doesn't match source text (different whitespace, ordering, structure). Previous attempt also documented: -52 in Stage 2g.
+
+3. **Prune non-reactive dependencies (Step 3):** Implemented `scope_block.scope.dependencies.retain(|dep| dep.reactive)` to remove non-reactive deps. -107 net regression. Removing non-reactive deps turns dep-based scopes into sentinel scopes (0 deps), drastically changing codegen output.
+
+**Assumptions that were wrong:**
+- The plan assumed Step 1 (operand-only change) was distinct from prior `use_mutable_range` experiments. While technically true (prior experiments changed both lvalue gate + operand check), the over-splitting is caused by narrow mutable ranges in BOTH paths.
+- The plan assumed allocating instructions could be treated differently for operand liveness. In practice, allocating instruction operands also have narrow mutable ranges that need effective_range extension.
+- The plan assumed `prune_non_reactive_deps` was safe because upstream does it. In practice, our scope dep model differs significantly — many deps that are marked non-reactive in our system ARE reactive in upstream's model.
+
+**Regression details:**
+- Operand liveness (blanket): -24 net (2 new passes, 26 regressions)
+- Operand liveness (targeted, allocating only): -17 net (0 new passes, 17 regressions)
+- 0-slot codegen: -51 net regression
+- Non-reactive dep pruning: -107 net regression
+
+**Prerequisites for a successful attempt:**
+- **Fix mutable range accuracy FIRST** — before any operand liveness changes. Our `infer_mutation_aliasing_ranges` produces narrower ranges than upstream's because we lack: (a) receiver mutation effects for MethodCall, (b) reverse scope propagation. Until mutable ranges are widened, any switch from effective_range to mutable_range will over-split.
+- **The dependency reactive flag is unreliable** — many deps marked `reactive=false` still need to be tracked for correct codegen. The reactive flag assignment in `propagate_dependencies.rs` needs audit against upstream's logic before pruning deps.
+- **0-slot codegen requires a separate code path** — the current codegen reconstructs functions from IR, which produces fundamentally different output from source text. A viable approach would need to track which specific instructions were removed by DCE/CP and surgically edit the source text rather than reconstructing from IR.
+
+**Useful findings to carry forward:**
+- Over-splitting root cause is narrow mutable ranges, not the operand liveness check itself. The check is downstream of range accuracy.
+- Non-reactive deps in our model do NOT correspond to non-reactive deps in upstream. The `dep.reactive` flag assignment in `propagate_dependencies.rs` diverges from upstream semantics.
+- 0-slot codegen has been attempted twice now (-52 in Stage 2g, -51 here). Both confirm IR reconstruction cannot match source text formatting. Any future attempt MUST use source-text-editing approach, not IR reconstruction.
+
+**Confirmed: No single-session path to 600+.** All three plan steps confirmed what the honest assessment already states: reaching 600+ requires fundamental infrastructure work on mutable range accuracy and scope grouping algorithms. No incremental changes to the current system can bridge the 93-fixture gap.
+
+**Do NOT attempt again until:** (a) mutable range accuracy is improved (receiver mutation effects for MethodCall, reverse scope propagation), (b) `dep.reactive` flag semantics are audited against upstream, (c) 0-slot codegen approach is redesigned to use source-text editing rather than IR reconstruction.
 
 ##### Extended Experiment Results (2026-03-25)
 
@@ -755,7 +792,7 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures (3 now fixed via validateInferredDep, 29 BLOCKED by scope dep resolution)
 
-**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +20-63 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant) + remaining DCE/CP (Stage 5, +5-15 revised down). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). **Stage 3a2 investigation (2026-03-26) CONFIRMED: 134 zero-slot surplus fixtures require fundamental scope inference changes, not pruning. Three approaches attempted and failed (see blocker report). BLOCKED by same prerequisites as Stage 3b (mutable range accuracy, scope grouping algorithm).** Stage 5a+5b DCE+CP+branch-elimination gained +7 total (457->464); branch elimination infrastructure complete but gains limited by supply of constant conditions. "Both no memo" pool now understood to be blocked by 0-slot codegen (scope inference), not DCE/CP. **0-slot codegen attempted and REJECTED in Stage 2g: -52 regression when emitting passthrough code for 0-slot functions.** Conservative floor: ~600 from 505 base. Optimistic: 700+.
+**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +20-63 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant) + remaining DCE/CP (Stage 5, +5-15 revised down). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). **Stage 3a2 investigation (2026-03-26) CONFIRMED: 134 zero-slot surplus fixtures require fundamental scope inference changes, not pruning. Three approaches attempted and failed (see blocker report). BLOCKED by same prerequisites as Stage 3b (mutable range accuracy, scope grouping algorithm).** Stage 5a+5b DCE+CP+branch-elimination gained +7 total (457->464); branch elimination infrastructure complete but gains limited by supply of constant conditions. "Both no memo" pool now understood to be blocked by 0-slot codegen (scope inference), not DCE/CP. **0-slot codegen attempted and REJECTED in Stage 2g: -52 regression when emitting passthrough code for 0-slot functions.** Conservative floor: ~600 from 507 base. Optimistic: 700+.
 
 **Key learning from Stage 3b investigation (2026-03-25, extended experiments added):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Three separate experiments confirmed the blocker report: (1) removing `last_use > instr_id` gate: -5 net, improves deficit by 4 but causes 12 regressions from over-merging; (2) inclusive gate (`>=`): no-op because `last_use` never equals `instr_id`; (3) removing `check_nested_method_call_as_argument`: -2 net, our codegen genuinely cannot handle nested method calls yet. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm (`merge_overlapping_reactive_scopes_hir`), not sentinel creation or bail removal. Additionally, 8 silent-bail fixtures require IIFE scope creation, React.memo function inference, and Flow type cast handling -- all scope inference improvements.
 
@@ -767,6 +804,12 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 - **0-slot codegen is NOT viable.** Attempted emitting passthrough code (no `_c()` wrapper) for functions with 0 cache slots. Caused **-52 regression** (505->453). Many 0-slot fixtures have expected output with structural transformations that differ from passthrough. 0-slot codegen must wait for scope inference accuracy to reduce surplus scopes to near-zero for these fixtures.
 - **Self-referencing check only handles `Const`, not `Let`.** The `check_self_referencing_declarations` function only fires for `InstructionKind::Const` declarations. `Let` declarations also have TDZ semantics in JavaScript, but no current conformance fixtures test `let x = f(x)`. If future fixtures appear, extend the check to cover `Let` kind.
 - **`import fbt from 'fbt'` creates `LoadLocal`, not `LoadGlobal`.** Because `fbt` is not in the built-in globals list (`GlobalCollector`), an `import fbt` statement is lowered to a local binding. The `check_fbt_duplicate_tags` function handles this by checking both `LoadLocal` and `LoadGlobal`, but any future fbt-related work must be aware of this distinction. If the globals list is ever extended to include `fbt`, the LoadLocal path would no longer fire.
+
+**Key learning from Stage 1g (2026-03-26):**
+- **Gating directive comments must be stripped from output.** Upstream's Babel plugin removes `@gating`/`@dynamicGating` directives during compilation. Our source-edit-based approach was preserving them, causing 2 gating fixture mismatches. Simple line-level filtering in `apply_compilation` suffices.
+- **Recursive ref check removal is catastrophic (-9).** The `validate_no_ref_access_in_render` recursive check is load-bearing for a significant number of fixtures. Do not attempt to remove or relax it without a very targeted replacement.
+- **Hook-as-value locally_declared_names prevents future false bails.** While the 3 currently affected fixtures are also caught by a separate PropertyLoad check (so net-zero today), the `locally_declared_names` fix ensures that as the PropertyLoad check is refined in the future, these fixtures won't regress into false bails. This is a correctness guard, not a conformance gain.
+- **Per-fixture bail-out name tracking is invaluable for diagnostics.** Knowing exactly which fixtures contribute to each bail-out category dramatically speeds up investigation. The `bail_fixture_names` HashMap in `conformance_tests.rs` maps error keys to fixture paths and prints up to 8 per category.
 
 ---
 
@@ -953,3 +996,6 @@ All paths relative to `crates/oxc_react_compiler/`.
 43. **validateInferredDep false-positive count is 51, not 3 (CORRECTED 2026-03-26).** Conformance run shows 55 total "Existing memoization could not be preserved" false-positive bails. Pre-validateInferredDep baseline was 4. The +51 regression was far larger than the 3 originally documented (which was based on manual inspection of a small sample). Despite this, net conformance was still positive (+31) because the implementation correctly bails on many UPSTREAM ERROR fixtures. **Fixing scope dep resolution is the single highest-leverage task**: it would eliminate ~51 false-positive bails, potentially recover +10-30 conformance from freed fixtures matching upstream, AND unblock the remaining 29 UPSTREAM ERROR preserve-memo fixtures.
 44. **Stage 2f (validateLocalsNotReassignedAfterRender relaxation) FAILED (2026-03-26).** Approach of relaxing the check caused 5 regressions vs 1 gain (-4 net). Root cause: the validator fires on patterns involving DeclareContext/StoreContext HIR instructions which we do not lower. Requires DeclareContext/StoreContext HIR lowering as a prerequisite. Do not attempt again until that infrastructure exists.
 45. **Error.* fixtures are still a productive target at 18 remaining (2026-03-26).** The validation fixes session gained +4 (495->499) from 4 diverse error.* fixtures: nested setState detection, MethodCall invariant bail-outs, destructuring assignment bail-out. Each fix was small and self-contained. The remaining 18 error.* fixtures in KF are spread across preserve-memo (8, BLOCKED), todo patterns (3), invariant (1), frozen-mutation (2), reassignment (2), ref-access (3), validate-* (3). The non-BLOCKED ones (10 fixtures) remain tractable targets for incremental gains.
+46. **Operand liveness in scope inference is coupled to mutable range accuracy (2026-03-26).** Changing one without the other causes cascading regressions (-17 to -24 net from operand-only changes). The operand liveness check uses `effective_range` (max of mutable_range.end and last_use+1) as a compensating mechanism for narrow mutable ranges. Switching to `mutable_range.end` alone causes over-splitting because our `infer_mutation_aliasing_ranges` produces narrower ranges than upstream (missing receiver mutation effects, reverse scope propagation). Both the blanket change (-24) and allocating-only change (-17) confirmed this coupling.
+47. **Non-reactive dep pruning is too aggressive (-107 net) (2026-03-26).** Our `dep.reactive` flag doesn't match upstream semantics — many deps marked non-reactive are actually needed for correct codegen. Pruning them turns dep-based scopes into sentinel scopes (0 deps), which drastically changes codegen output structure. The reactive flag assignment in `propagate_dependencies.rs` needs a full audit against upstream's logic before any pruning is safe.
+48. **0-slot function codegen via IR reconstruction is fundamentally wrong (-51 net) (2026-03-26).** Two attempts now (-52 in Stage 2g, -51 here). The current codegen reconstructs functions from IR, which produces different whitespace, ordering, and structure from source text. Any viable 0-slot codegen approach must surgically edit source text rather than reconstructing from IR. This is an architectural limitation, not a tuning problem.
