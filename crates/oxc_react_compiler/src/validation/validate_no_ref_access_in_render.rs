@@ -117,6 +117,38 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
                 return;
             }
 
+            // Check if a ref is passed as an argument to a non-hook function call.
+            // Upstream: "Passing a ref to a function may read its value during render."
+            // This is only checked for non-hook CallExpression (hooks are allowed to
+            // receive refs). MethodCall is excluded because method calls on objects
+            // are a different pattern.
+            if let InstructionValue::CallExpression { callee, args, .. } = &instr.value {
+                // Determine if callee is a hook (by name or by convention)
+                let callee_is_hook = callee.identifier.name.as_deref().is_some_and(is_hook_name);
+                if !callee_is_hook {
+                    for arg in args {
+                        if ref_ids.contains(&arg.identifier.id)
+                            || arg.identifier.type_ == Type::Ref
+                            || arg
+                                .identifier
+                                .name
+                                .as_deref()
+                                .is_some_and(|n| is_ref_name(n) || ref_names.contains(n))
+                        {
+                            errors.push(CompilerError::invalid_react_with_kind(
+                                instr.loc,
+                                "Cannot access refs during render. \
+                                 Passing a ref to a function may read its value during render. \
+                                 Refs should only be accessed in effects or event handlers."
+                                    .to_string(),
+                                DiagnosticKind::RefAccessInRender,
+                            ));
+                            return;
+                        }
+                    }
+                }
+            }
+
             // Scan nested function bodies for ref.current access,
             // but SKIP functions in non-render contexts (effects, event handlers,
             // ALL JSX prop values). Ref access in those contexts is fine.

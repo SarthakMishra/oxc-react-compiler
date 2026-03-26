@@ -376,6 +376,73 @@ fn compose_source_maps(
     composed
 }
 
+/// Returns `true` if `s` is a valid JavaScript identifier (not a keyword/literal).
+/// Used to validate dynamic gating directive conditions like `'use memo if(cond)'`.
+fn is_valid_js_identifier(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let mut chars = s.chars();
+    let first = chars.next().unwrap();
+    if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return false;
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$') {
+        return false;
+    }
+    // Reject JS reserved words and literals that are syntactically identifiers
+    !matches!(
+        s,
+        "true"
+            | "false"
+            | "null"
+            | "undefined"
+            | "this"
+            | "super"
+            | "void"
+            | "typeof"
+            | "instanceof"
+            | "in"
+            | "new"
+            | "delete"
+            | "throw"
+            | "if"
+            | "else"
+            | "for"
+            | "while"
+            | "do"
+            | "switch"
+            | "case"
+            | "break"
+            | "continue"
+            | "return"
+            | "try"
+            | "catch"
+            | "finally"
+            | "function"
+            | "class"
+            | "const"
+            | "let"
+            | "var"
+            | "import"
+            | "export"
+            | "default"
+            | "yield"
+            | "await"
+            | "with"
+            | "debugger"
+            | "enum"
+            | "extends"
+            | "implements"
+            | "interface"
+            | "package"
+            | "private"
+            | "protected"
+            | "public"
+            | "static"
+    )
+}
+
 /// Try to compile a single function, returning the compiled code on success.
 fn try_compile_function(
     builder: HIRBuilder,
@@ -386,6 +453,32 @@ fn try_compile_function(
     generate_source_map: bool,
     diagnostics: &mut Vec<OxcDiagnostic>,
 ) -> Option<(String, Option<SourceMap>)> {
+    // Validate dynamic gating directives (e.g., 'use memo if(true)' is invalid
+    // because `true` is not a valid JS identifier).
+    if let Some(body) = &func.body {
+        for directive in &body.directives {
+            let s = directive.directive.as_str();
+            for prefix in &["use memo if(", "use forget if("] {
+                if let Some(rest) = s.strip_prefix(prefix)
+                    && let Some(cond) = rest.strip_suffix(')')
+                    && !is_valid_js_identifier(cond)
+                {
+                    diagnostics.push(
+                        crate::error::CompilerError::invalid_react(
+                            directive.span,
+                            format!(
+                                "Dynamic gating directive is not a valid JavaScript identifier. \
+                                 Found '{s}'."
+                            ),
+                        )
+                        .into_diagnostic(),
+                    );
+                    ANY_FUNCTION_BAILED.with(|b| b.set(true));
+                    return None;
+                }
+            }
+        }
+    }
     let hir_func = builder.build_function(func, fn_type);
     let mut errors = ErrorCollector::default();
 

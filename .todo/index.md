@@ -1,14 +1,14 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-03-26
-> Conformance: **495/1717 (28.8%)** (known-failures.txt has 1222 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis. Then +3 from validateInferredDep partial implementation (453->456): 3 of 32 preserve-memo error fixtures now pass. Then +1 from prune_non_escaping_scopes test-position detection (456->457): escape-analysis-not-if-test.js now passing. Then +7 from enhanced DCE + phi-node constant propagation (457->464): extended dead code elimination to remove dead StoreLocal/PrefixUpdate/PostfixUpdate, added phi-node constant propagation, iterative CP+DCE loop at Pass 32.5. Then +31 from preserve-memo validation improvements (464->495): removed is_temp_name skip, pre-computed HIR temp resolution map, fixed compare_deps Subpath return. 18 preserve-memo error fixtures + 13 additional error fixtures now passing.
-> Known-failures: 1222. Error.* fixtures remaining in KF: ~12 (was 30, -18 preserve-memo errors now passing). False-positive bails: ~67 (was 70, -3 from removing is_temp_name false-positive skip).
+> Conformance: **499/1717 (29.1%)** (known-failures.txt has 1218 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Note: Conformance dropped from 453 to 441 after rebaseline; the previous 453 figure used a different counting methodology. Then +6 from Stage 1e session (441->447), then +5 from latest session (447->452): known-incompatible bail re-enabled +3, ESLint suppression bail +1, object property key quoting +1. Then +1 from freeze validation hardening (452->453): destructure freeze propagation + Check 4b effect callback analysis. Then +3 from validateInferredDep partial implementation (453->456): 3 of 32 preserve-memo error fixtures now pass. Then +1 from prune_non_escaping_scopes test-position detection (456->457): escape-analysis-not-if-test.js now passing. Then +7 from enhanced DCE + phi-node constant propagation (457->464): extended dead code elimination to remove dead StoreLocal/PrefixUpdate/PostfixUpdate, added phi-node constant propagation, iterative CP+DCE loop at Pass 32.5. Then +31 from preserve-memo validation improvements (464->495): removed is_temp_name skip, pre-computed HIR temp resolution map, fixed compare_deps Subpath return. 18 preserve-memo error fixtures + 13 additional error fixtures now passing. Then +4 from validation fixes (495->499): nested setState detection (+1), MethodCall invariant bail-outs (+2), destructuring assignment bail-out (+1).
+> Known-failures: 1218. Error.* fixtures remaining in KF: 18 (was 22, -4 fixed this session: setState-in-useMemo indirect, MethodCall invariant x2, destructuring assignment). False-positive bails: ~67 (was 70, -3 from removing is_temp_name false-positive skip).
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
 
-## Road to 600+ Conformance (447 → 600+, need +153)
+## Road to 600+ Conformance (499 → 600+, need +101)
 
 ### Failure Category Summary (revised 2026-03-25, fresh data from deep-work session)
 
@@ -16,7 +16,7 @@
 |----------|-------|-------------|
 | Both compile, slots DIFFER | 666 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes. Dominated by variable naming/scope inference.** Deficit (our < expected): ~400 fixtures. Surplus (our > expected): ~283 fixtures. |
 | Both compile, slots MATCH | 243 (was 237, some shifted between categories) | Same slots, codegen structure diffs. **Dominated by variable naming/scope inference (not just codegen). B2 pattern (temps vs original names): 40 fixtures. Codegen-only fixes have reached their ceiling (Stage 1 exhausted).** |
-| We compile, they don't | ~160 (revised down from 191, -31 from preserve-memo fixes) | **CORRECTED (2026-03-26): 134 are SCOPE INFERENCE SURPLUS (upstream produces 0 slots, we produce >0), NOT validation gaps.** Remaining ~26: ~12 UPSTREAM ERROR (in KF), ~11 preserve-memo (value-memoized + dep-mutated sub-types remaining), ~3 other. |
+| We compile, they don't | ~156 (revised down from 191, -31 from preserve-memo fixes, -4 from validation fixes session) | **CORRECTED (2026-03-26): 134 are SCOPE INFERENCE SURPLUS (upstream produces 0 slots, we produce >0), NOT validation gaps.** Remaining ~22: 18 UPSTREAM ERROR (in KF), ~11 preserve-memo (value-memoized + dep-mutated sub-types remaining), ~3 other. |
 | We bail, they compile | ~67 (was 70, -3 from removing is_temp_name false-positive skip) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking, -3 from fixing is_temp_name false-positive bails). Sub-breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other. |
 | Both no memo (format diff) | ~85 (was 83, -7 from Stage 5a DCE+CP, some shifted in from other categories) | Neither side memoizes. **DCE + CP + dead branch elimination implemented (Stages 5a+5b). 7 fixtures passing. ~85 remain, blocked by 0-slot codegen (our compiler wraps in `_c(0)` structure), NOT by DCE/CP gaps.** |
 
@@ -55,7 +55,7 @@ The path is clearer but requires significant compiler infrastructure work:
 | Todo error detection (remaining) | 4 | +2-4 | LOW-MED — need optional-chain-in-ternary, hoisting, context var |
 | Frozen-mutation validation fixes | 1 remains | +10 done (Stage 4d + follow-up) | MEDIUM | 1 remaining needs JSX capture analysis |
 
-**Conservative estimate:** +105-241 from 495 base = 600-736. Reaching 600 is feasible and closer than before (+31 from preserve-memo). Remaining gains require scope inference work (the largest and highest-risk category). DCE/CP potential revised down from +23-43 to +5-15 after discovering that "both no memo" is blocked by 0-slot codegen, not DCE/CP.
+**Conservative estimate:** +101-255 from 499 base = 600-754. Reaching 600 is feasible and closer than before (+35 from preserve-memo + validation fixes). Remaining gains require scope inference work (the largest and highest-risk category). DCE/CP potential revised down from +23-43 to +5-15 after discovering that "both no memo" is blocked by 0-slot codegen, not DCE/CP.
 
 ---
 
@@ -376,7 +376,7 @@ Key findings for slot-diff (688 fixtures):
 
 ### Stage 4: Validation Gaps — "We Compile, They Don't" (target: +50-75 fixtures)
 
-**Pool:** 191 fixtures where we produce memoized output but upstream doesn't. **CORRECTED (2026-03-26):** 134 are scope inference surplus (upstream compiles with 0 slots, NOT validation gaps -- see Stage 3a2). Remaining 57: 30 UPSTREAM ERROR (in KF, need bail), ~24 preserve-memo, ~3 other.
+**Pool:** ~187 fixtures where we produce memoized output but upstream doesn't (was 191, -4 from validation fixes session). **CORRECTED (2026-03-26):** 134 are scope inference surplus (upstream compiles with 0 slots, NOT validation gaps -- see Stage 3a2). Remaining ~53: 18 UPSTREAM ERROR (in KF, need bail), ~24 preserve-memo, ~3 other.
 **Risk:** LOW — adding validations is safe (bail-out = pass-through = correct).
 
 #### Stage 4a: Categorize Missing Validations -- COMPLETE (investigation)
@@ -391,11 +391,11 @@ Completed 2026-03-25 (extended investigation), revised 2026-03-26.
 | Sub-category | Count | Action Needed |
 |-------------|-------|---------------|
 | Scope inference surplus (0 expected slots) | 134 | Scope inference issue — upstream compiles with 0 reactive scopes, we over-memoize. See Stage 3a2. |
-| UPSTREAM ERROR fixtures (expected output IS the error) | 29 remaining in KF (was 75, 22 fixed in Stages 4c+4e-A, others already passing) | Must bail (not transform) to pass — error message matching NOT required |
+| UPSTREAM ERROR fixtures (expected output IS the error) | 18 remaining in KF (was 75, 22 fixed in Stages 4c+4e-A, +31 by preserve-memo, +4 by validation fixes session) | Must bail (not transform) to pass — error message matching NOT required |
 | `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | Extend existing preserve-memo validation |
-| `Todo` error detection (unimplemented features) | 4 remaining (25 done, +3 from 4e-D) | 4 need optional-chain-in-ternary (2), hoisting (1), context var detection (1) |
+| `Todo` error detection (unimplemented features) | 3 remaining (26 done, +3 from 4e-D, +1 from validation fixes session: nested-method-calls) | 3 need optional-chain-in-ternary (2), context var detection (1). Hoisting (1) remains. |
 | Frozen-mutation detection gaps | 1 remains (10 fixed) | 10 fixed in Stage 4d + follow-up; 1 remains (JSX capture) |
-| Other validation gaps (ref-access, reassignment, hooks) | ~80 | Various per-validation fixes |
+| Other validation gaps (ref-access, reassignment, hooks) | ~76 (was ~80, -4 from validation fixes session) | Various per-validation fixes |
 
 #### Stage 4b: Implement `validatePreserveExistingMemoizationGuarantees` Fixes (32 preserve-memo fixtures in "we compile, they don't")
 
@@ -495,41 +495,51 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
   - `error.invalid-jsx-captures-context-variable.js` — complex JSX capture pattern, needs deeper analysis
 - **New regression:** 4 IIFE-pattern fixtures (`capturing-func-alias-*-iife.js`) now falsely bail. See Stage 2d note below.
 
-#### Stage 4e: UPSTREAM ERROR Fixture Handling (30 error.* remain in KF post validateInferredDep partial, was 36)
+#### Stage 4e: UPSTREAM ERROR Fixture Handling (18 error.* remain in KF, was 30 pre-validation-fixes session)
 
 **Critical correction (2026-03-25):** The conformance test does NOT require matching exact error messages. It only checks `!compile_result.transformed` (line 781 of conformance_tests.rs). To pass an UPSTREAM ERROR fixture, we just need to bail (not transform). This is much simpler than originally described.
 
-**Revised breakdown of 30 error.* fixtures remaining in known-failures (post validateInferredDep partial, was 36):**
+**Latest gains (2026-03-26, +4 from 495->499):**
+- `error.bug-invariant-codegen-methodcall.js` (+1, MethodCall invariant) — added bail-out in `validate_no_unsupported_nodes.rs` for MethodCall codegen patterns
+- `error.todo-nested-method-calls-lower-property-load-into-temporary.js` (+1, MethodCall invariant) — same bail-out covers nested method call patterns
+- `error.call-args-destructuring-asignment-complex.js` (+1, destructuring assignment) — added bail-out in `build.rs` for complex destructuring assignment in call args
+- `error.invalid-setState-in-useMemo-indirect-useCallback.js` (+1, setState-in-useMemo indirect) — fixed `validate_no_set_state_in_render.rs` to detect indirect setState calls through useCallback within useMemo
+
+**Revised breakdown of 18 error.* fixtures remaining in known-failures (was 30 pre-validation-fixes, was 36 pre-validateInferredDep):**
 
 | Sub-category | Count | What we need to bail |
 |-------------|-------|---------------------|
 | "Compilation Skipped: preserve-memo" | 8 (was 11, 3 fixed by validateInferredDep) | `validatePreserveExistingMemoizationGuarantees` must detect and bail — overlaps Stage 4b. Remaining 8 BLOCKED by scope dep resolution. |
-| "Todo: hoisting/optional/context-var/etc" | 4 | Remaining unsupported patterns (was 7, 3 fixed in 4e-D): optional-chain-in-ternary (2), hoisting (1), context var update (1) — need deeper compiler infra |
-| "Invariant: ..." (upstream internal errors) | 3 | MethodCall codegen (1), inconsistent destructuring (1), unnamed temporary (1) — 3 of original 6 fixed in 4e-A |
+| "Todo: hoisting/optional/context-var/etc" | 3 (was 4, -1: nested-method-calls fixed this session) | Remaining unsupported patterns: optional-chain-in-ternary (2), hoisting (1), context var update (1) — need deeper compiler infra. Note: `error.todo-nested-method-calls-lower-property-load-into-temporary.js` moved to fixed. |
+| "Invariant: ..." (upstream internal errors) | 1 (was 3, -2: MethodCall invariant + destructuring assignment fixed this session) | Remaining: inconsistent destructuring (1), unnamed temporary (1). Fixed: `error.bug-invariant-codegen-methodcall.js`, `error.call-args-destructuring-asignment-complex.js`. |
 | "Error: This value cannot be modified" | 2 | Frozen-mutation detection — overlaps Stage 4d remaining (1 fixed: effect callback Check 4b) |
 | "Error: Cannot modify locals after render" | 2 | `validateLocalsNotReassignedAfterRender` gaps |
 | "Error: Cannot access refs during render" | 3 | `validateNoRefAccessInRender` gaps (1 fixed: mutate-ref-arg. Remaining: `error.invalid-pass-ref-to-function.js` needs ref-through-function-call tracking, 2 others need further investigation) |
-| "Error: setState from useMemo" | 1 | setState-in-render validation gap (already partially fixed in 4cd3b20) |
+| "Error: setState from useMemo" | 0 (was 1, fixed this session) | `error.invalid-setState-in-useMemo-indirect-useCallback.js` fixed — indirect setState detection through useCallback within useMemo now works. |
 | "Error: validate-*" | 3 | validate-blocklisted-imports (1), validate-object-entries/values-mutation (2) |
 | Compiled output (NOT UPSTREAM ERROR) | 5 | Slots-DIFFER/MATCH issues, not bail-out issues |
 
 **Tractable sub-tasks (no new infrastructure needed):**
 
 - [x] **4e-A: Mixed bail-outs — COMPLETE (+7, 435->442)** — implemented 7 new bail-outs across 3 files: hoisted function decls in unreachable code (3 fixtures: `error.todo-hoist-function-decls.js`, `error.todo-hoisted-function-in-unreachable-code.js`, `error.hoisting-simple-function-declaration.js`), fbt parameter name detection (1: `fbt/error.todo-fbt-as-local.js`), default-param arrow/function expressions (1: `error.default-param-accesses-local.js`), catch clause destructuring (1: `error.bug-invariant-couldnt-find-binding-for-decl.js`), hook spread arguments (1: `error.todo-hook-call-spreads-mutable-iterator.js`). Files: `validate_no_unsupported_nodes.rs`, `build.rs`, `known-failures.txt`. **Note:** `error.todo-handle-update-context-identifiers.js` (Group 6, UpdateExpression on context vars) was NOT fixed — nested HIR builders don't emit `LoadContext` instructions, so context variables can't be detected by walking the nested HIR. See blocker report below.
-- [~] **4e-B: Locals-reassigned + ref-access + setState bail-outs (5 fixtures)** — tighten existing validators (`validate_no_ref_access_in_render`, `validate_locals_not_reassigned_after_render`, setState checks, hooks-in-loop) to catch these specific patterns. **Progress:** +2 fixtures (hooks-in-for-loop via Terminal::Branch handling in `validate_hooks_usage.rs`; ref-access detection for `error.validate-mutate-ref-arg-in-render.js` via name-based + Type::Ref fallback in `validate_no_ref_access_in_render.rs`). Remaining potential gain: +3.
+- [~] **4e-B: Locals-reassigned + ref-access + setState bail-outs (5 fixtures)** — tighten existing validators (`validate_no_ref_access_in_render`, `validate_locals_not_reassigned_after_render`, setState checks, hooks-in-loop) to catch these specific patterns. **Progress:** +3 fixtures (hooks-in-for-loop via Terminal::Branch handling in `validate_hooks_usage.rs`; ref-access detection for `error.validate-mutate-ref-arg-in-render.js` via name-based + Type::Ref fallback in `validate_no_ref_access_in_render.rs`; `error.invalid-setState-in-useMemo-indirect-useCallback.js` via indirect setState detection through useCallback within useMemo in `validate_no_set_state_in_render.rs`). Remaining potential gain: +2.
 - [~] **4e-C: Frozen-mutation remaining (2 fixtures, was 3)** — overlaps Stage 4d remaining. 1 fixed (effect callback Check 4b, 2026-03-26). Remaining: `error.invalid-jsx-captures-context-variable.js` (JSX capture analysis) + 1 other. Potential gain: +2.
 - [~] **4e-D: Todo-bail fixtures (10 fixtures) — PARTIALLY COMPLETE (+3, 450->453).** Fixed 3 of 10: `repro-declaration-for-all-identifiers.js` (for-in-try detection via Terminal::For), `repro-for-loop-in-try.js` (same), `repro-nested-try-catch-in-usememo.js` (file-level bail propagation via ANY_FUNCTION_BAILED thread-local). **7 remaining:** `optional-call-chain-in-ternary.ts`, `todo-optional-call-chain-in-optional.ts`, `propagate-scope-deps-hir-fork/todo-optional-call-chain-in-optional.ts`, `error.dont-hoist-inline-reference.js`, and ~3 others. See new gap notes below.
 - [~] **4e-D2: Preserve-memo gaps (11 fixtures)** — overlaps Stage 4b. `finish_in_scope` issue resolved; validateInferredDep partially implemented (+3 passing). Remaining fixtures BLOCKED by scope dep resolution (SSA temp IdentifierIds don't resolve to named variables). Potential gain: +8 remaining but requires scope dep resolution fix.
 - [ ] **4e-E: Todo remaining (4 fixtures, was 7, 3 fixed in 4e-D)** — overlaps Stage 4c remaining. Need optional-chain-in-ternary (2), hoisting (1), context var update (1). Potential gain: +4 but requires new infrastructure. Context var update BLOCKED by nested HIR LoadContext gap. Optional-chain-in-ternary needs new validation pattern (see gap note below).
 
 **Stage 4e-A done: +7 fixtures gained.**
-**Stage 4e-B progress: +2 fixtures gained (444 total, pre-1d).**
+**Stage 4e-B progress: +3 fixtures gained** (hooks-in-loop, mutate-ref-arg, setState-in-useMemo-indirect). Latest: `error.invalid-setState-in-useMemo-indirect-useCallback.js` (+1, 495->496 equivalent) from indirect setState detection through useCallback within useMemo.
 **Stage 4e-D partial: +3 fixtures gained (450->453).** Fixed via Terminal::For detection + file-level bail propagation.
+**Stage 4e new (validation fixes session, 495->499): +4 fixtures gained.**
 1. Fixed hooks-in-for-loop detection: `find_conditional_blocks` in `validate_hooks_usage.rs` now handles `Terminal::Branch` (for-loop continue/break targets), which was previously unmatched, causing the validator to miss hook calls inside for-loops.
 2. Fixed ref-access detection for `error.validate-mutate-ref-arg-in-render.js`: `validate_no_ref_access_in_render.rs` now uses name-based fallback (`is_ref_name` / `ref_names` set) and `Type::Ref` checks on PropertyLoad/PropertyStore objects, in addition to ID-based tracking. This handles cases where inline_load_local_temps (Pass 9.6) eliminates LoadLocal instructions, causing ref IDs to not propagate. Also tracks source place IDs in LoadLocal (not just lvalue IDs).
-**Remaining tractable gain (4e-B): +3 fixtures, no new infrastructure.**
+3. Fixed nested setState-in-useMemo indirect detection: `validate_no_set_state_in_render.rs` now detects setState calls through useCallback closures within useMemo. Gained `error.invalid-setState-in-useMemo-indirect-useCallback.js`.
+4. Added MethodCall invariant bail-outs: `validate_no_unsupported_nodes.rs` now bails on MethodCall patterns that upstream flags as invariant violations. Gained `error.bug-invariant-codegen-methodcall.js` and `error.todo-nested-method-calls-lower-property-load-into-temporary.js`.
+5. Added destructuring assignment bail-out: `build.rs` now bails on complex destructuring assignment patterns in call arguments. Gained `error.call-args-destructuring-asignment-complex.js`.
+**Remaining tractable gain (4e-B): +2 fixtures, no new infrastructure.**
 **Remaining ref-access fixtures:** `error.invalid-pass-ref-to-function.js` needs ref-through-function-call tracking (detecting when a ref is passed as argument to a function that accesses `.current`). The other ref-access false-positive bail-outs (Stage 2e, 8 fixtures) are a separate category where we incorrectly bail on valid code.
-**Full potential (all remaining sub-tasks): +26 fixtures.**
+**Full potential (all remaining sub-tasks): +22 fixtures** (was +26, -4 fixed this session).
 **Risk:** LOW for 4e-B. MEDIUM-HIGH for 4e-C/D/E.
 
 #### Blocker Report — Nested HIR LoadContext gap (2026-03-25)
@@ -654,21 +664,22 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 | Stage 4c: Todo error detection | +15 (done, 5 remain) | 426 | LOW | 22/27 done (15 in 4c + 7 in 4e-A). Remaining 5 need hoisting, optional terminals, context vars. |
 | Stage 4d: Frozen-mutation false negatives | +10 (done) | 435+1 | MEDIUM | Completed. 7/9 planned + 2 bonus + 1 follow-up (Check 4b). 1 remains (JSX capture). |
 | Stage 4e-A: Upstream error bail-outs | +7 (done) | 442 | LOW | 7/43 done. 4e-B through 4e-E remain. |
-| Stage 4e-B: Locals/ref/setState/hooks | +2 so far | 444 (pre-1d) | LOW | 2/5 done (hooks-in-loop, mutate-ref-arg). 3 remain. |
+| Stage 4e-B: Locals/ref/setState/hooks | +3 so far | 444 (pre-1d) + 1 (495->496) | LOW | 3/5 done (hooks-in-loop, mutate-ref-arg, setState-in-useMemo-indirect). 2 remain. |
 | Stage 1e: Misc codegen/harness | +6 (done) | 447 (from 441) | LOW | Completed. Gating parsing +3, empty catch +1, computed key +2, const/let +0. |
 | Stage 4e-D: Todo-bail (partial) | +3 (done) | 453 | LOW | 3/10 done (for-in-try, bail propagation). 7 remain (optional-chain, hoisting). |
-| Stage 4e-C/D2/E: Remaining upstream errors | +18-35 | 471-488 | MED-HIGH | 4e-C (3, MED), 4e-D2 preserve-memo (11, MED-HIGH), 4e-E (7, HIGH) |
+| Stage 4e validation fixes (495->499) | +4 (done) | 499 | LOW | MethodCall invariant +2, destructuring assignment +1, setState-in-useMemo indirect +1. |
+| Stage 4e-C/D2/E: Remaining upstream errors | +14-31 (was +18-35, -4 done) | 513-530 | MED-HIGH | 4e-C (2, MED), 4e-D2 preserve-memo (11, MED-HIGH), 4e-E (3, HIGH) |
 | Stage 5a: DCE + phi-node CP | +7 (done) | 464 | MEDIUM | Completed. 7 fixtures from dead StoreLocal/Prefix/Postfix removal + phi CP. |
 | Stage 5b: Dead branch elimination | +0 (done) | 464 | MEDIUM | Completed. Infrastructure correct, 0 net gain. Branch conditions rarely constant at Pass 32.5. |
 | Stage 5 remaining: Binary/string folding + 0-slot codegen | +23-43 | 487-507 | MEDIUM-HIGH | ~85 "both no memo" remain. **Blocked by 0-slot codegen, not DCE/CP.** Binary/string folding has diminishing returns. |
 | Stage 3a2: Zero-slot surplus investigation | +1 (done) | 457 | BLOCKED | Completed +1 (escape-analysis-not-if-test.js). Investigation confirmed 134 surplus fixtures require fundamental scope inference changes (mutable range accuracy, scope grouping), not pruning. BLOCKED by Stage 3b prerequisites. See blocker report. |
-| **Total remaining** | **+136-290** | **600-754** | | From 464 base |
+| **Total remaining** | **+101-255** | **600-754** | | From 499 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
 **Key learning from Stage 2a/2b:** Most bail-outs come from specific validations, not silent/0-scope issues. File-level bail-outs were low-hanging fruit (+1 net from removing 4).
 
-**Key correction (2026-03-26):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-D partial + freeze follow-up + validateInferredDep partial, **30 error.* fixtures remain in known-failures** (28 top-level + 2 fbt/). Down from 43 pre-4e-A, 37 pre-4e-D, 34 pre-freeze-follow-up, 33 pre-validateInferredDep.
+**Key correction (2026-03-26):** The 88 error.* figure was pre-Stage-4c/4d. After Stage 4e-D partial + freeze follow-up + validateInferredDep partial + validation fixes session, **18 error.* fixtures remain in known-failures** (16 top-level + 2 fbt/). Down from 22 pre-validation-fixes, 30 pre-preserve-memo, 43 pre-4e-A, 37 pre-4e-D, 34 pre-freeze-follow-up, 33 pre-validateInferredDep.
 
 **Important: CompilationMode::All in conformance tests.** The conformance test harness (`tests/conformance_tests.rs`) uses `compilationMode:"all"`, meaning ALL functions in a fixture are compiled (not just those detected as components/hooks). This affects which fixtures pass/fail because validations run on every function body, not just component-shaped ones. When investigating fixture behavior, always account for this mode.
 
@@ -684,7 +695,7 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 - Slots-MATCH B2 pattern (40 fixtures) is the single largest tractable codegen fix remaining
 - `validatePreserveExistingMemoizationGuarantees` gaps account for 32 of the "we compile, they don't" fixtures (3 now fixed via validateInferredDep, 29 BLOCKED by scope dep resolution)
 
-**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +30-73 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant) + remaining DCE/CP (Stage 5, +5-15 revised down). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). **Stage 3a2 investigation (2026-03-26) CONFIRMED: 134 zero-slot surplus fixtures require fundamental scope inference changes, not pruning. Three approaches attempted and failed (see blocker report). BLOCKED by same prerequisites as Stage 3b (mutable range accuracy, scope grouping algorithm).** Stage 5a+5b DCE+CP+branch-elimination gained +7 total (457->464); branch elimination infrastructure complete but gains limited by supply of constant conditions. "Both no memo" pool now understood to be blocked by 0-slot codegen (scope inference), not DCE/CP. Conservative floor: ~600 from 464 base. Optimistic: 700+.
+**Revised path to 600 (updated 2026-03-26):** Reachable via scope inference fixes (Stage 3, +50-100) + validation gaps (Stage 4, +26-69 remaining) + codegen fixes (B2, +10-20; 1d Phase 3 done +0 dormant) + remaining DCE/CP (Stage 5, +5-15 revised down). Note: 1d Phase 2 is now BLOCKED by scope inference (see finding #25). B2 also found to be scope-inference dependent (see finding #29). Stage 4b validateInferredDep remaining 29 fixtures BLOCKED by scope dep resolution (see blocker report). **Stage 3a2 investigation (2026-03-26) CONFIRMED: 134 zero-slot surplus fixtures require fundamental scope inference changes, not pruning. Three approaches attempted and failed (see blocker report). BLOCKED by same prerequisites as Stage 3b (mutable range accuracy, scope grouping algorithm).** Stage 5a+5b DCE+CP+branch-elimination gained +7 total (457->464); branch elimination infrastructure complete but gains limited by supply of constant conditions. "Both no memo" pool now understood to be blocked by 0-slot codegen (scope inference), not DCE/CP. Conservative floor: ~600 from 499 base. Optimistic: 700+.
 
 **Key learning from Stage 3b investigation (2026-03-25):** The slot-diff deficit (402 fixtures) has diverse root causes (over-merging, missing outputs, wrong boundaries). Naively removing heuristics from `is_allocating_instruction` causes regressions (-5) because the problem is in scope MERGING, not scope CREATION. The `last_use > instr_id` heuristic is load-bearing for scope merging correctness. Future scope inference work must target the merging algorithm, not sentinel creation.
 
@@ -862,3 +873,4 @@ All paths relative to `crates/oxc_react_compiler/`.
 42. **Zero-slot surplus (134 fixtures) is a scope CREATION problem, not a pruning problem (2026-03-26).** Three approaches attempted and all failed: (a) per-function reactive guard caused -44 regression because most functions have reactive identifiers even when scopes are allocating-only; (b) `prune_unused_scopes` `is_allocating` guard removal gained +3 but caused unresolved reference bugs because `scope.declarations` is incomplete for destructuring patterns; (c) `prune_non_escaping_scopes` already correctly handles escaping allocating scopes. The root cause is `infer_reactive_scope_variables` creating sentinel scopes for allocating instructions that upstream does not create, because our `last_use_map` extension produces wider mutable ranges than upstream. This is the same root cause as Stage 3b (scope merging). No further pruning-based approaches should be attempted; the fix requires mutable range accuracy improvements.
 43. **validateInferredDep false-positive count is 51, not 3 (CORRECTED 2026-03-26).** Conformance run shows 55 total "Existing memoization could not be preserved" false-positive bails. Pre-validateInferredDep baseline was 4. The +51 regression was far larger than the 3 originally documented (which was based on manual inspection of a small sample). Despite this, net conformance was still positive (+31) because the implementation correctly bails on many UPSTREAM ERROR fixtures. **Fixing scope dep resolution is the single highest-leverage task**: it would eliminate ~51 false-positive bails, potentially recover +10-30 conformance from freed fixtures matching upstream, AND unblock the remaining 29 UPSTREAM ERROR preserve-memo fixtures.
 44. **Stage 2f (validateLocalsNotReassignedAfterRender relaxation) FAILED (2026-03-26).** Approach of relaxing the check caused 5 regressions vs 1 gain (-4 net). Root cause: the validator fires on patterns involving DeclareContext/StoreContext HIR instructions which we do not lower. Requires DeclareContext/StoreContext HIR lowering as a prerequisite. Do not attempt again until that infrastructure exists.
+45. **Error.* fixtures are still a productive target at 18 remaining (2026-03-26).** The validation fixes session gained +4 (495->499) from 4 diverse error.* fixtures: nested setState detection, MethodCall invariant bail-outs, destructuring assignment bail-out. Each fix was small and self-contained. The remaining 18 error.* fixtures in KF are spread across preserve-memo (8, BLOCKED), todo patterns (3), invariant (1), frozen-mutation (2), reassignment (2), ref-access (3), validate-* (3). The non-BLOCKED ones (10 fixtures) remain tractable targets for incremental gains.

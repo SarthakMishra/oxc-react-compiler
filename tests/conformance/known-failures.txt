@@ -272,11 +272,9 @@ effect-derived-computations/ref-conditional-in-effect-no-error.js
 effect-derived-computations/usestate-derived-from-prop-no-show-in-data-flow-tree.js
 error.bug-invariant-expected-consistent-destructuring.js
 error.bug-invariant-unnamed-temporary.js
-error.dont-hoist-inline-reference.js
 error.invalid-hoisting-setstate.js
 error.invalid-jsx-captures-context-variable.js
 error.invalid-pass-mutable-function-as-prop.js
-error.invalid-pass-ref-to-function.js
 error.invalid-return-mutable-function-from-hook.js
 error.invalid-type-provider-hooklike-module-default-not-hook.js
 error.invalid-type-provider-nonhook-name-typed-as-hook.js
@@ -313,8 +311,6 @@ fast-refresh-refresh-on-const-changes-dev.js
 fast-refresh-reloading.js
 fbt/bug-fbt-plural-multiple-function-calls.ts
 fbt/bug-fbt-plural-multiple-mixed-call-tag.tsx
-fbt/error.todo-fbt-unknown-enum-value.js
-fbt/error.todo-multiple-fbt-plural.tsx
 fbt/fbt-call-complex-param-value.js
 fbt/fbt-call.js
 fbt/fbt-param-with-leading-whitespace.js
@@ -372,10 +368,8 @@ gating/codegen-instrument-forget-gating-test.js
 gating/component-syntax-ref-gating.flow.js
 gating/conflicting-gating-fn.js
 gating/dynamic-gating-bailout-nopanic.js
-gating/dynamic-gating-invalid-identifier-nopanic.js
 gating/dynamic-gating-invalid-multiple.js
 gating/dynamic-gating-noemit.js
-gating/error.dynamic-gating-invalid-identifier.js
 gating/gating-access-function-name-in-component.js
 gating/gating-nonreferenced-identifier-collision.js
 gating/gating-test-export-function-and-default.js

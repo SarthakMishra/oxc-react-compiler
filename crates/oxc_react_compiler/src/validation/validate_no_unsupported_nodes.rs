@@ -113,6 +113,18 @@ pub fn validate_no_unsupported_nodes(hir: &HIR, errors: &mut ErrorCollector) {
     // a MethodCall result is used as an argument to another MethodCall. We detect this
     // pattern early and bail to match upstream's behavior.
     check_nested_method_call_as_argument(hir, errors);
+
+    // Upstream: Todo: [hoisting] EnterSSA: Expected identifier to be defined before being used
+    // Detect self-referencing declarations like `const x = identity(x)` where x is
+    // loaded after DeclareLocal but before the corresponding StoreLocal initialization.
+    // This is a TDZ (Temporal Dead Zone) violation in JavaScript semantics.
+    check_self_referencing_declarations(hir, errors);
+
+    // Upstream: Todo: Support duplicate fbt tags
+    // When an <fbt> element contains multiple <fbt:enum>, <fbt:plural>, or <fbt:pronoun>
+    // children (lowered to fbt._enum(), fbt._plural(), fbt._pronoun() calls), upstream
+    // bails because the fbt Babel plugin has deduplication issues with synthesized nodes.
+    check_fbt_duplicate_tags(hir, errors);
 }
 
 /// Check if an instruction declares a `var` variable.
@@ -477,6 +489,167 @@ fn collect_terminal_successors(terminal: &Terminal, successors: &mut Vec<BlockId
             successors.push(*fallthrough);
         }
         Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => {}
+    }
+}
+
+/// Check for duplicate fbt/fbs sub-tags that upstream cannot handle.
+///
+/// Upstream: `Todo: Support duplicate fbt tags`
+/// When `fbt._()` is called with an array argument containing multiple `fbt._enum()`,
+/// `fbt._plural()`, or `fbt._pronoun()` calls of the same type, upstream bails because
+/// the fbt Babel plugin's deduplication logic depends on `.start`/`.end` source positions
+/// that the compiler doesn't preserve for synthesized nodes.
+///
+/// Detection: Count MethodCall instructions on `fbt` receiver with method names
+/// `_enum`, `_plural`, `_pronoun`. If any type appears 2+ times, bail.
+fn check_fbt_duplicate_tags(hir: &HIR, errors: &mut ErrorCollector) {
+    // Pass 1: Collect identifiers whose name is "fbt" or "fbs" (from imports or locals).
+    // These are loaded via LoadLocal (imports are treated as local bindings).
+    let mut fbt_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+                    if place.identifier.name.as_deref().is_some_and(|n| n == "fbt" || n == "fbs") {
+                        fbt_ids.insert(instr.lvalue.identifier.id);
+                    }
+                }
+                InstructionValue::LoadGlobal { binding } => {
+                    if binding.name == "fbt" || binding.name == "fbs" {
+                        fbt_ids.insert(instr.lvalue.identifier.id);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if fbt_ids.is_empty() {
+        return;
+    }
+
+    // Pass 2: Count fbt sub-tag method calls (_enum, _plural, _pronoun)
+    let mut enum_count = 0u32;
+    let mut plural_count = 0u32;
+    let mut pronoun_count = 0u32;
+    let mut first_loc = None;
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::MethodCall { receiver, property, .. } = &instr.value
+                && fbt_ids.contains(&receiver.identifier.id)
+            {
+                match property.as_str() {
+                    "_enum" => {
+                        enum_count += 1;
+                        if first_loc.is_none() {
+                            first_loc = Some(instr.loc);
+                        }
+                    }
+                    "_plural" => {
+                        plural_count += 1;
+                        if first_loc.is_none() {
+                            first_loc = Some(instr.loc);
+                        }
+                    }
+                    "_pronoun" => {
+                        pronoun_count += 1;
+                        if first_loc.is_none() {
+                            first_loc = Some(instr.loc);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let loc = first_loc.unwrap_or_default();
+    if enum_count > 1 {
+        errors.push(CompilerError::todo(
+            loc,
+            "Support duplicate fbt tags\n\nSupport `<fbt>` tags with multiple `<fbt:enum>` values."
+                .to_string(),
+        ));
+    }
+    if plural_count > 1 {
+        errors.push(CompilerError::todo(
+            loc,
+            "Support duplicate fbt tags\n\nSupport `<fbt>` tags with multiple `<fbt:plural>` values."
+                .to_string(),
+        ));
+    }
+    if pronoun_count > 1 {
+        errors.push(CompilerError::todo(
+            loc,
+            "Support duplicate fbt tags\n\nSupport `<fbt>` tags with multiple `<fbt:pronoun>` values."
+                .to_string(),
+        ));
+    }
+}
+
+/// Detect self-referencing variable declarations: `const x = identity(x)`.
+///
+/// In JavaScript, `const x = f(x)` is a TDZ error because `x` is referenced
+/// before initialization completes. Our HIR builder emits DeclareLocal before
+/// lowering the initializer, so the RHS `x` resolves to the same identifier
+/// as the LHS. Upstream's SSA pass detects this as "identifier used before
+/// defined" and bails with a Todo error.
+///
+/// Detection: for each `DeclareLocal` with `Const` kind, check if the immediately
+/// following sequence loads the same identifier (by ID) before the StoreLocal.
+/// Only fires when the LoadLocal ID exactly matches the DeclareLocal lvalue ID
+/// (not just by name), to avoid false positives on destructured params or shadowed vars.
+fn check_self_referencing_declarations(hir: &HIR, errors: &mut ErrorCollector) {
+    for (_, block) in &hir.blocks {
+        let instrs = &block.instructions;
+        for (i, instr) in instrs.iter().enumerate() {
+            if let InstructionValue::DeclareLocal { lvalue, type_: InstructionKind::Const } =
+                &instr.value
+            {
+                let declared_id = lvalue.identifier.id;
+                // Only check named identifiers (not temps)
+                let Some(declared_name) = &lvalue.identifier.name else {
+                    continue;
+                };
+                if declared_name.starts_with('t')
+                    && !declared_name[1..].is_empty()
+                    && declared_name[1..].chars().all(|c| c.is_ascii_digit())
+                {
+                    // Skip temp identifiers (t0, t1, ...) — these are compiler-generated
+                    continue;
+                }
+                // Scan forward until we find the matching StoreLocal
+                for next in &instrs[(i + 1)..] {
+                    // Found the StoreLocal for this declaration — stop scanning
+                    if let InstructionValue::StoreLocal { lvalue: sl, .. } = &next.value
+                        && sl.identifier.id == declared_id
+                    {
+                        break;
+                    }
+                    // Also stop at DeclareLocal/Destructure for a different variable
+                    // to avoid scanning too far
+                    if matches!(
+                        &next.value,
+                        InstructionValue::DeclareLocal { .. }
+                            | InstructionValue::Destructure { .. }
+                    ) {
+                        break;
+                    }
+                    // Check if any LoadLocal loads the exact same identifier ID
+                    if let InstructionValue::LoadLocal { place } = &next.value
+                        && place.identifier.id == declared_id
+                    {
+                        errors.push(CompilerError::todo(
+                            next.loc,
+                            format!(
+                                "[hoisting] EnterSSA: Expected identifier to be defined \
+                                 before being used. Identifier {declared_name} is undefined.",
+                            ),
+                        ));
+                        return;
+                    }
+                }
+            }
+        }
     }
 }
 
