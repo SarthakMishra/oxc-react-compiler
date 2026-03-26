@@ -19,7 +19,6 @@ function Counter() {
   ([count, setCount] = t1);
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    const next = (count + 1);
     let t3 = () => {
       return setCount(next);
     };
