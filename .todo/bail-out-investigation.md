@@ -234,7 +234,80 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 
 **WARNING:** Changing scope deps at collection time WILL affect codegen slots. This was the reason all previous skip-in-propagation approaches regressed. The fix must be semantically correct (matching upstream's resolution), not just filtering.
 
-**Do NOT attempt any further skip/filter or backward-trace approaches.** The only viable path is structural: porting `ReactiveScopeDependency` with full access paths and fixing dep collection to resolve forward-to-named.
+**Do NOT attempt any further skip/filter or backward-trace approaches.** The only viable path is structural: fixing dep collection to resolve forward-to-named.
+
+---
+
+## tN Dep Resolution: Implementation Plan
+
+> **Status:** Ready to implement. Investigation complete (3 sessions, 9 approaches exhausted).
+> **Upstream:** `PropagateScopeDependencies.ts` (`collectTemporaries()`)
+> **Our file:** `crates/oxc_react_compiler/src/reactive_scopes/propagate_dependencies.rs`
+
+### Problem Summary
+
+76 preserve-memo false bails caused by synthetic tN-named scope deps. 55 are "load-bearing" (error fixtures that bail correctly via wrong mechanism). StoreLocal is #1 producer of unresolvable deps (43%, 1553/3588). Upstream's `collectTemporaries()` handles StoreLocal propagation; our temp_map does not.
+
+### Strategy: Enhance temp_map at dep-COLLECTION time
+
+Instead of removing or filtering tN deps (which all 9 approaches tried and failed), REPLACE them with correctly-resolved named deps by enhancing `propagate_scope_dependencies_hir` Phase 1.5. This changes the dep set to be closer to upstream's, which should improve codegen accuracy.
+
+### Step 1: StoreLocal propagation (43% of unresolvable deps)
+
+**What to do:**
+1. In `propagate_dependencies.rs`, find where `temp_map` is built (Phase 1 / `build_temporaries_map_from_hir`)
+2. Add a new pass or extend existing logic: when processing `StoreLocal lvalue=x, value=$t`:
+   - If `x` has a named identifier, add entry: `instr.lvalue.identifier.id` maps to `ResolvedDep { name: x.name, path: [] }`
+   - If `$t` is NOT already in temp_map but its defining instruction's lvalue IS, propagate that resolution
+3. This mirrors upstream's `collectTemporaries()` which maps `$t -> x` when it sees `x = $t`
+
+**What to measure:**
+- Run conformance before and after
+- Count total tN-named deps before and after (should decrease significantly)
+- Track per-category changes: preserve-memo bails, error fixture bails, slot-match/differ counts
+- Any net-negative means the resolution is semantically wrong — revert and investigate
+
+**Risk:** MEDIUM. Codegen slots WILL change. Some fixtures that currently pass by accident (with wrong dep set) may regress. But the dep set should be MORE correct, so net change should be positive.
+
+### Step 2: MethodCall/CallExpression result resolution
+
+**Prerequisite:** Step 1 is net-positive.
+
+**What to do:**
+- When a MethodCall or CallExpression instruction produces a result, map the result's identifier to the receiver's (MethodCall) or callee's (CallExpression) resolution
+- Check upstream `collectTemporaries()` to verify this is the correct mapping
+
+**Risk:** MEDIUM. Must verify upstream behavior. Incorrect mapping would associate deps with wrong names.
+
+### Step 3: BinaryExpression/UnaryExpression result resolution
+
+**What to do:**
+- Map computation result to left operand's resolution (convention: leftmost reactive operand)
+- These are a smaller fraction of unresolvable deps
+
+**Risk:** LOW.
+
+### Step 4: Destructure result resolution
+
+**What to do:**
+- Map destructure output identifiers to the destructured value's resolution
+- Must handle multi-output destructures (each output maps to the same root with different path suffixes)
+
+**Risk:** LOW-MEDIUM.
+
+### Long-term: Full ReactiveScopeDependency port
+
+If Steps 1-4 are insufficient, port the full upstream `ReactiveScopeDependency` type with property access paths. Steps 1-4 are NOT wasted — they build the resolution infrastructure the full port needs. The full port would also require changes to:
+- `validate_preserved_manual_memoization.rs` (dep comparison uses access paths)
+- `prune_scopes.rs` (dep merging/dedup with paths)
+- `codegen.rs` (dep rendering with paths)
+
+### Key Files to Read Before Starting
+
+1. **Upstream `collectTemporaries()`:** In `PropagateScopeDependencies.ts`, find the function that builds the temporary-to-named resolution map. Understand exactly which instruction types it handles.
+2. **Our `build_temporaries_map_from_hir`:** In `propagate_dependencies.rs`, understand what it currently covers (LoadLocal -> PropertyLoad chains only).
+3. **Our `propagate_scope_dependencies_hir` Phase 2:** The else-branch where unnamed deps are added — this is where the resolved dep should be used instead.
+4. **`promote_used_temporaries`:** Pass 29 in pipeline. Understand how it names unnamed identifiers to "tN" — this is the pass that creates the symptom.
 
 ---
 
