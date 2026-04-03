@@ -73,7 +73,7 @@ The path is clearer but requires significant compiler infrastructure work:
 
 #### Stage 1a: Investigate "Slots MATCH" Patterns -- COMPLETE
 
-Completed 2026-03-25. Full results in [slots-match-investigation.md](slots-match-investigation.md).
+Completed 2026-03-25. Investigation file archived (all actionable items complete or blocked by Stage 3).
 Found 4 sub-patterns: variable naming (126, 52.7%), instruction ordering (55, 23.0%), structural (58), other (44).
 
 #### Stage 1b: Temp Variable Renumbering -- COMPLETE (+2 net, not +25-40)
@@ -82,7 +82,7 @@ Completed 2026-03-25. Implemented `renumber_temps_in_output` in `codegen.rs` (tw
 Also fixed `is_temp_place` pattern matching, Unicode safety in `replace_identifier_in_output`, and `$` word boundary.
 **Gained only +2 fixtures** (403→405): `gating/multi-arrow-expr-export-gating-test.js`, `gating/multi-arrow-expr-gating-test.js`.
 Estimate of +25-40 was wrong: most "naming" differences also involve instruction ordering or scope output name preservation,
-which temp renumbering alone cannot fix. See [slots-match-investigation.md](slots-match-investigation.md) for revised analysis.
+which temp renumbering alone cannot fix. See Stage 1a investigation notes above for sub-pattern breakdown.
 
 #### Stage 1c: Minor Codegen Fixes -- COMPLETE (+5 net, 405→410)
 
@@ -94,7 +94,7 @@ Completed 2026-03-25. C2 (return undefined): +5 fixtures. C5 (catch clause): +0 
 - [x] **Phase 1 (LOW risk): COMPLETE (+6, 444->450).** Moved scope declarations from function-top to just-before-scope-guard. Gained 6 fixtures (exceeded +5 estimate). Same-slots pool reduced 233->227.
 - [ ] **Phase 2 (MEDIUM risk, +10-20) — BLOCKED by scope inference:** Move declarations inside control flow blocks (if/for/try). Fixes A1 pattern (39 fixtures with declaration-before-control-flow as first diff). Same-slots pool now 227. **Finding (2026-03-26):** This is actually a scope inference issue, not codegen. Declarations can only move inside control flow if scope inference produces scopes bounded by those control flow blocks. Currently scope inference merges scopes across control flow boundaries. Requires Stage 3 scope inference improvements as prerequisite.
 - [x] **Phase 3 (HIGH risk, +5-10): COMPLETE (+0, dormant).** Merge declaration with initialization (`let t0; t0 = expr;` → `let t0 = expr;`). Implemented but gained +0 fixtures — all affected fixtures also differ in other ways (scope inference, naming). The merged form is emitted correctly when declaration and first assignment are adjacent, but the benefit is dormant until scope inference improvements make those fixtures matchable.
-- **Details:** [slots-match-investigation.md](slots-match-investigation.md)#stage-1d-lazy-scope-declaration-placement-a1a2
+- **Details:** See Phase 1/2/3 notes above (investigation file archived).
 
 #### Stage 1e: Miscellaneous Codegen/Harness Fixes -- COMPLETE (+6, 441->447)
 

@@ -11,26 +11,13 @@ Of the original 108 fixtures where we bail but upstream compiles:
 - **19 fixed** by removing overly aggressive file-level bail-outs (lint mode, incompatible imports, eslint suppression)
 - **89 remaining** broken down by error category below
 
-## Fixes Applied (Stage 2b, partial)
+## Fixes Applied (Stage 2b, partial) -- ALL COMPLETE
 
-### Fix 1: Remove `OutputMode::Lint` early return (+14 fixtures moved to compile, +2 net passing)
-- **Root cause:** We returned untransformed code for `@outputMode:"lint"` fixtures. Upstream still compiles in lint mode (emits memoization AND diagnostics).
-- **Fix:** Removed the early return in `program.rs`. Now we compile normally.
-- **Result:** 42 lint-mode fixtures now compile. 2 passed outright (`static-components/invalid-dynamically-construct-component-in-render.js`, `static-components/invalid-dynamically-constructed-component-new.js`). 2 error.todo fixtures regressed (added to known-failures). Rest moved to slots-match/slots-differ categories.
-
-### Fix 2: Remove `has_known_incompatible_import` file-level bail, then re-enable as per-function bail (+3 fixtures moved to compile initially, +3 net passing after re-enable)
-- **Root cause:** We bailed entire files importing from `ReactCompilerKnownIncompatibleTest`. Upstream still compiles but emits per-function diagnostics.
-- **Initial fix (2026-03-25):** Removed the file-level bail. Retained function/constant for future per-function diagnostics. +0 net at the time.
-- **Follow-up (2026-03-26):** Re-enabled as a per-function bail-out matching upstream behavior. Upstream DOES bail per-function on known-incompatible imports; the initial full removal was too aggressive. Re-enabling as per-function bail gained **+3 net passing fixtures** (UPSTREAM ERROR fixtures that need us to bail to pass conformance).
-
-### Fix 3: Refine `has_compiler_runtime_import` check (+1 fixture moved to compile, +0 net passing)
-- **Root cause:** We bailed on ANY import from `react/compiler-runtime`. The `babel-existing-react-runtime-import.js` fixture imports `{someImport}` (not the compiler cache).
-- **Fix:** Only bail when `c` or `useMemoCache` is specifically imported.
-
-### Fix 4: Remove `has_eslint_suppression_for_rules` file-level bail, then re-enable as per-function bail (+1 fixture passing)
-- **Root cause:** We bailed entire files with custom eslint suppression rules. Upstream bails per-function.
-- **Initial fix (2026-03-25):** Removed the file-level bail. +1 net at the time.
-- **Follow-up (2026-03-26):** Re-enabled as a custom ESLint suppression per-function bail matching upstream behavior. The per-function bail correctly bails individual functions that have ESLint suppression annotations, rather than bailing the entire file. This gained **+1 net passing fixture** (the suppression bail fixture itself now correctly bails).
+Four file-level bail-outs removed or converted to per-function bails. See `index.md` Stage 2b for details.
+- Fix 1: Lint mode early return removed (+2 net). File: `program.rs`.
+- Fix 2: Known-incompatible import converted to per-function bail (+3 net). File: `program.rs`.
+- Fix 3: Compiler runtime import check refined (+0 net). File: `program.rs`.
+- Fix 4: ESLint suppression converted to per-function bail (+1 net). File: `program.rs`.
 
 ## Remaining Bail-out Breakdown (115 fixtures as of 2026-04-03, was 119 — Stage 2j removed 4 infer-mode false positives)
 
@@ -48,53 +35,18 @@ Of the original 108 fixtures where we bail but upstream compiles:
 | BuildHIR unsupported | 2 | MEDIUM | DefaultParam nonreorderable |
 | Other (1 each) | 6 | VARIES | Various edge cases |
 
-## Recommended Next Steps
+## Completed Fixes (condensed)
 
-### Stage 2j: Infer Mode Body Heuristic -- COMPLETE (+4, 2026-04-03)
+All completed fixes are summarized here. See `index.md` for full details of each stage.
 
-**Completed 2026-04-03.** Added `body_has_hooks_or_jsx` function to `program.rs` to skip compiling functions in `CompilationMode::Infer` that don't contain hooks or JSX at the top level (matching upstream's `hasHooksOrJsx`). The function performs a shallow AST walk that descends into control flow but NOT into nested function expressions/arrows.
-
-**Fixtures gained (4):** `dont-memoize-primitive-function-call-non-escaping.js`, `infer-skip-components-without-hooks-or-jsx.js`, `infer-no-component-nested-jsx.js`, `infer-no-component-obj-return.js`.
-
-**Fixtures NOT gained (3):** `dont-memoize-primitive-function-call-non-escaping-useMemo.js` (has useMemo, correctly compiles), `should-bailout-without-compilation-infer-mode.js` (needs gating directive support), `valid-setState-in-useEffect-controlled-by-ref-value.js` (needs `@enableAllowSetStateFromRefsInEffects` directive support).
-
-**Files:** `crates/oxc_react_compiler/src/entrypoint/program.rs` (`body_has_hooks_or_jsx`, `stmt_has_hooks_or_jsx`, `expr_has_hooks_or_jsx`, `call_is_hook`).
-
-### Stage 1e: Dynamic Gating Parsing Fix -- COMPLETE (+3, harness fix)
-
-**Completed 2026-03-26.** The 3 gating-mode "silent bail-out" fixtures were actually a conformance test harness parsing issue, not a compiler bug. The `@gating` directive was not being parsed correctly for dynamic import patterns. Fixing the harness parsing logic gained +3 fixtures.
-
-**Fixtures fixed:** 3 gating fixtures (exact names TBD — these moved from "silent bail-out" to passing).
-
-### ObjectExpression Computed Key Bail-out Removed -- COMPLETE (+2)
-
-**Completed 2026-03-26.** Removed an overly aggressive bail-out in HIR lowering that rejected `ObjectExpression` nodes with computed keys. Upstream compiles these patterns successfully. Our bail-out was a false positive from an early conservatism guard.
-
-### Empty Catch Handler Codegen Fix -- COMPLETE (+1)
-
-**Completed 2026-03-26.** Fixed an additional catch handler codegen issue that, combined with the Stage 1d Phase 1 declaration placement fix, unblocked 1 more fixture. The catch handler now correctly emits `catch {}` in contexts where both ordering and empty-handler requirements are met.
-
-### const vs let Keyword in StoreLocal Codegen -- COMPLETE (+0)
-
-**Completed 2026-03-26.** Fixed codegen to emit `const` instead of `let` for `StoreLocal` instructions where the variable is never reassigned. No conformance gain because affected fixtures also differ in other ways (scope inference, naming), but this is a correctness improvement that will contribute to matches once those other differences are resolved.
-
-### Gating Directive Comment Stripping -- COMPLETE (+2, 505->507)
-
-**Completed 2026-03-26.** `codegen.rs` `apply_compilation` now filters `// @gating` and `// @dynamicGating` comment lines from compiled output when gating mode is active. Upstream's Babel plugin removes these annotations during compilation; our source-edit-based approach was preserving them. The fix iterates over output lines and suppresses those whose trimmed content starts with `@gating` or `@dynamicGating`. Fixtures gained: `gating/multi-arrow-expr-export-gating-test.js`, `gating/multi-arrow-expr-gating-test.js`.
-
-### Hooks-as-Value False Positive Fix (locally_declared_names) -- COMPLETE (+0, correctness)
-
-**Completed 2026-03-26.** `validate_hooks_usage.rs` Rule 3 (hooks-as-values check) now skips `LoadLocal` of names present in a `locally_declared_names` set. The set is populated by walking `DeclareLocal` and `Destructure` instructions (with recursive `collect_destructure_names` helper for nested destructuring). This prevents false bails on patterns like `let useFeature = makeObject()` where a locally-declared variable has a hook-like name but is not actually a hook import. No net conformance change because the 3 affected fixtures (listed in the "Hooks as normal values" row above) are also caught by the `PropertyLoad` callee-name check, which is a separate false positive. This fix is a correctness guard for future work.
-
-**Note:** The 3 "Hooks as normal values" bail-outs from the table above are NOT fully resolved. The `locally_declared_names` fix addresses one vector (LoadLocal of locally-declared hook-like names). The remaining false positives come from PropertyLoad instructions where the property name looks like a hook (e.g., `obj.useHook`). Fixing the PropertyLoad check was attempted in this session but was net-zero. These 3 fixtures remain in the bail-out pool.
-
-### Stage 2c (was 2b): Fix `_exp` Directive Handling -- COMPLETE
-
-**Completed 2026-03-25.** Fixed handling of `@validateNoDerivedComputationsInEffects_exp` directive fixtures.
-- 20 fixtures now compile instead of bailing
-- Net conformance: +0 (all land in slots-DIFFER/MATCH pools)
-- These fixtures are unblocked for future scope/codegen improvements
-- **Key learning:** Bail-out fixes move fixtures between pools but don't directly increase conformance when output still differs
+- **Stage 2j: Infer mode body heuristic** -- COMPLETE (+4). `body_has_hooks_or_jsx` in `program.rs`. 3 remain (need directive support).
+- **Stage 1e: Dynamic gating parsing** -- COMPLETE (+3, harness fix).
+- **ObjectExpression computed key bail-out removed** -- COMPLETE (+2).
+- **Empty catch handler codegen** -- COMPLETE (+1).
+- **const vs let in StoreLocal codegen** -- COMPLETE (+0, correctness).
+- **Gating directive comment stripping** -- COMPLETE (+2). `codegen.rs` `apply_compilation` filters `@gating`/`@dynamicGating` lines.
+- **Hooks-as-value locally_declared_names** -- COMPLETE (+0, correctness guard). 3 "hooks as normal values" fixtures remain (PropertyLoad callee-name check).
+- **Stage 2c: `_exp` directive handling** -- COMPLETE (+0 net, 20 fixtures moved from bail to compile pools).
 
 ### Stage 2d: Fix frozen-mutation false positives (11 original + 4 new IIFE = ~15 fixtures) -- BLOCKED
 - `InferMutableRanges` incorrectly reports mutations on frozen values
@@ -141,85 +93,31 @@ Of the original 108 fixtures where we bail but upstream compiles:
 
 **Do NOT attempt again until:** Either (a) the aliasing pass's freeze propagation semantics are better understood by detailed comparison with the upstream TypeScript `InferMutationAliasingEffects` pass, or (b) a mechanism exists to distinguish direct vs transitive freeze status in the validator without regressing true positives.
 
-### Stage 4d: Frozen-mutation false negatives -- COMPLETE (+10 net, 426->435 initial, +1 follow-up 452->453)
+### Stage 4d: Frozen-mutation false negatives -- COMPLETE (+10 net)
 
-Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up).
+Completed. Name-based freeze tracking in `validate_no_mutation_after_freeze.rs` + destructure freeze propagation + Check 4b effect callback analysis. 1 remaining: `error.invalid-jsx-captures-context-variable.js` (JSX capture analysis). See `index.md` Stage 4d for full details.
 
-**Initial approach (2026-03-25):** Track frozen identifiers by name (not just IdentifierId) to solve cross-scope identity mismatches where the same logical variable has different IdentifierIds in different scopes.
+### Stage 2e: Ref-access false positives (8 fixtures) — DEPRIORITIZED, NO CONFORMANCE IMPACT
 
-**Initial results:**
-- 7 of 9 planned fixtures fixed + 2 bonus = 9 total gained
-- 9 fixtures shifted from slots-MATCH/DIFFER to bail (IIFE false positives + other side effects of broader freeze tracking)
+Investigated 2026-03-25. Freed fixtures land in slots-DIFFER, net impact -2 to +0. Deprioritized until Stage 3 scope inference improvements. See `index.md` Stage 2e.
 
-**Follow-up (2026-03-26): Destructure freeze propagation + Check 4b effect callback analysis (+1, 452->453)**
+### Stage 2f: Fix reassignment false positives (10 fixtures) — BLOCKED
 
-Two improvements in `validate_no_mutation_after_freeze.rs`:
+BLOCKED: Requires DeclareContext/StoreContext HIR lowering. Attempt caused -4 net. See `index.md` Stage 2f blocker report.
 
-1. **Destructure freeze propagation:** When a frozen value (e.g., props param) is destructured via `Destructure` instruction, the output bindings now inherit frozen status. Previously only top-level parameter names were tracked via `param_names`, missing destructured fields like `{foo}` from `Component({foo})`. The fix iterates over all `Destructure` instructions and propagates frozen status from the destructured value to each output binding.
+### Stage 4e-D: Todo-Bail Fixtures — PARTIALLY COMPLETE (+3)
 
-2. **Check 4b effect callback analysis:** Previously Check 4 (mutation-after-freeze in function expressions) skipped ALL effect callbacks unconditionally. The correct upstream behavior checks effect callbacks for prop/context mutations while excluding ref mutations. The fix re-enables the check for effect callbacks but filters out ref-named identifiers using `is_ref_name` (imported from `validate_no_ref_access_in_render.rs`, made `pub(crate)` for cross-module reuse). This ensures `ref.current = x` in effects does not false-positive, while `props.x = y` in effects correctly errors.
+3 of 10 fixed (for-in-try detection, file-level bail propagation). Remaining tracked in `index.md` Stage 4e-D/E.
 
-**Fixtures gained in follow-up:**
-- `error.assign-ref-in-effect-hint.js` — effect callback now correctly detects mutation of frozen (non-ref) value
+## Silent Bail-out Detail (7 remaining, was 9)
 
-**Remaining 1 planned fixture:**
-- `error.invalid-jsx-captures-context-variable.js` — complex JSX capture pattern needing deeper capture analysis
-
-**Trade-off:** Name-based tracking is coarser than IdentifierId-based tracking. It correctly catches more true positives (the 10 gained) but also catches 4 false positives on IIFE patterns. Net impact is positive.
-
-### Stage 2e: Fix ref-access false positives (8 fixtures) — LOW PRIORITY, NO CONFORMANCE IMPACT
-
-~~- `validateNoRefAccessInRender` is over-eager~~
-~~- Some patterns (assigning ref-accessing functions to properties, ref type casts) should be allowed~~
-~~- **Risk:** MEDIUM~~
-
-**Investigation completed (2026-03-25):** Thoroughly investigated whether relaxing ref-access false positives would improve conformance. **Result: NO conformance gain.** The 8 fixtures freed by relaxing ref-access validation land in slots-DIFFER (not matched), so they do not pass conformance. Additionally, 2 fixtures that currently pass by accident (Flow parse errors producing output that happens to match upstream error format) would regress. Net impact: **-2 to +0 conformance**.
-
-**Decision:** Deprioritized. Not worth pursuing until scope inference improvements (Stage 3) can make the freed fixtures actually match. The false-positive bail-outs are semantically incorrect (we bail when upstream compiles), but fixing them does not improve the metric.
-
-**Note (2026-03-25):** Stage 4e-B separately fixed 1 ref-access *detection* gap (`error.validate-mutate-ref-arg-in-render.js` now correctly bails). That fix improved the detection path (name-based + Type::Ref fallback for PropertyLoad/PropertyStore), but the Stage 2e false-positive fixtures are the *opposite* problem: we bail when we should compile. These are distinct issues:
-- **4e-B ref-access (detection):** We compile when upstream bails with "Cannot access refs during render". Fix: improve ref tracking to catch more true positives. 1 of 4 fixed, 3 remain.
-- **2e ref-access (false positives):** We bail with "Cannot access refs during render" when upstream compiles successfully. Fix: relax over-eager patterns. 8 fixtures, 0 fixed so far. **LOW PRIORITY — freed fixtures land in slots-DIFFER, not matched.**
-- `error.invalid-pass-ref-to-function.js` (4e-B remaining) specifically needs ref-through-function-call tracking: detecting when a ref object is passed as an argument to a function that accesses `.current` on it.
-
-### Stage 2f: Fix reassignment false positives (10 fixtures → ~5-7 gained)
-- `validateLocalsNotReassignedAfterRender` false positives
-- **Risk:** MEDIUM
-
-### Stage 4e-D: Todo-Bail Fixtures — PARTIALLY COMPLETE (+3, 450->453)
-
-Completed 2026-03-26. Fixed 3 of 10 todo-bail fixtures from the "we compile, they don't" category:
-
-**Fixtures fixed:**
-- `repro-declaration-for-all-identifiers.js` — for-in-try detection via Terminal::For
-- `repro-for-loop-in-try.js` — same Terminal::For detection
-- `repro-nested-try-catch-in-usememo.js` — file-level bail propagation (ANY_FUNCTION_BAILED thread-local)
-
-**Cross-cutting fix: file-level bail propagation.** Added `ANY_FUNCTION_BAILED` thread-local flag in `program.rs` that propagates any per-function bail-out to the file level. This matches upstream behavior where a file-level bail from any nested function means the entire file is treated as "not transformed." This mechanism is reusable and will automatically benefit future per-function bail-outs that affect file-level transformation status.
-
-**7 remaining todo-bail fixtures:**
-- `optional-call-chain-in-ternary.ts` — optional chaining inside ternary in try block, not detected by current validation
-- `todo-optional-call-chain-in-optional.ts` — same pattern
-- `propagate-scope-deps-hir-fork/todo-optional-call-chain-in-optional.ts` — same pattern (duplicate in subfolder)
-- `error.dont-hoist-inline-reference.js` — hoisting validation gap, not investigated
-- ~3 others (need re-enumeration)
-
-**New gaps discovered:**
-1. **Optional chain in ternary detection:** Our validation does not detect `?.()` or `?.` inside ternary expressions within try blocks. Upstream bails on this pattern. Requires new detection in `validate_no_unsupported_nodes.rs` or `build.rs`.
-2. **Hoisting inline reference:** `error.dont-hoist-inline-reference.js` — upstream error not replicated, needs investigation.
-
-## Silent Bail-out Detail (9 remaining)
-
-1. `babel-existing-react-runtime-import.js` — imports `{someImport}` from runtime (our refined check still correctly bails because the expected output has `c as _c` import, meaning upstream adds it alongside the existing import; we'd need smarter import merging)
-2. ~~`gating/infer-function-expression-React-memo-gating.js` — `@gating` mode not supported~~ ✅ Fixed in Stage 1e (conformance harness parsing issue)
-3. ~~`gating/invalid-fnexpr-reference.js` — `@gating` mode not supported~~ ✅ Fixed in Stage 1e (conformance harness parsing issue)
-4. `infer-functions-component-with-ref-arg.js` — `@compilationMode:"infer"`, function with ref arg not detected as compilable
-5. `unused-object-element-with-rest.js` — 0 scopes survive pipeline (scope inference gap)
-6. `invalid-jsx-in-catch-in-outer-try-with-catch.js` — try-catch in HIR lowering issue
-7. `invalid-jsx-in-try-with-catch.js` — try-catch in HIR lowering issue
-8. `valid-set-state-in-useEffect-from-ref.js` — setState-in-effect validation fires
-9. `valid-setState-in-effect-from-ref-arithmetic.js` — same
-(Note: some may have shifted between categories after the lint-mode fix)
+1. `babel-existing-react-runtime-import.js` — needs smarter import merging
+2. `infer-functions-component-with-ref-arg.js` — Infer mode, function with ref arg not detected as compilable
+3. `unused-object-element-with-rest.js` — 0 scopes survive pipeline (scope inference gap)
+4. `invalid-jsx-in-catch-in-outer-try-with-catch.js` — try-catch in HIR lowering issue
+5. `invalid-jsx-in-try-with-catch.js` — try-catch in HIR lowering issue
+6. `valid-set-state-in-useEffect-from-ref.js` — setState-in-effect validation fires
+7. `valid-setState-in-effect-from-ref-arithmetic.js` — same
 
 ## validateInferredDep False Positive Bails (+3 new, 2026-03-26)
 
@@ -277,47 +175,11 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 
 ---
 
-## Stage 2g: Error Fixture Bail-out Sweep (2026-03-26, +6 fixtures, 499->505)
+## Stage 2g: Error Fixture Bail-out Sweep -- COMPLETE (+6, 499->505)
 
-Four new bail-out validations targeting error.* fixtures in known-failures.
-
-### Fix 5: Duplicate fbt/fbs sub-tag detection (+2)
-
-**Fixtures:** `fbt/error.todo-fbt-unknown-enum-value.js`, `fbt/error.todo-multiple-fbt-plural.tsx`
-**File:** `validate_no_unsupported_nodes.rs` — `check_fbt_duplicate_tags`
-**Upstream:** `Todo: Support duplicate fbt tags`
-
-Two-pass analysis: Pass 1 collects identifiers named `fbt` or `fbs` via `LoadLocal`/`LoadContext`/`LoadGlobal`. Pass 2 counts `_enum`/`_plural`/`_pronoun` MethodCall sub-tags on those identifiers. If any sub-tag type appears 2+ times, bails with a Todo error.
-
-**Important note:** `import fbt from 'fbt'` creates a `LoadLocal` instruction, not `LoadGlobal`, because `fbt` is not in the built-in globals list (`GlobalCollector`). The implementation handles both paths, but future fbt work must be aware of this distinction.
-
-### Fix 6: Ref-to-function detection (+1)
-
-**Fixture:** `error.invalid-pass-ref-to-function.js`
-**File:** `validate_no_ref_access_in_render.rs`
-**Upstream:** `Cannot access refs during render. Passing a ref to a function may read its value during render.`
-
-Added a check in Pass 2 for `CallExpression` instructions: if any argument is a tracked ref identifier (by ID, by `Type::Ref`, or by name matching `is_ref_name`/`ref_names`) AND the callee is not a hook (determined by `is_hook_name`), the function bails with a ref-access-in-render error. MethodCall is excluded (method calls on objects are a different pattern).
-
-### Fix 7: Self-referencing const declarations (+1)
-
-**Fixture:** `error.dont-hoist-inline-reference.js`
-**File:** `validate_no_unsupported_nodes.rs` — `check_self_referencing_declarations`
-**Upstream:** `Todo: [hoisting] EnterSSA: Expected identifier to be defined before being used`
-
-Detects `const x = identity(x)` pattern: for each `DeclareLocal` with `InstructionKind::Const`, scans forward until the matching `StoreLocal`, checking if any `LoadLocal` references the same `IdentifierId`. Fires a Todo error if found. Only checks non-temp identifiers (skips `t0`, `t1`, ...). Stops at `DeclareLocal`/`Destructure` boundaries to avoid scanning too far.
-
-**Limitation:** Only handles `Const` kind, not `Let`. JavaScript `let` also has TDZ semantics, but no current conformance fixtures test this. See Deferred section in index.md.
-
-**Regression avoided:** An initial broader version that also checked function params and destructured bindings caused -11 regression. The final version is scoped to `DeclareLocal Const` with exact `IdentifierId` matching.
-
-### Fix 8: Dynamic gating invalid identifier validation (+2)
-
-**Fixtures:** `gating/dynamic-gating-invalid-identifier-nopanic.js`, `gating/error.dynamic-gating-invalid-identifier.js`
-**File:** `program.rs` — `is_valid_js_identifier`
-
-Validates the condition in `'use memo if(cond)'` / `'use forget if(cond)'` directives against JavaScript identifier rules: must start with ASCII letter/`_`/`$`, subsequent chars must be ASCII alphanumeric/`_`/`$`, must not be a JS reserved keyword or literal (`true`, `false`, `null`, `undefined`, etc.). When the condition fails validation, compilation bails with an error instead of attempting to lower the invalid condition.
-
-### Attempted but REJECTED: 0-slot codegen
-
-**Result: -52 regression (505->453)**. Attempted emitting passthrough code (no `_c()` wrapper) for functions producing 0 cache slots. Failed because many 0-slot expected outputs contain structural transformations (extracted arrow functions, renamed variables) that differ from simple passthrough. Documented in index.md Deferred section.
+Four new bail-out validations. See `index.md` Stage 2g for full details.
+- Fix 5: Duplicate fbt/fbs sub-tag detection (+2). File: `validate_no_unsupported_nodes.rs`.
+- Fix 6: Ref-to-function detection (+1). File: `validate_no_ref_access_in_render.rs`.
+- Fix 7: Self-referencing const declarations (+1). File: `validate_no_unsupported_nodes.rs`.
+- Fix 8: Dynamic gating invalid identifier validation (+2). File: `program.rs`.
+- **REJECTED: 0-slot codegen** (-52 regression). See `index.md` Deferred section.
