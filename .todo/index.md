@@ -1,24 +1,25 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-04-03
-> Conformance: **496/1717 (28.9%)** (known-failures.txt has 1221 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Note: Conformance dropped from 507 to 496 after KF reconciliation: 24 fixtures removed (newly passing, including 4 from Stage 2j Infer heuristic) and 38 added (pre-existing divergences from uncommitted prior work in fbt, gating, error-handling, and exhaustive-deps categories). Net: -11 matched (507->496). The 38 added entries were already failing but not tracked in KF.
-> Known-failures: 1221 (reconciled: +38 added, -27 removed, net +11). Error.* fixtures remaining in KF: ~18 (12 prior + 6 newly tracked from reconciliation). False-positive bails: ~67.
+> Conformance: **540/1717 (31.5%)** (known-failures.txt has 1177 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Note: +44 this session: preserve-memo default (+30, 496->526), try-catch value block bail (+10, 526->536), object expression computed key bail (+4, 536->540).
+> Known-failures: 1177. False-positive bails: ~174 (83 preserve-memo, 14 frozen-mutation, 9 reassign, 9 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
+> WE-COMPILE-THEY-DON'T: ~94 (69 scope-surplus with no upstream error, 15 "Found 1 error" bail-outs remaining, 10 Flow parse errors). Down from 108 after Stage 4f Groups A+C.
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
 
-## Road to 600+ Conformance (496 → 600+, need +104)
+## Road to 600+ Conformance (540 → 600+, need +60)
 
-### Failure Category Summary (revised 2026-03-25, fresh data from deep-work session)
+### Failure Category Summary (revised 2026-04-03, post-session: preserve-memo +30, try-catch bail +10, computed key bail +4)
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Both compile, slots DIFFER | 666 (53%) | Scope inference accuracy — different cache slot counts. **Largest pool, requires scope inference fixes. Dominated by variable naming/scope inference.** Deficit (our < expected): ~400 fixtures. Surplus (our > expected): ~283 fixtures. |
-| Both compile, slots MATCH | 243 (was 237, some shifted between categories) | Same slots, codegen structure diffs. **Dominated by variable naming/scope inference (not just codegen). B2 pattern (temps vs original names): 40 fixtures. Codegen-only fixes have reached their ceiling (Stage 1 exhausted).** |
-| We compile, they don't | ~150 (revised down from 191, -31 from preserve-memo fixes, -4 from validation fixes, -6 from Stage 2g sweep) | **CORRECTED (2026-03-26): 134 are SCOPE INFERENCE SURPLUS (upstream produces 0 slots, we produce >0), NOT validation gaps.** Remaining ~16: 12 UPSTREAM ERROR (in KF), ~11 preserve-memo (value-memoized + dep-mutated sub-types remaining), ~3 other. |
-| We bail, they compile | ~67 (was 70, -3 from removing is_temp_name false-positive skip) | False-positive bail-outs (down from 108→89→~69 after Stage 2c, +4 IIFE false positives from Stage 4d name-based freeze tracking, -3 from fixing is_temp_name false-positive bails). Sub-breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other. |
-| Both no memo (format diff) | ~85 (was 83, -7 from Stage 5a DCE+CP, some shifted in from other categories) | Neither side memoizes. **DCE + CP + dead branch elimination implemented (Stages 5a+5b). 7 fixtures passing. ~85 remain, blocked by 0-slot codegen (our compiler wraps in `_c(0)` structure), NOT by DCE/CP gaps.** |
+| Both compile, slots DIFFER | ~579 (49%) | Scope inference accuracy — different cache slot counts. Deficit (our < expected): -1 (143), -2 (110), -3+ (183). Surplus (our > expected): +1 (74), +2 (41), +3+ (28). **Largest pool, requires scope inference fixes. BLOCKED by Stage 3b.** |
+| Both compile, slots MATCH | ~240 (20%) | Same slots, codegen structure diffs. **Dominated by variable naming/scope inference. Codegen-only ceiling reached.** |
+| We bail, they compile | ~174 (15%) | False-positive bail-outs. 83 preserve-memo, 14 frozen-mutation, 9 reassign, 9 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc. |
+| We compile, they don't | ~94 (8%) | 69 scope-inference surplus (no upstream error, 0-slot fixtures), **15 "Found 1 error" remaining** (was 29, -10 try-catch bail, -4 computed key bail), 10 Flow parse errors. **15 remaining -- see Stage 4f.** |
+| Both no memo (format diff) | ~90 (8%) | Neither side memoizes. **Blocked by 0-slot codegen (attempted twice, -50+ regression).** |
 
 ### Key Investigation Findings (2026-03-25, updated 2026-03-26)
 
@@ -52,14 +53,15 @@ The path is clearer but requires significant compiler infrastructure work:
 |-----------|-----------|---------------|------------|
 | Scope inference fixes (slots-DIFFER) | 688 | +50-100 | HIGH — cascading regression risk, scope MERGING is bottleneck (see 3b blocker reports: heuristic removal 2026-03-25, merging investigation 2026-03-26). Three additional approaches failed (-17 to -107 net). Requires mutable range accuracy + dep.reactive audit first. |
 | DCE + constant propagation (both-no-memo) | ~85 remaining (7 done) | +5-15 remaining (revised down) | MEDIUM-HIGH — DCE+CP+branch-elim all implemented. Remaining ~85 blocked by 0-slot codegen, not DCE/CP. Binary/string folding may chip away at a few. |
-| `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | +31 done (18 preserve-memo + 13 other), +5-15 remaining | MEDIUM — validateInferredDep LARGELY COMPLETE (+31). Remaining: value-memoized + dep-mutated sub-types. Further validateInferredDep gains LIMITED by fundamental scope dep model difference (see lesson #43). |
+| `validatePreserveExistingMemoizationGuarantees` gaps | 32 (revised from 60) | +30 done (enable default) + prior +31, remaining BLOCKED | MEDIUM — Enabling preserve-memo default in harness was +30 free win (496->526). validateInferredDep further gains BLOCKED: temp-name-skipping caused -56 regression (4th failed approach). See Stage 2i blocker. |
 | Variable name preservation in codegen (B2) | 40 | +10-20 | MEDIUM-HIGH — scope output naming changes + scope inference dependency (see lesson #29) |
 | Declaration placement / instruction ordering (A1) | 55+ | +15-30 | HIGH — BLOCKED: Phase 2 requires scope inference (Stage 3). Phase 3 (merge decl+init) DONE (+0 dormant). |
 | Remaining bail-out fixes (2d-2g, 2j residual) | ~74 total bail pool (was ~78, -4 from Stage 2j) | +15-25 | MEDIUM — per-validation fixes. 3 Infer fixtures remain (need directive support). |
+| Stage 4f "Found 1 error" bails (remaining) | 15 (was 29, -10 try-catch, -4 computed key) | +10-15 remaining | LOW — zero regression risk, bail-to-pass. Groups B/D/E/F/H tractable. |
 | Todo error detection (remaining) | 4 | +2-4 | LOW-MED — need optional-chain-in-ternary, hoisting, context var |
 | Frozen-mutation validation fixes | 1 remains | +10 done (Stage 4d + follow-up) | MEDIUM | 1 remaining needs JSX capture analysis |
 
-**Conservative estimate:** +104-258 from 496 base = 600-754. Reaching 600 requires scope inference work (the largest and highest-risk category). Non-scope-inference gains nearly exhausted: Stage 2j done (+4), remaining are individual error.* bail-outs (+1-2 each) and 3 Infer mode fixtures needing directive support. DCE/CP potential revised down from +23-43 to +5-15 after discovering that "both no memo" is blocked by 0-slot codegen, not DCE/CP.
+**Conservative estimate:** +60-200 from 540 base = 600-740. Reaching 600 requires scope inference work (the largest and highest-risk category). Non-scope-inference gains: Stage 4f remaining (15 "Found 1 error" bails, +10-15), individual error.* bail-outs (+1-2 each), 3 Infer mode fixtures (directive support). Stage 2i preserve-memo false-positive bails DEFINITIVELY BLOCKED (4 approaches, all net-negative, worst -56). DCE/CP potential revised down to +5-15 (blocked by 0-slot codegen).
 
 ---
 
@@ -209,7 +211,7 @@ Net conformance: +0. But these fixtures are now unblocked for future scope/codeg
 
 #### Stage 2i: Fix Preserve-Memo False-Positive Bails (55 fixtures) -- BLOCKED (2026-03-26)
 
-**BLOCKED:** Three approaches attempted (pre-inline temp map, skip unnamed in propagation, skip "tN" in validation) all failed. Best approach (skip "tN") reduced bails 55→7 but caused -31 conformance regression because error.* fixtures that should bail lose their accidental bail path. De-bailed fixtures land in slots-DIFFER (codegen mismatch), not passing. Requires scope inference/codegen improvement OR propagate_dependencies enhancement OR correct-path bailing for error.* fixtures first. See [bail-out-investigation.md](bail-out-investigation.md)#blocker-report--stage-2i-preserve-memo-false-bails-2026-03-26.
+**BLOCKED:** Four approaches attempted and ALL failed. (1) pre-inline temp map, (2) skip unnamed in propagation, (3) skip "tN" in validation — all caused -31 regression. (4) **temp-name-skipping in validateInferredDep (2026-04-03)** — skipping deps with temp names (`t0`-`t99`) in the validation comparison. Caused **-56 regression** (540->484). Definitively confirms this approach family is not viable. See blocker reports below and in [bail-out-investigation.md](bail-out-investigation.md).
 
 **Pool:** 55 "Existing memoization could not be preserved" false-positive bails (was 4 pre-validateInferredDep, +51 introduced by Stage 4b). Single largest bail-out category.
 
@@ -232,7 +234,24 @@ Net conformance: +0. But these fixtures are now unblocked for future scope/codeg
 
 **Potential gain:** Eliminating 51 false-positive bails. Even if only 20-30% of freed fixtures match upstream output, that's +10-15 direct conformance gain. The rest move from bail to slots-DIFFER/MATCH, unblocked for future scope inference fixes.
 
-**Why this WAS the top priority (now BLOCKED):** It is the single largest bail-out category (55 fixtures), but three implementation attempts confirmed that fixing the false bails causes -31 net regression because error.* fixtures lose their accidental bail path, and de-bailed fixtures land in slots-DIFFER. See blocker report in [bail-out-investigation.md](bail-out-investigation.md).
+**Why this WAS the top priority (now BLOCKED):** It is the single largest bail-out category (55 fixtures), but four implementation attempts confirmed that fixing the false bails causes massive regression. See blocker reports below and in [bail-out-investigation.md](bail-out-investigation.md).
+
+##### Blocker Report — Temp-name-skipping in validateInferredDep (2026-04-03)
+
+**Approach attempted:** Skip validation of inferred deps whose resolved name is a temp pattern (`t0` through `t99`) in `validate_preserved_manual_memoization.rs`. The hypothesis was that skipping temp-named deps would eliminate false-positive "cannot preserve memoization" bails without affecting true-positive detection.
+
+**Assumption that was wrong:** Assumed that skipping temp-named deps would only suppress false positives. In reality, many error.* fixtures that SHOULD bail rely on the validateInferredDep check firing on temp-named deps. When those checks are skipped, error.* fixtures lose their bail path and incorrectly compile, moving from "we bail = pass" to "we compile, they don't = fail."
+
+**What was discovered:** The **-56 regression** (540->484) is the worst result of any Stage 2i approach. The regression is LARGER than the -31 from the "skip tN" approach (attempt #3) because:
+1. More error.* fixtures depend on temp-named dep validation than on named dep validation
+2. De-bailed fixtures uniformly land in slots-DIFFER (our codegen doesn't match upstream), not passing
+3. The temp-naming pattern (`tN`) is too broad — it catches legitimate validation targets, not just false positives
+
+**Regression details:** -56 net (540->484). Zero new passes. All regression from error.* fixtures losing their bail path.
+
+**Conclusion:** ALL four approaches to reducing preserve-memo false-positive bails produce net-negative results. The fundamental issue is that the false-positive bails are entangled with true-positive bails on error.* fixtures — any change that reduces false positives also reduces true positives. The only viable path is to fix the UNDERLYING scope dep resolution problem (SSA temp -> named variable mapping) so that the validation can correctly distinguish between true and false positives.
+
+**Do NOT attempt any further "skip" or "filter" approaches.** The next attempt must fix scope dep resolution (see Deferred/Blocked: Scope Dep Resolution).
 
 #### Stage 2j: Tighten CompilationMode::Infer Heuristics -- COMPLETE (+4, KF reconciliation absorbed into 507->496)
 
@@ -611,7 +630,7 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
   - `error.invalid-jsx-captures-context-variable.js` — complex JSX capture pattern, needs deeper analysis
 - **New regression:** 4 IIFE-pattern fixtures (`capturing-func-alias-*-iife.js`) now falsely bail. See Stage 2d note below.
 
-#### Stage 4e: UPSTREAM ERROR Fixture Handling (12 error.* remain in KF, was 18 pre-Stage-2g sweep)
+#### Stage 4e: UPSTREAM ERROR Fixture Handling (29 "Found 1 error" fixtures in WE-COMPILE-THEY-DON'T pool)
 
 **Critical correction (2026-03-25):** The conformance test does NOT require matching exact error messages. It only checks `!compile_result.transformed` (line 781 of conformance_tests.rs). To pass an UPSTREAM ERROR fixture, we just need to bail (not transform). This is much simpler than originally described.
 
@@ -708,6 +727,72 @@ Completed 2026-03-25 (initial), updated 2026-03-26 (follow-up). Implemented name
 
 **Impact:** This is a cross-cutting improvement that affects ALL fixtures in the "we compile, upstream bails" category where the upstream bail comes from a nested function within the file. The 3 fixtures gained in 4e-D (+3, 450->453) were directly enabled by this propagation mechanism.
 
+#### Stage 4f: "Found 1 error" Bail-Out Sweep (29 fixtures, 14 done, 15 remaining, target: +15 more)
+
+**Updated 2026-04-03.** Fresh analysis of the 108 WE-COMPILE-THEY-DON'T fixtures revealed 29 with `// UPSTREAM ERROR: Found 1 error:` headers. For all 29, bailing (not transforming) = passing. Zero regression risk. **14 of 29 completed this session (Groups A + C).**
+
+**Group A: Try-catch value blocks + for-loops (10 fixtures) -- COMPLETE (+10, 526->536)**
+
+~~Detect optional chains, ternaries, logical expressions, and for-in/for-of loops inside try-catch blocks.~~
+
+**Completed (2026-04-03):** Implemented AST-level `check_try_catch_value_blocks` in `program.rs` (pre-lowering bail). Walks try block statements to detect: (a) optional chains (`?.`, `?.()`), (b) ternary/conditional expressions, (c) logical expressions (`&&`, `||`, `??`), (d) for-in/for-of loops. Fires `ANY_FUNCTION_BAILED` to propagate file-level bail. All 10 fixtures now bail correctly, matching upstream's "Todo: Support value blocks in try/catch" behavior.
+
+**Fixtures gained (10, removed from KF):**
+- `try-catch-optional-chaining.js`, `try-catch-optional-call.js`, `try-catch-nullish-coalescing.js`
+- `try-catch-nested-optional-chaining.js`, `try-catch-multiple-value-blocks.js`, `try-catch-logical-and-optional.js`
+- `repro-for-of-in-try.js`, `repro-for-in-in-try.js`, `repro-declaration-for-all-identifiers.js`, `repro-for-loop-in-try.js`
+
+**File:** `crates/oxc_react_compiler/src/entrypoint/program.rs` (`check_try_catch_value_blocks`)
+
+**Group B: Optional terminal in non-optional context (3 fixtures)**
+- `optional-call-chain-in-ternary.ts` -- "Todo: Unexpected terminal kind `optional` for ternary test block"
+- `todo-optional-call-chain-in-optional.ts` -- "Todo: Unexpected terminal kind `optional` for optional fallthrough block"
+- `propagate-scope-deps-hir-fork/todo-optional-call-chain-in-optional.ts` -- same as above
+- **Implementation:** Detect nested optional chains (`?.()`) inside ternary test expressions or optional fallthrough paths. See existing Gap note at line ~686.
+
+**Group C: Object expression computed keys (4 fixtures) -- COMPLETE (+4, 536->540)**
+
+~~Bail when ObjectExpression has computed keys that are CallExpression or SequenceExpression.~~
+
+**Completed (2026-04-03):** Implemented AST-level `check_object_expression_computed_keys` in `program.rs` (pre-lowering bail). Walks ObjectExpression properties and bails when a computed key is a non-Identifier expression (CallExpression, SequenceExpression, MemberExpression, etc.). Fires `ANY_FUNCTION_BAILED` to propagate file-level bail. Matches upstream's "Todo: Expected Identifier, got X key" behavior.
+
+**Fixtures gained (4, removed from KF):**
+- `object-expression-computed-key-modified-during-after-construction.js`
+- `object-expression-computed-key-mutate-key-while-constructing-object.js`
+- `object-expression-member-expr-call.js`
+- `object-expression-computed-key-modified-during-after-construction-sequence-expr.js`
+
+**File:** `crates/oxc_react_compiler/src/entrypoint/program.rs` (`check_object_expression_computed_keys`)
+
+**Group D: Frozen mutation / value modification (3 fixtures)**
+- `error.invalid-jsx-captures-context-variable.js` -- "Error: This value cannot be modified"
+- `error.todo-for-loop-with-context-variable-iterator.js` -- "Error: This value cannot be modified"
+- `new-mutability/error.mutate-frozen-value.js` -- "Error: This value cannot be modified"
+- **Implementation:** Improve frozen-mutation detection for context variables and JSX capture patterns.
+
+**Group E: Post-render mutation (2 fixtures)**
+- `error.invalid-pass-mutable-function-as-prop.js` -- "Error: Cannot modify local variables after render completes"
+- `error.invalid-return-mutable-function-from-hook.js` -- "Error: Cannot modify local variables after render completes"
+- **Implementation:** Tighten `validateLocalsNotReassignedAfterRender` for mutable function prop/return patterns.
+
+**Group F: Context/hoisting (4 fixtures)**
+- `error.todo-functiondecl-hoisting.tsx` -- "Todo: PruneHoistedContexts"
+- `error.todo-valid-functiondecl-hoisting.tsx` -- "Todo: PruneHoistedContexts"
+- `error.todo-handle-update-context-identifiers.js` -- "Todo: Handle UpdateExpression" (BLOCKED by nested HIR LoadContext gap)
+- `error.bug-invariant-unnamed-temporary.js` -- "Invariant: Expected temporaries promoted"
+- **Implementation:** Function declaration hoisting bail (2 fixtures) is potentially simple. Context variable update (1) is BLOCKED. Unnamed temporary invariant (1) may need investigation.
+
+**Group G: Preserve-memo (2 fixtures)**
+- `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js`
+- `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js`
+- **Implementation:** These need the preserve-memo validation to detect the specific destructured dependency pattern. Overlaps Stage 4b/2i.
+
+**Group H: Hoisting access-before-declare (1 fixture)**
+- `error.invalid-hoisting-setstate.js` -- "Error: Cannot access variable before it is declared"
+- **Implementation:** Detect setState calls to variables declared later in the scope.
+
+**Recommended execution order (remaining):** B (3) -> F (2-3 tractable) -> E (2) -> D (3) -> H (1) -> G (2, if unblocked). Groups A and C COMPLETE.
+
 ---
 
 ### Stage 5: "Both No Memo" — DCE + Constant Propagation (target: +30-50 fixtures)
@@ -797,7 +882,12 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 | Stage 3a2: Zero-slot surplus investigation | +1 (done) | 457 | BLOCKED | Completed +1 (escape-analysis-not-if-test.js). Investigation confirmed 134 surplus fixtures require fundamental scope inference changes (mutable range accuracy, scope grouping), not pruning. BLOCKED by Stage 3b prerequisites. See blocker report. |
 | Stage 1g: Gating directive stripping | +2 (done) | 507 (pre-reconciliation) | LOW | Completed. Gating comment filtering +2, hook-as-value false positive fix +0, bail-out diagnostics +0. |
 | KF reconciliation (2026-04-03) | -11 (reconciliation) | 496 | N/A | 38 pre-existing divergences added to KF, 24 newly-passing removed. Reconciles phantom 507 to actual 496. |
-| **Total remaining** | **+104-258** | **600-754** | | From 496 base (post-reconciliation) |
+| Preserve-memo default enable (2026-04-03) | +30 (done) | 526 | LOW | Enabled `validatePreserveExistingMemoizationGuarantees` default=true in test harness. Massive free win. |
+| Stage 4f-A: Try-catch value block bail (2026-04-03) | +10 (done) | 536 | LOW | AST-level `check_try_catch_value_blocks` in `program.rs`. 10 fixtures bail correctly. |
+| Stage 4f-C: Object expression computed key bail (2026-04-03) | +4 (done) | 540 | LOW | AST-level `check_object_expression_computed_keys` in `program.rs`. 4 fixtures bail correctly. |
+| Stage 2i: Temp-name-skipping attempt (2026-04-03) | -56 (reverted) | 540 | BLOCKED | 4th failed approach to preserve-memo false-positive bails. Definitively blocked. |
+| Stage 4f remaining (B/D/E/F/H) | +10-15 remaining | 550-555 | LOW | 15 "Found 1 error" fixtures still actionable. Zero regression risk. |
+| **Total remaining** | **+60-200** | **600-740** | | From 540 base |
 
 **Key learning from Stage 1b:** Temp renumbering alone is nearly worthless (+2). Naming and ordering are entangled — fixing one without the other does not pass conformance.
 
