@@ -546,7 +546,12 @@ fn parse_fixture_options(source: &str) -> (PluginOptions, EnvironmentConfig, boo
         compilation_mode: CompilationMode::All,
         ..PluginOptions::default()
     };
-    let mut env = EnvironmentConfig::default();
+    let mut env = EnvironmentConfig {
+        // Match upstream default: validate manual memoization preservation
+        // even when enablePreserveExistingMemoizationGuarantees is false.
+        validate_preserve_existing_memoization_guarantees: true,
+        ..EnvironmentConfig::default()
+    };
 
     for line in source.lines() {
         let trimmed = line.trim();

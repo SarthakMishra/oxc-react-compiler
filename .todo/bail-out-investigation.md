@@ -2,7 +2,7 @@
 
 > Completed: 2026-03-25
 > Starting pool: 108 "we bail, they compile" fixtures
-> After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in), **~64 remaining as of 2026-03-26** (per latest conformance breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other; +3 new false-positive bails from validateInferredDep scope dep resolution mismatch; -6 from Stage 2g error fixture sweep: fbt duplicate tags +2, ref-to-function +1, self-referencing const +1, dynamic gating +2)
+> After fixes: 89 remaining (pre-Stage 4d), ~93 after Stage 4d (+4 IIFE false positives shifted in), **~60 remaining as of 2026-04-03** (per latest conformance breakdown: 26 frozen mutation, 8 ref access, 7 silent, rest other; +3 new false-positive bails from validateInferredDep scope dep resolution mismatch; -6 from Stage 2g error fixture sweep; -4 from Stage 2j Infer mode body heuristic — 4 infer-mode fixtures now correctly skipped)
 > Note: Conformance tests use `compilationMode:"all"` — all functions are compiled, not just detected components/hooks. This affects which bail-out validations fire.
 
 ## Summary
@@ -32,7 +32,7 @@ Of the original 108 fixtures where we bail but upstream compiles:
 - **Initial fix (2026-03-25):** Removed the file-level bail. +1 net at the time.
 - **Follow-up (2026-03-26):** Re-enabled as a custom ESLint suppression per-function bail matching upstream behavior. The per-function bail correctly bails individual functions that have ESLint suppression annotations, rather than bailing the entire file. This gained **+1 net passing fixture** (the suppression bail fixture itself now correctly bails).
 
-## Remaining Bail-out Breakdown (119 fixtures as of 2026-03-26, CORRECTED from ~70 — validateInferredDep introduced +51 false-positive bails, not +3)
+## Remaining Bail-out Breakdown (115 fixtures as of 2026-04-03, was 119 — Stage 2j removed 4 infer-mode false positives)
 
 | Error Category | Count | Fixable? | Notes |
 |---------------|-------|----------|-------|
@@ -49,6 +49,16 @@ Of the original 108 fixtures where we bail but upstream compiles:
 | Other (1 each) | 6 | VARIES | Various edge cases |
 
 ## Recommended Next Steps
+
+### Stage 2j: Infer Mode Body Heuristic -- COMPLETE (+4, 2026-04-03)
+
+**Completed 2026-04-03.** Added `body_has_hooks_or_jsx` function to `program.rs` to skip compiling functions in `CompilationMode::Infer` that don't contain hooks or JSX at the top level (matching upstream's `hasHooksOrJsx`). The function performs a shallow AST walk that descends into control flow but NOT into nested function expressions/arrows.
+
+**Fixtures gained (4):** `dont-memoize-primitive-function-call-non-escaping.js`, `infer-skip-components-without-hooks-or-jsx.js`, `infer-no-component-nested-jsx.js`, `infer-no-component-obj-return.js`.
+
+**Fixtures NOT gained (3):** `dont-memoize-primitive-function-call-non-escaping-useMemo.js` (has useMemo, correctly compiles), `should-bailout-without-compilation-infer-mode.js` (needs gating directive support), `valid-setState-in-useEffect-controlled-by-ref-value.js` (needs `@enableAllowSetStateFromRefsInEffects` directive support).
+
+**Files:** `crates/oxc_react_compiler/src/entrypoint/program.rs` (`body_has_hooks_or_jsx`, `stmt_has_hooks_or_jsx`, `expr_has_hooks_or_jsx`, `call_is_hook`).
 
 ### Stage 1e: Dynamic Gating Parsing Fix -- COMPLETE (+3, harness fix)
 
