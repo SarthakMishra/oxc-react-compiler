@@ -263,6 +263,18 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 
 **Do NOT attempt again until:** Either (a) codegen quality improves for preserve-memo fixtures (slot mismatches resolved), OR (b) `propagate_scope_dependencies_hir` is enhanced to resolve more operand types through temp_map, OR (c) the error.* fixtures that bail "by accident" are made to bail via their correct validation paths. Without one of these prerequisites, any attempt to reduce the 55 false bails will cause a net conformance regression.
 
+### Blocker Report — Stage 2i Attempt 4: Temp-name-skipping in validateInferredDep (2026-04-03)
+
+**Approach attempted:** In `validate_preserved_manual_memoization.rs`, skip validation of inferred deps whose resolved name matches a temp pattern (`t0` through `t99`). Hypothesis: temp-named deps are always false positives and can be safely excluded from the comparison.
+
+**Result:** **-56 regression** (540->484). Worst result of all 4 approaches. Zero new passes. All regression from error.* fixtures losing their bail path.
+
+**Why it's worse than attempt 3 (-31):** Attempt 3 skipped all "tN" names in `resolve_scope_dep` validation. Attempt 4 used the same approach but at a different level (the `validateInferredDep` comparison itself). The broader filtering caught more temp-named deps, which means more error.* fixtures lost their bail path. The increased regression demonstrates that the problem scales: the more aggressively you filter temp names, the worse the regression.
+
+**Conclusion:** ALL skip/filter approaches to preserve-memo false-positive bails are fundamentally flawed. The false-positive and true-positive bails share the same mechanism (temp-named dep mismatch). You cannot distinguish them without fixing the underlying scope dep resolution problem (SSA temp -> named variable mapping).
+
+**Do NOT attempt ANY further skip/filter approaches.** The only viable path forward is fixing scope dep resolution so that validateInferredDep can correctly compare deps by their original source-level names.
+
 ---
 
 ## Stage 2g: Error Fixture Bail-out Sweep (2026-03-26, +6 fixtures, 499->505)
