@@ -2558,6 +2558,15 @@ impl HIRBuilder {
         cond: &ast::ConditionalExpression<'_>,
         loc: Span,
     ) -> Place {
+        // Upstream: Todo: Unexpected terminal kind `optional` for ternary test block
+        // Optional chains in the test expression of a ternary create complex control
+        // flow that the compiler cannot model correctly. Bail if found.
+        if try_expr_has_value_block(&cond.test) {
+            return self.emit(
+                InstructionValue::UnsupportedNode { node: "Ternary_optional_in_test".to_string() },
+                loc,
+            );
+        }
         let test = self.lower_expression(&cond.test);
         let consequent_block = self.new_block(BlockKind::Value);
         let alternate_block = self.new_block(BlockKind::Value);
@@ -2996,6 +3005,17 @@ impl HIRBuilder {
 
     fn lower_chain_expression(&mut self, chain: &ast::ChainExpression<'_>, loc: Span) -> Place {
         use ast::ChainElement;
+
+        // Upstream: Todo: Unexpected terminal kind `optional` for optional fallthrough block
+        // When a chain expression contains nested optional chains in its callee/receiver
+        // (NOT arguments), the compiler cannot model the control flow correctly. Bail.
+        if chain_has_nested_optional(&chain.expression) {
+            return self.emit(
+                InstructionValue::UnsupportedNode { node: "Optional_nested_optional".to_string() },
+                loc,
+            );
+        }
+
         match &chain.expression {
             ChainElement::CallExpression(call) => {
                 self.lower_call_expression_with_optional(call, call.optional, loc)
@@ -3248,6 +3268,121 @@ fn try_expr_has_value_block(expr: &Expression<'_>) -> bool {
         // Don't descend into function expressions (they have their own scope)
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
         // Primitives, identifiers, etc. don't create value blocks
+        _ => false,
+    }
+}
+
+/// Check if a ChainElement contains nested optional chains (ChainExpressions)
+/// in its **callee/object** position (NOT arguments). Only the base expression
+/// creates the problematic control flow nesting that upstream rejects.
+///
+/// Upstream: Todo: Unexpected terminal kind `optional` for optional fallthrough block
+///
+/// This catches patterns like `createArray(a?.x, b?.y)?.join()` where the inner
+/// optionals are in the arguments to the callee, which is evaluated before the
+/// outer optional test. It does NOT catch nested optionals in the chain's OWN
+/// arguments (e.g. `foo?.bar(a?.x)`) which upstream handles correctly.
+fn chain_has_nested_optional(element: &ast::ChainElement<'_>) -> bool {
+    // Walk to the root of the chain element to find the first optional member access.
+    // Check if any expression BEFORE the first `?.` contains a ChainExpression.
+    // This catches patterns like `f(a?.x)?.method()` but NOT `a?.method(b?.x)`.
+    let root_object: Option<&Expression<'_>> = match element {
+        ast::ChainElement::CallExpression(call) => Some(&call.callee),
+        ast::ChainElement::StaticMemberExpression(m) => Some(&m.object),
+        ast::ChainElement::ComputedMemberExpression(m) => Some(&m.object),
+        ast::ChainElement::PrivateFieldExpression(m) => Some(&m.object),
+        _ => None,
+    };
+
+    let Some(obj) = root_object else {
+        return false;
+    };
+
+    // Find the "pre-optional" base: walk down through member expressions until
+    // we find the first optional one. Everything before that is the base that
+    // gets fully evaluated before any optional test.
+    pre_optional_has_chain(obj)
+}
+
+/// Walk an expression that's in the callee/object position of a chain.
+/// Return true if any sub-expression before the first `optional: true`
+/// member/call contains a ChainExpression.
+fn pre_optional_has_chain(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::ChainExpression(_) => true,
+        Expression::CallExpression(c) => {
+            // If the callee is an optional member, we've found an optional boundary.
+            // Only check what's BEFORE this optional (the member's object).
+            // Do NOT check this call's arguments — they're evaluated AFTER the
+            // optional test and are part of the chain continuation.
+            if let Some(member) = c.callee.as_member_expression()
+                && member_is_optional(member)
+            {
+                return pre_optional_has_chain(member_object(member));
+            }
+            // Non-optional call — check callee and arguments (they're all
+            // pre-optional evaluation)
+            pre_optional_has_chain(&c.callee) || has_chain_in_args(&c.arguments)
+        }
+        _ if expr.as_member_expression().is_some() => {
+            let member = expr.as_member_expression().unwrap();
+            if member_is_optional(member) {
+                // Found first optional — check just the object before it
+                pre_optional_has_chain(member_object(member))
+            } else {
+                pre_optional_has_chain(member_object(member))
+            }
+        }
+        _ => false,
+    }
+}
+
+fn member_is_optional(m: &ast::MemberExpression<'_>) -> bool {
+    match m {
+        ast::MemberExpression::StaticMemberExpression(s) => s.optional,
+        ast::MemberExpression::ComputedMemberExpression(c) => c.optional,
+        ast::MemberExpression::PrivateFieldExpression(_) => false,
+    }
+}
+
+fn member_object<'a>(m: &'a ast::MemberExpression<'a>) -> &'a Expression<'a> {
+    match m {
+        ast::MemberExpression::StaticMemberExpression(s) => &s.object,
+        ast::MemberExpression::ComputedMemberExpression(c) => &c.object,
+        ast::MemberExpression::PrivateFieldExpression(p) => &p.object,
+    }
+}
+
+fn has_chain_in_args(args: &[ast::Argument<'_>]) -> bool {
+    args.iter().any(|arg| match arg {
+        ast::Argument::SpreadElement(s) => expr_has_chain_expression(&s.argument),
+        ast::Argument::ArrowFunctionExpression(_) | ast::Argument::FunctionExpression(_) => false,
+        _ => {
+            let arg_expr: &Expression<'_> =
+                unsafe { &*std::ptr::from_ref::<ast::Argument<'_>>(arg).cast::<Expression<'_>>() };
+            expr_has_chain_expression(arg_expr)
+        }
+    })
+}
+
+/// Check if an expression contains a ChainExpression (optional chain `?.`).
+/// Only walks the **callee/object** path (not arguments) to detect chains
+/// in the base expression position that create problematic control flow nesting.
+fn expr_has_chain_expression(expr: &Expression<'_>) -> bool {
+    match expr {
+        Expression::ChainExpression(_) => true,
+        Expression::CallExpression(c) => expr_has_chain_expression(&c.callee),
+        _ if expr.as_member_expression().is_some() => match expr.as_member_expression().unwrap() {
+            ast::MemberExpression::ComputedMemberExpression(c) => {
+                expr_has_chain_expression(&c.object)
+            }
+            ast::MemberExpression::StaticMemberExpression(s) => {
+                expr_has_chain_expression(&s.object)
+            }
+            ast::MemberExpression::PrivateFieldExpression(p) => {
+                expr_has_chain_expression(&p.object)
+            }
+        },
         _ => false,
     }
 }

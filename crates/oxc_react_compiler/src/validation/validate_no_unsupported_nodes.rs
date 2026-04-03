@@ -48,6 +48,12 @@ const REJECTED_UNSUPPORTED_NODES: &[&str] = &[
     "ObjectExpression_CallExpression_computed_key",
     "ObjectExpression_SequenceExpression_computed_key",
     "ObjectExpression_Expression_computed_key",
+    // Upstream: Todo: Unexpected terminal kind `optional` for ternary test block
+    // Optional chains in ternary test expressions cause complex nested control flow.
+    "Ternary_optional_in_test",
+    // Upstream: Todo: Unexpected terminal kind `optional` for optional fallthrough block
+    // Nested optional chains create unsupported control flow patterns.
+    "Optional_nested_optional",
 ];
 
 /// Validate that the HIR contains no `UnsupportedNode` instructions for patterns

@@ -656,7 +656,6 @@ object-shorthand-method-2.js
 object-shorthand-method-nested.js
 object-values-mutation.js
 object-values.js
-optional-call-chain-in-ternary.ts
 optional-call-chained.js
 optional-call-logical.js
 optional-call-with-optional-property-load.js
@@ -781,7 +780,6 @@ propagate-scope-deps-hir-fork/ssa-renaming-via-destructuring-with-mutation.js
 propagate-scope-deps-hir-fork/ssa-renaming-with-mutation.js
 propagate-scope-deps-hir-fork/switch-non-final-default.js
 propagate-scope-deps-hir-fork/switch.js
-propagate-scope-deps-hir-fork/todo-optional-call-chain-in-optional.ts
 propagate-scope-deps-hir-fork/try-catch-maybe-null-dependency.ts
 propagate-scope-deps-hir-fork/try-catch-mutate-outer-value.js
 propagate-scope-deps-hir-fork/try-catch-try-value-modified-in-catch-escaping.js
@@ -1057,7 +1055,6 @@ todo-function-expression-captures-value-later-frozen.js
 todo-global-load-cached.tsx
 todo-global-property-load-cached.tsx
 todo-granular-iterator-semantics.js
-todo-optional-call-chain-in-optional.ts
 todo.memoize-loops-that-produce-memoizeable-values.js
 todo.unnecessary-lambda-memoization.js
 transitive-alias-fields.js
