@@ -40,6 +40,9 @@ const REJECTED_UNSUPPORTED_NODES: &[&str] = &[
     // Nested destructuring in assignment expressions (e.g. `([[x]] = makeObject())`)
     // causes an invariant failure in upstream's codegen.
     "NestedDestructuringAssignment",
+    // Upstream: Todo: Support value blocks (conditional, logical, optional chaining, etc)
+    // within a try/catch statement. Detected at the AST level before HIR lowering.
+    "TryStatement_value_blocks",
 ];
 
 /// Validate that the HIR contains no `UnsupportedNode` instructions for patterns

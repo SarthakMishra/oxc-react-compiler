@@ -1569,6 +1569,18 @@ impl HIRBuilder {
             return;
         }
 
+        // Upstream: Todo: Support value blocks (conditional, logical, optional
+        // chaining, for-in, for-of, for-loop, etc.) within a try/catch statement.
+        // These create complex control flow that the try/catch HIR model cannot
+        // represent correctly.
+        if try_block_has_value_blocks(&try_stmt.block.body) {
+            self.emit(
+                InstructionValue::UnsupportedNode { node: "TryStatement_value_blocks".to_string() },
+                try_stmt.span,
+            );
+            return;
+        }
+
         let try_block = self.new_block(BlockKind::Block);
         let handler_block = self.new_block(BlockKind::Catch);
         let fallthrough = self.new_block(BlockKind::Block);
@@ -3077,6 +3089,143 @@ fn is_global_name(name: &str) -> bool {
             | "__filename"
             | "eval"
     )
+}
+
+/// Check if a try block contains statements or expressions that create "value blocks"
+/// (complex control flow that the try/catch HIR model cannot represent correctly).
+///
+/// Upstream: Todo: Support value blocks (conditional, logical, optional chaining, etc)
+/// within a try/catch statement.
+///
+/// Value blocks include: optional chaining (`?.`), nullish coalescing (`??`),
+/// logical expressions (`&&`, `||`), conditional/ternary expressions,
+/// for-in, for-of, and for statements.
+fn try_block_has_value_blocks(stmts: &[Statement<'_>]) -> bool {
+    stmts.iter().any(try_stmt_has_value_block)
+}
+
+fn try_stmt_has_value_block(stmt: &Statement<'_>) -> bool {
+    match stmt {
+        // For-in, for-of, and for loops create value blocks in the try model
+        Statement::ForInStatement(_)
+        | Statement::ForOfStatement(_)
+        | Statement::ForStatement(_) => true,
+        Statement::ExpressionStatement(expr_stmt) => {
+            try_expr_has_value_block(&expr_stmt.expression)
+        }
+        Statement::ReturnStatement(ret) => {
+            ret.argument.as_ref().is_some_and(|e| try_expr_has_value_block(e))
+        }
+        Statement::VariableDeclaration(decl) => decl
+            .declarations
+            .iter()
+            .any(|d| d.init.as_ref().is_some_and(|e| try_expr_has_value_block(e))),
+        Statement::IfStatement(if_stmt) => {
+            try_expr_has_value_block(&if_stmt.test)
+                || try_stmt_has_value_block(&if_stmt.consequent)
+                || if_stmt.alternate.as_ref().is_some_and(|s| try_stmt_has_value_block(s))
+        }
+        Statement::BlockStatement(block) => block.body.iter().any(try_stmt_has_value_block),
+        Statement::WhileStatement(w) => {
+            try_expr_has_value_block(&w.test) || try_stmt_has_value_block(&w.body)
+        }
+        Statement::DoWhileStatement(d) => {
+            try_expr_has_value_block(&d.test) || try_stmt_has_value_block(&d.body)
+        }
+        Statement::SwitchStatement(s) => {
+            try_expr_has_value_block(&s.discriminant)
+                || s.cases.iter().any(|c| c.consequent.iter().any(try_stmt_has_value_block))
+        }
+        Statement::LabeledStatement(l) => try_stmt_has_value_block(&l.body),
+        Statement::ThrowStatement(t) => try_expr_has_value_block(&t.argument),
+        _ => false,
+    }
+}
+
+fn try_expr_has_value_block(expr: &Expression<'_>) -> bool {
+    match expr {
+        // These create value-block terminals in the HIR
+        Expression::ChainExpression(_)
+        | Expression::LogicalExpression(_)
+        | Expression::ConditionalExpression(_) => true,
+        // Walk through common wrappers
+        Expression::AssignmentExpression(a) => {
+            // Check the right side; skip left side (AssignmentTarget doesn't contain value blocks)
+            try_expr_has_value_block(&a.right)
+        }
+        Expression::SequenceExpression(s) => s.expressions.iter().any(try_expr_has_value_block),
+        Expression::UnaryExpression(u) => try_expr_has_value_block(&u.argument),
+        // UpdateExpression argument is SimpleAssignmentTarget, not Expression — no value blocks
+        Expression::UpdateExpression(_) => false,
+        Expression::BinaryExpression(b) => {
+            try_expr_has_value_block(&b.left) || try_expr_has_value_block(&b.right)
+        }
+        Expression::CallExpression(c) => {
+            try_expr_has_value_block(&c.callee)
+                || c.arguments.iter().any(|arg| match arg {
+                    ast::Argument::SpreadElement(s) => try_expr_has_value_block(&s.argument),
+                    // Don't descend into function expression arguments
+                    ast::Argument::ArrowFunctionExpression(_)
+                    | ast::Argument::FunctionExpression(_) => false,
+                    _ => {
+                        let arg_expr: &Expression<'_> = unsafe {
+                            &*std::ptr::from_ref::<ast::Argument<'_>>(arg).cast::<Expression<'_>>()
+                        };
+                        try_expr_has_value_block(arg_expr)
+                    }
+                })
+        }
+        Expression::NewExpression(n) => {
+            try_expr_has_value_block(&n.callee)
+                || n.arguments.iter().any(|arg| match arg {
+                    ast::Argument::SpreadElement(s) => try_expr_has_value_block(&s.argument),
+                    ast::Argument::ArrowFunctionExpression(_)
+                    | ast::Argument::FunctionExpression(_) => false,
+                    _ => {
+                        let arg_expr: &Expression<'_> = unsafe {
+                            &*std::ptr::from_ref::<ast::Argument<'_>>(arg).cast::<Expression<'_>>()
+                        };
+                        try_expr_has_value_block(arg_expr)
+                    }
+                })
+        }
+        _ if expr.as_member_expression().is_some() => match expr.as_member_expression().unwrap() {
+            ast::MemberExpression::ComputedMemberExpression(c) => {
+                try_expr_has_value_block(&c.object) || try_expr_has_value_block(&c.expression)
+            }
+            ast::MemberExpression::StaticMemberExpression(s) => try_expr_has_value_block(&s.object),
+            ast::MemberExpression::PrivateFieldExpression(p) => try_expr_has_value_block(&p.object),
+        },
+        Expression::ArrayExpression(a) => a.elements.iter().any(|el| match el {
+            ast::ArrayExpressionElement::SpreadElement(s) => try_expr_has_value_block(&s.argument),
+            ast::ArrayExpressionElement::Elision(_) => false,
+            _ => {
+                let e: &Expression<'_> = unsafe {
+                    &*std::ptr::from_ref::<ast::ArrayExpressionElement<'_>>(el)
+                        .cast::<Expression<'_>>()
+                };
+                try_expr_has_value_block(e)
+            }
+        }),
+        Expression::ObjectExpression(o) => o.properties.iter().any(|prop| match prop {
+            ast::ObjectPropertyKind::ObjectProperty(p) => try_expr_has_value_block(&p.value),
+            ast::ObjectPropertyKind::SpreadProperty(s) => try_expr_has_value_block(&s.argument),
+        }),
+        Expression::TemplateLiteral(t) => t.expressions.iter().any(try_expr_has_value_block),
+        Expression::AwaitExpression(a) => try_expr_has_value_block(&a.argument),
+        Expression::YieldExpression(y) => {
+            y.argument.as_ref().is_some_and(|e| try_expr_has_value_block(e))
+        }
+        Expression::TaggedTemplateExpression(t) => try_expr_has_value_block(&t.tag),
+        Expression::TSAsExpression(t) => try_expr_has_value_block(&t.expression),
+        Expression::TSSatisfiesExpression(t) => try_expr_has_value_block(&t.expression),
+        Expression::TSNonNullExpression(t) => try_expr_has_value_block(&t.expression),
+        Expression::TSTypeAssertion(t) => try_expr_has_value_block(&t.expression),
+        // Don't descend into function expressions (they have their own scope)
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
+        // Primitives, identifiers, etc. don't create value blocks
+        _ => false,
+    }
 }
 
 /// Get a short name for a statement kind (for UnsupportedNode).
