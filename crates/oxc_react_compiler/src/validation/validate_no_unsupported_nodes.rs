@@ -136,6 +136,11 @@ pub fn validate_no_unsupported_nodes(hir: &HIR, errors: &mut ErrorCollector) {
     // This is a TDZ (Temporal Dead Zone) violation in JavaScript semantics.
     check_self_referencing_declarations(hir, errors);
 
+    // Upstream: Error: Cannot access variable before it is declared.
+    // Detect when a destructured hook result (e.g. setState from useState) is
+    // referenced in a closure before the destructuring declaration.
+    check_hook_destructure_before_use(hir, errors);
+
     // Upstream: Todo: [PruneHoistedContexts] Rewrite hoisted function references
     // When a hoisted function declaration references another hoisted function
     // declaration that appears later in the source, upstream bails because the
@@ -801,6 +806,125 @@ fn check_hoisted_function_forward_references(hir: &HIR, errors: &mut ErrorCollec
                     return;
                 }
             }
+        }
+    }
+}
+
+/// Detect when a destructured hook result (e.g. `setState` from `useState`) is
+/// referenced in a closure that appears before the destructuring declaration.
+///
+/// Upstream: Error: Cannot access variable before it is declared.
+///
+/// Pattern: `useEffect(() => setState(2), []);` before
+/// `const [state, setState] = useState(0);`
+///
+/// Detection: find all names bound by `Destructure` instructions. For each
+/// `FunctionExpression` with a lower instruction ID, check if its body
+/// references (via `LoadLocal`) any of those names. If the FunctionExpression
+/// appears before the Destructure, it's accessing the variable before declaration.
+fn check_hook_destructure_before_use(hir: &HIR, errors: &mut ErrorCollector) {
+    // Pass 1: Collect names from Destructure instructions and their instruction IDs.
+    let mut destructure_names: FxHashMap<String, InstructionId> = FxHashMap::default();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::Destructure { lvalue_pattern, .. } = &instr.value {
+                collect_destructure_names(lvalue_pattern, instr.id, &mut destructure_names);
+            }
+        }
+    }
+
+    if destructure_names.is_empty() {
+        return;
+    }
+
+    // Pass 2: Check FunctionExpression bodies for references to destructured names
+    // that appear AFTER the function expression (higher instruction ID).
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
+                let func_instr_id = instr.id;
+                for (_, func_block) in &lowered_func.body.blocks {
+                    for func_instr in &func_block.instructions {
+                        if let InstructionValue::LoadLocal { place } = &func_instr.value
+                            && let Some(ref_name) = &place.identifier.name
+                            && let Some(destructure_id) = destructure_names.get(ref_name)
+                            && func_instr_id.0 < destructure_id.0
+                        {
+                            errors.push(CompilerError::invalid_react(
+                                func_instr.loc,
+                                format!(
+                                    "Cannot access variable before it is declared. \
+                                     `{ref_name}` is accessed before it is declared, \
+                                     which prevents the earlier access from updating \
+                                     when this value changes over time."
+                                ),
+                            ));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Collect all binding names from a destructure pattern.
+fn collect_destructure_names(
+    pattern: &crate::hir::types::DestructurePattern,
+    instr_id: InstructionId,
+    names: &mut FxHashMap<String, InstructionId>,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern};
+
+    match pattern {
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(target) => {
+                        collect_target_names(target, instr_id, names);
+                    }
+                    DestructureArrayItem::Spread(place) => {
+                        if let Some(name) = &place.identifier.name {
+                            names.entry(name.clone()).or_insert(instr_id);
+                        }
+                    }
+                    DestructureArrayItem::Hole => {}
+                }
+            }
+            if let Some(rest_place) = rest
+                && let Some(name) = &rest_place.identifier.name
+            {
+                names.entry(name.clone()).or_insert(instr_id);
+            }
+        }
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                collect_target_names(&prop.value, instr_id, names);
+            }
+            if let Some(rest_place) = rest
+                && let Some(name) = &rest_place.identifier.name
+            {
+                names.entry(name.clone()).or_insert(instr_id);
+            }
+        }
+    }
+}
+
+fn collect_target_names(
+    target: &crate::hir::types::DestructureTarget,
+    instr_id: InstructionId,
+    names: &mut FxHashMap<String, InstructionId>,
+) {
+    use crate::hir::types::DestructureTarget;
+    match target {
+        DestructureTarget::Place(place) => {
+            if let Some(name) = &place.identifier.name {
+                names.entry(name.clone()).or_insert(instr_id);
+            }
+        }
+        DestructureTarget::Pattern(nested) => {
+            collect_destructure_names(nested, instr_id, names);
         }
     }
 }

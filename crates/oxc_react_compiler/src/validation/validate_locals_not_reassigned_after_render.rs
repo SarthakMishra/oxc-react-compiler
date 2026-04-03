@@ -134,15 +134,31 @@ fn check_nested_reassignments_recurse_only(
     }
 }
 
-/// Check a nested HIR for reassignments of render-phase variables.
-/// Emits errors for each reassignment found. Recurses into nested functions.
+/// Check a nested HIR for reassignments or mutations of render-phase variables.
+/// Emits errors for each reassignment/mutation found. Recurses into nested functions.
 fn check_nested_reassignments(
     nested_hir: &HIR,
     render_assigned: &FxHashSet<String>,
     errors: &mut ErrorCollector,
 ) {
+    // Build a map from identifier ID to original name for LoadLocal/LoadContext
+    // so we can resolve MethodCall receivers back to their original names.
+    let mut id_to_name: rustc_hash::FxHashMap<crate::hir::types::IdentifierId, String> =
+        rustc_hash::FxHashMap::default();
     for (_, block) in &nested_hir.blocks {
         for instr in &block.instructions {
+            if let InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } =
+                &instr.value
+                && let Some(name) = &place.identifier.name
+            {
+                id_to_name.insert(instr.lvalue.identifier.id, name.clone());
+            }
+        }
+    }
+
+    for (_, block) in &nested_hir.blocks {
+        for instr in &block.instructions {
+            // Check 1: StoreLocal reassignment of render-assigned variable
             if let InstructionValue::StoreLocal { lvalue, type_, .. } = &instr.value
                 && let Some(name) = &lvalue.identifier.name
                 && render_assigned.contains(name)
@@ -159,11 +175,57 @@ fn check_nested_reassignments(
                 ));
             }
 
+            // Check 2: MethodCall mutation on render-assigned variable
+            // e.g. `cache.set('key', 'value')` where `cache` was assigned at render.
+            // The receiver is typically an unnamed temp loaded via LoadLocal/LoadContext;
+            // resolve it to the original name.
+            if let InstructionValue::MethodCall { receiver, property, .. } = &instr.value
+                && is_known_mutating_method(property)
+            {
+                let receiver_name = receiver.identifier.name.as_deref().or_else(|| {
+                    id_to_name.get(&receiver.identifier.id).map(std::string::String::as_str)
+                });
+                if let Some(name) = receiver_name
+                    && render_assigned.contains(name)
+                {
+                    errors.push(CompilerError::invalid_react_with_kind(
+                        instr.loc,
+                        format!(
+                            "Cannot modify local variables after render completes. \
+                             This argument is a function which may reassign or mutate \
+                             `{name}` after render, which can cause inconsistent behavior \
+                             on subsequent renders. Consider using state instead."
+                        ),
+                        DiagnosticKind::LocalsReassignedAfterRender,
+                    ));
+                }
+            }
+
             if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
                 check_nested_reassignments(&lowered_func.body, render_assigned, errors);
             }
         }
     }
+}
+
+/// Check if a method name is known to mutate its receiver.
+fn is_known_mutating_method(name: &str) -> bool {
+    matches!(
+        name,
+        "set"
+            | "add"
+            | "delete"
+            | "clear"
+            | "push"
+            | "pop"
+            | "shift"
+            | "unshift"
+            | "splice"
+            | "sort"
+            | "reverse"
+            | "fill"
+            | "copyWithin"
+    )
 }
 
 fn is_reassignment_kind(type_: Option<InstructionKind>) -> bool {
