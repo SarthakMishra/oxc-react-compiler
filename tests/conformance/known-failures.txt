@@ -280,10 +280,8 @@ error.invalid-unconditional-set-state-prop-in-render.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js
 error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js
 error.todo-for-loop-with-context-variable-iterator.js
-error.todo-functiondecl-hoisting.tsx
 error.todo-handle-update-context-identifiers.js
 error.todo-missing-source-locations.js
-error.todo-valid-functiondecl-hoisting.tsx
 error.validate-blocklisted-imports.ts
 escape-analysis-destructured-rest-element.js
 escape-analysis-jsx-child.js

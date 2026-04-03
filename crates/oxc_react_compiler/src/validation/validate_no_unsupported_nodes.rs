@@ -1,9 +1,9 @@
 use crate::error::{CompilerError, ErrorCollector};
 use crate::hir::types::{
-    BlockId, HIR, HIRFunction, IdentifierId, Instruction, InstructionKind, InstructionValue, Param,
-    Terminal,
+    BlockId, HIR, HIRFunction, IdentifierId, Instruction, InstructionId, InstructionKind,
+    InstructionValue, Param, Terminal,
 };
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Set of `UnsupportedNode` names that upstream explicitly rejects as Todo errors.
 ///
@@ -135,6 +135,12 @@ pub fn validate_no_unsupported_nodes(hir: &HIR, errors: &mut ErrorCollector) {
     // loaded after DeclareLocal but before the corresponding StoreLocal initialization.
     // This is a TDZ (Temporal Dead Zone) violation in JavaScript semantics.
     check_self_referencing_declarations(hir, errors);
+
+    // Upstream: Todo: [PruneHoistedContexts] Rewrite hoisted function references
+    // When a hoisted function declaration references another hoisted function
+    // declaration that appears later in the source, upstream bails because the
+    // PruneHoistedContexts pass cannot rewrite these forward references.
+    check_hoisted_function_forward_references(hir, errors);
 
     // Upstream: Todo: Support duplicate fbt tags
     // When an <fbt> element contains multiple <fbt:enum>, <fbt:plural>, or <fbt:pronoun>
@@ -709,6 +715,90 @@ fn check_nested_method_call_as_argument(hir: &HIR, errors: &mut ErrorCollector) 
                         ));
                         return;
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Detect hoisted function declarations that reference other hoisted function
+/// declarations appearing later in source order.
+///
+/// Upstream: Todo: [PruneHoistedContexts] Rewrite hoisted function references
+fn check_hoisted_function_forward_references(hir: &HIR, errors: &mut ErrorCollector) {
+    // Pass 1: Collect hoisted function declaration names and their instruction IDs.
+    let mut hoisted_funcs: FxHashMap<String, (IdentifierId, InstructionId)> = FxHashMap::default();
+    let mut func_bodies: Vec<(InstructionId, &HIRFunction)> = Vec::new();
+
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::DeclareLocal {
+                lvalue,
+                type_: InstructionKind::HoistedFunction,
+            } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+            {
+                hoisted_funcs.insert(name.clone(), (lvalue.identifier.id, instr.id));
+            }
+            if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value {
+                func_bodies.push((instr.id, lowered_func));
+            }
+        }
+    }
+
+    if hoisted_funcs.is_empty() {
+        return;
+    }
+
+    // Pass 2a: Check main body for loads of hoisted functions before their declaration.
+    // This catches `const result = bar();` followed by `function bar() { ... }`.
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } =
+                &instr.value
+                && let Some(ref_name) = &place.identifier.name
+                && let Some((_, decl_id)) = hoisted_funcs.get(ref_name)
+                && instr.id.0 < decl_id.0
+            {
+                errors.push(CompilerError::todo(
+                    instr.loc,
+                    "[PruneHoistedContexts] Rewrite hoisted function references".to_string(),
+                ));
+                return;
+            }
+        }
+    }
+
+    if hoisted_funcs.len() < 2 {
+        return;
+    }
+
+    // Pass 2b: For each hoisted function body, check if it references another
+    // hoisted function that has a higher instruction ID (declared later).
+    for (func_instr_id, func_body) in &func_bodies {
+        // Find which hoisted function this body belongs to
+        let my_decl_id = hoisted_funcs
+            .values()
+            .find(|(_, decl_id)| decl_id.0 < func_instr_id.0 && func_instr_id.0 - decl_id.0 <= 3)
+            .map(|(_, id)| *id);
+
+        let Some(my_id) = my_decl_id else {
+            continue;
+        };
+
+        for (_, body_block) in &func_body.body.blocks {
+            for body_instr in &body_block.instructions {
+                if let InstructionValue::LoadLocal { place }
+                | InstructionValue::LoadContext { place } = &body_instr.value
+                    && let Some(ref_name) = &place.identifier.name
+                    && let Some((_, ref_decl_id)) = hoisted_funcs.get(ref_name)
+                    && ref_decl_id.0 > my_id.0
+                {
+                    errors.push(CompilerError::todo(
+                        body_instr.loc,
+                        "[PruneHoistedContexts] Rewrite hoisted function references".to_string(),
+                    ));
+                    return;
                 }
             }
         }
