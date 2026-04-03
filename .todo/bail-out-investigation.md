@@ -139,7 +139,7 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 
 3. **Skip compiler temp names ("tN") in `resolve_scope_dep` validation only:** Hypothesis was that deps whose resolved name matches the pattern `t\d+` (compiler temporaries) could be safely excluded from the validateInferredDep mismatch check. Result: reduced false bails from 55 to 7, but caused **-31 conformance regression** from error.* fixtures. Root cause: many error.* fixtures (that should bail with upstream errors) currently bail "by accident" because their scope deps resolve to "tN" temps, triggering the validateInferredDep mismatch. This is the "right behavior for the wrong reason" — skipping "tN" deps in validation causes those fixtures to stop bailing, and they then produce compiled output that doesn't match the expected error output.
 
-**Root cause:** 4000+ unnamed deps are created in `propagate_scope_dependencies_hir` because operands reference unnamed instruction results (CallExpression, MethodCall, StoreLocal, BinaryExpression, Destructure results). These are NOT LoadLocal/PropertyLoad targets, so `temp_map` (the pre-inline temporaries resolution map) cannot resolve them back to named variables. The `promote_used_temporaries` pass then names these deps with compiler-generated names like "t0", "t1", etc. Even when the 55 false bails are eliminated (approach 3), the 48 de-bailed fixtures have codegen differences (slot mismatches) and do not pass conformance — they were hidden behind the false bail.
+**Root cause:** 4000+ unnamed deps are created in `propagate_scope_dependencies_hir` because operands reference unnamed instruction results. **StoreLocal is the #1 producer (43%, 1553/3588)**, followed by CallExpression, MethodCall, BinaryExpression, and Destructure outputs. The StoreLocal pattern is `StoreLocal x = $result` where `$result`'s LoadLocal was inlined away before the temp map was built. These are NOT LoadLocal/PropertyLoad targets, so `temp_map` (the pre-inline temporaries resolution map) cannot resolve them back to named variables. Upstream's `collectTemporaries()` handles `StoreLocal` propagation (if `x = $t`, then `$t` resolves to whatever `x` resolves to) — our temp_map does not. The `promote_used_temporaries` pass then names these deps with compiler-generated names like "t0", "t1", etc. Even when the 55 false bails are eliminated (approach 3), the 48 de-bailed fixtures have codegen differences (slot mismatches) and do not pass conformance — they were hidden behind the false bail.
 
 **Assumption that was wrong:** Assumed that fixing false bails would yield net conformance improvement. In reality: (a) the de-bailed fixtures have codegen differences that prevent them from passing, and (b) ~31 error.* fixtures rely on the "tN" dep mismatch to bail correctly (right outcome, wrong mechanism).
 
@@ -154,12 +154,16 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 
 **Useful findings to carry forward:**
 - `propagate_scope_dependencies_hir` in `propagate_dependencies.rs` creates 4000+ unnamed deps per fixture — this is the upstream divergence point
-- `temp_map` (built by `build_temporaries_map_from_hir`) only covers LoadLocal → PropertyLoad chains; it does NOT cover CallExpression, MethodCall, StoreLocal, BinaryExpression, or Destructure instruction results
+- `temp_map` (built by `build_temporaries_map_from_hir`) only covers LoadLocal -> PropertyLoad chains; it does NOT cover CallExpression, MethodCall, StoreLocal, BinaryExpression, or Destructure instruction results
+- **StoreLocal is the #1 unresolvable-dep producer (43%, 1553/3588).** The pattern: `StoreLocal x = $result` where `$result`'s LoadLocal was inlined. Upstream's `collectTemporaries()` propagates through StoreLocal; our temp_map does not.
 - `promote_used_temporaries` (Pass 29) names unnamed identifiers with "tN" pattern — these are the deps that cause false bails
 - The 48 de-bailed fixtures (from approach 3) all land in slots-DIFFER, not slots-MATCH — they need scope inference fixes before they can pass
 - The 31 error.* regressions from approach 3 are a mix of preserve-memo, frozen-mutation, ref-access, and reassignment errors that upstream detects via their respective validators, but our compiler only catches via the accidental "tN" dep mismatch in validateInferredDep
+- **Defining-operands backward trace** was prototyped and partially works (15/76 find named roots) but is semantically wrong — traced root is a computation INPUT, not the user's dep. The approach added `DefiningOperandsMap`, `build_defining_operands_map_hir/rf`, `resolve_through_defining_operands` to validation and pipeline threading in `pipeline.rs`. All reverted.
+- **The fix must happen at dep-COLLECTION time** (in `propagate_scope_dependencies_hir`), not at validation time. When a scope dep is added via the else-branch, resolve it forward-to-named before storing, so the stored dep matches what upstream would have stored.
+- **WARNING:** Changing scope deps at collection time WILL affect codegen slots for all fixtures, not just preserve-memo. This is why approaches 2 and 5 regressed so heavily (-15 and -55). The resolution must be semantically correct (matching upstream), not just filtering.
 
-**Do NOT attempt again until:** Either (a) codegen quality improves for preserve-memo fixtures (slot mismatches resolved), OR (b) `propagate_scope_dependencies_hir` is enhanced to resolve more operand types through temp_map, OR (c) the error.* fixtures that bail "by accident" are made to bail via their correct validation paths. Without one of these prerequisites, any attempt to reduce the 55 false bails will cause a net conformance regression.
+**Do NOT attempt again until:** Either (a) `propagate_scope_dependencies_hir` is enhanced to resolve deps forward-to-named at collection time, matching upstream's `collectTemporaries()` behavior (specifically: StoreLocal propagation, which accounts for 43% of unresolvable deps), OR (b) the full upstream `ReactiveScopeDependency` type with property access paths is ported. Skip/filter approaches (8 tried) and backward-trace approaches (1 tried) are both exhausted. Without structural dep-collection changes, any attempt to reduce the 55 false bails will cause a net conformance regression.
 
 ### Blocker Report — Stage 2i Attempt 4: Temp-name-skipping in validateInferredDep (2026-04-03)
 
@@ -197,7 +201,7 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 
 ### Blocker Report — Part B: tN Dep Resolution (2026-04-03)
 
-**4 additional approaches attempted in this session (on top of 4 prior attempts):**
+**5 additional approaches attempted in this session (on top of 4 prior attempts):**
 
 | # | Approach | Location | Result | Why it failed |
 |---|----------|----------|--------|---------------|
@@ -205,21 +209,32 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 | 6 | Skip synthetic tN names in resolve_scope_dep | `validate_preserved_manual_memoization.rs` | -55 | Removes load-bearing bails from error fixtures (same mechanism as attempt 3) |
 | 7 | Remove MethodCall check entirely | `validate_preserved_manual_memoization.rs` | -4 | Freed fixtures still fail on slot mismatch; lost 4 true-positive bails |
 | 8 | Receiver-only MethodCall check | `validate_preserved_manual_memoization.rs` | -4 | Catches wrong patterns — receiver is not the relevant operand |
+| 9 | Defining-operands backward trace | `propagate_dependencies.rs` + `validate_preserved_manual_memoization.rs` + `pipeline.rs` | 0 (neutral) | Finds named roots in 15/76 cases, but traced roots are computation INPUTS, not user's source deps. Semantic gap: recovering an input to a computation is not the same as resolving the dep the user listed. |
 
-**Key finding:** ALL 76 preserve-memo false bails are Check 2 (validateInferredDep), caused by synthetic tN-named deps. 55 of those are load-bearing (error fixtures bail "by accident" via tN mismatch). The root cause is computation-result temps (CallExpression, MethodCall, BinaryExpression, Destructure outputs) that cannot be traced to named variables through the temp map.
+**Key finding (refined):** ALL 76 preserve-memo false bails are Check 2 (validateInferredDep), caused by synthetic tN-named deps. 55 of those are load-bearing (error fixtures bail "by accident" via tN mismatch). **StoreLocal is the #1 producer of unresolvable tN deps (43%, 1553/3588)**, not CallExpression or MethodCall as previously assumed. The pattern is `StoreLocal x = $result` where `$result`'s LoadLocal was inlined away before the temp map was built.
 
 **Why Check 1 didn't help:** The error fixtures that bail via tN mismatch do so because their memo values DO have completed scopes (scope inference creates scopes for them). Check 1 passes for these fixtures — they are "memoized" from Check 1's perspective. They only bail because Check 2 sees tN deps that don't match manual deps. Removing the tN deps removes their bail path with no replacement.
 
 **Assumption that was wrong:** Assumed error fixtures would fail Check 1 (scope not completed) and could be caught there instead of Check 2. In reality, our scope inference creates scopes for most memo values, so Check 1 passes even when upstream would prune/not-create those scopes.
 
-**8 total approaches tried across all sessions, ALL net-negative.** The skip/filter strategy is fundamentally exhausted.
+**9 total approaches tried across all sessions, ALL net-negative or neutral.** The skip/filter strategy is fundamentally exhausted. The backward-trace strategy (defining_operands) is structurally correct but semantically insufficient.
 
-**Only viable path forward:** Port upstream's richer `ReactiveScopeDependency` type which includes the full property access path. This would let validateInferredDep compare deps by their source-level names (e.g., `props.x`) instead of SSA temp names (e.g., `t1`). This is a significant refactor of:
-- `propagate_dependencies.rs` (dep collection and resolution)
+**Critical insight from attempt 9 (defining_operands trace):**
+- StoreLocal is the dominant producer of unresolvable deps (43%, 1553/3588)
+- The "defining_operands" backward-trace approach was prototyped with 3 new constructs (`DefiningOperandsMap`, `build_defining_operands_map_hir/rf`, `resolve_through_defining_operands`) and pipeline threading
+- Of 76 traces: 15 found a named root, 61 terminated at opaque instructions (Primitive, LoadGlobal, FunctionExpression)
+- Of the 15 successful traces: 0 matched the user's source dep array. The traced root is an INPUT to a computation (e.g., `onFoo`), while upstream's dep resolves to a different named path (e.g., `props`)
+- **The semantic gap is deeper than expected:** our deps reference computation RESULTS while upstream's reference named INPUTS. The fix must happen at dep-COLLECTION time (in `propagate_scope_dependencies_hir`), not at validation time
+- Upstream's `collectTemporaries()` covers more patterns than our temp_map: specifically `StoreLocal` propagation (if `x = $t`, then `$t` resolves to whatever `x` resolves to)
+
+**Only viable path forward:** Port upstream's richer `ReactiveScopeDependency` type which includes the full property access path, AND fix dep collection in `propagate_scope_dependencies_hir` to resolve forward-to-named when storing deps. This would let validateInferredDep compare deps by their source-level names (e.g., `props.x`) instead of SSA temp names (e.g., `t1`). This is a significant refactor of:
+- `propagate_dependencies.rs` (dep collection and resolution — the fix point)
 - `validate_preserved_manual_memoization.rs` (dep comparison)
 - Possibly `prune_scopes.rs` and `codegen.rs` (dep consumers)
 
-**Do NOT attempt any further skip/filter approaches.** The only viable path is structural: porting `ReactiveScopeDependency` with full access paths.
+**WARNING:** Changing scope deps at collection time WILL affect codegen slots. This was the reason all previous skip-in-propagation approaches regressed. The fix must be semantically correct (matching upstream's resolution), not just filtering.
+
+**Do NOT attempt any further skip/filter or backward-trace approaches.** The only viable path is structural: porting `ReactiveScopeDependency` with full access paths and fixing dep collection to resolve forward-to-named.
 
 ---
 
