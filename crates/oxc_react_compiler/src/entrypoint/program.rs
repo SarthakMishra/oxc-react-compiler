@@ -664,6 +664,7 @@ fn compile_statement<'a>(
                     func.body.as_ref().map(|b| b.directives.as_slice()),
                     options,
                     func.params.items.len(),
+                    func.body.as_ref().map(|b| b.statements.as_slice()),
                 ) {
                     let builder = HIRBuilder::new(config.clone());
                     if let Some((code, sm)) = try_compile_function(
@@ -699,7 +700,13 @@ fn compile_statement<'a>(
                     name.as_deref().map_or(ReactFunctionType::Component, classify_function_name);
                 let directives = func.body.as_ref().map(|b| b.directives.as_slice());
 
-                if should_compile_default_export(name.as_deref(), fn_type, directives, options) {
+                if should_compile_default_export(
+                    name.as_deref(),
+                    fn_type,
+                    directives,
+                    options,
+                    func.body.as_ref().map(|b| b.statements.as_slice()),
+                ) {
                     let builder = HIRBuilder::new(config.clone());
                     if let Some((code, sm)) = try_compile_function(
                         builder,
@@ -810,6 +817,7 @@ fn compile_declaration<'a>(
                     func.body.as_ref().map(|b| b.directives.as_slice()),
                     options,
                     func.params.items.len(),
+                    func.body.as_ref().map(|b| b.statements.as_slice()),
                 ) {
                     let builder = HIRBuilder::new(config.clone());
                     if let Some((code, sm)) = try_compile_function(
@@ -876,15 +884,21 @@ fn compile_variable_declaration<'a>(
             let name = id.name.to_string();
             let fn_type = classify_function_name(&name);
 
-            // Extract param count from the init expression for component filtering
-            let param_count = match init.without_parentheses() {
-                Expression::ArrowFunctionExpression(arrow) => arrow.params.items.len(),
-                Expression::FunctionExpression(func) => func.params.items.len(),
-                Expression::CallExpression(_) => 1, // React.memo/forwardRef wraps a component
-                _ => 0,
-            };
+            // Extract param count and body from the init expression for component filtering
+            let (param_count, init_body_stmts): (usize, Option<&[Statement<'_>]>) =
+                match init.without_parentheses() {
+                    Expression::ArrowFunctionExpression(arrow) => {
+                        (arrow.params.items.len(), Some(arrow.body.statements.as_slice()))
+                    }
+                    Expression::FunctionExpression(func) => {
+                        let stmts = func.body.as_ref().map(|b| b.statements.as_slice());
+                        (func.params.items.len(), stmts)
+                    }
+                    Expression::CallExpression(_) => (1, None), // React.memo/forwardRef wraps a component
+                    _ => (0, None),
+                };
 
-            if !should_compile(&name, fn_type, None, options, param_count) {
+            if !should_compile(&name, fn_type, None, options, param_count, init_body_stmts) {
                 continue;
             }
 
@@ -1021,6 +1035,7 @@ fn discover_in_statement<'a>(
                     func.body.as_ref().map(|b| b.directives.as_slice()),
                     options,
                     func.params.items.len(),
+                    func.body.as_ref().map(|b| b.statements.as_slice()),
                 ) {
                     let opt_out = has_opt_out_directive(
                         func.body.as_ref().map(|b| b.directives.as_slice()),
@@ -1042,7 +1057,13 @@ fn discover_in_statement<'a>(
                     name.as_deref().map_or(ReactFunctionType::Component, classify_function_name);
                 let directives = func.body.as_ref().map(|b| b.directives.as_slice());
 
-                if should_compile_default_export(name.as_deref(), fn_type, directives, options) {
+                if should_compile_default_export(
+                    name.as_deref(),
+                    fn_type,
+                    directives,
+                    options,
+                    func.body.as_ref().map(|b| b.statements.as_slice()),
+                ) {
                     let opt_out =
                         has_opt_out_directive(directives, &options.custom_opt_out_directives);
                     functions.push(DiscoveredFunction { name, fn_type, span: func.span, opt_out });
@@ -1078,6 +1099,7 @@ fn discover_in_declaration<'a>(
                     func.body.as_ref().map(|b| b.directives.as_slice()),
                     options,
                     func.params.items.len(),
+                    func.body.as_ref().map(|b| b.statements.as_slice()),
                 ) {
                     let opt_out = has_opt_out_directive(
                         func.body.as_ref().map(|b| b.directives.as_slice()),
@@ -1126,7 +1148,20 @@ fn discover_in_variable_declaration<'a>(
                 _ => (false, Span::default()),
             };
 
-            if is_function && should_compile(&name, fn_type, None, options, usize::MAX) {
+            // Extract body stmts for Infer mode body analysis
+            let discover_body_stmts: Option<&[Statement<'_>]> = match init.without_parentheses() {
+                Expression::ArrowFunctionExpression(arrow) => {
+                    Some(arrow.body.statements.as_slice())
+                }
+                Expression::FunctionExpression(func) => {
+                    func.body.as_ref().map(|b| b.statements.as_slice())
+                }
+                _ => None,
+            };
+
+            if is_function
+                && should_compile(&name, fn_type, None, options, usize::MAX, discover_body_stmts)
+            {
                 functions.push(DiscoveredFunction {
                     name: Some(name),
                     fn_type,
@@ -1200,12 +1235,16 @@ fn is_react_wrapper_call(call: &CallExpression<'_>) -> bool {
 /// `param_count` is the number of formal parameters. In `Infer` mode, components
 /// must have at most 1 parameter (props). Functions with 2+ params are not
 /// considered components even if the name starts with an uppercase letter.
+///
+/// `body_stmts` should be provided when available so that `Infer` mode can inspect
+/// the function body for hooks / JSX usage.
 fn should_compile(
     _name: &str,
     fn_type: ReactFunctionType,
     directives: Option<&[Directive<'_>]>,
     options: &PluginOptions,
     param_count: usize,
+    body_stmts: Option<&[Statement<'_>]>,
 ) -> bool {
     // Check for opt-out (unless @ignoreUseNoForget is set)
     if !options.ignore_use_no_forget
@@ -1222,7 +1261,18 @@ fn should_compile(
                 ReactFunctionType::Component => {
                     // Components take at most 1 parameter (props).
                     // Functions with >1 param aren't components.
-                    param_count <= 1
+                    if param_count > 1 {
+                        return false;
+                    }
+                    // In Infer mode, only compile components whose body contains
+                    // hooks or JSX at the top level (not inside nested functions).
+                    // This matches upstream's `hasHooksOrJsx` check.
+                    if let Some(stmts) = body_stmts {
+                        body_has_hooks_or_jsx(stmts)
+                    } else {
+                        // No body available (e.g. call expressions) — assume yes.
+                        true
+                    }
                 }
                 ReactFunctionType::Other => false,
             }
@@ -1235,11 +1285,124 @@ fn should_compile(
     }
 }
 
+/// Check if a list of statements contains hook calls or JSX elements at the
+/// **shallow** level — i.e. without descending into nested `FunctionExpression`,
+/// `ArrowFunctionExpression`, or other function-like nodes. This is used in
+/// `CompilationMode::Infer` to skip compiling components that don't use hooks
+/// or JSX in their own body.
+fn body_has_hooks_or_jsx(stmts: &[Statement<'_>]) -> bool {
+    for stmt in stmts {
+        if stmt_has_hooks_or_jsx(stmt) {
+            return true;
+        }
+    }
+    false
+}
+
+fn stmt_has_hooks_or_jsx(stmt: &Statement<'_>) -> bool {
+    match stmt {
+        Statement::ExpressionStatement(expr_stmt) => expr_has_hooks_or_jsx(&expr_stmt.expression),
+        Statement::ReturnStatement(ret) => {
+            ret.argument.as_ref().is_some_and(|e| expr_has_hooks_or_jsx(e))
+        }
+        Statement::VariableDeclaration(decl) => decl
+            .declarations
+            .iter()
+            .any(|d| d.init.as_ref().is_some_and(|e| expr_has_hooks_or_jsx(e))),
+        Statement::IfStatement(if_stmt) => {
+            expr_has_hooks_or_jsx(&if_stmt.test)
+                || stmt_has_hooks_or_jsx(&if_stmt.consequent)
+                || if_stmt.alternate.as_ref().is_some_and(|s| stmt_has_hooks_or_jsx(s))
+        }
+        Statement::BlockStatement(block) => block.body.iter().any(|s| stmt_has_hooks_or_jsx(s)),
+        Statement::ForStatement(for_stmt) => stmt_has_hooks_or_jsx(&for_stmt.body),
+        Statement::ForInStatement(for_in) => stmt_has_hooks_or_jsx(&for_in.body),
+        Statement::ForOfStatement(for_of) => stmt_has_hooks_or_jsx(&for_of.body),
+        Statement::WhileStatement(while_stmt) => stmt_has_hooks_or_jsx(&while_stmt.body),
+        Statement::SwitchStatement(switch) => {
+            switch.cases.iter().any(|c| c.consequent.iter().any(|s| stmt_has_hooks_or_jsx(s)))
+        }
+        Statement::TryStatement(try_stmt) => {
+            try_stmt.block.body.iter().any(|s| stmt_has_hooks_or_jsx(s))
+                || try_stmt
+                    .handler
+                    .as_ref()
+                    .is_some_and(|h| h.body.body.iter().any(|s| stmt_has_hooks_or_jsx(s)))
+                || try_stmt
+                    .finalizer
+                    .as_ref()
+                    .is_some_and(|f| f.body.iter().any(|s| stmt_has_hooks_or_jsx(s)))
+        }
+        _ => false,
+    }
+}
+
+fn expr_has_hooks_or_jsx(expr: &Expression<'_>) -> bool {
+    match expr {
+        // JSX elements
+        Expression::JSXElement(_) | Expression::JSXFragment(_) => true,
+        // Hook calls: callee name starts with "use"
+        Expression::CallExpression(call) => {
+            if call_is_hook(call) {
+                return true;
+            }
+            // Check arguments (but NOT into nested function args)
+            call.arguments.iter().any(|arg| {
+                match arg {
+                    Argument::SpreadElement(spread) => expr_has_hooks_or_jsx(&spread.argument),
+                    // Don't descend into function expression arguments
+                    Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_) => false,
+                    _ => {
+                        // All other Argument variants are Expression variants.
+                        // Use the same unsafe transmute pattern used elsewhere in
+                        // this file (extract_wrapper_name) to convert Argument → Expression.
+                        let arg_expr: &Expression<'_> = unsafe {
+                            &*std::ptr::from_ref::<Argument<'_>>(arg).cast::<Expression<'_>>()
+                        };
+                        expr_has_hooks_or_jsx(arg_expr)
+                    }
+                }
+            })
+        }
+        // Don't descend into nested function expressions
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
+        // Walk through common expression wrappers
+        Expression::AssignmentExpression(assign) => expr_has_hooks_or_jsx(&assign.right),
+        Expression::SequenceExpression(seq) => {
+            seq.expressions.iter().any(|e| expr_has_hooks_or_jsx(e))
+        }
+        Expression::ConditionalExpression(cond) => {
+            expr_has_hooks_or_jsx(&cond.test)
+                || expr_has_hooks_or_jsx(&cond.consequent)
+                || expr_has_hooks_or_jsx(&cond.alternate)
+        }
+        Expression::LogicalExpression(logic) => {
+            expr_has_hooks_or_jsx(&logic.left) || expr_has_hooks_or_jsx(&logic.right)
+        }
+        Expression::ParenthesizedExpression(paren) => expr_has_hooks_or_jsx(&paren.expression),
+        Expression::TSAsExpression(ts) => expr_has_hooks_or_jsx(&ts.expression),
+        Expression::TSSatisfiesExpression(ts) => expr_has_hooks_or_jsx(&ts.expression),
+        Expression::TSNonNullExpression(ts) => expr_has_hooks_or_jsx(&ts.expression),
+        Expression::TSTypeAssertion(ts) => expr_has_hooks_or_jsx(&ts.expression),
+        _ => false,
+    }
+}
+
+/// Check if a call expression is a hook call (callee name starts with "use").
+fn call_is_hook(call: &CallExpression<'_>) -> bool {
+    match &call.callee {
+        Expression::Identifier(id) => is_hook_name(&id.name),
+        Expression::StaticMemberExpression(member) => is_hook_name(&member.property.name),
+        _ => false,
+    }
+}
+
 fn should_compile_default_export(
     name: Option<&str>,
     _fn_type: ReactFunctionType,
     directives: Option<&[Directive<'_>]>,
     options: &PluginOptions,
+    body_stmts: Option<&[Statement<'_>]>,
 ) -> bool {
     // Check for opt-out (unless @ignoreUseNoForget is set)
     if !options.ignore_use_no_forget
@@ -1251,13 +1414,24 @@ fn should_compile_default_export(
     match options.compilation_mode {
         CompilationMode::All => true,
         CompilationMode::Infer => {
-            // Default exports that look like components
-            name.is_none_or(|n| {
+            // Default exports that look like components or hooks
+            let is_component_or_hook = name.is_none_or(|n| {
                 matches!(
                     classify_function_name(n),
                     ReactFunctionType::Component | ReactFunctionType::Hook
                 )
-            })
+            });
+            if !is_component_or_hook {
+                return false;
+            }
+            // For components (not hooks), require hooks or JSX in the body
+            let fn_type = name.map_or(ReactFunctionType::Component, classify_function_name);
+            if fn_type == ReactFunctionType::Component
+                && let Some(stmts) = body_stmts
+            {
+                return body_has_hooks_or_jsx(stmts);
+            }
+            true
         }
         CompilationMode::Syntax | CompilationMode::Annotation => {
             // Only compile functions with "use memo" / "use forget" directive

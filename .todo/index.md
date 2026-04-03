@@ -234,9 +234,45 @@ Net conformance: +0. But these fixtures are now unblocked for future scope/codeg
 
 **Why this WAS the top priority (now BLOCKED):** It is the single largest bail-out category (55 fixtures), but three implementation attempts confirmed that fixing the false bails causes -31 net regression because error.* fixtures lose their accidental bail path, and de-bailed fixtures land in slots-DIFFER. See blocker report in [bail-out-investigation.md](bail-out-investigation.md).
 
+#### Stage 2j: Tighten CompilationMode::Infer Heuristics (est: +4-7 fixtures, LOW risk)
+
+**Pool:** 7 fixtures using `@compilationMode:"infer"` where upstream does NOT compile but we DO compile. 4 use `@expectNothingCompiled`. All are in KF.
+
+**Root cause:** Our `should_compile` function for Infer mode only checks function name (uppercase = Component) and parameter count (<= 1). Upstream has additional heuristics:
+1. Skip functions that don't contain direct hook calls or top-level JSX in their body
+2. Skip functions where JSX only appears in nested functions (not the component itself)
+3. Skip functions that return non-JSX values (objects, primitives)
+
+**Fixtures that would pass with tighter heuristics:**
+- `dont-memoize-primitive-function-call-non-escaping.js` — returns string `'ok'`, no JSX return
+- `infer-skip-components-without-hooks-or-jsx.js` — no hooks, no JSX, returns `render()` call
+- `infer-no-component-nested-jsx.js` — JSX only in nested `helper()` function
+- `infer-no-component-obj-return.js` — returns object `{foo: f(props)}`, not JSX
+- `dont-memoize-primitive-function-call-non-escaping-useMemo.js` — returns string `'ok'` (has useMemo but non-JSX return)
+- `should-bailout-without-compilation-infer-mode.js` — gating + panicThreshold:none, bails then emits passthrough
+- `valid-setState-in-useEffect-controlled-by-ref-value.js` — uses `@enableAllowSetStateFromRefsInEffects` (may need directive support)
+
+**Implementation approach:**
+1. Add a pre-compilation AST scan for Infer mode that checks if the function body contains (a) direct hook calls at the top level and/or (b) JSX elements at the top level (not only in nested functions)
+2. Add a check that the function returns JSX (not an object literal or primitive)
+3. If none of these are present, skip the function
+4. The scan operates on the raw AST (before HIR), so it's cheap
+
+**Why this is the top priority:**
+- LOW risk: only affects `CompilationMode::Infer`, not `CompilationMode::All` (which drives the bulk of conformance)
+- +4 guaranteed fixtures from `@expectNothingCompiled` checks (the test only checks `!transformed`)
+- +1-3 additional possible from non-expectNothingCompiled infer-mode fixtures
+- No scope inference changes needed
+- Production-relevant: Infer is the default mode for real-world usage
+
+**Upstream:** `compiler/packages/babel-plugin-react-compiler/src/Entrypoint/Pipeline.ts` (function inference logic)
+**Our file:** `crates/oxc_react_compiler/src/entrypoint/program.rs` (`should_compile` function)
+
+**Risk:** Must verify the 22 currently-passing infer-mode fixtures still pass after tightening. The heuristic must not be so aggressive that it skips valid components/hooks.
+
 #### Stage 2h: Replan -- Bail-out Residual (est: 0 fixtures, planning)
 
-- [ ] Categorize remaining "we bail, they compile" after 2c-2g+2i
+- [ ] Categorize remaining "we bail, they compile" after 2c-2g+2i+2j
 - [ ] Update plan with new findings or mark as deferred
 
 ---
@@ -764,6 +800,7 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 | Stage 4e-D: Todo-bail (partial) | +3 (done) | 453 | LOW | 3/10 done (for-in-try, bail propagation). 7 remain (optional-chain, hoisting). |
 | Stage 4e validation fixes (495->499) | +4 (done) | 499 | LOW | MethodCall invariant +2, destructuring assignment +1, setState-in-useMemo indirect +1. |
 | Stage 2g error fixture sweep (499->505) | +6 (done) | 505 | LOW | fbt duplicate tags +2, ref-to-function +1, self-referencing const +1, dynamic gating invalid identifier +2. |
+| Stage 2j: Tighten Infer mode heuristics | +4-7 | 511-514 | LOW | 7 infer-mode fixtures where we compile but shouldn't. Skip functions without hooks/JSX/JSX-return in Infer mode. |
 | Stage 4e-C/D2/E: Remaining upstream errors | +8-25 (was +14-31, -6 done in Stage 2g) | 513-530 | MED-HIGH | 4e-C (2, MED), 4e-D2 preserve-memo (8, MED-HIGH, BLOCKED), 4e-E (2, HIGH) |
 | Stage 5a: DCE + phi-node CP | +7 (done) | 464 | MEDIUM | Completed. 7 fixtures from dead StoreLocal/Prefix/Postfix removal + phi CP. |
 | Stage 5b: Dead branch elimination | +0 (done) | 464 | MEDIUM | Completed. Infrastructure correct, 0 net gain. Branch conditions rarely constant at Pass 32.5. |
@@ -804,6 +841,11 @@ Completed 2026-03-26. Extended the existing DCE pass with three key improvements
 - **0-slot codegen is NOT viable.** Attempted emitting passthrough code (no `_c()` wrapper) for functions with 0 cache slots. Caused **-52 regression** (505->453). Many 0-slot fixtures have expected output with structural transformations that differ from passthrough. 0-slot codegen must wait for scope inference accuracy to reduce surplus scopes to near-zero for these fixtures.
 - **Self-referencing check only handles `Const`, not `Let`.** The `check_self_referencing_declarations` function only fires for `InstructionKind::Const` declarations. `Let` declarations also have TDZ semantics in JavaScript, but no current conformance fixtures test `let x = f(x)`. If future fixtures appear, extend the check to cover `Let` kind.
 - **`import fbt from 'fbt'` creates `LoadLocal`, not `LoadGlobal`.** Because `fbt` is not in the built-in globals list (`GlobalCollector`), an `import fbt` statement is lowered to a local binding. The `check_fbt_duplicate_tags` function handles this by checking both `LoadLocal` and `LoadGlobal`, but any future fbt-related work must be aware of this distinction. If the globals list is ever extended to include `fbt`, the LoadLocal path would no longer fire.
+
+**Key learning from post-3b analysis (2026-03-26):**
+- **Infer mode heuristics are too permissive.** Our `should_compile` for Infer mode accepts any uppercase-named function with <=1 param. Upstream additionally checks for: (a) presence of hooks/JSX in the function body, (b) JSX not only in nested functions, (c) return value is JSX (not object/primitive). 7 KF fixtures identified as fixable via tighter Infer heuristics. See Stage 2j.
+- **Nearly ALL remaining conformance gains require scope inference.** After exhaustive analysis of all 1210 diverged fixtures: slots-DIFFER (615) = scope inference, slots-MATCH (236) = scope inference + naming, both-no-memo (92) = 0-slot codegen (scope inference), we-compile-they-don't (140) = 123 scope surplus + 17 error.*, we-bail-they-compile (127) = 52 preserve-memo BLOCKED + 15 frozen BLOCKED + rest various. The only non-scope-inference work is individual error.* bail-outs (+1-2 each) and Infer mode heuristics (+4-7).
+- **No stale KF entries found.** All 4 `@expectNothingCompiled` infer-mode fixtures in KF are genuinely failing (we DO transform when we shouldn't because of permissive Infer heuristics). They would pass after Stage 2j.
 
 **Key learning from Stage 1g (2026-03-26):**
 - **Gating directive comments must be stripped from output.** Upstream's Babel plugin removes `@gating`/`@dynamicGating` directives during compilation. Our source-edit-based approach was preserving them, causing 2 gating fixture mismatches. Simple line-level filtering in `apply_compilation` suffices.
