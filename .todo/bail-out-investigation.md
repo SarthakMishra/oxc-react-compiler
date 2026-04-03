@@ -175,6 +175,54 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 
 ---
 
+## Combined: Check 1 Scope Completion + tN Dep Fix
+
+> **Status:** Part A COMPLETE (+1). Part B DEFINITIVELY BLOCKED.
+> **Upstream:** `ValidatePreservedManualMemoization.ts` (Check 1 `isUnmemoized` / `completedScopes`), `PropagateScopeDependencies.ts` (dep resolution via `collectTemporaries`)
+> **Files modified:** `validate_preserved_manual_memoization.rs`
+
+### Part A: Check 1 — Scope completion tracking -- COMPLETE
+
+**Completed (2026-04-03).** Implemented `completed_scopes: FxHashSet<ScopeId>` tracking in `WalkerState`. After visiting a `ReactiveInstruction::Scope` block, inserts `scope.id` into `completed_scopes`. `FinishMemoize` now checks whether `decl.identifier.scope` is in `completed_scopes` (per-operand scope membership) instead of the coarse `in_scope` boolean.
+
+**Result:** +1 conformance (549->550). The gain is small because Check 2 (validateInferredDep with tN deps) fires first on most fixtures, preventing Check 1 from being the determining factor. The implementation is correct and matches upstream behavior — it just doesn't unlock gains without Part B.
+
+**File:** `crates/oxc_react_compiler/src/validation/validate_preserved_manual_memoization.rs`
+
+### Part B: tN dep resolution -- DEFINITIVELY BLOCKED
+
+**Original hypothesis:** Check 1 would provide an alternative bail path for error fixtures, allowing Part B (removing tN false deps) to proceed without regression.
+
+**What actually happened:** Check 1 does NOT provide the alternative bail path. Error fixtures still need Check 2's tN dep mismatch to bail correctly. This means ALL approaches to removing/filtering tN deps remain net-negative.
+
+### Blocker Report — Part B: tN Dep Resolution (2026-04-03)
+
+**4 additional approaches attempted in this session (on top of 4 prior attempts):**
+
+| # | Approach | Location | Result | Why it failed |
+|---|----------|----------|--------|---------------|
+| 5 | Skip tN deps in propagate_dependencies.rs | `propagate_dependencies.rs` Phase 2 | -55 | Changes codegen slot assignments for all fixtures, not just preserve-memo |
+| 6 | Skip synthetic tN names in resolve_scope_dep | `validate_preserved_manual_memoization.rs` | -55 | Removes load-bearing bails from error fixtures (same mechanism as attempt 3) |
+| 7 | Remove MethodCall check entirely | `validate_preserved_manual_memoization.rs` | -4 | Freed fixtures still fail on slot mismatch; lost 4 true-positive bails |
+| 8 | Receiver-only MethodCall check | `validate_preserved_manual_memoization.rs` | -4 | Catches wrong patterns — receiver is not the relevant operand |
+
+**Key finding:** ALL 76 preserve-memo false bails are Check 2 (validateInferredDep), caused by synthetic tN-named deps. 55 of those are load-bearing (error fixtures bail "by accident" via tN mismatch). The root cause is computation-result temps (CallExpression, MethodCall, BinaryExpression, Destructure outputs) that cannot be traced to named variables through the temp map.
+
+**Why Check 1 didn't help:** The error fixtures that bail via tN mismatch do so because their memo values DO have completed scopes (scope inference creates scopes for them). Check 1 passes for these fixtures — they are "memoized" from Check 1's perspective. They only bail because Check 2 sees tN deps that don't match manual deps. Removing the tN deps removes their bail path with no replacement.
+
+**Assumption that was wrong:** Assumed error fixtures would fail Check 1 (scope not completed) and could be caught there instead of Check 2. In reality, our scope inference creates scopes for most memo values, so Check 1 passes even when upstream would prune/not-create those scopes.
+
+**8 total approaches tried across all sessions, ALL net-negative.** The skip/filter strategy is fundamentally exhausted.
+
+**Only viable path forward:** Port upstream's richer `ReactiveScopeDependency` type which includes the full property access path. This would let validateInferredDep compare deps by their source-level names (e.g., `props.x`) instead of SSA temp names (e.g., `t1`). This is a significant refactor of:
+- `propagate_dependencies.rs` (dep collection and resolution)
+- `validate_preserved_manual_memoization.rs` (dep comparison)
+- Possibly `prune_scopes.rs` and `codegen.rs` (dep consumers)
+
+**Do NOT attempt any further skip/filter approaches.** The only viable path is structural: porting `ReactiveScopeDependency` with full access paths.
+
+---
+
 ## Stage 2g: Error Fixture Bail-out Sweep -- COMPLETE (+6, 499->505)
 
 Four new bail-out validations. See `index.md` Stage 2g for full details.

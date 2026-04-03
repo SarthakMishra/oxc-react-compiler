@@ -1126,7 +1126,6 @@ useActionState-dispatch-considered-as-non-reactive.js
 useCallback-call-second-function-which-captures-maybe-mutable-value-preserve-memoization.js
 useCallback-maybe-modify-free-variable-preserve-memoization-guarantee.js
 useCallback-multiple-callbacks-modifying-same-ref-preserve-memoization.js
-useCallback-ref-in-render.js
 useCallback-set-ref-nested-property-preserve-memoization.js
 useCallback-set-ref-nested-property.js
 useCallback-set-ref-value-dont-preserve-memoization.js

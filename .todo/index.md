@@ -1,15 +1,15 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-04-03
-> Conformance: **549/1717 (32.0%)** (known-failures.txt has 1168 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Latest session gains: +53 total from two sessions. Session 1 (+44): preserve-memo default (+30, 496->526), try-catch value block bail (+10, 526->536), object expression computed key bail (+4, 536->540). Session 2 (+9): optional chains Group B (+3, 540->543), PruneHoistedContexts Group F (+2, 543->545), hook-destructure-before-use Group H (+2, 545->547), mutable function mutations Group E (+2, 547->549).
-> Known-failures: 1168. False-positive bails: ~168 (83 preserve-memo, 14 frozen-mutation, 9 reassign, 7 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
+> Conformance: **550/1717 (32.0%)** (known-failures.txt has 1167 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Latest session gains: +1 from Check 1 scope completion tracking in validate_preserved_manual_memoization.rs (549->550). tN dep resolution thoroughly investigated (4 additional approaches, all net-negative).
+> Known-failures: 1167. False-positive bails: ~168 (83 preserve-memo, 14 frozen-mutation, 9 reassign, 7 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
 > WE-COMPILE-THEY-DON'T: ~88 (69 scope-surplus with no upstream error, ~9 "Found 1 error" bail-outs remaining, 10 Flow parse errors). Down from 94 after Session 2 fixes.
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
 
-## Road to 600+ Conformance (549 -> 600+, need +51)
+## Road to 600+ Conformance (550 -> 600+, need +50)
 
 ### Failure Category Summary (revised 2026-04-03, post-sessions)
 
@@ -25,7 +25,7 @@
 
 | Work Item | Pool Size | Potential Gain | Status |
 |-----------|-----------|---------------|--------|
-| Scope dep resolution in propagate_dependencies.rs | 51 preserve-memo false bails + 29 validateInferredDep | +20-40 | **TOP PRIORITY** — would unblock both bail reduction and error fixture gains |
+| Scope dep resolution (port ReactiveScopeDependency) | 51 preserve-memo false bails + 28 validateInferredDep | +20-40 | **TOP PRIORITY** — 8 skip/filter approaches failed. Must port upstream `ReactiveScopeDependency` type with full access paths. Significant refactor. |
 | Scope inference fixes (slots-DIFFER) | ~572 | +50-100 | HIGH risk — cascading regression, scope MERGING is bottleneck |
 | Stage 4f remaining "Found 1 error" bails | ~9 | +5-9 | LOW risk — bail-to-pass, zero regression |
 | DCE + constant propagation remaining | ~90 | +5-15 | Blocked by 0-slot codegen (scope inference) |
@@ -52,7 +52,7 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 **Remaining:**
 - [ ] **Stage 2d: Frozen-mutation false positives (15 fixtures)** — BLOCKED. Root cause: transitive freeze propagation in aliasing pass. 3 approaches failed. See [bail-out-investigation.md](bail-out-investigation.md).
 - [ ] **Stage 2f: Reassignment false positives (10 fixtures)** — BLOCKED. Requires DeclareContext/StoreContext HIR lowering. Attempt caused -4 net.
-- [ ] **Stage 2i: Preserve-memo false-positive bails (55 fixtures)** — DEFINITIVELY BLOCKED. 4 approaches tried, all net-negative (worst: -56). ALL skip/filter approaches are fundamentally flawed. Only fix: scope dep resolution (SSA temp -> named variable mapping). See blocker reports in [bail-out-investigation.md](bail-out-investigation.md).
+- [ ] **Stage 2i: Preserve-memo false-positive bails (55 fixtures)** — DEFINITIVELY BLOCKED. 8 approaches tried across 3 sessions, all net-negative (worst: -56). ALL skip/filter approaches are fundamentally flawed. Only fix: port upstream `ReactiveScopeDependency` type with full access paths. See blocker reports in [bail-out-investigation.md](bail-out-investigation.md).
 - [ ] **Stage 2h: Replan** — Categorize remaining bail-outs after all other fixes.
 - [ ] **Stage 2g residual** — setState-in-render (4), setState-in-effect (2), hooks (3), exhaustive-deps (1), silent (7), other (~10).
 
@@ -86,15 +86,14 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 #### Stage 4b: Preserve-memo validation (32 fixtures target)
 
-**3 of 32 passing.** validateInferredDep algorithm ported correctly. 29 remaining BLOCKED by scope dep resolution (SSA temp IdentifierIds don't resolve to named variables). See Deferred/Blocked section.
+**4 of 32 passing.** Check 1 (scope completion tracking) implemented (+1). validateInferredDep (Check 2) ported correctly. 28 remaining BLOCKED by scope dep resolution (SSA temp IdentifierIds don't resolve to named variables). See Deferred/Blocked section.
 
 | Sub-type | Count | Status |
 |----------|-------|--------|
-| validateInferredDep | 26 | 3 done, 29 BLOCKED by scope dep resolution |
-| "value was memoized" check | 17 | Not started |
-| "dependency may be mutated" | 17 | Not started |
+| Check 1 "value was memoized" | 17 | IMPLEMENTED. +1 conformance from scope completion tracking. Remaining gains blocked by scope dep resolution (Check 2 fires first on most fixtures). |
+| Check 2 validateInferredDep | 26 | 4 done, 28 BLOCKED by scope dep resolution |
+| Check 3 "dependency may be mutated" | 17 | Not started |
 
-- [ ] Fix "value was memoized" detection (17 fixtures)
 - [ ] Add "dependency may be mutated" tracking (17 fixtures)
 
 #### Stage 4c: Todo error detection -- MOSTLY COMPLETE (+15 net)
@@ -142,16 +141,41 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 ---
 
+## Active Work
+
+- [~] **tN dep resolution (Part B of combined fix)** — [bail-out-investigation.md](bail-out-investigation.md)#combined-check-1--tn-dep-fix -- Check 1 DONE (+1), Part B BLOCKED: 4 additional approaches all net-negative. See blocker report.
+
+---
+
 ## Deferred / Blocked Work
 
-### Scope Dep Resolution (SSA temp -> named variable mapping) -- TOP PRIORITY BLOCKER
+### Scope Dep Resolution (SSA temp -> named variable mapping) -- DEFINITIVELY BLOCKED
 
-**Affects:** Stage 2i (51 false-positive bails), Stage 4b validateInferredDep (29 fixtures), B2 variable name preservation.
+**Affects:** Stage 2i (51 false-positive bails), Stage 4b validateInferredDep (28 fixtures), B2 variable name preservation.
 **Problem:** After SSA, scope dependency IdentifierIds point to temporaries, not original named variables. `propagate_dependencies.rs` does not preserve the original dependency path.
-**Resolution options:**
-1. Enhance `propagate_dependencies.rs` to carry original dependency path (property access chain) alongside IdentifierId
-2. Build post-SSA reverse mapping pass tracing temps through LoadLocal/PropertyLoad chains
-3. Port upstream's richer `ReactiveScopeDependency` type which includes the full access path
+
+**Key finding (2026-04-03):** ALL 76 preserve-memo false bails are Check 2 (validateInferredDep), caused by synthetic tN-named deps. 55 of those are load-bearing (error fixtures that bail "by accident" via tN mismatch). The root cause is computation-result temps (CallExpression, MethodCall, BinaryExpression, Destructure outputs) that cannot be traced to named variables through the temp map.
+
+**8 total approaches tried, ALL net-negative:**
+1. Build temp resolution map before inline_load_local_temps: no effect (0)
+2. Skip unnamed deps in propagate_scope_dependencies_hir: -15
+3. Skip "tN" names in resolve_scope_dep validation: -31
+4. Skip "tN" names in validateInferredDep comparison: -56
+5. tN dep skip in propagate_dependencies.rs (this session): -55
+6. Synthetic tN name skip in resolve_scope_dep (this session): -55
+7. MethodCall check removal (this session): -4
+8. Receiver-only MethodCall check (this session): -4
+
+**Check 1 (scope completion tracking) implemented** but neutral (+1 only). It does NOT provide the alternative bail path that was hoped for — error fixtures still need Check 2's tN mismatch to bail correctly.
+
+**Only viable path forward:** Port upstream's richer `ReactiveScopeDependency` type which includes the full property access path (not just IdentifierId). This is a significant refactor of `propagate_dependencies.rs` and its consumers.
+
+**Previous resolution options (all failed or superseded):**
+1. ~~Skip/filter approaches~~ -- ALL 4 variants tried, all net-negative, fundamentally flawed
+2. ~~Check 1 as alternative bail path~~ -- Implemented but insufficient, error fixtures still need Check 2
+3. Enhance `propagate_dependencies.rs` to carry original dependency path -- NOT YET ATTEMPTED, most promising
+4. Build post-SSA reverse mapping pass -- NOT YET ATTEMPTED
+5. Port upstream's richer `ReactiveScopeDependency` type -- NOT YET ATTEMPTED, likely the correct long-term fix
 
 ### Other Blocked Items
 
@@ -240,6 +264,6 @@ Every remaining conformance gain of significant size (>10 fixtures) depends on o
 - `effective_range` cannot be replaced with `mutable_range` (6 attempts, all regressed)
 - `collect_all_scope_declarations` is load-bearing for render (96%->24% without it)
 - Pre-validation DCE must preserve StoreLocal/DeclareLocal for validators
-- ALL skip/filter approaches to preserve-memo bails are fundamentally flawed (4 attempts, worst -56)
+- ALL skip/filter approaches to preserve-memo bails are fundamentally flawed (8 attempts across 3 sessions, worst -56)
 - 0-slot codegen via IR reconstruction is architecturally wrong (-52 twice); must use source-text editing
 - Pruning cannot fix scope merging problems; the fix must be in scope creation/merging itself
