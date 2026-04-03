@@ -43,6 +43,11 @@ const REJECTED_UNSUPPORTED_NODES: &[&str] = &[
     // Upstream: Todo: Support value blocks (conditional, logical, optional chaining, etc)
     // within a try/catch statement. Detected at the AST level before HIR lowering.
     "TryStatement_value_blocks",
+    // Upstream: Todo: (BuildHIR::lowerExpression) Expected Identifier, got <kind> key
+    // in ObjectExpression. Non-identifier computed keys cause a bail.
+    "ObjectExpression_CallExpression_computed_key",
+    "ObjectExpression_SequenceExpression_computed_key",
+    "ObjectExpression_Expression_computed_key",
 ];
 
 /// Validate that the HIR contains no `UnsupportedNode` instructions for patterns

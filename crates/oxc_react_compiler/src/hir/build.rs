@@ -2699,6 +2699,30 @@ impl HIRBuilder {
                     // lower_obj_property_key handles them via ObjectPropertyKey::Computed(Place).
 
                     if prop.computed {
+                        // Upstream: Todo: (BuildHIR::lowerExpression) Expected Identifier, got
+                        // <kind> key in ObjectExpression.
+                        // Non-identifier computed keys (CallExpression, SequenceExpression, etc.)
+                        // are not supported by upstream and cause a bail.
+                        if !matches!(
+                            &prop.key,
+                            PropertyKey::StaticIdentifier(_)
+                                | PropertyKey::StringLiteral(_)
+                                | PropertyKey::NumericLiteral(_)
+                        ) && let Some(expr) = property_key_as_expression(&prop.key)
+                            && !matches!(expr, Expression::Identifier(_))
+                        {
+                            let kind_name = match expr {
+                                Expression::CallExpression(_) => "CallExpression",
+                                Expression::SequenceExpression(_) => "SequenceExpression",
+                                _ => "Expression",
+                            };
+                            return self.emit(
+                                InstructionValue::UnsupportedNode {
+                                    node: format!("ObjectExpression_{kind_name}_computed_key"),
+                                },
+                                loc,
+                            );
+                        }
                         // For computed keys, lower key FIRST to preserve JS evaluation order:
                         // `{ [keyExpr]: valueExpr }` evaluates keyExpr before valueExpr.
                         let key = self.lower_obj_property_key(&prop.key);

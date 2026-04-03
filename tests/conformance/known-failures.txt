@@ -632,13 +632,9 @@ object-entries-mutation.js
 object-expression-captures-function-with-global-mutation.js
 object-expression-computed-key-constant-number.js
 object-expression-computed-key-constant-string.js
-object-expression-computed-key-modified-during-after-construction-sequence-expr.js
-object-expression-computed-key-modified-during-after-construction.js
-object-expression-computed-key-mutate-key-while-constructing-object.js
 object-expression-computed-key-non-reactive.js
 object-expression-computed-key.js
 object-expression-computed-member.js
-object-expression-member-expr-call.js
 object-expression-string-literal-key.js
 object-keys.js
 object-literal-method-call-in-ternary-test.js
