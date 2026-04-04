@@ -69,7 +69,13 @@ pub fn infer_reactive_scope_variables(
             ) {
                 is_allocating_id.insert(id);
             }
-            if is_mutable_instruction(&instr.value) {
+            if is_mutable_instruction(
+                &instr.value,
+                &instr.lvalue.identifier.type_,
+                &id_to_name,
+                instr.lvalue.identifier.last_use,
+                instr.id,
+            ) {
                 is_mutable_id.insert(id);
             }
         }
@@ -567,24 +573,55 @@ fn is_allocating_instruction(
 /// object literal, etc.) DOES need a scope.
 ///
 /// Matches upstream's `ValueKind.Mutable` in InferReactiveScopeVariables.ts.
-fn is_mutable_instruction(value: &InstructionValue) -> bool {
-    // DIVERGENCE: Exclude CallExpression and MethodCall from the "mutable"
-    // category. These instructions produce values of unknown type — they MAY
-    // return objects/arrays (mutable) or primitives (immutable). Including them
-    // unconditionally over-creates scopes for `reactive + call` instruction sets,
-    // contributing to the ~572 scope surplus. They are still eligible for scopes
-    // via `is_allocating_instruction` when their result is used after definition
-    // (last_use > instr_id).
-    matches!(
-        value,
+fn is_mutable_instruction(
+    value: &InstructionValue,
+    lvalue_type: &Type,
+    id_to_name: &FxHashMap<IdentifierId, String>,
+    last_use: InstructionId,
+    instr_id: InstructionId,
+) -> bool {
+    match value {
+        // Literal allocations are always mutable
         InstructionValue::ObjectExpression { .. }
-            | InstructionValue::ArrayExpression { .. }
-            | InstructionValue::JsxExpression { .. }
-            | InstructionValue::JsxFragment { .. }
-            | InstructionValue::NewExpression { .. }
-            | InstructionValue::FunctionExpression { .. }
-            | InstructionValue::ObjectMethod { .. }
-    )
+        | InstructionValue::ArrayExpression { .. }
+        | InstructionValue::JsxExpression { .. }
+        | InstructionValue::JsxFragment { .. }
+        | InstructionValue::NewExpression { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. } => true,
+        // Calls: mutable only if NOT a hook call AND NOT a primitive return.
+        // Hook calls (useXxx) are reactive inputs — their results shouldn't
+        // trigger scope creation just because they appear in a reactive set.
+        // Non-hook calls with non-primitive returns are conservatively mutable.
+        // Calls: mutable only if NOT a hook call, NOT primitive, AND result escapes.
+        // Hook calls (useXxx) are reactive inputs — they provide state/context,
+        // not mutable allocations. Their results shouldn't trigger scope creation.
+        // Non-hook calls with non-primitive escaping results are conservatively mutable.
+        InstructionValue::CallExpression { callee, .. } => {
+            if matches!(lvalue_type, Type::Primitive(_)) {
+                return false;
+            }
+            let name = callee
+                .identifier
+                .name
+                .as_deref()
+                .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+            if name.is_some_and(|n| n.starts_with("use") && n.len() > 3) {
+                return false;
+            }
+            last_use > instr_id
+        }
+        InstructionValue::MethodCall { property, .. } => {
+            if matches!(lvalue_type, Type::Primitive(_)) {
+                return false;
+            }
+            if property.starts_with("use") && property.len() > 3 {
+                return false;
+            }
+            last_use > instr_id
+        }
+        _ => false,
+    }
 }
 
 /// Collect all identifier IDs referenced as operands in an instruction value.

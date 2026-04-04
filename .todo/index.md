@@ -2,7 +2,7 @@
 
 > Last updated: 2026-04-03
 > Conformance: **553/1717 (32.2%)** (known-failures.txt has 1164 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Latest session gains: +3 from excluding Call/MethodCall from is_mutable_instruction in scope creation (550->553). First successful scope inference fix after 6 prior failures. Also: non-transitive MethodCall mutation (neutral), last_use gate removal (-5 reverted), use_mutable_range=true (-40 reverted).
+> Latest session gains: +3 from excluding Call/MethodCall from is_mutable_instruction in scope creation (550->553). First successful scope inference fix after 6 prior failures. Deep investigation (2026-04-03): confirmed Apply effects are pre-resolved by Pass 16 (not skipped); conservative unknown-call mutation model is load-bearing for 10 fixtures (every relaxation causes identical -10 shift); current mutation balance is best achievable without upstream's exact Apply resolution logic.
 > Known-failures: 1164. False-positive bails: ~168 (83 preserve-memo now ALL Check 1, 14 frozen-mutation, 9 reassign, 7 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
 > WE-COMPILE-THEY-DON'T: ~88 (69 scope-surplus with no upstream error, ~9 "Found 1 error" bail-outs remaining, 10 Flow parse errors). Down from 94 after Session 2 fixes.
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
@@ -58,12 +58,26 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 ---
 
-### Stage 3: Scope Inference -- FIRST SUCCESS, continuing investigation
+### Stage 3: Scope Inference -- FIRST SUCCESS, deep investigation complete
 
 **Pool:** ~572 slot-differ fixtures (deficit + surplus). Single largest category.
 **Root cause:** Scope MERGING is the bottleneck (not scope creation). `last_use_map` in `infer_mutation_aliasing_ranges.rs` extends ranges wider than upstream. Cannot remove without receiver mutation effects + reverse scope propagation.
 
 **Investigation complete (Stages 3a, 3a2):** Full categorization done. 134 zero-slot surplus fixtures confirmed as scope CREATION problem. 3 pruning approaches failed (-44, unresolved refs, confirmed not-pruning-problem).
+
+**Deep investigation findings (2026-04-03):**
+
+1. **Apply effects are NOT skipped** -- they are pre-resolved by `infer_mutation_aliasing_effects` (Pass 16) before `infer_mutation_aliasing_ranges` (Pass 20). The `Apply { .. } => {}` match arm in ranges.rs is CORRECT because all resolvable Apply effects have already been converted to concrete effects (Mutate, CreateFrom, Capture, etc.) by that point.
+
+2. **Conservative fallback for unknown calls** produces extremely aggressive effects:
+   - MutateTransitiveConditionally on ALL operands (receiver + args)
+   - MaybeAlias from each operand to return value
+   - O(n^2) cross-arg Capture (each arg captured into every other arg)
+   This produces wide mutable ranges and is a major contributor to over-merging.
+
+3. **Every mutation model change produces the same -10 slot shift** -- tested MutateConditionally (non-transitive), cross-arg capture removal, Apply processing, StoreLocal range extension. All cause identical 238->228 MATCH count shift. The aggressive mutation model is load-bearing for 10 specific fixtures. This is a confirmed tradeoff: more aggressive mutation -> more merging -> fewer slots (matches some, surplus for others); less aggressive -> less merging -> more slots (reduces surplus, creates deficit).
+
+4. **Current balance is the best achievable** without upstream's exact algorithm for Apply resolution and mutation propagation. Further gains require reading `InferMutationAliasingRanges.ts` and `InferMutationAliasingEffects.ts` line-by-line for the precise logic.
 
 **9 approaches tried for scope inference, 1 successful (+3):**
 1. Heuristic removal (-5)
@@ -79,9 +93,10 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 Also tried: use_mutable_range=true (-40, reverted) -- mutable ranges alone still too narrow for scope creation.
 
 **Prerequisites for further progress:**
-1. Fix mutable range accuracy: receiver mutation effects for MethodCall, reverse scope propagation
-2. Audit `dep.reactive` flag assignment against upstream semantics
-3. Understand scope merging algorithm in detail before attempting changes
+1. Read upstream `InferMutationAliasingRanges.ts` and `InferMutationAliasingEffects.ts` line-by-line for the precise Apply resolution and mutation propagation logic
+2. Fix mutable range accuracy: receiver mutation effects for MethodCall, reverse scope propagation
+3. Audit `dep.reactive` flag assignment against upstream semantics
+4. Understand scope merging algorithm in detail before attempting changes
 
 **Remaining (all blocked by prerequisites):**
 - [ ] **Stage 3b:** Fix dominant slot diff patterns. HIGH risk.
@@ -233,7 +248,7 @@ The full upstream solution uses a `ReactiveScopeDependency` type with property a
 
 ## Critical Architecture Notes
 
-1. **`effective_range` is load-bearing.** 6 attempts to switch to `mutable_range` all regressed. File: `infer_reactive_scope_variables.rs`.
+1. **`effective_range` is load-bearing.** 6 attempts to switch to `mutable_range` all regressed. File: `infer_reactive_scope_variables.rs`. Root cause confirmed: mutable ranges are computed by `infer_mutation_aliasing_ranges` which skips already-resolved Apply effects (correct behavior -- Apply effects are pre-resolved by Pass 16). The conservative unknown-call fallback produces wide ranges via MutateTransitiveConditionally on all operands + O(n^2) cross-arg Capture. This aggressive model is load-bearing for 10 fixtures; any relaxation causes identical -10 shift.
 2. **`collect_all_scope_declarations` cannot be removed.** Prevents render collapse 96%->24%. File: `codegen.rs`.
 3. **Scope dep IdentifierIds are SSA temps, not source names.** Blocks validateInferredDep (29), B2, and any scope-dep-to-source-name resolution.
 4. **Nested HIR builders don't emit LoadContext.** Context variables appear as LoadLocal in nested functions.
@@ -298,7 +313,7 @@ The project has reached a clear inflection point. All low-risk, codegen-only, an
 
 1. **Scope dep resolution + preserve-memo Check 1** — Check 2 RESOLVED (approach #10). Check 1 infrastructure READY: scope propagation to FinishMemoize.decl reduces bails 94->14 (-80!) but causes -52 regression from scope surplus. This CONFIRMS that Stage 3 scope inference is the single critical path for both preserve-memo (+80 potential) and slot-differ (+50-100 potential). See [blocker details](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved).
 
-2. **Scope inference accuracy** — `last_use_map` in `infer_mutation_aliasing_ranges.rs` produces wider ranges than upstream, causing over-merging and surplus scopes. This is the root cause behind ~572 slot-differ, ~90 both-no-memo (0-slot codegen), and ~69 we-compile-they-don't surplus fixtures. 9 approaches tried: 1 successful (+3 from excluding Call/MethodCall from is_mutable_instruction), rest regressed or neutral. The prerequisites for further gains are: (a) receiver mutation effects for MethodCall, (b) reverse scope propagation, (c) `dep.reactive` flag audit.
+2. **Scope inference accuracy** — `last_use_map` in `infer_mutation_aliasing_ranges.rs` produces wider ranges than upstream, causing over-merging and surplus scopes. This is the root cause behind ~572 slot-differ, ~90 both-no-memo (0-slot codegen), and ~69 we-compile-they-don't surplus fixtures. 9 approaches tried: 1 successful (+3 from excluding Call/MethodCall from is_mutable_instruction), rest regressed or neutral. Deep investigation (2026-04-03) confirmed that the aggressive unknown-call mutation model (MutateTransitiveConditionally + O(n^2) cross-arg Capture) is load-bearing for 10 fixtures and cannot be relaxed without introducing equivalent deficit. Current balance is best achievable without porting upstream's exact Apply resolution and mutation propagation from `InferMutationAliasingEffects.ts` / `InferMutationAliasingRanges.ts`.
 
 Every remaining conformance gain of significant size (>10 fixtures) depends on one or both of these. The only exception is the ~9 remaining "Found 1 error" bail-outs in Stage 4f, which are safe incremental gains.
 
@@ -310,3 +325,5 @@ Every remaining conformance gain of significant size (>10 fixtures) depends on o
 - 0-slot codegen via IR reconstruction is architecturally wrong (-52 twice); must use source-text editing
 - Pruning cannot fix scope merging problems; the fix must be in scope creation/merging itself
 - Scope propagation to FinishMemoize.decl is correct infrastructure but premature without Stage 3: reduces bails 94->14 but causes -52 from error fixtures that incorrectly pass Check 1 due to scope surplus. Stage 3 scope accuracy is the single gating prerequisite for both preserve-memo and slot-differ gains.
+- Apply effects in `infer_mutation_aliasing_ranges` are correctly skipped -- they are pre-resolved to concrete effects (Mutate, CreateFrom, Capture, etc.) by `infer_mutation_aliasing_effects` (Pass 16) before ranges (Pass 20) runs. The `Apply { .. } => {}` arm is NOT a bug.
+- The conservative unknown-call mutation model is a balanced tradeoff: every attempted relaxation (non-transitive mutation, cross-arg capture removal, Apply processing, StoreLocal range extension) causes an identical -10 slot MATCH shift. The 10 affected fixtures are load-bearing for the current conformance count. Further scope inference gains require porting upstream's EXACT mutation resolution logic, not tuning the conservative fallback.
