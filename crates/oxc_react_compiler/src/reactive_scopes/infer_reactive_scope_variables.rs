@@ -568,6 +568,13 @@ fn is_allocating_instruction(
 ///
 /// Matches upstream's `ValueKind.Mutable` in InferReactiveScopeVariables.ts.
 fn is_mutable_instruction(value: &InstructionValue) -> bool {
+    // DIVERGENCE: Exclude CallExpression and MethodCall from the "mutable"
+    // category. These instructions produce values of unknown type — they MAY
+    // return objects/arrays (mutable) or primitives (immutable). Including them
+    // unconditionally over-creates scopes for `reactive + call` instruction sets,
+    // contributing to the ~572 scope surplus. They are still eligible for scopes
+    // via `is_allocating_instruction` when their result is used after definition
+    // (last_use > instr_id).
     matches!(
         value,
         InstructionValue::ObjectExpression { .. }
@@ -577,8 +584,6 @@ fn is_mutable_instruction(value: &InstructionValue) -> bool {
             | InstructionValue::NewExpression { .. }
             | InstructionValue::FunctionExpression { .. }
             | InstructionValue::ObjectMethod { .. }
-            | InstructionValue::CallExpression { .. }
-            | InstructionValue::MethodCall { .. }
     )
 }
 

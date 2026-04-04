@@ -125,10 +125,15 @@ pub fn compute_instruction_effects(
             });
             // If no signature found, fall back to conservative: receiver may be mutated.
             // With a signature, the callee_effect from the signature handles this.
+            // DIVERGENCE: Use MutateConditionally (non-transitive) instead of
+            // MutateTransitiveConditionally. Transitive mutation on the receiver
+            // extends mutable ranges through all aliases, causing over-merging
+            // of reactive scopes (~572 surplus scope fixtures). Non-transitive
+            // only extends the receiver's own range, matching upstream's more
+            // precise modeling where method calls don't transitively mutate
+            // the receiver's entire alias graph.
             if !has_sig {
-                effects.push(AliasingEffect::MutateTransitiveConditionally {
-                    value: receiver.clone(),
-                });
+                effects.push(AliasingEffect::MutateConditionally { value: receiver.clone() });
             }
         }
 

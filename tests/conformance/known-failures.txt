@@ -966,7 +966,6 @@ rewrite-phis-in-lambda-capture-context.js
 rules-of-hooks/allow-locals-named-like-hooks.js
 rules-of-hooks/allow-props-named-like-hooks.js
 rules-of-hooks/rules-of-hooks-0e2214abc294.js
-rules-of-hooks/rules-of-hooks-23dc7fffde57.js
 rules-of-hooks/rules-of-hooks-4f6c78a14bf7.js
 rules-of-hooks/rules-of-hooks-69521d94fa03.js
 rules-of-hooks/rules-of-hooks-93dc5d5e538a.js
@@ -1039,7 +1038,6 @@ switch-with-fallthrough.js
 switch-with-only-default.js
 switch.js
 tagged-template-in-hook.js
-template-literal.js
 temporary-accessed-outside-scope.js
 temporary-at-start-of-value-block.js
 temporary-property-load-accessed-outside-scope.js
@@ -1095,7 +1093,6 @@ type-test-return-type-inference.js
 unary-expr.js
 unconditional-break-label.js
 uninitialized-declaration-in-reactive-scope.js
-unknown-hooks-do-not-assert.js
 unlabeled-break-within-label-loop.ts
 unlabeled-break-within-label-switch.ts
 unmemoized-nonreactive-dependency-is-pruned-as-dependency.js
