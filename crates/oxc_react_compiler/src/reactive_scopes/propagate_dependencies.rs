@@ -489,7 +489,16 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                         }
                     }
                 } else {
-                    // No resolution — use as-is (named variable or unresolved temp)
+                    // No resolution — use as-is (named variable or unresolved temp).
+                    // Skip unnamed unresolvable operands — these are SSA temporaries
+                    // from computation results (CallExpression, MethodCall, etc.) that
+                    // have no temp_map entry. Adding them as scope deps creates phantom
+                    // tN deps that cause false Check 2 mismatches in preserve-memo
+                    // validation and produce wrong dep names in codegen.
+                    // Named operands (actual variables) are kept as-is.
+                    if place.identifier.name.is_none() {
+                        continue;
+                    }
                     if !is_scope_internal(place)
                         && !non_reactive_ids.contains(&place.identifier.id)
                         && !place

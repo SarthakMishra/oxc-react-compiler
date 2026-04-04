@@ -411,14 +411,6 @@ fn validate_scope_deps(
                 None => return false,
             };
 
-            // DIVERGENCE: Upstream's scope deps reference named variables directly,
-            // but ours sometimes reference SSA temps (whose LoadLocal defining
-            // instructions were removed by RF optimization passes). If the temp
-            // can't be resolved to a named local, it won't match any source dep
-            // (source deps are always named variables like `propA`, `propA.x`).
-            // This correctly flags a mismatch — the compiler couldn't preserve
-            // the manual memoization when it can't even identify the dep.
-
             // Compare against source deps
             !matches_any_source_dep(&resolved, source_deps)
         });
