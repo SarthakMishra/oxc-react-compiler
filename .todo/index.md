@@ -2,8 +2,8 @@
 
 > Last updated: 2026-04-03
 > Conformance: **550/1717 (32.0%)** (known-failures.txt has 1167 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Latest session gains: +1 from Check 1 scope completion tracking in validate_preserved_manual_memoization.rs (549->550). tN dep resolution: 9 approaches exhausted across 3 sessions. Implementation plan written for Option 4 (enhance temp_map at dep-collection time). Step 1: StoreLocal propagation (43% of problem). Ready to implement.
-> Known-failures: 1167. False-positive bails: ~168 (83 preserve-memo, 14 frozen-mutation, 9 reassign, 7 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
+> Latest session gains: tN dep resolution BREAKTHROUGH (approach #10). Skipped unnamed SSA temporaries in propagate_scope_dependencies_hir Phase 2 else-branch. Check 2 bails: 154 -> 0 (ELIMINATED). Check 1 bails: 0 -> 194 (correct). Slot accuracy: +3 (235 -> 238 MATCH). Conformance unchanged at 550/1717. 94 preserve-memo false bails now ALL from Check 1 (scope not completed), not Check 2 (dep mismatch). Blocker shifted from "tN dep resolution" to "scope inference for preserve-memo fixtures".
+> Known-failures: 1167. False-positive bails: ~168 (83 preserve-memo now ALL Check 1, 14 frozen-mutation, 9 reassign, 7 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
 > WE-COMPILE-THEY-DON'T: ~88 (69 scope-surplus with no upstream error, ~9 "Found 1 error" bail-outs remaining, 10 Flow parse errors). Down from 94 after Session 2 fixes.
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
@@ -25,7 +25,7 @@
 
 | Work Item | Pool Size | Potential Gain | Status |
 |-----------|-----------|---------------|--------|
-| Scope dep resolution (enhance temp_map) | 51 preserve-memo false bails + 28 validateInferredDep | +20-40 | **TOP PRIORITY** — Implementation plan ready. Step 1: StoreLocal propagation in `propagate_dependencies.rs` (43% of problem). Steps 2-4: MethodCall, BinaryExpr, Destructure resolution. 9 prior approaches exhausted (all skip/filter/trace). Fix is at dep-COLLECTION time, not validation. See [Deferred/Blocked](#scope-dep-resolution-ssa-temp---named-variable-mapping----implementation-plan-ready). |
+| Scope dep resolution (unnamed skip) | 94 preserve-memo false bails (Check 1) | +20-40 | **PARTIALLY RESOLVED** — Approach #10 (skip unnamed SSA temps in Phase 2 else-branch) ELIMINATED Check 2 bails (154 -> 0). Remaining 94 preserve-memo bails are ALL Check 1 (scope not completed). Blocker is now SCOPE INFERENCE: our compiler creates/keeps scopes that upstream prunes. See [Deferred/Blocked](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved). |
 | Scope inference fixes (slots-DIFFER) | ~572 | +50-100 | HIGH risk — cascading regression, scope MERGING is bottleneck |
 | Stage 4f remaining "Found 1 error" bails | ~9 | +5-9 | LOW risk — bail-to-pass, zero regression |
 | DCE + constant propagation remaining | ~90 | +5-15 | Blocked by 0-slot codegen (scope inference) |
@@ -52,7 +52,7 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 **Remaining:**
 - [ ] **Stage 2d: Frozen-mutation false positives (15 fixtures)** — BLOCKED. Root cause: transitive freeze propagation in aliasing pass. 3 approaches failed. See [bail-out-investigation.md](bail-out-investigation.md).
 - [ ] **Stage 2f: Reassignment false positives (10 fixtures)** — BLOCKED. Requires DeclareContext/StoreContext HIR lowering. Attempt caused -4 net.
-- [ ] **Stage 2i: Preserve-memo false-positive bails (55 fixtures)** — DEFINITIVELY BLOCKED. 8 approaches tried across 3 sessions, all net-negative (worst: -56). ALL skip/filter approaches are fundamentally flawed. Only fix: port upstream `ReactiveScopeDependency` type with full access paths. See blocker reports in [bail-out-investigation.md](bail-out-investigation.md).
+- [ ] **Stage 2i: Preserve-memo false-positive bails (94 fixtures, all Check 1)** — PARTIALLY UNBLOCKED. tN dep resolution solved (approach #10, Check 2 eliminated). Remaining 94 bails are Check 1 (scope not completed) — our scope inference keeps scopes that upstream prunes. Fix is now in SCOPE INFERENCE, not dep resolution. See [bail-out-investigation.md](bail-out-investigation.md).
 - [ ] **Stage 2h: Replan** — Categorize remaining bail-outs after all other fixes.
 - [ ] **Stage 2g residual** — setState-in-render (4), setState-in-effect (2), hooks (3), exhaustive-deps (1), silent (7), other (~10).
 
@@ -86,12 +86,12 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 #### Stage 4b: Preserve-memo validation (32 fixtures target)
 
-**4 of 32 passing.** Check 1 (scope completion tracking) implemented (+1). validateInferredDep (Check 2) ported correctly. 28 remaining BLOCKED by scope dep resolution (SSA temp IdentifierIds don't resolve to named variables). See Deferred/Blocked section.
+**4 of 32 passing.** Check 1 (scope completion tracking) implemented (+1). Check 2 (validateInferredDep) fully functional — tN dep resolution solved (approach #10 eliminated all Check 2 bails). 94 preserve-memo bails remain, ALL from Check 1 (scope not completed). Blocked by scope inference: our compiler creates scopes where upstream prunes them.
 
 | Sub-type | Count | Status |
 |----------|-------|--------|
-| Check 1 "value was memoized" | 17 | IMPLEMENTED. +1 conformance from scope completion tracking. Remaining gains blocked by scope dep resolution (Check 2 fires first on most fixtures). |
-| Check 2 validateInferredDep | 26 | 4 done, 28 BLOCKED by scope dep resolution |
+| Check 1 "value was memoized" | 94 bails | IMPLEMENTED but fires on 94 fixtures. Root cause: scope inference keeps scopes upstream prunes. Fix is in scope inference. |
+| Check 2 validateInferredDep | 0 bails | RESOLVED. Approach #10 (unnamed SSA temp skip) eliminated all 154 Check 2 bails. |
 | Check 3 "dependency may be mutated" | 17 | Not started |
 
 - [ ] Add "dependency may be mutated" tracking (17 fixtures)
@@ -143,27 +143,33 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 ## Active Work
 
-- [~] **tN dep resolution: enhance temp_map in propagate_dependencies.rs** — [bail-out-investigation.md](bail-out-investigation.md)#tn-dep-resolution-implementation-plan -- 9 skip/filter/trace approaches exhausted. Concrete fix: enhance temp_map at dep-COLLECTION time (Option 4). Step 1: StoreLocal propagation (43% of unresolvable deps). See implementation plan.
+- [~] **Preserve-memo Check 1 scope inference** — [bail-out-investigation.md](bail-out-investigation.md)#preserve-memo-check-1-scope-inference -- tN dep resolution SOLVED (approach #10, unnamed skip). 94 preserve-memo bails remain, ALL Check 1 (scope not completed). Root cause: our scope inference creates/keeps scopes where upstream prunes them. Next step: investigate which scopes upstream prunes and why ours don't.
 
 ---
 
 ## Deferred / Blocked Work
 
-### Scope Dep Resolution (SSA temp -> named variable mapping) -- IMPLEMENTATION PLAN READY
+### Scope Dep Resolution (SSA temp -> named variable mapping) -- PARTIALLY RESOLVED
 
-**Affects:** Stage 2i (51 false-positive bails), Stage 4b validateInferredDep (28 fixtures), B2 variable name preservation.
-**Problem:** After SSA, scope dependency IdentifierIds point to temporaries, not original named variables. `propagate_dependencies.rs` does not preserve the original dependency path.
-**Estimated gain:** StoreLocal fix alone: +10-20 fixtures. Full resolution: +20-40 fixtures.
+**Affects:** Stage 2i (94 preserve-memo false bails, now ALL Check 1), Stage 4b validateInferredDep, B2 variable name preservation.
+**Status:** tN dep resolution SOLVED at dep-collection level (approach #10). Check 2 bails eliminated (154 -> 0). Remaining problem is scope inference (Check 1).
 
-#### Root Cause (confirmed across 3 sessions)
+#### Breakthrough: Approach #10 — Skip unnamed SSA temps in Phase 2 else-branch
 
-1. `propagate_scope_dependencies_hir` Phase 2 adds scope deps from instruction operands
-2. When an operand has no temp_map entry (StoreLocal value is a computation result), it gets added as-is with unnamed IdentifierId
-3. `promote_used_temporaries` later names it "tN"
-4. **StoreLocal is the #1 producer (43%, 1553/3588)**, not CallExpression/MethodCall as previously assumed
-5. Upstream's `collectTemporaries()` handles StoreLocal propagation (if `x = $t`, then `$t` resolves to `x`'s resolution). Our temp_map does NOT.
+**What was done:** In `propagate_scope_dependencies_hir` Phase 2's else-branch, skip operands where `name == None` (unnamed SSA temporaries). These are computation results that have no source-level name and should not be added as scope deps.
 
-#### 9 Exhausted Approaches (do NOT retry)
+**Results:**
+- Conformance: 550/1717 (unchanged, zero regression)
+- Slot accuracy: +3 fixtures moved from DIFFER to MATCH (238 vs 235 baseline)
+- Check 2 (dep mismatch) bails: 154 -> **0** (COMPLETELY ELIMINATED)
+- Check 1 (scope not completed) bails: 0 -> 194 (correct behavior — these scopes genuinely aren't completed)
+- Preserve-memo false bail count: still 94 fixtures, but ALL from Check 1 instead of Check 2
+
+**Why this works:** Unnamed SSA temporaries are computation results (StoreLocal targets, CallExpression outputs, etc.) that get promoted to "tN" names by `promote_used_temporaries`. By skipping them at collection time, scope deps only contain named variables — matching upstream behavior. This is the FIRST net-positive infrastructure change across 10 approaches.
+
+**What changed:** The blocker has shifted from "tN dep resolution" to "scope inference for preserve-memo fixtures". The 94 remaining bails fire Check 1 because our scope inference creates/keeps scopes that upstream prunes. The fix is in scope creation/pruning, not dep resolution.
+
+#### 10 Approaches History
 
 | # | Approach | Result | Why |
 |---|----------|--------|-----|
@@ -176,51 +182,22 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 | 7 | MethodCall check removal | -4 | Lost true-positive bails |
 | 8 | Receiver-only MethodCall check | -4 | Wrong operand targeted |
 | 9 | Defining-operands backward trace | 0 | Semantically wrong (traced root is computation INPUT, not user's dep) |
+| **10** | **Skip unnamed SSA temps (name == None) in Phase 2 else-branch** | **+3 slot accuracy, 0 conformance change** | **FIRST net-positive. Check 2 eliminated. Correct approach.** |
 
-**All skip/filter approaches are fundamentally flawed.** The false-positive and true-positive bails share the same mechanism (tN dep mismatch). Backward-trace approaches find computation inputs, not source deps.
+**Key distinction:** Approaches 2-6 failed because they filtered by NAME pattern (after naming). Approach 10 works because it filters by ABSENCE of name (before naming) — structurally different. Unnamed operands are computation results that should never have been deps in the first place.
 
-#### Implementation Plan: Enhance temp_map at dep-COLLECTION time
+#### Remaining Problem: Check 1 Scope Inference
 
-**Strategy:** Enhance `propagate_scope_dependencies_hir` Phase 1.5 to handle more instruction types in temp_map, so deps resolve to named variables BEFORE they are stored. This REPLACES tN deps with correctly-resolved named deps (not removes them), which should improve codegen accuracy.
+94 preserve-memo fixtures bail on Check 1 ("value was not memoized" / scope not completed). Root cause: our scope inference creates reactive scopes for memo values where upstream either (a) prunes the scope, (b) merges it differently, or (c) never creates it. The fix is in scope inference, not dep resolution.
 
-**Step 1: StoreLocal propagation (highest impact, 43% of problem)**
-
-- **File:** `crates/oxc_react_compiler/src/reactive_scopes/propagate_dependencies.rs`
-- **What:** When processing `StoreLocal lvalue=x, value=$t`:
-  - If `$t` is NOT in temp_map but `$t`'s DEFINING instruction's lvalue IS in temp_map, propagate that resolution to `$t`
-  - If `x` has a name, map `instr.lvalue.identifier.id` to `{x, []}`
-- **Upstream reference:** `collectTemporaries()` in `PropagateScopeDependencies.ts` — handles `StoreLocal` by mapping `$t` to `x`'s resolution
-- **Risk:** MEDIUM. Will change codegen slots. Expect both positive changes (deps now named correctly) and negative changes (some fixtures matched by accident with wrong dep set). Run conformance after.
-- **Measure:** Run conformance, compare total and per-category. Any net-negative means the resolution is semantically wrong.
-
-**Step 2: MethodCall/CallExpression result resolution (if Step 1 is net-positive)**
-
-- **What:** Map computation result to receiver's resolution (MethodCall) or callee's resolution (CallExpression)
-- **Effect:** Gives deps a "root.method" path instead of "tN"
-- **Risk:** MEDIUM. Must verify upstream does this in `collectTemporaries()`.
-
-**Step 3: BinaryExpression/UnaryExpression result resolution**
-
-- **What:** Map to left operand's resolution (convention: leftmost reactive operand)
-- **Risk:** LOW. These are less common (smaller fraction of unresolvable deps).
-
-**Step 4: Destructure result resolution**
-
-- **What:** Map destructure output to the destructured value's resolution
-- **Risk:** LOW-MEDIUM. Must handle multi-output destructures correctly.
-
-#### Why codegen changes are expected (and why that's OK)
-
-Changing temp_map changes which operands resolve to named deps vs. tN deps. This changes `scope.dependencies`, which changes codegen slots. Previous approaches regressed because they REMOVED deps (skip/filter). This approach REPLACES tN deps with correctly-resolved named deps, which should IMPROVE codegen accuracy (closer to upstream's dep set). Each step must be measured independently.
+**Potential approaches:**
+1. Investigate which specific scopes upstream prunes that we keep — compare `InferReactiveScopeVariables.ts` scope creation logic
+2. Check if `PruneNonReactiveDependencies` or `PruneUnusedScopes` upstream prunes scopes that our equivalents don't
+3. May overlap with Stage 3 scope inference work (mutable range accuracy, scope merging)
 
 #### Long-term: Port ReactiveScopeDependency type
 
-Steps 1-4 are a pragmatic incremental fix. The full upstream solution uses a `ReactiveScopeDependency` type with property access paths (not just IdentifierId). If Steps 1-4 are insufficient, the full type port is needed. Steps 1-4 are NOT wasted work in that case — they build the resolution infrastructure that the full port would also need.
-
-#### Prerequisites
-
-- None. This work can start immediately. The investigation is complete and the fix point is identified.
-- Check 1 (scope completion tracking) is already done and provides a small safety net for fixtures where scope-level mismatch is the real issue.
+The full upstream solution uses a `ReactiveScopeDependency` type with property access paths. This may still be needed for full upstream fidelity, but the IMMEDIATE blocker (Check 2 tN deps) is resolved. The remaining Check 1 problem is orthogonal to dep resolution.
 
 ### Other Blocked Items
 
@@ -299,7 +276,7 @@ All paths relative to `crates/oxc_react_compiler/`.
 
 The project has reached a clear inflection point. All low-risk, codegen-only, and bail-out-only gains have been exhausted. The remaining path to 600+ is dominated by two infrastructure problems:
 
-1. **Scope dep resolution** — SSA temporaries obscure original variable identities. This blocks preserve-memo validation (51 false bails + 29 error fixtures = 80 fixtures affected), B2 variable naming, and any feature needing source-level dep names. Implementation plan ready: enhance temp_map in `propagate_dependencies.rs` Phase 1.5 to handle StoreLocal propagation (43% of problem), then MethodCall/CallExpression/BinaryExpression/Destructure results. See [implementation plan](#scope-dep-resolution-ssa-temp---named-variable-mapping----implementation-plan-ready).
+1. **Scope dep resolution** — PARTIALLY RESOLVED. Approach #10 (skip unnamed SSA temps in Phase 2 else-branch) eliminated Check 2 dep-mismatch bails entirely (154 -> 0). The remaining 94 preserve-memo false bails are ALL Check 1 (scope not completed). The blocker has shifted to SCOPE INFERENCE: our compiler creates/keeps scopes where upstream prunes them. This overlaps with Stage 3 scope inference work. See [blocker details](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved).
 
 2. **Scope inference accuracy** — `last_use_map` in `infer_mutation_aliasing_ranges.rs` produces wider ranges than upstream, causing over-merging and surplus scopes. This is the root cause behind ~572 slot-differ, ~90 both-no-memo (0-slot codegen), and ~69 we-compile-they-don't surplus fixtures. 6+ approaches have been tried and all regressed. The prerequisites are: (a) receiver mutation effects for MethodCall, (b) reverse scope propagation, (c) `dep.reactive` flag audit.
 
@@ -309,6 +286,6 @@ Every remaining conformance gain of significant size (>10 fixtures) depends on o
 - `effective_range` cannot be replaced with `mutable_range` (6 attempts, all regressed)
 - `collect_all_scope_declarations` is load-bearing for render (96%->24% without it)
 - Pre-validation DCE must preserve StoreLocal/DeclareLocal for validators
-- ALL skip/filter approaches to preserve-memo bails are fundamentally flawed (8 attempts across 3 sessions, worst -56). Backward-trace approaches are structurally correct but semantically insufficient (traced root is computation input, not user's dep). Fix must happen at dep-COLLECTION time, not validation time.
+- Skip/filter approaches to preserve-memo bails that filter by NAME pattern are fundamentally flawed (approaches 2-6, 9; worst -56). However, filtering by ABSENCE of name (approach #10, unnamed SSA temps) WORKS — key distinction is structural (pre-naming) vs pattern (post-naming). Check 2 is now eliminated; remaining problem is Check 1 (scope inference).
 - 0-slot codegen via IR reconstruction is architecturally wrong (-52 twice); must use source-text editing
 - Pruning cannot fix scope merging problems; the fix must be in scope creation/merging itself

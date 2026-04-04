@@ -23,7 +23,7 @@ Four file-level bail-outs removed or converted to per-function bails. See `index
 
 | Error Category | Count | Fixable? | Notes |
 |---------------|-------|----------|-------|
-| Existing memo preservation (preserve-memo) | **55** (was 4; +51 from validateInferredDep regression) | **HIGH PRIORITY** | `validateInferredDep` scope dep resolution failures — scope deps resolve to SSA temps, not named variables. Fixing dep resolution would eliminate ~51 false positives. **SINGLE LARGEST BAIL-OUT CATEGORY.** |
+| Existing memo preservation (preserve-memo) | **94** (all Check 1 since approach #10) | **HIGH PRIORITY** | Check 2 (validateInferredDep) ELIMINATED by approach #10. All 94 bails now from Check 1 (scope not completed). Root cause: scope inference creates scopes upstream prunes. Fix is in scope inference. **SINGLE LARGEST BAIL-OUT CATEGORY.** |
 | Frozen mutation (false positive) | 15 | MEDIUM | `InferMutableRanges` over-reports mutations on frozen values. Includes IIFE false positives from name-based freeze tracking. |
 | Cannot reassign outside component | 11 | BLOCKED | `validateLocalsNotReassignedAfterRender` false positives. Stage 2f attempted and FAILED (-4 net). Requires DeclareContext/StoreContext HIR lowering. |
 | (no error / silent) | 8 | MIXED | Various |
@@ -163,7 +163,7 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 - **The fix must happen at dep-COLLECTION time** (in `propagate_scope_dependencies_hir`), not at validation time. When a scope dep is added via the else-branch, resolve it forward-to-named before storing, so the stored dep matches what upstream would have stored.
 - **WARNING:** Changing scope deps at collection time WILL affect codegen slots for all fixtures, not just preserve-memo. This is why approaches 2 and 5 regressed so heavily (-15 and -55). The resolution must be semantically correct (matching upstream), not just filtering.
 
-**Do NOT attempt again until:** Either (a) `propagate_scope_dependencies_hir` is enhanced to resolve deps forward-to-named at collection time, matching upstream's `collectTemporaries()` behavior (specifically: StoreLocal propagation, which accounts for 43% of unresolvable deps), OR (b) the full upstream `ReactiveScopeDependency` type with property access paths is ported. Skip/filter approaches (8 tried) and backward-trace approaches (1 tried) are both exhausted. Without structural dep-collection changes, any attempt to reduce the 55 false bails will cause a net conformance regression.
+**UPDATE (2026-04-03): RESOLVED by approach #10.** The unnamed SSA temp skip in Phase 2 else-branch eliminated all Check 2 bails (154 -> 0) with zero regression. The skip/filter by NAME approaches documented above remain invalid, but filtering by ABSENCE of name (pre-naming) works. The remaining 94 preserve-memo bails are Check 1 (scope not completed) — a different problem requiring scope inference fixes.
 
 ### Blocker Report — Stage 2i Attempt 4: Temp-name-skipping in validateInferredDep (2026-04-03)
 
@@ -175,7 +175,7 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 
 **Conclusion:** ALL skip/filter approaches to preserve-memo false-positive bails are fundamentally flawed. The false-positive and true-positive bails share the same mechanism (temp-named dep mismatch). You cannot distinguish them without fixing the underlying scope dep resolution problem (SSA temp -> named variable mapping).
 
-**Do NOT attempt ANY further skip/filter approaches.** The only viable path forward is fixing scope dep resolution so that validateInferredDep can correctly compare deps by their original source-level names.
+~~**Do NOT attempt ANY further skip/filter approaches.**~~ **UPDATE (2026-04-03):** Approach #10 (skip unnamed SSA temps, name == None) WORKS. The key distinction: filtering by absence of name (pre-naming) is safe; filtering by name pattern (post-naming) is not. Check 2 is now eliminated. Remaining problem is Check 1 (scope inference).
 
 ---
 
@@ -193,121 +193,81 @@ The `validateInferredDep` implementation in `validate_preserved_manual_memoizati
 
 **File:** `crates/oxc_react_compiler/src/validation/validate_preserved_manual_memoization.rs`
 
-### Part B: tN dep resolution -- DEFINITIVELY BLOCKED
+### Part B: tN dep resolution -- RESOLVED (Approach #10)
 
-**Original hypothesis:** Check 1 would provide an alternative bail path for error fixtures, allowing Part B (removing tN false deps) to proceed without regression.
+**Original blocker:** Check 2 (validateInferredDep) fired on 154 fixtures because scope deps resolved to SSA temporaries ("tN" names) instead of source-level variable names. 9 approaches tried across 3 sessions, all net-negative or neutral.
 
-**What actually happened:** Check 1 does NOT provide the alternative bail path. Error fixtures still need Check 2's tN dep mismatch to bail correctly. This means ALL approaches to removing/filtering tN deps remain net-negative.
+**Breakthrough — Approach #10 (2026-04-03):** Skip unnamed SSA temporaries (name == None) in `propagate_scope_dependencies_hir` Phase 2's else-branch. This is structurally different from prior approaches which filtered by NAME PATTERN (post-naming). Approach #10 filters by ABSENCE of name (pre-naming).
 
-### Blocker Report — Part B: tN Dep Resolution (2026-04-03)
+**Results:**
+- Conformance: 550/1717 (unchanged — zero regression)
+- Slot accuracy: +3 fixtures moved from DIFFER to MATCH (238 vs 235 baseline)
+- Check 2 (dep mismatch) bails: 154 -> **0** (COMPLETELY ELIMINATED)
+- Check 1 (scope not completed) bails: 0 -> 194 (correct behavior)
+- Preserve-memo false bail count: still 94 fixtures, but ALL from Check 1 instead of Check 2
 
-**5 additional approaches attempted in this session (on top of 4 prior attempts):**
+**Why this works when prior approaches failed:**
+- Approaches 2-6 filtered by name pattern ("tN", "unnamed", etc.) AFTER `promote_used_temporaries` named them. This caught both false-positive deps AND load-bearing deps that error fixtures needed.
+- Approach #10 filters by `name == None` BEFORE naming. Unnamed operands are computation results (StoreLocal targets, CallExpression outputs, etc.) that were never source-level variables. They should never have been scope deps. Named operands (even if they'll later become "tN") are preserved because they carry real dependency information.
+- Key insight: the structural difference between "has no name yet" and "has a compiler-generated name" is semantically meaningful. The former are computation artifacts; the latter are real variables that just haven't been given user-visible names.
 
-| # | Approach | Location | Result | Why it failed |
-|---|----------|----------|--------|---------------|
-| 5 | Skip tN deps in propagate_dependencies.rs | `propagate_dependencies.rs` Phase 2 | -55 | Changes codegen slot assignments for all fixtures, not just preserve-memo |
-| 6 | Skip synthetic tN names in resolve_scope_dep | `validate_preserved_manual_memoization.rs` | -55 | Removes load-bearing bails from error fixtures (same mechanism as attempt 3) |
-| 7 | Remove MethodCall check entirely | `validate_preserved_manual_memoization.rs` | -4 | Freed fixtures still fail on slot mismatch; lost 4 true-positive bails |
-| 8 | Receiver-only MethodCall check | `validate_preserved_manual_memoization.rs` | -4 | Catches wrong patterns — receiver is not the relevant operand |
-| 9 | Defining-operands backward trace | `propagate_dependencies.rs` + `validate_preserved_manual_memoization.rs` + `pipeline.rs` | 0 (neutral) | Finds named roots in 15/76 cases, but traced roots are computation INPUTS, not user's source deps. Semantic gap: recovering an input to a computation is not the same as resolving the dep the user listed. |
+### 10 Approaches: Complete History
 
-**Key finding (refined):** ALL 76 preserve-memo false bails are Check 2 (validateInferredDep), caused by synthetic tN-named deps. 55 of those are load-bearing (error fixtures bail "by accident" via tN mismatch). **StoreLocal is the #1 producer of unresolvable tN deps (43%, 1553/3588)**, not CallExpression or MethodCall as previously assumed. The pattern is `StoreLocal x = $result` where `$result`'s LoadLocal was inlined away before the temp map was built.
+| # | Approach | Location | Result | Why |
+|---|----------|----------|--------|-----|
+| 1 | Build temp map before inline_load_local_temps | `propagate_dependencies.rs` | 0 | Same entries regardless of timing |
+| 2 | Skip unnamed deps in propagation | `propagate_dependencies.rs` | -15 | Removes real deps needed downstream |
+| 3 | Skip "tN" in resolve_scope_dep | `validate_preserved_manual_memoization.rs` | -31 | Error fixtures lose bail path |
+| 4 | Skip "tN" in validateInferredDep | `validate_preserved_manual_memoization.rs` | -56 | Broader filtering, worse regression |
+| 5 | Skip tN deps in propagate_dependencies.rs | `propagate_dependencies.rs` Phase 2 | -55 | Changes codegen slot assignments for all fixtures |
+| 6 | Skip synthetic tN names in resolve_scope_dep | `validate_preserved_manual_memoization.rs` | -55 | Same mechanism as attempt 3 |
+| 7 | Remove MethodCall check entirely | `validate_preserved_manual_memoization.rs` | -4 | Lost true-positive bails |
+| 8 | Receiver-only MethodCall check | `validate_preserved_manual_memoization.rs` | -4 | Wrong operand targeted |
+| 9 | Defining-operands backward trace | multiple files + `pipeline.rs` | 0 | Traced root is computation INPUT, not user's dep |
+| **10** | **Skip unnamed SSA temps (name == None) in Phase 2 else-branch** | **`propagate_dependencies.rs`** | **+3 slot accuracy, 0 conformance** | **WORKS. Filters pre-naming, not post-naming. Check 2 eliminated.** |
 
-**Why Check 1 didn't help:** The error fixtures that bail via tN mismatch do so because their memo values DO have completed scopes (scope inference creates scopes for them). Check 1 passes for these fixtures — they are "memoized" from Check 1's perspective. They only bail because Check 2 sees tN deps that don't match manual deps. Removing the tN deps removes their bail path with no replacement.
+**Lesson learned:** When filtering deps, the distinction between "no name" and "wrong name" is critical. Pre-naming filters (name == None) are safe because they target structural artifacts. Post-naming filters (pattern matching "tN") are dangerous because they cannot distinguish load-bearing deps from spurious ones.
 
-**Assumption that was wrong:** Assumed error fixtures would fail Check 1 (scope not completed) and could be caught there instead of Check 2. In reality, our scope inference creates scopes for most memo values, so Check 1 passes even when upstream would prune/not-create those scopes.
+### Remaining Problem: Preserve-Memo Check 1 (Scope Inference)
 
-**9 total approaches tried across all sessions, ALL net-negative or neutral.** The skip/filter strategy is fundamentally exhausted. The backward-trace strategy (defining_operands) is structurally correct but semantically insufficient.
+<a id="preserve-memo-check-1-scope-inference"></a>
 
-**Critical insight from attempt 9 (defining_operands trace):**
-- StoreLocal is the dominant producer of unresolvable deps (43%, 1553/3588)
-- The "defining_operands" backward-trace approach was prototyped with 3 new constructs (`DefiningOperandsMap`, `build_defining_operands_map_hir/rf`, `resolve_through_defining_operands`) and pipeline threading
-- Of 76 traces: 15 found a named root, 61 terminated at opaque instructions (Primitive, LoadGlobal, FunctionExpression)
-- Of the 15 successful traces: 0 matched the user's source dep array. The traced root is an INPUT to a computation (e.g., `onFoo`), while upstream's dep resolves to a different named path (e.g., `props`)
-- **The semantic gap is deeper than expected:** our deps reference computation RESULTS while upstream's reference named INPUTS. The fix must happen at dep-COLLECTION time (in `propagate_scope_dependencies_hir`), not at validation time
-- Upstream's `collectTemporaries()` covers more patterns than our temp_map: specifically `StoreLocal` propagation (if `x = $t`, then `$t` resolves to whatever `x` resolves to)
+With Check 2 eliminated, the 94 remaining preserve-memo false bails ALL come from Check 1 ("value was not memoized" / scope not completed). Root cause: our scope inference creates reactive scopes for memo values where upstream either prunes the scope, merges it differently, or never creates it.
 
-**Only viable path forward:** Port upstream's richer `ReactiveScopeDependency` type which includes the full property access path, AND fix dep collection in `propagate_scope_dependencies_hir` to resolve forward-to-named when storing deps. This would let validateInferredDep compare deps by their source-level names (e.g., `props.x`) instead of SSA temp names (e.g., `t1`). This is a significant refactor of:
-- `propagate_dependencies.rs` (dep collection and resolution — the fix point)
-- `validate_preserved_manual_memoization.rs` (dep comparison)
-- Possibly `prune_scopes.rs` and `codegen.rs` (dep consumers)
+**Why Check 1 fires:** When a `FinishMemoize` instruction checks whether its operand's scope is in `completed_scopes`, the scope is NOT there — because our scope inference kept/created a scope that upstream would have pruned, and the scope boundaries don't align with what the user's `useMemo`/`useCallback` expected.
 
-**WARNING:** Changing scope deps at collection time WILL affect codegen slots. This was the reason all previous skip-in-propagation approaches regressed. The fix must be semantically correct (matching upstream's resolution), not just filtering.
+**This is a DIFFERENT problem from tN dep resolution.** The fix is in scope inference (how scopes are created, merged, and pruned), not dep resolution (how deps are named).
 
-**Do NOT attempt any further skip/filter or backward-trace approaches.** The only viable path is structural: fixing dep collection to resolve forward-to-named.
+**Potential investigation directions:**
+1. Compare `InferReactiveScopeVariables.ts` scope creation — which variables get scopes and which don't?
+2. Compare `PruneNonReactiveDependencies.ts` / `PruneUnusedScopes` — which scopes get pruned?
+3. Check if mutable range accuracy (Stage 3 prerequisite) affects which scopes are created for memo values
+4. This may be the SAME root cause as the ~572 slot-differ fixtures (Stage 3) — scope over-creation/over-merging
+
+**Do NOT attempt skip/filter approaches on Check 1.** The lesson from Check 2 applies: the fix must be structural (scope inference accuracy), not filtering.
 
 ---
 
-## tN Dep Resolution: Implementation Plan
+## tN Dep Resolution: Implementation Plan -- SUPERSEDED BY APPROACH #10
 
-> **Status:** Ready to implement. Investigation complete (3 sessions, 9 approaches exhausted).
-> **Upstream:** `PropagateScopeDependencies.ts` (`collectTemporaries()`)
-> **Our file:** `crates/oxc_react_compiler/src/reactive_scopes/propagate_dependencies.rs`
+> **Status:** RESOLVED. Approach #10 (skip unnamed SSA temps in Phase 2 else-branch) eliminated all Check 2 bails without needing the full temp_map enhancement. The implementation plan below is preserved for reference but is no longer the active path forward.
 
-### Problem Summary
+~~### Problem Summary~~
+~~76 preserve-memo false bails caused by synthetic tN-named scope deps.~~
 
-76 preserve-memo false bails caused by synthetic tN-named scope deps. 55 are "load-bearing" (error fixtures that bail correctly via wrong mechanism). StoreLocal is #1 producer of unresolvable deps (43%, 1553/3588). Upstream's `collectTemporaries()` handles StoreLocal propagation; our temp_map does not.
+**Resolution:** Approach #10 eliminates unnamed SSA temps at collection time, which is simpler and more effective than enhancing temp_map resolution. Check 2 bails went from 154 to 0 with zero regression. The remaining problem (94 Check 1 bails) requires scope inference fixes, not further dep resolution work.
 
-### Strategy: Enhance temp_map at dep-COLLECTION time
+### Preserved for Reference: temp_map Enhancement Steps
 
-Instead of removing or filtering tN deps (which all 9 approaches tried and failed), REPLACE them with correctly-resolved named deps by enhancing `propagate_scope_dependencies_hir` Phase 1.5. This changes the dep set to be closer to upstream's, which should improve codegen accuracy.
+The following steps may still be useful if full `ReactiveScopeDependency` path support is needed later (for codegen accuracy or upstream fidelity beyond preserve-memo):
 
-### Step 1: StoreLocal propagation (43% of unresolvable deps)
+- **Step 1:** StoreLocal propagation in temp_map (43% of unnamed deps)
+- **Step 2:** MethodCall/CallExpression result resolution
+- **Step 3:** BinaryExpression/UnaryExpression result resolution
+- **Step 4:** Destructure result resolution
+- **Long-term:** Full `ReactiveScopeDependency` type with property access paths
 
-**What to do:**
-1. In `propagate_dependencies.rs`, find where `temp_map` is built (Phase 1 / `build_temporaries_map_from_hir`)
-2. Add a new pass or extend existing logic: when processing `StoreLocal lvalue=x, value=$t`:
-   - If `x` has a named identifier, add entry: `instr.lvalue.identifier.id` maps to `ResolvedDep { name: x.name, path: [] }`
-   - If `$t` is NOT already in temp_map but its defining instruction's lvalue IS, propagate that resolution
-3. This mirrors upstream's `collectTemporaries()` which maps `$t -> x` when it sees `x = $t`
-
-**What to measure:**
-- Run conformance before and after
-- Count total tN-named deps before and after (should decrease significantly)
-- Track per-category changes: preserve-memo bails, error fixture bails, slot-match/differ counts
-- Any net-negative means the resolution is semantically wrong — revert and investigate
-
-**Risk:** MEDIUM. Codegen slots WILL change. Some fixtures that currently pass by accident (with wrong dep set) may regress. But the dep set should be MORE correct, so net change should be positive.
-
-### Step 2: MethodCall/CallExpression result resolution
-
-**Prerequisite:** Step 1 is net-positive.
-
-**What to do:**
-- When a MethodCall or CallExpression instruction produces a result, map the result's identifier to the receiver's (MethodCall) or callee's (CallExpression) resolution
-- Check upstream `collectTemporaries()` to verify this is the correct mapping
-
-**Risk:** MEDIUM. Must verify upstream behavior. Incorrect mapping would associate deps with wrong names.
-
-### Step 3: BinaryExpression/UnaryExpression result resolution
-
-**What to do:**
-- Map computation result to left operand's resolution (convention: leftmost reactive operand)
-- These are a smaller fraction of unresolvable deps
-
-**Risk:** LOW.
-
-### Step 4: Destructure result resolution
-
-**What to do:**
-- Map destructure output identifiers to the destructured value's resolution
-- Must handle multi-output destructures (each output maps to the same root with different path suffixes)
-
-**Risk:** LOW-MEDIUM.
-
-### Long-term: Full ReactiveScopeDependency port
-
-If Steps 1-4 are insufficient, port the full upstream `ReactiveScopeDependency` type with property access paths. Steps 1-4 are NOT wasted — they build the resolution infrastructure the full port needs. The full port would also require changes to:
-- `validate_preserved_manual_memoization.rs` (dep comparison uses access paths)
-- `prune_scopes.rs` (dep merging/dedup with paths)
-- `codegen.rs` (dep rendering with paths)
-
-### Key Files to Read Before Starting
-
-1. **Upstream `collectTemporaries()`:** In `PropagateScopeDependencies.ts`, find the function that builds the temporary-to-named resolution map. Understand exactly which instruction types it handles.
-2. **Our `build_temporaries_map_from_hir`:** In `propagate_dependencies.rs`, understand what it currently covers (LoadLocal -> PropertyLoad chains only).
-3. **Our `propagate_scope_dependencies_hir` Phase 2:** The else-branch where unnamed deps are added — this is where the resolved dep should be used instead.
-4. **`promote_used_temporaries`:** Pass 29 in pipeline. Understand how it names unnamed identifiers to "tN" — this is the pass that creates the symptom.
+These are NOT needed for the preserve-memo problem (solved by approach #10). They would improve dep NAMING accuracy for codegen slot matching (the ~572 slot-differ fixtures), but that's a separate concern from the bail-out problem.
 
 ---
 
