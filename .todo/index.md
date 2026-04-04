@@ -25,7 +25,7 @@
 
 | Work Item | Pool Size | Potential Gain | Status |
 |-----------|-----------|---------------|--------|
-| Scope dep resolution (unnamed skip) | 94 preserve-memo false bails (Check 1) | +20-40 | **PARTIALLY RESOLVED** — Approach #10 (skip unnamed SSA temps in Phase 2 else-branch) ELIMINATED Check 2 bails (154 -> 0). Remaining 94 preserve-memo bails are ALL Check 1 (scope not completed). Blocker is now SCOPE INFERENCE: our compiler creates/keeps scopes that upstream prunes. See [Deferred/Blocked](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved). |
+| Scope dep resolution (unnamed skip) | 94 preserve-memo false bails (Check 1) | +20-80 | **INFRASTRUCTURE READY, BLOCKED by Stage 3.** Approach #10 eliminated Check 2 bails (154->0). Scope propagation to FinishMemoize.decl tested: bails 94->14 (-80!) but -52 conformance regression from scope surplus. Code is ready; needs Stage 3 scope inference accuracy first. See [Deferred/Blocked](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved). |
 | Scope inference fixes (slots-DIFFER) | ~572 | +50-100 | HIGH risk — cascading regression, scope MERGING is bottleneck |
 | Stage 4f remaining "Found 1 error" bails | ~9 | +5-9 | LOW risk — bail-to-pass, zero regression |
 | DCE + constant propagation remaining | ~90 | +5-15 | Blocked by 0-slot codegen (scope inference) |
@@ -52,7 +52,7 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 **Remaining:**
 - [ ] **Stage 2d: Frozen-mutation false positives (15 fixtures)** — BLOCKED. Root cause: transitive freeze propagation in aliasing pass. 3 approaches failed. See [bail-out-investigation.md](bail-out-investigation.md).
 - [ ] **Stage 2f: Reassignment false positives (10 fixtures)** — BLOCKED. Requires DeclareContext/StoreContext HIR lowering. Attempt caused -4 net.
-- [ ] **Stage 2i: Preserve-memo false-positive bails (94 fixtures, all Check 1)** — PARTIALLY UNBLOCKED. tN dep resolution solved (approach #10, Check 2 eliminated). Remaining 94 bails are Check 1 (scope not completed) — our scope inference keeps scopes that upstream prunes. Fix is now in SCOPE INFERENCE, not dep resolution. See [bail-out-investigation.md](bail-out-investigation.md).
+- [ ] **Stage 2i: Preserve-memo false-positive bails (94 fixtures, all Check 1)** — BLOCKED by Stage 3. Scope propagation to FinishMemoize.decl implemented and tested: bails 94->14 (-80!) but conformance -52 regression from error fixtures. Root cause: our scope inference creates scopes upstream doesn't — propagating them exposes the surplus. Code is READY, blocked by scope inference accuracy. See [bail-out-investigation.md](bail-out-investigation.md).
 - [ ] **Stage 2h: Replan** — Categorize remaining bail-outs after all other fixes.
 - [ ] **Stage 2g residual** — setState-in-render (4), setState-in-effect (2), hooks (3), exhaustive-deps (1), silent (7), other (~10).
 
@@ -90,7 +90,7 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 | Sub-type | Count | Status |
 |----------|-------|--------|
-| Check 1 "value was memoized" | 94 bails | IMPLEMENTED but fires on 94 fixtures. Root cause: scope inference keeps scopes upstream prunes. Fix is in scope inference. |
+| Check 1 "value was memoized" | 94 bails (14 with scope propagation) | IMPLEMENTED. Scope propagation to FinishMemoize.decl tested: 94->14 bails (-80). But -52 conformance regression (error fixtures pass Check 1 incorrectly due to scope surplus). Code READY, BLOCKED by Stage 3 scope inference accuracy. |
 | Check 2 validateInferredDep | 0 bails | RESOLVED. Approach #10 (unnamed SSA temp skip) eliminated all 154 Check 2 bails. |
 | Check 3 "dependency may be mutated" | 17 | Not started |
 
@@ -143,7 +143,7 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 ## Active Work
 
-- [~] **Preserve-memo Check 1 scope inference** — [bail-out-investigation.md](bail-out-investigation.md)#preserve-memo-check-1-scope-inference -- tN dep resolution SOLVED (approach #10, unnamed skip). 94 preserve-memo bails remain, ALL Check 1 (scope not completed). Root cause: our scope inference creates/keeps scopes where upstream prunes them. Next step: investigate which scopes upstream prunes and why ours don't.
+- [~] **Preserve-memo Check 1 scope inference** — [bail-out-investigation.md](bail-out-investigation.md)#preserve-memo-check-1-scope-inference -- Scope propagation to FinishMemoize.decl TESTED: bails 94->14 (-80!) but -52 conformance regression. Infrastructure is READY but BLOCKED by Stage 3 scope inference accuracy. The 52 regressed fixtures are error fixtures where our surplus scopes cause Check 1 to incorrectly pass. Dependency chain: Stage 3 scope accuracy -> scope propagation -> correct Check 1 -> up to +80 preserve-memo fixtures.
 
 ---
 
@@ -186,14 +186,23 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 **Key distinction:** Approaches 2-6 failed because they filtered by NAME pattern (after naming). Approach 10 works because it filters by ABSENCE of name (before naming) — structurally different. Unnamed operands are computation results that should never have been deps in the first place.
 
-#### Remaining Problem: Check 1 Scope Inference
+#### Remaining Problem: Check 1 Scope Inference — BLOCKED by Stage 3
 
 94 preserve-memo fixtures bail on Check 1 ("value was not memoized" / scope not completed). Root cause: our scope inference creates reactive scopes for memo values where upstream either (a) prunes the scope, (b) merges it differently, or (c) never creates it. The fix is in scope inference, not dep resolution.
 
-**Potential approaches:**
-1. Investigate which specific scopes upstream prunes that we keep — compare `InferReactiveScopeVariables.ts` scope creation logic
-2. Check if `PruneNonReactiveDependencies` or `PruneUnusedScopes` upstream prunes scopes that our equivalents don't
-3. May overlap with Stage 3 scope inference work (mutable range accuracy, scope merging)
+**Scope propagation to FinishMemoize.decl — tested and validated (2026-04-03):**
+- In `infer_reactive_scope_variables.rs` Phase 5, propagated scopes to `FinishMemoize.decl` and deps places
+- Result: bails 94 -> 14 (-80!), but conformance 550 -> 498 (-52 regression)
+- The -52 comes from error fixtures where our surplus scopes cause Check 1 to incorrectly pass
+- **Code is CORRECT and READY** — just needs accurate scope inference underneath it
+- **Do NOT re-enable until Stage 3 scope inference accuracy improves**
+
+**Dependency chain (confirmed by experiment):**
+1. **Stage 3** — fix scope over-creation/over-merging (mutable range accuracy, scope merging algorithm)
+2. **Re-enable scope propagation to FinishMemoize.decl** (infrastructure ready)
+3. **Correct Check 1 behavior** — up to +80 preserve-memo fixtures become passing
+
+This confirms that Stage 3 scope inference is the critical path for BOTH the ~572 slot-differ fixtures AND the 94 preserve-memo false bails. The two problems share the same root cause: scope surplus.
 
 #### Long-term: Port ReactiveScopeDependency type
 
@@ -276,7 +285,7 @@ All paths relative to `crates/oxc_react_compiler/`.
 
 The project has reached a clear inflection point. All low-risk, codegen-only, and bail-out-only gains have been exhausted. The remaining path to 600+ is dominated by two infrastructure problems:
 
-1. **Scope dep resolution** — PARTIALLY RESOLVED. Approach #10 (skip unnamed SSA temps in Phase 2 else-branch) eliminated Check 2 dep-mismatch bails entirely (154 -> 0). The remaining 94 preserve-memo false bails are ALL Check 1 (scope not completed). The blocker has shifted to SCOPE INFERENCE: our compiler creates/keeps scopes where upstream prunes them. This overlaps with Stage 3 scope inference work. See [blocker details](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved).
+1. **Scope dep resolution + preserve-memo Check 1** — Check 2 RESOLVED (approach #10). Check 1 infrastructure READY: scope propagation to FinishMemoize.decl reduces bails 94->14 (-80!) but causes -52 regression from scope surplus. This CONFIRMS that Stage 3 scope inference is the single critical path for both preserve-memo (+80 potential) and slot-differ (+50-100 potential). See [blocker details](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved).
 
 2. **Scope inference accuracy** — `last_use_map` in `infer_mutation_aliasing_ranges.rs` produces wider ranges than upstream, causing over-merging and surplus scopes. This is the root cause behind ~572 slot-differ, ~90 both-no-memo (0-slot codegen), and ~69 we-compile-they-don't surplus fixtures. 6+ approaches have been tried and all regressed. The prerequisites are: (a) receiver mutation effects for MethodCall, (b) reverse scope propagation, (c) `dep.reactive` flag audit.
 
@@ -289,3 +298,4 @@ Every remaining conformance gain of significant size (>10 fixtures) depends on o
 - Skip/filter approaches to preserve-memo bails that filter by NAME pattern are fundamentally flawed (approaches 2-6, 9; worst -56). However, filtering by ABSENCE of name (approach #10, unnamed SSA temps) WORKS — key distinction is structural (pre-naming) vs pattern (post-naming). Check 2 is now eliminated; remaining problem is Check 1 (scope inference).
 - 0-slot codegen via IR reconstruction is architecturally wrong (-52 twice); must use source-text editing
 - Pruning cannot fix scope merging problems; the fix must be in scope creation/merging itself
+- Scope propagation to FinishMemoize.decl is correct infrastructure but premature without Stage 3: reduces bails 94->14 but causes -52 from error fixtures that incorrectly pass Check 1 due to scope surplus. Stage 3 scope accuracy is the single gating prerequisite for both preserve-memo and slot-differ gains.

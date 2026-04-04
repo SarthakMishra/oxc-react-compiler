@@ -238,13 +238,27 @@ With Check 2 eliminated, the 94 remaining preserve-memo false bails ALL come fro
 
 **This is a DIFFERENT problem from tN dep resolution.** The fix is in scope inference (how scopes are created, merged, and pruned), not dep resolution (how deps are named).
 
-**Potential investigation directions:**
-1. Compare `InferReactiveScopeVariables.ts` scope creation — which variables get scopes and which don't?
-2. Compare `PruneNonReactiveDependencies.ts` / `PruneUnusedScopes` — which scopes get pruned?
-3. Check if mutable range accuracy (Stage 3 prerequisite) affects which scopes are created for memo values
-4. This may be the SAME root cause as the ~572 slot-differ fixtures (Stage 3) — scope over-creation/over-merging
+**Investigation completed (2026-04-03): Scope propagation to FinishMemoize.decl**
 
-**Do NOT attempt skip/filter approaches on Check 1.** The lesson from Check 2 applies: the fix must be structural (scope inference accuracy), not filtering.
+Implemented and tested: In `infer_reactive_scope_variables.rs` Phase 5, after assigning scopes to instruction lvalues, also propagated scopes to `FinishMemoize.decl` and deps places.
+
+**Results:**
+- Preserve-memo bails: 94 -> 14 (-80 bails eliminated!)
+- But conformance: 550 -> 498 (-52 regression)
+- 52 error fixtures that were bailing via Check 1 (None->true, scope missing) now pass Check 1 because their decl's scope IS completed in our system
+
+**Root cause of the -52 regression:** Our scope inference creates scopes for memoized values that upstream does NOT create. When those scopes are propagated to `FinishMemoize.decl`, Check 1 sees the scope as completed and does not bail. Upstream doesn't create those scopes, so upstream's Check 1 finds them unmemoized and bails correctly. The 52 "load-bearing" fixtures are error fixtures where upstream bails because its scope inference is more accurate (doesn't create unnecessary scopes). Our scope inference creates too many scopes (the ~572 "slots DIFFER" + surplus problem from Stage 3).
+
+**Conclusion:** The scope propagation code is CORRECT infrastructure but PREMATURE. It requires Stage 3 scope inference accuracy improvements first. Without accurate scope inference, propagating scopes to `FinishMemoize.decl` just exposes the scope surplus problem in a new way.
+
+**Dependency chain confirmed:**
+1. Stage 3 (scope inference accuracy) — fix scope over-creation/over-merging
+2. Enables: scope propagation to `FinishMemoize.decl` (code ready, just needs accurate scopes)
+3. Enables: correct Check 1 behavior (reduces preserve-memo false bails by up to 80 fixtures)
+
+**Status: READY but BLOCKED by Stage 3 scope inference accuracy.**
+
+**Do NOT attempt skip/filter approaches on Check 1.** The lesson from Check 2 applies: the fix must be structural (scope inference accuracy), not filtering. And do NOT re-enable scope propagation to `FinishMemoize.decl` until Stage 3 scope inference is improved — the -52 regression from error fixtures will recur.
 
 ---
 
