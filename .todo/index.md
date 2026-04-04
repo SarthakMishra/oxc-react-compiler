@@ -1,9 +1,9 @@
 # oxc-react-compiler Backlog
 
 > Last updated: 2026-04-03
-> Conformance: **550/1717 (32.0%)** (known-failures.txt has 1167 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Latest session gains: tN dep resolution BREAKTHROUGH (approach #10). Skipped unnamed SSA temporaries in propagate_scope_dependencies_hir Phase 2 else-branch. Check 2 bails: 154 -> 0 (ELIMINATED). Check 1 bails: 0 -> 194 (correct). Slot accuracy: +3 (235 -> 238 MATCH). Conformance unchanged at 550/1717. 94 preserve-memo false bails now ALL from Check 1 (scope not completed), not Check 2 (dep mismatch). Blocker shifted from "tN dep resolution" to "scope inference for preserve-memo fixtures".
-> Known-failures: 1167. False-positive bails: ~168 (83 preserve-memo now ALL Check 1, 14 frozen-mutation, 9 reassign, 7 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
+> Conformance: **553/1717 (32.2%)** (known-failures.txt has 1164 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Latest session gains: +3 from excluding Call/MethodCall from is_mutable_instruction in scope creation (550->553). First successful scope inference fix after 6 prior failures. Also: non-transitive MethodCall mutation (neutral), last_use gate removal (-5 reverted), use_mutable_range=true (-40 reverted).
+> Known-failures: 1164. False-positive bails: ~168 (83 preserve-memo now ALL Check 1, 14 frozen-mutation, 9 reassign, 7 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
 > WE-COMPILE-THEY-DON'T: ~88 (69 scope-surplus with no upstream error, ~9 "Found 1 error" bail-outs remaining, 10 Flow parse errors). Down from 94 after Session 2 fixes.
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
@@ -26,7 +26,7 @@
 | Work Item | Pool Size | Potential Gain | Status |
 |-----------|-----------|---------------|--------|
 | Scope dep resolution (unnamed skip) | 94 preserve-memo false bails (Check 1) | +20-80 | **INFRASTRUCTURE READY, BLOCKED by Stage 3.** Approach #10 eliminated Check 2 bails (154->0). Scope propagation to FinishMemoize.decl tested: bails 94->14 (-80!) but -52 conformance regression from scope surplus. Code is ready; needs Stage 3 scope inference accuracy first. See [Deferred/Blocked](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved). |
-| Scope inference fixes (slots-DIFFER) | ~572 | +50-100 | HIGH risk — cascading regression, scope MERGING is bottleneck |
+| Scope inference fixes (slots-DIFFER) | ~572 | +50-100 | FIRST SUCCESS (+3 from is_mutable exclusion). 9 approaches tried, 1 positive. HIGH risk — cascading regression, scope MERGING is bottleneck |
 | Stage 4f remaining "Found 1 error" bails | ~9 | +5-9 | LOW risk — bail-to-pass, zero regression |
 | DCE + constant propagation remaining | ~90 | +5-15 | Blocked by 0-slot codegen (scope inference) |
 | Variable name preservation (B2) | 40 | +10-20 | Scope-inference dependent, NOT codegen-only |
@@ -58,16 +58,27 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 ---
 
-### Stage 3: Scope Inference -- INVESTIGATED, BLOCKED on mutable range accuracy
+### Stage 3: Scope Inference -- FIRST SUCCESS, continuing investigation
 
 **Pool:** ~572 slot-differ fixtures (deficit + surplus). Single largest category.
 **Root cause:** Scope MERGING is the bottleneck (not scope creation). `last_use_map` in `infer_mutation_aliasing_ranges.rs` extends ranges wider than upstream. Cannot remove without receiver mutation effects + reverse scope propagation.
 
 **Investigation complete (Stages 3a, 3a2):** Full categorization done. 134 zero-slot surplus fixtures confirmed as scope CREATION problem. 3 pruning approaches failed (-44, unresolved refs, confirmed not-pruning-problem).
 
-**6 approaches tried for scope inference, ALL net-negative:** heuristic removal (-5), operand liveness blanket (-24), operand liveness targeted (-17), 0-slot codegen (-51), non-reactive dep pruning (-107), per-function reactive guard (-44).
+**9 approaches tried for scope inference, 1 successful (+3):**
+1. Heuristic removal (-5)
+2. Operand liveness blanket (-24)
+3. Operand liveness targeted (-17)
+4. 0-slot codegen (-51)
+5. Non-reactive dep pruning (-107)
+6. Per-function reactive guard (-44)
+7. **Exclude Call/MethodCall from is_mutable_instruction (+3, FIRST SUCCESS)** -- unknown-type values from calls should not unconditionally trigger scope creation
+8. Non-transitive MethodCall mutation (neutral) -- changed MutateTransitiveConditionally to MutateConditionally for unknown methods; safer mutation model
+9. Remove last_use>instr_id gate for is_allocating (-5, reverted) -- created more scopes than needed
 
-**Prerequisites for progress:**
+Also tried: use_mutable_range=true (-40, reverted) -- mutable ranges alone still too narrow for scope creation.
+
+**Prerequisites for further progress:**
 1. Fix mutable range accuracy: receiver mutation effects for MethodCall, reverse scope propagation
 2. Audit `dep.reactive` flag assignment against upstream semantics
 3. Understand scope merging algorithm in detail before attempting changes
@@ -287,7 +298,7 @@ The project has reached a clear inflection point. All low-risk, codegen-only, an
 
 1. **Scope dep resolution + preserve-memo Check 1** — Check 2 RESOLVED (approach #10). Check 1 infrastructure READY: scope propagation to FinishMemoize.decl reduces bails 94->14 (-80!) but causes -52 regression from scope surplus. This CONFIRMS that Stage 3 scope inference is the single critical path for both preserve-memo (+80 potential) and slot-differ (+50-100 potential). See [blocker details](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved).
 
-2. **Scope inference accuracy** — `last_use_map` in `infer_mutation_aliasing_ranges.rs` produces wider ranges than upstream, causing over-merging and surplus scopes. This is the root cause behind ~572 slot-differ, ~90 both-no-memo (0-slot codegen), and ~69 we-compile-they-don't surplus fixtures. 6+ approaches have been tried and all regressed. The prerequisites are: (a) receiver mutation effects for MethodCall, (b) reverse scope propagation, (c) `dep.reactive` flag audit.
+2. **Scope inference accuracy** — `last_use_map` in `infer_mutation_aliasing_ranges.rs` produces wider ranges than upstream, causing over-merging and surplus scopes. This is the root cause behind ~572 slot-differ, ~90 both-no-memo (0-slot codegen), and ~69 we-compile-they-don't surplus fixtures. 9 approaches tried: 1 successful (+3 from excluding Call/MethodCall from is_mutable_instruction), rest regressed or neutral. The prerequisites for further gains are: (a) receiver mutation effects for MethodCall, (b) reverse scope propagation, (c) `dep.reactive` flag audit.
 
 Every remaining conformance gain of significant size (>10 fixtures) depends on one or both of these. The only exception is the ~9 remaining "Found 1 error" bail-outs in Stage 4f, which are safe incremental gains.
 
