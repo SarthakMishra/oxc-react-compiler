@@ -1010,10 +1010,7 @@ fn expr_string(
             }
         }
         InstructionValue::BinaryExpression { op, left, right } => {
-            // Wrap in parens so that when this expression is inlined into another
-            // binary expression, operator precedence is preserved.
-            // e.g., `(a - b) / c` instead of `a - b / c`
-            Some(format!("({} {} {})", resolve(left), binary_op_str(*op), resolve(right)))
+            Some(format!("{} {} {}", resolve(left), binary_op_str(*op), resolve(right)))
         }
         InstructionValue::UnaryExpression { op, value } => {
             Some(format!("{}{}", unary_op_str(*op), resolve(value)))
