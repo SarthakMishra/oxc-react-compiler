@@ -1,8 +1,8 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::globals::is_hook_name;
 use crate::hir::types::{
-    BlockId, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId,
-    InstructionValue, Terminal,
+    BlockId, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdSet, IdVec,
+    IdentifierId, InstructionValue, Terminal,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -21,13 +21,13 @@ pub fn validate_hooks_usage(
     // Track which blocks are inside conditionals/loops
     let conditional_blocks = find_conditional_blocks(hir);
 
-    // Build a map from identifier ID → resolved name.
+    // Build a map from identifier ID -> resolved name.
     // In SSA form, `useHook()` decomposes into `t0 = LoadGlobal(useHook); t1 = Call(t0, ...)`.
     // The callee (t0) has name: None, so we resolve it via the LoadGlobal/LoadLocal binding name.
-    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut id_to_name: IdVec<IdentifierId, String> = IdVec::new();
 
-    // Collect identifier IDs that are used as hook callees — these are valid hook usages.
-    let mut hook_callee_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    // Collect identifier IDs that are used as hook callees -- these are valid hook usages.
+    let mut hook_callee_ids: IdSet<IdentifierId> = IdSet::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -45,11 +45,13 @@ pub fn validate_hooks_usage(
             }
 
             // Also use the identifier's own name if set
-            if let Some(name) = &instr.lvalue.identifier.name {
-                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
+            if let Some(name) = &instr.lvalue.identifier.name
+                && !id_to_name.contains_key(instr.lvalue.identifier.id)
+            {
+                id_to_name.insert(instr.lvalue.identifier.id, name.clone());
             }
 
-            // Track callee IDs for Rule 3 — IDs used in valid hook contexts:
+            // Track callee IDs for Rule 3 -- IDs used in valid hook contexts:
             // - CallExpression callee (hook is being called)
             // - PropertyLoad object (accessing hook.name, hook.length, etc.)
             // - MethodCall receiver (hook.bind(), etc.)
@@ -89,7 +91,7 @@ pub fn validate_hooks_usage(
 
     // Helper: resolve the effective name for an identifier
     let resolve_name = |id: IdentifierId, name: &Option<String>| -> Option<String> {
-        name.clone().or_else(|| id_to_name.get(&id).cloned())
+        name.clone().or_else(|| id_to_name.get(id).cloned())
     };
 
     // Helper: check if a name is a hook (either by convention or by alias)
@@ -101,7 +103,7 @@ pub fn validate_hooks_usage(
             if let InstructionValue::CallExpression { callee, .. } = &instr.value
                 && let Some(name) = resolve_name(callee.identifier.id, &callee.identifier.name)
                 && is_hook(&name)
-                && conditional_blocks.contains(block_id)
+                && conditional_blocks.contains(*block_id)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
                     instr.loc,
@@ -116,7 +118,7 @@ pub fn validate_hooks_usage(
             // Rule 1b: Method calls that look like hooks (e.g., Foo.useFoo())
             if let InstructionValue::MethodCall { property, .. } = &instr.value
                 && is_hook(property)
-                && conditional_blocks.contains(block_id)
+                && conditional_blocks.contains(*block_id)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
                     instr.loc,
@@ -133,8 +135,8 @@ pub fn validate_hooks_usage(
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
                     if let Some(name) = &place.identifier.name
                         && is_hook(name)
-                        && !hook_callee_ids.contains(&instr.lvalue.identifier.id)
-                        && !hook_callee_ids.contains(&place.identifier.id)
+                        && !hook_callee_ids.contains(instr.lvalue.identifier.id)
+                        && !hook_callee_ids.contains(place.identifier.id)
                         && !locally_declared_names.contains(name.as_str())
                     {
                         errors.push(CompilerError::invalid_react_with_kind(
@@ -147,7 +149,7 @@ pub fn validate_hooks_usage(
                 }
                 InstructionValue::LoadGlobal { binding } => {
                     if is_hook(&binding.name)
-                        && !hook_callee_ids.contains(&instr.lvalue.identifier.id)
+                        && !hook_callee_ids.contains(instr.lvalue.identifier.id)
                     {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
@@ -158,7 +160,7 @@ pub fn validate_hooks_usage(
                     }
                 }
                 InstructionValue::PropertyLoad { property, .. } => {
-                    if is_hook(property) && !hook_callee_ids.contains(&instr.lvalue.identifier.id) {
+                    if is_hook(property) && !hook_callee_ids.contains(instr.lvalue.identifier.id) {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
                             "Hooks may not be referenced as normal values, \
@@ -172,7 +174,7 @@ pub fn validate_hooks_usage(
         }
     }
 
-    // Rule 5: Dynamic hook identity — hook-named callees whose value may change
+    // Rule 5: Dynamic hook identity -- hook-named callees whose value may change
     // between renders (e.g., `const useX = someFunc; useX()`)
     check_dynamic_hook_identity(hir, &id_to_name, &is_hook, errors);
 
@@ -187,11 +189,11 @@ pub fn validate_hooks_usage(
 /// may change over time to a different function."
 ///
 /// Examples that should error:
-/// - `const useMedia = useVideoPlayer(); useMedia()` — hook return is not a stable hook
-/// - `const useX = someFunction; useX()` — local reassignment is not stable
+/// - `const useMedia = useVideoPlayer(); useMedia()` -- hook return is not a stable hook
+/// - `const useX = someFunction; useX()` -- local reassignment is not stable
 fn check_dynamic_hook_identity(
     hir: &HIR,
-    id_to_name: &FxHashMap<IdentifierId, String>,
+    id_to_name: &IdVec<IdentifierId, String>,
     is_hook: &dyn Fn(&str) -> bool,
     errors: &mut ErrorCollector,
 ) {
@@ -206,12 +208,12 @@ fn check_dynamic_hook_identity(
     // - Function parameters (props values change between renders)
     //
     // We track by BOTH identifier ID and variable name, because our HIR creates
-    // fresh IdentifierIds per Place reference — tracking by ID alone would lose
+    // fresh IdentifierIds per Place reference -- tracking by ID alone would lose
     // stability info across SSA edges (StoreLocal lvalue vs LoadLocal place).
-    let mut is_stable_hook_by_id: FxHashMap<IdentifierId, bool> = FxHashMap::default();
+    let mut is_stable_hook_by_id: IdVec<IdentifierId, bool> = IdVec::new();
     let mut is_stable_hook_by_name: FxHashMap<String, bool> = FxHashMap::default();
 
-    // Function parameters are NOT stable hook sources — they come from props
+    // Function parameters are NOT stable hook sources -- they come from props
     // and may change between renders. Mark them unstable by name.
     // DIVERGENCE: Upstream tracks this through the type system (params have type
     // that indicates they're props). We use the convention that any param name
@@ -250,7 +252,7 @@ fn check_dynamic_hook_identity(
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
                     // Resolve stability: check by ID first, then by name
                     let source_stable = is_stable_hook_by_id
-                        .get(&place.identifier.id)
+                        .get(place.identifier.id)
                         .copied()
                         .or_else(|| {
                             place
@@ -261,7 +263,7 @@ fn check_dynamic_hook_identity(
                         })
                         .unwrap_or_else(|| {
                             // If no stability info exists and the name is hook-like,
-                            // it's likely an external/captured hook reference — treat as stable.
+                            // it's likely an external/captured hook reference -- treat as stable.
                             // But only if we haven't explicitly marked it unstable above.
                             place.identifier.name.as_deref().is_some_and(is_hook)
                         });
@@ -274,7 +276,7 @@ fn check_dynamic_hook_identity(
                 InstructionValue::StoreLocal { value, lvalue, .. } => {
                     // Propagate stability from the stored value
                     let source_stable =
-                        is_stable_hook_by_id.get(&value.identifier.id).copied().unwrap_or(false);
+                        is_stable_hook_by_id.get(value.identifier.id).copied().unwrap_or(false);
                     is_stable_hook_by_id.insert(instr.lvalue.identifier.id, source_stable);
                     // Also track by name so LoadLocal can resolve across SSA edges
                     if let Some(name) = &lvalue.identifier.name {
@@ -296,11 +298,11 @@ fn check_dynamic_hook_identity(
                         .identifier
                         .name
                         .as_deref()
-                        .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+                        .or_else(|| id_to_name.get(callee.identifier.id).map(String::as_str));
 
                     if let Some(name) = callee_name
                         && is_hook(name)
-                        && !is_stable_hook_by_id.get(&callee.identifier.id).copied().unwrap_or(true)
+                        && !is_stable_hook_by_id.get(callee.identifier.id).copied().unwrap_or(true)
                     {
                         errors.push(CompilerError::invalid_react_with_kind(
                             instr.loc,
@@ -319,9 +321,10 @@ fn check_dynamic_hook_identity(
                     if is_hook(property) {
                         // Check if the receiver is a stable hook source (e.g., React namespace).
                         // LoadGlobal of "React" calling React.useState() is stable.
-                        let receiver_name = receiver.identifier.name.as_deref().or_else(|| {
-                            id_to_name.get(&receiver.identifier.id).map(String::as_str)
-                        });
+                        let receiver_name =
+                            receiver.identifier.name.as_deref().or_else(|| {
+                                id_to_name.get(receiver.identifier.id).map(String::as_str)
+                            });
                         let is_known_namespace = matches!(
                             receiver_name,
                             Some("React" | "react" | "ReactDOM" | "ReactDOMServer")
@@ -378,7 +381,7 @@ fn check_nested_hir_for_hook_calls(
     is_hook: &dyn Fn(&str) -> bool,
 ) {
     // Build name-resolution map for this nested body
-    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut id_to_name: IdVec<IdentifierId, String> = IdVec::new();
 
     for (_, block) in &body.blocks {
         for instr in &block.instructions {
@@ -393,8 +396,10 @@ fn check_nested_hir_for_hook_calls(
                 }
                 _ => {}
             }
-            if let Some(name) = &instr.lvalue.identifier.name {
-                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
+            if let Some(name) = &instr.lvalue.identifier.name
+                && !id_to_name.contains_key(instr.lvalue.identifier.id)
+            {
+                id_to_name.insert(instr.lvalue.identifier.id, name.clone());
             }
         }
     }
@@ -407,7 +412,7 @@ fn check_nested_hir_for_hook_calls(
                     .identifier
                     .name
                     .clone()
-                    .or_else(|| id_to_name.get(&callee.identifier.id).cloned());
+                    .or_else(|| id_to_name.get(callee.identifier.id).cloned());
                 if let Some(name) = name
                     && is_hook(&name)
                 {
@@ -515,8 +520,8 @@ fn collect_destructure_names(pattern: &DestructurePattern, out: &mut FxHashSet<S
 ///
 /// This performs a transitive closure: if block A is conditional and its
 /// terminal leads to block B, then B is also conditional.
-fn find_conditional_blocks(hir: &HIR) -> FxHashSet<BlockId> {
-    let mut conditional = FxHashSet::default();
+fn find_conditional_blocks(hir: &HIR) -> IdSet<BlockId> {
+    let mut conditional = IdSet::new();
 
     // Direct children of conditional/loop terminals
     for (_, block) in &hir.blocks {
@@ -582,7 +587,7 @@ fn find_conditional_blocks(hir: &HIR) -> FxHashSet<BlockId> {
 }
 
 /// Transitively mark blocks reachable from a given block via Goto terminals.
-fn mark_reachable(hir: &HIR, start: BlockId, visited: &mut FxHashSet<BlockId>) {
+fn mark_reachable(hir: &HIR, start: BlockId, visited: &mut IdSet<BlockId>) {
     if !visited.insert(start) {
         return; // Already visited
     }

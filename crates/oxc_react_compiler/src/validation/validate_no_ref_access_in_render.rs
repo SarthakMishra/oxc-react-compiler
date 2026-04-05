@@ -1,6 +1,6 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::globals::is_hook_name;
-use crate::hir::types::{HIR, IdentifierId, InstructionValue, Terminal, Type};
+use crate::hir::types::{HIR, IdSet, IdVec, IdentifierId, InstructionValue, Terminal, Type};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Validate that ref values are not accessed during render.
@@ -9,7 +9,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 /// because refs are mutable and not tracked by React.
 ///
 /// Ref access inside effect callbacks, event handlers, and useCallback
-/// bodies is fine — those execute after render, not during it.
+/// bodies is fine -- those execute after render, not during it.
 ///
 /// Uses both type-based detection (Type::Ref from useRef() calls) and
 /// naming heuristic fallback. Resolves identities through SSA temporaries.
@@ -19,7 +19,7 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
     let non_render_ids = collect_non_render_callback_ids(hir);
 
     // Collect all identifier IDs that are ref-like (by type or name)
-    let mut ref_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut ref_ids: IdSet<IdentifierId> = IdSet::new();
     let mut ref_names: FxHashSet<String> = FxHashSet::default();
 
     // Pass 1: Identify ref identifiers from their definition sites
@@ -41,10 +41,10 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
 
             match &instr.value {
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
-                    if place.identifier.type_ == Type::Ref || ref_ids.contains(&place.identifier.id)
+                    if place.identifier.type_ == Type::Ref || ref_ids.contains(place.identifier.id)
                     {
                         ref_ids.insert(instr.lvalue.identifier.id);
-                        // Also track the source place ID — after inline_load_local_temps
+                        // Also track the source place ID -- after inline_load_local_temps
                         // (Pass 9.6), consumers may reference the source directly
                         // instead of the LoadLocal's lvalue.
                         ref_ids.insert(place.identifier.id);
@@ -59,7 +59,7 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
                 }
                 InstructionValue::StoreLocal { lvalue, value, .. }
                 | InstructionValue::StoreContext { lvalue, value } => {
-                    if ref_ids.contains(&value.identifier.id) {
+                    if ref_ids.contains(value.identifier.id) {
                         ref_ids.insert(instr.lvalue.identifier.id);
                         if let Some(name) = &lvalue.identifier.name {
                             ref_names.insert(name.clone());
@@ -82,20 +82,22 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
             let is_ref_current = match &instr.value {
                 InstructionValue::PropertyLoad { object, property, .. } => {
                     property == "current"
-                        && (ref_ids.contains(&object.identifier.id)
+                        && (ref_ids.contains(object.identifier.id)
                             // DIVERGENCE: After inline_load_local_temps (Pass 9.6),
                             // LoadLocal instructions may be eliminated and consumers
                             // reference the original named Place directly. Check the
                             // object's name as a fallback when the ID wasn't tracked
                             // (e.g., function parameters that have no LoadLocal).
-                            || object.identifier.name.as_deref().is_some_and(|n| {
-                                is_ref_name(n) || ref_names.contains(n)
-                            })
+                            || object
+                                .identifier
+                                .name
+                                .as_deref()
+                                .is_some_and(|n| is_ref_name(n) || ref_names.contains(n))
                             || object.identifier.type_ == Type::Ref)
                 }
                 InstructionValue::PropertyStore { object, property, .. } => {
                     property == "current"
-                        && (ref_ids.contains(&object.identifier.id)
+                        && (ref_ids.contains(object.identifier.id)
                             || object
                                 .identifier
                                 .name
@@ -127,7 +129,7 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
                 let callee_is_hook = callee.identifier.name.as_deref().is_some_and(is_hook_name);
                 if !callee_is_hook {
                     for arg in args {
-                        if ref_ids.contains(&arg.identifier.id)
+                        if ref_ids.contains(arg.identifier.id)
                             || arg.identifier.type_ == Type::Ref
                             || arg
                                 .identifier
@@ -155,7 +157,7 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
             match &instr.value {
                 InstructionValue::FunctionExpression { lowered_func, .. }
                 | InstructionValue::ObjectMethod { lowered_func } => {
-                    if !non_render_ids.contains(&instr.lvalue.identifier.id)
+                    if !non_render_ids.contains(instr.lvalue.identifier.id)
                         && check_nested_ref_access(&lowered_func.body, &ref_names, &non_render_ids)
                     {
                         errors.push(CompilerError::invalid_react_with_kind(
@@ -182,11 +184,11 @@ pub fn validate_no_ref_access_in_render(hir: &HIR, errors: &mut ErrorCollector) 
 /// - Ref callback props (ref={callback})
 ///
 /// These functions execute AFTER render, so ref access inside them is fine.
-fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
-    let mut ids: FxHashSet<IdentifierId> = FxHashSet::default();
+fn collect_non_render_callback_ids(hir: &HIR) -> IdSet<IdentifierId> {
+    let mut ids: IdSet<IdentifierId> = IdSet::new();
 
     // Build id-to-name map to resolve callee identifiers
-    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut id_to_name: IdVec<IdentifierId, String> = IdVec::new();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -200,8 +202,10 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                 }
                 _ => {}
             }
-            if let Some(name) = &instr.lvalue.identifier.name {
-                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
+            if let Some(name) = &instr.lvalue.identifier.name
+                && !id_to_name.contains_key(instr.lvalue.identifier.id)
+            {
+                id_to_name.insert(instr.lvalue.identifier.id, name.clone());
             }
         }
     }
@@ -214,7 +218,7 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                         .identifier
                         .name
                         .as_deref()
-                        .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+                        .or_else(|| id_to_name.get(callee.identifier.id).map(String::as_str));
                     if let Some(name) = callee_name {
                         // Hook call arguments are non-render contexts for ref
                         // access validation, EXCEPT for hooks whose callbacks
@@ -229,7 +233,7 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
                                 ids.insert(arg.identifier.id);
                             }
                         }
-                        // useImperativeHandle(ref, createFn) — createFn runs in effect phase
+                        // useImperativeHandle(ref, createFn) -- createFn runs in effect phase
                         if name == "useImperativeHandle" && args.len() >= 2 {
                             ids.insert(args[1].identifier.id);
                         }
@@ -269,7 +273,7 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
     }
 
     // Propagate through LoadLocal/StoreLocal alias chains
-    let mut id_aliases: FxHashMap<IdentifierId, IdentifierId> = FxHashMap::default();
+    let mut id_aliases: IdVec<IdentifierId, IdentifierId> = IdVec::new();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -285,11 +289,11 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
         }
     }
 
-    let copy: Vec<IdentifierId> = ids.iter().copied().collect();
+    let copy: Vec<IdentifierId> = ids.iter_indices().map(|idx| IdentifierId(idx as u32)).collect();
     for id in copy {
         let mut current = id;
         for _ in 0..10 {
-            if let Some(&alias) = id_aliases.get(&current) {
+            if let Some(&alias) = id_aliases.get(current) {
                 ids.insert(alias);
                 current = alias;
             } else {
@@ -305,7 +309,7 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
     //
     // Algorithm: scan the bodies of non-render FEs for call targets,
     // resolve by name across scope boundaries, mark as non-render, repeat.
-    let mut fe_bodies: FxHashMap<IdentifierId, &HIR> = FxHashMap::default();
+    let mut fe_bodies: IdVec<IdentifierId, &HIR> = IdVec::new();
     let mut name_to_fe_ids: FxHashMap<String, Vec<IdentifierId>> = FxHashMap::default();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -317,7 +321,7 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
             // Map variable names to FE IDs (via StoreLocal chains)
             if let InstructionValue::StoreLocal { lvalue, value, .. } = &instr.value
                 && let Some(name) = &lvalue.identifier.name
-                && fe_bodies.contains_key(&value.identifier.id)
+                && fe_bodies.contains_key(value.identifier.id)
             {
                 name_to_fe_ids.entry(name.clone()).or_default().push(value.identifier.id);
             }
@@ -328,9 +332,10 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
     let mut changed = true;
     while changed {
         changed = false;
-        let current_safe: Vec<IdentifierId> = ids.iter().copied().collect();
+        let current_safe: Vec<IdentifierId> =
+            ids.iter_indices().map(|idx| IdentifierId(idx as u32)).collect();
         for safe_id in &current_safe {
-            if let Some(body) = fe_bodies.get(safe_id) {
+            if let Some(body) = fe_bodies.get(*safe_id) {
                 // Collect callee names from this body
                 let callee_names = collect_callee_names(body);
                 for name in callee_names {
@@ -356,9 +361,9 @@ fn collect_non_render_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
 fn check_nested_ref_access(
     hir: &HIR,
     outer_ref_names: &FxHashSet<String>,
-    non_render_ids: &FxHashSet<IdentifierId>,
+    non_render_ids: &IdSet<IdentifierId>,
 ) -> bool {
-    let mut local_ref_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut local_ref_ids: IdSet<IdentifierId> = IdSet::new();
     let mut local_ref_names: FxHashSet<String> = outer_ref_names.clone();
 
     for (_, block) in &hir.blocks {
@@ -380,7 +385,7 @@ fn check_nested_ref_access(
             match &instr.value {
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
                     if place.identifier.type_ == Type::Ref
-                        || local_ref_ids.contains(&place.identifier.id)
+                        || local_ref_ids.contains(place.identifier.id)
                     {
                         local_ref_ids.insert(instr.lvalue.identifier.id);
                         // Also track the source place ID (see top-level pass comment)
@@ -395,7 +400,7 @@ fn check_nested_ref_access(
                 }
                 InstructionValue::StoreLocal { lvalue, value, .. }
                 | InstructionValue::StoreContext { lvalue, value } => {
-                    if local_ref_ids.contains(&value.identifier.id) {
+                    if local_ref_ids.contains(value.identifier.id) {
                         local_ref_ids.insert(instr.lvalue.identifier.id);
                         if let Some(name) = &lvalue.identifier.name {
                             local_ref_names.insert(name.clone());
@@ -417,7 +422,7 @@ fn check_nested_ref_access(
             let is_ref_current = match &instr.value {
                 InstructionValue::PropertyLoad { object, property, .. } => {
                     property == "current"
-                        && (local_ref_ids.contains(&object.identifier.id)
+                        && (local_ref_ids.contains(object.identifier.id)
                             || object
                                 .identifier
                                 .name
@@ -427,7 +432,7 @@ fn check_nested_ref_access(
                 }
                 InstructionValue::PropertyStore { object, property, .. } => {
                     property == "current"
-                        && (local_ref_ids.contains(&object.identifier.id)
+                        && (local_ref_ids.contains(object.identifier.id)
                             || object
                                 .identifier
                                 .name
@@ -445,7 +450,7 @@ fn check_nested_ref_access(
             match &instr.value {
                 InstructionValue::FunctionExpression { lowered_func, .. }
                 | InstructionValue::ObjectMethod { lowered_func } => {
-                    if !non_render_ids.contains(&instr.lvalue.identifier.id)
+                    if !non_render_ids.contains(instr.lvalue.identifier.id)
                         && check_nested_ref_access(
                             &lowered_func.body,
                             &local_ref_names,
@@ -468,7 +473,7 @@ fn check_nested_ref_access(
 /// This ensures that e.g. `useLayoutEffect(() => { new ResizeObserver(_ => { updateStyles(); }) })`
 /// correctly identifies `updateStyles` as called from a non-render context.
 fn collect_callee_names(hir: &HIR) -> Vec<String> {
-    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut id_to_name: IdVec<IdentifierId, String> = IdVec::new();
     let mut names = Vec::new();
 
     collect_callee_names_recursive(hir, &mut id_to_name, &mut names);
@@ -478,7 +483,7 @@ fn collect_callee_names(hir: &HIR) -> Vec<String> {
 
 fn collect_callee_names_recursive(
     hir: &HIR,
-    id_to_name: &mut FxHashMap<IdentifierId, String>,
+    id_to_name: &mut IdVec<IdentifierId, String>,
     names: &mut Vec<String>,
 ) {
     for (_, block) in &hir.blocks {
@@ -497,7 +502,7 @@ fn collect_callee_names_recursive(
             if let InstructionValue::CallExpression { callee, .. } = &instr.value {
                 if let Some(name) = &callee.identifier.name {
                     names.push(name.clone());
-                } else if let Some(name) = id_to_name.get(&callee.identifier.id) {
+                } else if let Some(name) = id_to_name.get(callee.identifier.id) {
                     names.push(name.clone());
                 }
             }

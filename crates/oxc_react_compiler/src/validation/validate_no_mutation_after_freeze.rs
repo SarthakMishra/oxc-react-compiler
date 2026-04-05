@@ -17,8 +17,8 @@
 
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{
-    AliasingEffect, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, Identifier,
-    IdentifierId, InstructionKind, InstructionValue, Place,
+    AliasingEffect, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdSet, IdVec,
+    Identifier, IdentifierId, InstructionKind, InstructionValue, Place,
 };
 use crate::validation::validate_no_ref_access_in_render::is_ref_name;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -53,10 +53,10 @@ fn is_hook_name(name: &str) -> bool {
 /// Resolve a place's name: check id_to_name first, fall back to identifier.name.
 fn resolve_name<'a>(
     id: IdentifierId,
-    id_to_name: &'a FxHashMap<IdentifierId, &'a str>,
+    id_to_name: &'a IdVec<IdentifierId, &'a str>,
     fallback_name: Option<&'a str>,
 ) -> Option<&'a str> {
-    id_to_name.get(&id).copied().or(fallback_name)
+    id_to_name.get(id).copied().or(fallback_name)
 }
 
 /// Check if an identifier is frozen by SSA-unique key (IdentifierId + ssa_version).
@@ -74,7 +74,7 @@ pub fn validate_no_mutation_after_freeze(
     param_names: &[String],
     param_ids: &[IdentifierId],
 ) {
-    let mut id_to_name: FxHashMap<IdentifierId, &str> = FxHashMap::default();
+    let mut id_to_name: IdVec<IdentifierId, &str> = IdVec::new();
     // Primary: ID-based freeze tracking. SSA guarantees each reassignment gets a
     // new IdentifierId, so freezing one version doesn't affect later versions.
     let mut frozen_ids: FxHashSet<SsaId> = FxHashSet::default();
@@ -86,13 +86,13 @@ pub fn validate_no_mutation_after_freeze(
     // cross-SSA references where the same frozen value flows through different IDs.
     // Also used for hook-call-freezes-captures (which tracks by capture name).
     let mut frozen_names: FxHashSet<&str> = FxHashSet::default();
-    let mut hook_return_ids: FxHashSet<IdentifierId> = FxHashSet::default();
-    // Map: function lvalue ID → captured variable names
-    let mut func_captures: FxHashMap<IdentifierId, Vec<&str>> = FxHashMap::default();
-    // Map: function name → captured variable names
+    let mut hook_return_ids: IdSet<IdentifierId> = IdSet::new();
+    // Map: function lvalue ID -> captured variable names
+    let mut func_captures: IdVec<IdentifierId, Vec<&str>> = IdVec::new();
+    // Map: function name -> captured variable names
     let mut name_to_func_captures: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
-    // Map: function lvalue ID → reference to lowered function body
-    let mut func_bodies: FxHashMap<IdentifierId, &HIR> = FxHashMap::default();
+    // Map: function lvalue ID -> reference to lowered function body
+    let mut func_bodies: IdVec<IdentifierId, &HIR> = IdVec::new();
 
     // Pre-freeze function parameters (props, hook arguments) — by SsaId and name.
     // Params have ssa_version 0 (they're the first definition).
@@ -112,8 +112,10 @@ pub fn validate_no_mutation_after_freeze(
                 id_to_name.insert(phi.place.identifier.id, name);
             }
             for (_, operand) in &phi.operands {
-                if let Some(name) = &operand.identifier.name {
-                    id_to_name.entry(operand.identifier.id).or_insert(name);
+                if let Some(name) = &operand.identifier.name
+                    && !id_to_name.contains_key(operand.identifier.id)
+                {
+                    id_to_name.insert(operand.identifier.id, name);
                 }
             }
         }
@@ -142,7 +144,7 @@ pub fn validate_no_mutation_after_freeze(
                 }
                 InstructionValue::CallExpression { callee, .. } => {
                     let callee_name = id_to_name
-                        .get(&callee.identifier.id)
+                        .get(callee.identifier.id)
                         .copied()
                         .or(callee.identifier.name.as_deref());
                     if callee_name.is_some_and(is_hook_name) {
@@ -156,7 +158,7 @@ pub fn validate_no_mutation_after_freeze(
                         .iter()
                         .filter_map(|p| {
                             id_to_name
-                                .get(&p.identifier.id)
+                                .get(p.identifier.id)
                                 .copied()
                                 .or(p.identifier.name.as_deref())
                         })
@@ -204,10 +206,10 @@ pub fn validate_no_mutation_after_freeze(
     // the function definition and its invocation. Use a two-pass approach:
     // first collect all FunctionExpression lvalue IDs per block, then check
     // if any CallExpression in the same block calls one of them.
-    let mut iife_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut iife_ids: IdSet<IdentifierId> = IdSet::new();
     for (_, block) in &hir.blocks {
         // Pass 1: collect FunctionExpression lvalue IDs in this block
-        let fn_expr_ids: FxHashSet<IdentifierId> = block
+        let fn_expr_ids: IdSet<IdentifierId> = block
             .instructions
             .iter()
             .filter_map(|i| {
@@ -227,7 +229,7 @@ pub fn validate_no_mutation_after_freeze(
         // FunctionExpression in the same block is an IIFE
         for instr in &block.instructions {
             if let InstructionValue::CallExpression { callee, .. } = &instr.value
-                && fn_expr_ids.contains(&callee.identifier.id)
+                && fn_expr_ids.contains(callee.identifier.id)
             {
                 iife_ids.insert(callee.identifier.id);
             }
@@ -238,12 +240,12 @@ pub fn validate_no_mutation_after_freeze(
     // these lambdas happen after render (effect time / event time) and are safe.
     // Upstream's type system handles this via function effect signatures; we use
     // a name-based allowlist of hooks whose callbacks execute post-render.
-    let mut effect_callback_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut effect_callback_ids: IdSet<IdentifierId> = IdSet::new();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let InstructionValue::CallExpression { callee, args, .. } = &instr.value {
                 let callee_name = id_to_name
-                    .get(&callee.identifier.id)
+                    .get(callee.identifier.id)
                     .copied()
                     .or(callee.identifier.name.as_deref());
                 if callee_name.is_some_and(is_effect_or_callback_hook) {
@@ -258,8 +260,9 @@ pub fn validate_no_mutation_after_freeze(
                             first_arg.identifier.name.as_deref(),
                         ) {
                             // Find function IDs with this name
-                            for &fid in func_bodies.keys() {
-                                let fname = id_to_name.get(&fid).copied();
+                            for (fid_idx, _) in func_bodies.iter() {
+                                let fid = IdentifierId(fid_idx as u32);
+                                let fname = id_to_name.get(fid).copied();
                                 if fname == Some(name) {
                                     effect_callback_ids.insert(fid);
                                 }
@@ -275,8 +278,8 @@ pub fn validate_no_mutation_after_freeze(
     // Skip ref-typed values: useRef() returns are designed to be mutable
     // (ref.current can always be modified). Upstream's type system handles
     // this via Type::Ref; we check the lvalue type here.
-    let mut ref_ids: FxHashSet<IdentifierId> = FxHashSet::default();
-    let mut ref_hook_result_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut ref_ids: IdSet<IdentifierId> = IdSet::new();
+    let mut ref_hook_result_ids: IdSet<IdentifierId> = IdSet::new();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             // Type-based detection
@@ -286,7 +289,7 @@ pub fn validate_no_mutation_after_freeze(
             // useRef() call detection
             if let InstructionValue::CallExpression { callee, .. } = &instr.value {
                 let callee_name = id_to_name
-                    .get(&callee.identifier.id)
+                    .get(callee.identifier.id)
                     .copied()
                     .or(callee.identifier.name.as_deref());
                 if callee_name == Some("useRef") {
@@ -295,7 +298,7 @@ pub fn validate_no_mutation_after_freeze(
             }
             // Track StoreLocal of useRef results
             if let InstructionValue::StoreLocal { lvalue, value, .. } = &instr.value {
-                if ref_hook_result_ids.contains(&value.identifier.id) {
+                if ref_hook_result_ids.contains(value.identifier.id) {
                     ref_ids.insert(lvalue.identifier.id);
                 }
                 if matches!(lvalue.identifier.type_, crate::hir::types::Type::Ref) {
@@ -311,10 +314,10 @@ pub fn validate_no_mutation_after_freeze(
             match &instr.value {
                 InstructionValue::StoreLocal { value, lvalue, .. }
                 | InstructionValue::StoreContext { value, lvalue } => {
-                    if hook_return_ids.contains(&value.identifier.id) {
+                    if hook_return_ids.contains(value.identifier.id) {
                         hook_return_ids.insert(instr.lvalue.identifier.id);
                         // Freeze by ID — skip refs
-                        if !ref_ids.contains(&lvalue.identifier.id) {
+                        if !ref_ids.contains(lvalue.identifier.id) {
                             frozen_ids.insert(ssa_id(&lvalue.identifier));
                             if let Some(name) = &lvalue.identifier.name {
                                 frozen_names.insert(name);
@@ -323,7 +326,7 @@ pub fn validate_no_mutation_after_freeze(
                     }
                 }
                 InstructionValue::Destructure { value, lvalue_pattern } => {
-                    if hook_return_ids.contains(&value.identifier.id) {
+                    if hook_return_ids.contains(value.identifier.id) {
                         collect_frozen_ids_from_destructure(
                             lvalue_pattern,
                             &mut frozen_ids,
@@ -338,7 +341,7 @@ pub fn validate_no_mutation_after_freeze(
     }
 
     // Remove any ref IDs that leaked into frozen_ids via other paths
-    frozen_ids.retain(|&(id, _)| !ref_ids.contains(&id));
+    frozen_ids.retain(|&(id, _)| !ref_ids.contains(id));
 
     // Main pass: walk instructions, check for frozen mutations
     for (_, block) in &hir.blocks {
@@ -389,7 +392,7 @@ pub fn validate_no_mutation_after_freeze(
                         // MutateFrozen for the IIFE call when captured values are
                         // transitively frozen.
                         if let InstructionValue::CallExpression { callee, .. } = &instr.value
-                            && iife_ids.contains(&callee.identifier.id)
+                            && iife_ids.contains(callee.identifier.id)
                         {
                             continue;
                         }
@@ -432,7 +435,7 @@ pub fn validate_no_mutation_after_freeze(
                     // Skip ref-typed lvalues: useRef() returns are mutable by design.
                     // Without this guard, storing a frozen value into a ref variable
                     // would incorrectly freeze it, causing false positives on ref.current writes.
-                    if !ref_ids.contains(&lvalue.identifier.id) {
+                    if !ref_ids.contains(lvalue.identifier.id) {
                         let value_frozen_by_id = is_ssa_frozen(&value.identifier, &frozen_ids);
                         let value_frozen_by_name = !value_frozen_by_id
                             && resolve_name(
@@ -554,7 +557,7 @@ pub fn validate_no_mutation_after_freeze(
                     && !callee_name.is_some_and(is_effect_or_callback_hook)
                 {
                     for arg in args {
-                        let arg_captures = func_captures.get(&arg.identifier.id).or_else(|| {
+                        let arg_captures = func_captures.get(arg.identifier.id).or_else(|| {
                             let arg_name = resolve_name(
                                 arg.identifier.id,
                                 &id_to_name,
@@ -567,8 +570,9 @@ pub fn validate_no_mutation_after_freeze(
                                 // Skip ref-typed captures: useRef() returns are designed
                                 // to be mutable. Freezing them causes false positives
                                 // when callbacks write ref.current inside custom hooks.
-                                let is_ref_capture = ref_ids.iter().any(|&rid| {
-                                    id_to_name.get(&rid).copied() == Some(captured_name)
+                                let is_ref_capture = ref_ids.iter_indices().any(|rid_idx| {
+                                    id_to_name.get(IdentifierId(rid_idx as u32)).copied()
+                                        == Some(captured_name)
                                 });
                                 if !is_ref_capture {
                                     frozen_names.insert(captured_name);
@@ -577,7 +581,7 @@ pub fn validate_no_mutation_after_freeze(
                         }
 
                         // Re-check function body for mutations to now-frozen variables
-                        if let Some(fn_body) = func_bodies.get(&arg.identifier.id)
+                        if let Some(fn_body) = func_bodies.get(arg.identifier.id)
                             && has_mutation_on_frozen(fn_body, &frozen_ids, &frozen_names)
                         {
                             errors.push(CompilerError::invalid_react_with_kind(
@@ -649,9 +653,9 @@ pub fn validate_no_mutation_after_freeze(
             // their mutations are checked by the normal instruction-level checks.
             if let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
                 && (!frozen_ids.is_empty() || !frozen_names.is_empty())
-                && !iife_ids.contains(&instr.lvalue.identifier.id)
+                && !iife_ids.contains(instr.lvalue.identifier.id)
             {
-                if effect_callback_ids.contains(&instr.lvalue.identifier.id) {
+                if effect_callback_ids.contains(instr.lvalue.identifier.id) {
                     // Check 4b: Even in effect callbacks, mutating frozen props
                     // is still an error. Props (and their destructured properties)
                     // are always frozen and should never be mutated even in effects.
@@ -766,7 +770,7 @@ pub fn validate_no_mutation_after_freeze(
                 // Check if any SSA version of this variable was frozen
                 // before the current instruction ID.
                 let freeze_is_before = frozen_at.iter().any(|(&(fid, _), &freeze_id)| {
-                    let frozen_name = id_to_name.get(&fid).copied();
+                    let frozen_name = id_to_name.get(fid).copied();
                     frozen_name == Some(name) && freeze_id < instr.id
                 });
                 if freeze_is_before {
@@ -808,9 +812,9 @@ fn is_place_frozen(place: &Place, frozen_ids: &FxHashSet<SsaId>) -> bool {
 fn is_place_name_frozen(
     place: &Place,
     frozen_names: &FxHashSet<&str>,
-    id_to_name: &FxHashMap<IdentifierId, &str>,
+    id_to_name: &IdVec<IdentifierId, &str>,
 ) -> bool {
-    let name = id_to_name.get(&place.identifier.id).copied().or(place.identifier.name.as_deref());
+    let name = id_to_name.get(place.identifier.id).copied().or(place.identifier.name.as_deref());
     name.is_some_and(|n| frozen_names.contains(n))
 }
 
@@ -862,7 +866,7 @@ fn has_mutation_on_frozen(
     let effective_frozen_names: FxHashSet<&str> =
         outer_frozen_names.iter().copied().filter(|n| !inner_declared.contains(n)).collect();
 
-    let mut local_id_map: FxHashMap<IdentifierId, &str> = FxHashMap::default();
+    let mut local_id_map: IdVec<IdentifierId, &str> = IdVec::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -978,14 +982,14 @@ fn has_mutation_on_frozen(
 /// fallback. The outer frozen_names set tracks names that were frozen in the outer scope.
 fn is_inner_frozen(
     id: IdentifierId,
-    local_id_map: &FxHashMap<IdentifierId, &str>,
+    local_id_map: &IdVec<IdentifierId, &str>,
     _outer_frozen_ids: &FxHashSet<SsaId>,
     outer_frozen_names: &FxHashSet<&str>,
 ) -> bool {
     // Name-based: resolve the inner ID to a name, check if that name is frozen
     // in the outer scope. This is necessary because inner functions have their own
-    // SSA numbering — their IdentifierIds don't match the outer scope's.
-    local_id_map.get(&id).is_some_and(|name| outer_frozen_names.contains(name))
+    // SSA numbering -- their IdentifierIds don't match the outer scope's.
+    local_id_map.get(id).is_some_and(|name| outer_frozen_names.contains(name))
 }
 
 /// Collect all variable names declared within an inner function body.
@@ -1027,14 +1031,14 @@ fn collect_frozen_ids_from_destructure<'a>(
     pattern: &'a DestructurePattern,
     frozen_ids: &mut FxHashSet<SsaId>,
     frozen_names: &mut FxHashSet<&'a str>,
-    ref_ids: &FxHashSet<IdentifierId>,
+    ref_ids: &IdSet<IdentifierId>,
 ) {
     match pattern {
         DestructurePattern::Array { items, rest } => {
             for item in items {
                 match item {
                     DestructureArrayItem::Value(DestructureTarget::Place(p)) => {
-                        if !ref_ids.contains(&p.identifier.id) {
+                        if !ref_ids.contains(p.identifier.id) {
                             frozen_ids.insert(ssa_id(&p.identifier));
                             if let Some(name) = &p.identifier.name {
                                 frozen_names.insert(name);
@@ -1050,7 +1054,7 @@ fn collect_frozen_ids_from_destructure<'a>(
                         );
                     }
                     DestructureArrayItem::Spread(p) => {
-                        if !ref_ids.contains(&p.identifier.id) {
+                        if !ref_ids.contains(p.identifier.id) {
                             frozen_ids.insert(ssa_id(&p.identifier));
                             if let Some(name) = &p.identifier.name {
                                 frozen_names.insert(name);
@@ -1061,7 +1065,7 @@ fn collect_frozen_ids_from_destructure<'a>(
                 }
             }
             if let Some(rest) = rest
-                && !ref_ids.contains(&rest.identifier.id)
+                && !ref_ids.contains(rest.identifier.id)
             {
                 frozen_ids.insert(ssa_id(&rest.identifier));
                 if let Some(name) = &rest.identifier.name {
@@ -1073,7 +1077,7 @@ fn collect_frozen_ids_from_destructure<'a>(
             for prop in properties {
                 match &prop.value {
                     DestructureTarget::Place(p) => {
-                        if !ref_ids.contains(&p.identifier.id) {
+                        if !ref_ids.contains(p.identifier.id) {
                             frozen_ids.insert(ssa_id(&p.identifier));
                             if let Some(name) = &p.identifier.name {
                                 frozen_names.insert(name);
@@ -1091,7 +1095,7 @@ fn collect_frozen_ids_from_destructure<'a>(
                 }
             }
             if let Some(rest) = rest
-                && !ref_ids.contains(&rest.identifier.id)
+                && !ref_ids.contains(rest.identifier.id)
             {
                 frozen_ids.insert(ssa_id(&rest.identifier));
                 if let Some(name) = &rest.identifier.name {

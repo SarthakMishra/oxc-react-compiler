@@ -7,8 +7,10 @@
 // declared variables and flag any StoreLocal/Reassign targeting undeclared names.
 
 use crate::error::{CompilerError, ErrorCollector};
-use crate::hir::types::{HIR, HIRFunction, IdentifierId, InstructionKind, InstructionValue, Param};
-use rustc_hash::{FxHashMap, FxHashSet};
+use crate::hir::types::{
+    HIR, HIRFunction, IdSet, IdVec, IdentifierId, InstructionKind, InstructionValue, Param,
+};
+use rustc_hash::FxHashSet;
 
 fn global_reassignment_error(name: &str) -> String {
     format!(
@@ -31,7 +33,7 @@ pub fn validate_no_global_reassignment(
 ) {
     // Collect names declared at the component's top-level scope.
     let mut component_locals = collect_locally_declared_hir(hir);
-    // Also include function parameter names — these are local to the component
+    // Also include function parameter names -- these are local to the component
     // but not present in the HIR body instructions (they're in HIRFunction.params).
     for name in param_names {
         component_locals.insert(name.clone());
@@ -93,15 +95,8 @@ fn collect_locally_declared_func(func: &HIRFunction) -> FxHashSet<String> {
 /// where global mutations are allowed. Matches upstream behavior.
 const EFFECT_HOOKS: &[&str] = &["useEffect", "useLayoutEffect", "useInsertionEffect"];
 
-/// Collect IDs of function expressions that are used in "safe" (non-render) contexts:
-/// - First argument to useEffect / useLayoutEffect / useInsertionEffect
-/// - Value of a JSX prop (event handler like onClick)
-/// - First argument to useCallback (callback body)
-///
-/// Global mutations inside these functions are allowed because they don't execute
-/// during render — they run in effects or in response to user events.
 /// Recursively collect id-to-name mappings from all blocks including nested functions.
-fn collect_id_names_recursive(hir: &HIR, id_to_name: &mut FxHashMap<IdentifierId, String>) {
+fn collect_id_names_recursive(hir: &HIR, id_to_name: &mut IdVec<IdentifierId, String>) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -119,8 +114,10 @@ fn collect_id_names_recursive(hir: &HIR, id_to_name: &mut FxHashMap<IdentifierId
                 }
                 _ => {}
             }
-            if let Some(name) = &instr.lvalue.identifier.name {
-                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
+            if let Some(name) = &instr.lvalue.identifier.name
+                && !id_to_name.contains_key(instr.lvalue.identifier.id)
+            {
+                id_to_name.insert(instr.lvalue.identifier.id, name.clone());
             }
         }
     }
@@ -129,8 +126,8 @@ fn collect_id_names_recursive(hir: &HIR, id_to_name: &mut FxHashMap<IdentifierId
 /// Recursively collect safe callback IDs from all blocks including nested functions.
 fn collect_safe_ids_recursive(
     hir: &HIR,
-    id_to_name: &FxHashMap<IdentifierId, String>,
-    safe_ids: &mut FxHashSet<IdentifierId>,
+    id_to_name: &IdVec<IdentifierId, String>,
+    safe_ids: &mut IdSet<IdentifierId>,
 ) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -140,7 +137,7 @@ fn collect_safe_ids_recursive(
                         .identifier
                         .name
                         .as_deref()
-                        .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+                        .or_else(|| id_to_name.get(callee.identifier.id).map(String::as_str));
                     if let Some(name) = callee_name
                         && EFFECT_HOOKS.contains(&name)
                         && !args.is_empty()
@@ -190,7 +187,7 @@ fn collect_safe_ids_recursive(
 }
 
 /// Recursively collect id alias mappings from all blocks including nested functions.
-fn collect_id_aliases_recursive(hir: &HIR, id_aliases: &mut FxHashMap<IdentifierId, IdentifierId>) {
+fn collect_id_aliases_recursive(hir: &HIR, id_aliases: &mut IdVec<IdentifierId, IdentifierId>) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
@@ -211,34 +208,27 @@ fn collect_id_aliases_recursive(hir: &HIR, id_aliases: &mut FxHashMap<Identifier
     }
 }
 
-fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
-    let mut safe_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+fn collect_safe_callback_ids(hir: &HIR) -> IdSet<IdentifierId> {
+    let mut safe_ids: IdSet<IdentifierId> = IdSet::new();
 
     // Build id-to-name map to resolve callee identifiers.
-    // Also recurse into nested function bodies to catch patterns like
-    // `useMemo(() => <div onClick={handler}>)` where the JSX event handler
-    // is inside a nested function.
-    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut id_to_name: IdVec<IdentifierId, String> = IdVec::new();
     collect_id_names_recursive(hir, &mut id_to_name);
 
     // Scan all blocks (including nested function bodies) for safe callback patterns.
     collect_safe_ids_recursive(hir, &id_to_name, &mut safe_ids);
 
-    // Propagate safety through LoadLocal/StoreLocal chains:
-    // If `const cb = () => { ... }; useEffect(cb)`, then cb's function expr
-    // ID differs from the ID passed to useEffect. We need to trace through
-    // StoreLocal → LoadLocal chains.
-    let mut id_aliases: FxHashMap<IdentifierId, IdentifierId> = FxHashMap::default();
+    // Propagate safety through LoadLocal/StoreLocal chains
+    let mut id_aliases: IdVec<IdentifierId, IdentifierId> = IdVec::new();
     collect_id_aliases_recursive(hir, &mut id_aliases);
 
-    // Walk alias chains: if a safe ID maps back to a function expression,
-    // also mark the function expression's lvalue as safe
-    let safe_copy: Vec<IdentifierId> = safe_ids.iter().copied().collect();
+    // Walk alias chains
+    let safe_copy: Vec<IdentifierId> =
+        safe_ids.iter_indices().map(|idx| IdentifierId(idx as u32)).collect();
     for id in safe_copy {
         let mut current = id;
         for _ in 0..10 {
-            // depth limit to avoid cycles
-            if let Some(&alias) = id_aliases.get(&current) {
+            if let Some(&alias) = id_aliases.get(current) {
                 safe_ids.insert(alias);
                 current = alias;
             } else {
@@ -247,29 +237,18 @@ fn collect_safe_callback_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
         }
     }
 
-    // Also collect safe callback NAMES for cross-scope matching.
-    // When a safe ID corresponds to a LoadLocal of a named variable, that name
-    // identifies a function that's safe. We resolve names from all safe IDs.
-    let mut safe_names: FxHashSet<String> = FxHashSet::default();
-    for id in &safe_ids {
-        if let Some(name) = id_to_name.get(id) {
-            safe_names.insert(name.clone());
-        }
-    }
-
     safe_ids
 }
 
 /// Collect names of functions that are safe callbacks (event handlers, effects).
-/// This supplements the ID-based safe_callback_ids for cross-scope matching.
 fn collect_safe_callback_names(hir: &HIR) -> FxHashSet<String> {
     let safe_ids = collect_safe_callback_ids(hir);
-    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut id_to_name: IdVec<IdentifierId, String> = IdVec::new();
     collect_id_names_recursive(hir, &mut id_to_name);
 
     let mut names = FxHashSet::default();
-    for id in &safe_ids {
-        if let Some(name) = id_to_name.get(id) {
+    for (idx, name) in id_to_name.iter() {
+        if safe_ids.contains(IdentifierId(idx as u32)) {
             names.insert(name.clone());
         }
     }
@@ -277,7 +256,7 @@ fn collect_safe_callback_names(hir: &HIR) -> FxHashSet<String> {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let InstructionValue::StoreLocal { lvalue, value, .. } = &instr.value
-                && safe_ids.contains(&value.identifier.id)
+                && safe_ids.contains(value.identifier.id)
                 && let Some(name) = &lvalue.identifier.name
             {
                 names.insert(name.clone());
@@ -290,18 +269,11 @@ fn collect_safe_callback_names(hir: &HIR) -> FxHashSet<String> {
 /// Check all blocks in an HIR for global/outer-scope reassignments,
 /// recursing into nested function expressions.
 fn check_blocks(hir: &HIR, component_locals: &FxHashSet<String>, errors: &mut ErrorCollector) {
-    // DIVERGENCE: Upstream allows global mutations inside effect callbacks and
-    // JSX event handlers. We collect IDs of function expressions used in safe
-    // contexts and skip global mutation checks inside those functions.
     let safe_callback_ids = collect_safe_callback_ids(hir);
-    // Also collect names for cross-scope matching (handles cases where the
-    // safe callback is referenced across function boundaries with different IDs).
     let safe_callback_names = collect_safe_callback_names(hir);
 
     // Build a mapping from temp IDs to their assigned variable names.
-    // When a FunctionExpression's lvalue is a temp that's stored to a named
-    // variable, this lets us check if the variable name is a safe callback.
-    let mut id_to_assigned_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut id_to_assigned_name: IdVec<IdentifierId, String> = IdVec::new();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let InstructionValue::StoreLocal { lvalue, value, .. } = &instr.value
@@ -320,8 +292,7 @@ fn check_blocks(hir: &HIR, component_locals: &FxHashSet<String>, errors: &mut Er
                     .push(CompilerError::invalid_react(instr.loc, global_reassignment_error(name)));
             }
 
-            // StoreLocal with Reassign on undeclared names (e.g., x = ... where x is global)
-            // This catches destructuring assignments to global variables like [x] = props
+            // StoreLocal with Reassign on undeclared names
             if let InstructionValue::StoreLocal {
                 lvalue,
                 type_: Some(InstructionKind::Reassign) | None,
@@ -334,8 +305,7 @@ fn check_blocks(hir: &HIR, component_locals: &FxHashSet<String>, errors: &mut Er
                     .push(CompilerError::invalid_react(instr.loc, global_reassignment_error(name)));
             }
 
-            // PostfixUpdate/PrefixUpdate on undeclared names (e.g., renderCount++)
-            // Upstream emits a Todo error for UpdateExpression on globals.
+            // PostfixUpdate/PrefixUpdate on undeclared names
             match &instr.value {
                 InstructionValue::PostfixUpdate { lvalue, .. }
                 | InstructionValue::PrefixUpdate { lvalue, .. } => {
@@ -353,17 +323,13 @@ fn check_blocks(hir: &HIR, component_locals: &FxHashSet<String>, errors: &mut Er
                 _ => {}
             }
 
-            // Recurse into nested function bodies — check for outer-scope stores
-            // Skip functions used in safe contexts (effects, JSX event handlers)
+            // Recurse into nested function bodies
             match &instr.value {
                 InstructionValue::FunctionExpression { lowered_func, .. }
                 | InstructionValue::ObjectMethod { lowered_func, .. } => {
                     let id = instr.lvalue.identifier.id;
-                    let is_safe_by_id = safe_callback_ids.contains(&id);
-                    // Also check by name: if the variable this FE is stored to
-                    // has a name in the safe callbacks set, skip it.
-                    // Check both the lvalue's own name and the name it's assigned to.
-                    let assigned_name = id_to_assigned_name.get(&id);
+                    let is_safe_by_id = safe_callback_ids.contains(id);
+                    let assigned_name = id_to_assigned_name.get(id);
                     let lvalue_name = instr.lvalue.identifier.name.as_ref();
                     let is_safe_by_name = assigned_name
                         .or(lvalue_name)
@@ -384,15 +350,10 @@ fn check_blocks(hir: &HIR, component_locals: &FxHashSet<String>, errors: &mut Er
 }
 
 /// Check a nested function body for stores to variables not declared locally.
-/// Any StoreLocal/Reassign targeting a name not in the nested function's locals
-/// AND not in any ancestor scope is a module-scope reassignment.
-/// `all_ancestor_locals` includes all variable names from the component and any
-/// intermediate function scopes (prevents false positives on intermediate captures).
-/// `safe_callback_ids` contains IDs of functions used in safe (non-render) contexts.
 fn check_nested_for_outer_scope_stores(
     func: &HIRFunction,
     all_ancestor_locals: &FxHashSet<String>,
-    safe_callback_ids: &FxHashSet<IdentifierId>,
+    safe_callback_ids: &IdSet<IdentifierId>,
     errors: &mut ErrorCollector,
 ) {
     let nested_locals = collect_locally_declared_func(func);
@@ -400,9 +361,8 @@ fn check_nested_for_outer_scope_stores(
     // Also collect safe callback IDs within this function body
     let nested_safe_ids = collect_safe_callback_ids(&func.body);
 
-    // Build: lvalue ID → variable name for LoadLocal of undeclared vars
-    // Used to detect PropertyStore/MethodCall on outer-scope variables
-    let mut undeclared_load_ids: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    // Build: lvalue ID -> variable name for LoadLocal of undeclared vars
+    let mut undeclared_load_ids: IdVec<IdentifierId, String> = IdVec::new();
 
     for (_, block) in &func.body.blocks {
         for instr in &block.instructions {
@@ -420,8 +380,6 @@ fn check_nested_for_outer_scope_stores(
     for (_, block) in &func.body.blocks {
         for instr in &block.instructions {
             match &instr.value {
-                // StoreLocal with Reassign type_ on a name not declared in this function
-                // and not in the component's locals — it's a module-scope variable
                 InstructionValue::StoreLocal {
                     lvalue,
                     type_: Some(InstructionKind::Reassign),
@@ -438,26 +396,23 @@ fn check_nested_for_outer_scope_stores(
                         ));
                     }
                 }
-                // PropertyStore/ComputedStore where object is an undeclared outer var
                 InstructionValue::PropertyStore { object, .. }
                 | InstructionValue::ComputedStore { object, .. } => {
-                    if let Some(name) = undeclared_load_ids.get(&object.identifier.id) {
+                    if let Some(name) = undeclared_load_ids.get(object.identifier.id) {
                         errors.push(CompilerError::invalid_react(
                             instr.loc,
                             global_reassignment_error(name),
                         ));
                     }
                 }
-                // MethodCall where receiver is an undeclared outer var
                 InstructionValue::MethodCall { receiver, .. } => {
-                    if let Some(name) = undeclared_load_ids.get(&receiver.identifier.id) {
+                    if let Some(name) = undeclared_load_ids.get(receiver.identifier.id) {
                         errors.push(CompilerError::invalid_react(
                             instr.loc,
                             global_reassignment_error(name),
                         ));
                     }
                 }
-                // PostfixUpdate/PrefixUpdate on outer-scope names
                 InstructionValue::PostfixUpdate { lvalue, .. }
                 | InstructionValue::PrefixUpdate { lvalue, .. } => {
                     if let Some(name) = &lvalue.identifier.name
@@ -472,13 +427,10 @@ fn check_nested_for_outer_scope_stores(
                         ));
                     }
                 }
-                // Recurse deeper into nested functions, passing all ancestor scopes
-                // Skip functions used in safe contexts (effects, JSX event handlers)
                 InstructionValue::FunctionExpression { lowered_func, .. }
                 | InstructionValue::ObjectMethod { lowered_func, .. } => {
                     let id = instr.lvalue.identifier.id;
-                    if !safe_callback_ids.contains(&id) && !nested_safe_ids.contains(&id) {
-                        // Merge current function's locals into ancestor set for deeper recursion
+                    if !safe_callback_ids.contains(id) && !nested_safe_ids.contains(id) {
                         let mut merged = all_ancestor_locals.clone();
                         merged.extend(nested_locals.iter().cloned());
                         check_nested_for_outer_scope_stores(
@@ -488,14 +440,11 @@ fn check_nested_for_outer_scope_stores(
                             errors,
                         );
 
-                        // Render helper detection: if this nested function returns JSX,
-                        // also check for PropertyStore/MethodCall on global variables
                         if body_contains_jsx(&lowered_func.body) {
                             check_render_helper_global_mutations(&lowered_func.body, errors);
                         }
                     }
                 }
-                // Explicit StoreGlobal in nested context
                 InstructionValue::StoreGlobal { name, .. } => {
                     errors.push(CompilerError::invalid_react(
                         instr.loc,
@@ -523,12 +472,9 @@ fn body_contains_jsx(hir: &HIR) -> bool {
     false
 }
 
-/// Check a render helper (function returning JSX) for PropertyStore/MethodCall on globals.
-/// DIVERGENCE: Upstream uses `ValidateNoSetStateInRender` with render helper detection
-/// via abstract interpretation. We approximate by scanning for LoadGlobal → PropertyStore chains.
+/// Check a render helper for PropertyStore/MethodCall on globals.
 fn check_render_helper_global_mutations(hir: &HIR, errors: &mut ErrorCollector) {
-    // Build: lvalue ID → global name for LoadGlobal values
-    let mut global_load_ids: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut global_load_ids: IdVec<IdentifierId, String> = IdVec::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -543,7 +489,7 @@ fn check_render_helper_global_mutations(hir: &HIR, errors: &mut ErrorCollector) 
             match &instr.value {
                 InstructionValue::PropertyStore { object, .. }
                 | InstructionValue::ComputedStore { object, .. } => {
-                    if let Some(name) = global_load_ids.get(&object.identifier.id) {
+                    if let Some(name) = global_load_ids.get(object.identifier.id) {
                         errors.push(CompilerError::invalid_react(
                             instr.loc,
                             global_reassignment_error(name),
@@ -551,7 +497,7 @@ fn check_render_helper_global_mutations(hir: &HIR, errors: &mut ErrorCollector) 
                     }
                 }
                 InstructionValue::MethodCall { receiver, .. } => {
-                    if let Some(name) = global_load_ids.get(&receiver.identifier.id) {
+                    if let Some(name) = global_load_ids.get(receiver.identifier.id) {
                         errors.push(CompilerError::invalid_react(
                             instr.loc,
                             global_reassignment_error(name),
