@@ -10,7 +10,6 @@
 # Re-baselined: 2026-03-21 against upstream main (facebook/react)
 # fbt preprocessing: +14 fixtures (fbt JSX pre-transformed via babel-plugin-fbt)
 alias-capture-in-method-receiver.js
-alias-nested-member-path.js
 alias-while.js
 aliased-nested-scope-fn-expr.tsx
 align-scope-starts-within-cond.ts

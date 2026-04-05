@@ -143,8 +143,12 @@ pub fn compute_instruction_effects(
 
         InstructionValue::PropertyStore { object, value, .. }
         | InstructionValue::ComputedStore { object, value, .. } => {
-            effects.push(AliasingEffect::Mutate { value: object.clone(), reason: None });
+            // Capture MUST come before Mutate: the BFS mutation propagation
+            // skips edges with index >= mutation_index. If Capture is emitted
+            // after Mutate, its edge index is higher and gets skipped, preventing
+            // transitive range propagation through aliasing chains (z→y→x).
             effects.push(AliasingEffect::Capture { from: value.clone(), into: object.clone() });
+            effects.push(AliasingEffect::MutateTransitive { value: object.clone() });
         }
 
         InstructionValue::PropertyDelete { object, .. }
