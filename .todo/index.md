@@ -38,7 +38,7 @@ The single largest blocker. Our scope inference creates too many or too few scop
 
 | Sub-category | ~Count | Root Cause | Status |
 |-------------|--------|-----------|--------|
-| Loop codegen bugs | ~12 | do-while flattened, for-of body dropped | **→ See Group E** |
+| Loop codegen bugs | ~12 | do-while flattened, for-of body dropped | **MOSTLY FIXED** (Phase 177) — remaining: SSA/DCE, self-assign, do-while+continue |
 | Sentinel dep scopes | ~10 | Deps on never-changing sentinel values | **FIXED** (`prune_scopes_with_sentinel_only_deps`) |
 | Redundant declarations | ~30 | Aliases (y=x) stored as separate slots | Open |
 
@@ -115,18 +115,22 @@ These are context variables reassigned inside closures. Our validation fires whe
 
 ### Group E: Loop Codegen Bugs (~12 fixtures)
 
-**Status: NEW — discovered in Phase 176**
+**Status: MOSTLY FIXED (Phase 177) — root cause found and resolved**
 **Independent of scope inference**
 
-Debugging +1 surplus fixtures revealed that some loop constructs produce incorrect codegen:
-- **do-while:** Loop body flattened to single execution (no actual loop in output)
-- **for-of:** Loop body completely dropped from output
+**Root cause found:** `build_scope_block_only` silently dropped all loop terminals. Fixed in Phase 177.
 
-These are codegen/reactive-tree structural bugs, NOT scope inference issues. They affect both slot counts AND correctness.
+**What was fixed:**
+- While and DoWhile now emit proper HIR terminals instead of Goto+Branch
+- Codegen emits proper `while(cond)`, `do{}while(cond)`, `for(init;cond;update)` syntax
+- For-of and for-in loops now appear in output when inside reactive scopes
 
-- [ ] **E1: Investigate do-while codegen** — `do-while-simple.js` loop body outside scope, no loop structure
-- [ ] **E2: Investigate for-of codegen** — `for-of-simple.js` loop body missing entirely
-- [ ] **E3: Fix loop codegen** — Likely in `codegen.rs` or reactive tree construction
+**Remaining issues (not codegen bugs — deeper pipeline issues):**
+- [ ] **E4: For-loop update expression lost to DCE/SSA** — `i++` PostfixUpdate gets eliminated because the new SSA version appears unused (phi elimination issue). This is an SSA/DCE bug, not codegen.
+- [ ] **E5: Self-assignments after loops** — Scope declarations re-assign to themselves (`ret = ret;`, `x = x;`). Codegen artifact from scope variable handling.
+- [ ] **E6: Do-while with continue** — Falls back to `while(true)` instead of emitting proper condition
+
+**Conformance:** Still 555/1717 (32.3%) — loop fixtures have other differences preventing exact match, but loops now actually appear in output.
 
 **Affected fixtures (sample):** do-while-simple, do-while-continue, for-of-simple, for-of-continue, for-of-mutate, for-in-statement-break, for-in-statement-continue, alias-while, reactive-control-dependency-*-while
 
@@ -208,7 +212,7 @@ Neither side memoizes, but our output format differs. Dominated by:
 6. **Scope propagation to FinishMemoize.decl causes -52 if scope accuracy is wrong.** Do NOT re-enable until Group A is resolved.
 7. **Post-naming dep filters are ALWAYS dangerous.** Only pre-naming structural filters (name==None) are safe. 9 failed approaches prove this.
 8. **Individual scope inference fixes cascade.** Each fix disturbs compensating errors in the effective_range workaround. Must fix mutable range accuracy FIRST.
-9. **+1 surplus has 3 distinct categories** (loop codegen ~12, sentinel deps ~10 FIXED, redundant decls ~30). Not all are scope inference.
+9. **+1 surplus has 3 distinct categories** (loop codegen ~12 MOSTLY FIXED, sentinel deps ~10 FIXED, redundant decls ~30). Not all are scope inference.
 
 ---
 
