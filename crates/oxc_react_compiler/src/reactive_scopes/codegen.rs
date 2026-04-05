@@ -1523,7 +1523,30 @@ pub fn codegen_function(rf: &ReactiveFunction) -> String {
 
     output.push_str("}\n");
     renumber_temps_in_output(&mut output);
+    strip_self_assignments(&mut output);
     output
+}
+
+/// Remove self-assignment lines like `x = x;` from the output.
+/// These are codegen artifacts from scope variable promotion and loop mutations.
+fn strip_self_assignments(output: &mut String) {
+    let mut result = String::with_capacity(output.len());
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_suffix(';')
+            && let Some(eq_pos) = rest.find(" = ")
+        {
+            let lhs = rest[..eq_pos].trim();
+            let rhs = rest[eq_pos + 3..].trim();
+            // Skip `x = x;` but NOT `let x = x;` or `const x = x;`
+            if lhs == rhs && !lhs.is_empty() && !lhs.contains(' ') {
+                continue;
+            }
+        }
+        result.push_str(line);
+        result.push('\n');
+    }
+    *output = result;
 }
 
 /// Renumber all compiler-generated temporaries (`t5`, `t7`, `t10`, ...) in the
@@ -3067,8 +3090,27 @@ fn codegen_scope(
             // by non-alphanumeric characters. Since temp names are `tN`, this is safe.
             replaced = replace_identifier_in_output(&replaced, temp_name, promoted_name);
         }
+        // Remove self-assignments created by the replacement (e.g., `items = items;`).
+        // These arise when a StoreLocal has a temp lvalue promoted to the same name as
+        // the value: `t5 = items;` becomes `items = items;` after replacement.
+        let mut cleaned = String::new();
+        for line in replaced.lines() {
+            let trimmed = line.trim();
+            // Check for pattern: `name = name;`
+            if let Some(rest) = trimmed.strip_suffix(';')
+                && let Some(eq_pos) = rest.find(" = ")
+            {
+                let lhs = rest[..eq_pos].trim();
+                let rhs = rest[eq_pos + 3..].trim();
+                if lhs == rhs && !lhs.is_empty() && !lhs.contains(' ') {
+                    continue; // Skip self-assignment
+                }
+            }
+            cleaned.push_str(line);
+            cleaned.push('\n');
+        }
         output.truncate(body_start);
-        output.push_str(&replaced);
+        output.push_str(&cleaned);
     }
 
     // Build the effective list of declaration names for cache store/load.
