@@ -1,7 +1,7 @@
 use crate::hir::types::{
-    BinaryOp, BlockId, HIR, IdentifierId, InstructionValue, Primitive, Terminal, UnaryOp,
+    BinaryOp, BlockId, HIR, IdSet, IdVec, IdentifierId, InstructionValue, Primitive, Terminal,
+    UnaryOp,
 };
-use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Propagate known constant values through the HIR and fold constant expressions.
 ///
@@ -67,7 +67,7 @@ pub fn constant_propagation(hir: &mut HIR) -> usize {
 /// Returns `(instructions_changed, any_terminal_folded)`.
 fn apply_propagation(
     hir: &mut HIR,
-    constants: &mut FxHashMap<IdentifierId, Primitive>,
+    constants: &mut IdVec<IdentifierId, Primitive>,
 ) -> (usize, bool) {
     let mut changed = 0;
     let mut terminals_changed = false;
@@ -77,14 +77,14 @@ fn apply_propagation(
         for instr in &mut block.instructions {
             match &instr.value {
                 InstructionValue::LoadLocal { place } => {
-                    if let Some(constant) = constants.get(&place.identifier.id) {
+                    if let Some(constant) = constants.get(place.identifier.id) {
                         instr.value = InstructionValue::Primitive { value: constant.clone() };
                         changed += 1;
                     }
                 }
                 InstructionValue::BinaryExpression { op, left, right } => {
                     if let (Some(lv), Some(rv)) =
-                        (constants.get(&left.identifier.id), constants.get(&right.identifier.id))
+                        (constants.get(left.identifier.id), constants.get(right.identifier.id))
                         && let Some(result) = fold_binary(*op, lv, rv)
                     {
                         constants.insert(instr.lvalue.identifier.id, result.clone());
@@ -93,7 +93,7 @@ fn apply_propagation(
                     }
                 }
                 InstructionValue::UnaryExpression { op, value } => {
-                    if let Some(val) = constants.get(&value.identifier.id)
+                    if let Some(val) = constants.get(value.identifier.id)
                         && let Some(result) = fold_unary(*op, val)
                     {
                         constants.insert(instr.lvalue.identifier.id, result.clone());
@@ -119,15 +119,12 @@ fn apply_propagation(
 ///
 /// Upstream: only handles `if` terminals in `ConstantPropagation.ts`.
 /// We also handle `Branch`, `Ternary`, and `Optional` for completeness.
-fn try_fold_terminal(
-    terminal: &mut Terminal,
-    constants: &FxHashMap<IdentifierId, Primitive>,
-) -> bool {
+fn try_fold_terminal(terminal: &mut Terminal, constants: &IdVec<IdentifierId, Primitive>) -> bool {
     match terminal {
         // If: test ? consequent : alternate, then fallthrough
         // Upstream handles this case explicitly.
         Terminal::If { test, consequent, alternate, .. } => {
-            if let Some(val) = constants.get(&test.identifier.id) {
+            if let Some(val) = constants.get(test.identifier.id) {
                 let target = if to_boolean(val) { *consequent } else { *alternate };
                 *terminal = Terminal::Goto { block: target };
                 return true;
@@ -136,41 +133,29 @@ fn try_fold_terminal(
         // DIVERGENCE: upstream only folds `if` terminals. We also fold Branch
         // for completeness since it's a simpler conditional with identical semantics.
         Terminal::Branch { test, consequent, alternate } => {
-            if let Some(val) = constants.get(&test.identifier.id) {
+            if let Some(val) = constants.get(test.identifier.id) {
                 let target = if to_boolean(val) { *consequent } else { *alternate };
                 *terminal = Terminal::Goto { block: target };
                 return true;
             }
         }
         // DIVERGENCE: upstream does not fold Ternary terminals in CP.
-        // Ternary: test ? consequent : alternate, result assigned.
-        // The live branch block writes the result value and falls through to
-        // fallthrough. Replacing with Goto to the live branch is safe because:
-        // (1) The branch block itself handles the value assignment via StoreLocal.
-        // (2) The Ternary's `result` field is only used by `build_reactive_function`
-        //     during codegen, which reads from the terminal — but after this fold,
-        //     the terminal is a Goto and codegen will never see a Ternary here.
-        // (3) The fallthrough block remains reachable via the live branch's own Goto.
         Terminal::Ternary { test, consequent, alternate, .. } => {
-            if let Some(val) = constants.get(&test.identifier.id) {
+            if let Some(val) = constants.get(test.identifier.id) {
                 let target = if to_boolean(val) { *consequent } else { *alternate };
                 *terminal = Terminal::Goto { block: target };
                 return true;
             }
         }
         // DIVERGENCE: upstream does not fold Optional terminals in CP.
-        // Optional: test?.consequent, short-circuits to fallthrough if nullish.
         Terminal::Optional { test, consequent, fallthrough, .. } => {
-            if let Some(val) = constants.get(&test.identifier.id) {
-                // Optional chaining uses nullish check (null/undefined), not falsiness
+            if let Some(val) = constants.get(test.identifier.id) {
                 let is_nullish = matches!(val, Primitive::Null | Primitive::Undefined);
                 let target = if is_nullish { *fallthrough } else { *consequent };
                 *terminal = Terminal::Goto { block: target };
                 return true;
             }
         }
-        // TODO: fold Logical terminal when left block result is a known constant
-        // TODO: fold Switch terminal when test and case values are known constants
         _ => {}
     }
     false
@@ -179,8 +164,10 @@ fn try_fold_terminal(
 /// Rebuild predecessor lists for all blocks from scratch by walking successor edges.
 fn rebuild_predecessors(hir: &mut HIR) {
     // Build an index from BlockId -> position in hir.blocks for O(1) lookup.
-    let index: FxHashMap<BlockId, usize> =
-        hir.blocks.iter().enumerate().map(|(i, (id, _))| (*id, i)).collect();
+    let mut index: IdVec<BlockId, usize> = IdVec::new();
+    for (i, (id, _)) in hir.blocks.iter().enumerate() {
+        index.insert(*id, i);
+    }
 
     // Clear all predecessor lists
     for (_, block) in &mut hir.blocks {
@@ -199,7 +186,7 @@ fn rebuild_predecessors(hir: &mut HIR) {
     // Rebuild predecessor lists from edges using the index for O(1) lookup
     for (pred_id, successors) in edges {
         for succ_id in successors {
-            if let Some(&idx) = index.get(&succ_id) {
+            if let Some(&idx) = index.get(succ_id) {
                 let preds = &mut hir.blocks[idx].1.preds;
                 if !preds.contains(&pred_id) {
                     preds.push(pred_id);
@@ -214,9 +201,12 @@ fn rebuild_predecessors(hir: &mut HIR) {
 /// reference blocks that are no longer predecessors.
 fn prune_unreachable_phi_operands(hir: &mut HIR) {
     for (_, block) in &mut hir.blocks {
-        let preds: FxHashSet<BlockId> = block.preds.iter().copied().collect();
+        let mut preds: IdSet<BlockId> = IdSet::new();
+        for &p in &block.preds {
+            preds.insert(p);
+        }
         for phi in &mut block.phis {
-            phi.operands.retain(|(pred_id, _)| preds.contains(pred_id));
+            phi.operands.retain(|(pred_id, _)| preds.contains(*pred_id));
         }
     }
 }
@@ -224,16 +214,18 @@ fn prune_unreachable_phi_operands(hir: &mut HIR) {
 /// Collect identifiers that are assigned exactly one constant value across
 /// all blocks. If an identifier is assigned more than once with different
 /// values, or assigned a non-constant, it is excluded.
-fn collect_constants(hir: &HIR) -> FxHashMap<IdentifierId, Primitive> {
+fn collect_constants(hir: &HIR) -> IdVec<IdentifierId, Primitive> {
     // None means "assigned but not a single constant" (poisoned).
-    let mut constants: FxHashMap<IdentifierId, Option<Primitive>> = FxHashMap::default();
+    // Some(Some(p)) means assigned exactly one constant p.
+    // Some(None) means poisoned (multiple different values or non-constant).
+    let mut constants: IdVec<IdentifierId, Option<Primitive>> = IdVec::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             let id = instr.lvalue.identifier.id;
             match &instr.value {
                 InstructionValue::Primitive { value } => {
-                    match constants.get(&id) {
+                    match constants.get(id) {
                         None => {
                             constants.insert(id, Some(value.clone()));
                         }
@@ -274,14 +266,14 @@ fn collect_constants(hir: &HIR) -> FxHashMap<IdentifierId, Primitive> {
             for phi in &block.phis {
                 let phi_id = phi.place.identifier.id;
                 // Skip if already resolved
-                if constants.contains_key(&phi_id) {
+                if constants.contains_key(phi_id) {
                     continue;
                 }
                 // Check if all operands map to the same constant
                 let mut phi_const: Option<&Primitive> = None;
                 let mut all_same = true;
                 for (_, operand) in &phi.operands {
-                    if let Some(Some(c)) = constants.get(&operand.identifier.id) {
+                    if let Some(Some(c)) = constants.get(operand.identifier.id) {
                         match phi_const {
                             None => phi_const = Some(c),
                             Some(existing) if existing == c => {}
@@ -307,7 +299,14 @@ fn collect_constants(hir: &HIR) -> FxHashMap<IdentifierId, Primitive> {
         }
     }
 
-    constants.into_iter().filter_map(|(id, val)| val.map(|v| (id, v))).collect()
+    // Extract only the confirmed constants
+    let mut result: IdVec<IdentifierId, Primitive> = IdVec::new();
+    for (idx, val) in constants.iter() {
+        if let Some(p) = val {
+            result.insert(IdentifierId(idx as u32), p.clone());
+        }
+    }
+    result
 }
 
 /// Fold a binary expression with two constant operands.

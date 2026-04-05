@@ -1,6 +1,5 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{HIR, IdentifierId, InstructionValue, Type};
-use rustc_hash::{FxHashMap, FxHashSet};
+use crate::hir::types::{HIR, IdSet, IdVec, IdentifierId, InstructionValue, Type};
 
 /// Known effect hook names.
 const EFFECT_HOOKS: &[&str] = &["useEffect", "useLayoutEffect", "useInsertionEffect"];
@@ -20,7 +19,7 @@ pub fn validate_no_set_state_in_effects(hir: &HIR, errors: &mut ErrorCollector) 
                     .identifier
                     .name
                     .as_deref()
-                    .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
+                    .or_else(|| id_to_name.get(callee.identifier.id).map(String::as_str));
 
                 let Some(name) = name else { continue };
                 if !EFFECT_HOOKS.contains(&name) {
@@ -40,8 +39,8 @@ pub fn validate_no_set_state_in_effects(hir: &HIR, errors: &mut ErrorCollector) 
 }
 
 /// Build a map from identifier ID → name for SSA resolution.
-fn build_name_map(hir: &HIR) -> FxHashMap<IdentifierId, String> {
-    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+fn build_name_map(hir: &HIR) -> IdVec<IdentifierId, String> {
+    let mut id_to_name: IdVec<IdentifierId, String> = IdVec::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -57,7 +56,7 @@ fn build_name_map(hir: &HIR) -> FxHashMap<IdentifierId, String> {
                 _ => {}
             }
             if let Some(name) = &instr.lvalue.identifier.name {
-                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
+                id_to_name.entry_or_insert_with(instr.lvalue.identifier.id, || name.clone());
             }
         }
     }
@@ -66,8 +65,8 @@ fn build_name_map(hir: &HIR) -> FxHashMap<IdentifierId, String> {
 }
 
 /// Collect all setState identifier IDs in an HIR body.
-fn collect_set_state_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
-    let mut set_state_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+fn collect_set_state_ids(hir: &HIR) -> IdSet<IdentifierId> {
+    let mut set_state_ids: IdSet<IdentifierId> = IdSet::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -82,7 +81,7 @@ fn collect_set_state_ids(hir: &HIR) -> FxHashSet<IdentifierId> {
             match &instr.value {
                 InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
                     if place.identifier.type_ == Type::SetState
-                        || set_state_ids.contains(&place.identifier.id)
+                        || set_state_ids.contains(place.identifier.id)
                     {
                         set_state_ids.insert(instr.lvalue.identifier.id);
                     }
@@ -131,7 +130,7 @@ fn check_effect_body_for_set_state(
 
                         if let InstructionValue::CallExpression { callee: inner_callee, .. } =
                             &inner_instr.value
-                            && set_state_ids.contains(&inner_callee.identifier.id)
+                            && set_state_ids.contains(inner_callee.identifier.id)
                         {
                             errors.push(CompilerError::invalid_react_with_kind(
                                 inner_instr.loc,

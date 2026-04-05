@@ -40,6 +40,190 @@ define_id!(InstructionId);
 define_id!(TypeId);
 
 // ---------------------------------------------------------------------------
+// IdVec / IdSet — O(1) indexed collections for sequential ID types
+// ---------------------------------------------------------------------------
+
+/// Trait for ID types that can be used as `IdVec`/`IdSet` indices.
+pub trait IdIndex: Copy {
+    fn index(self) -> usize;
+}
+macro_rules! impl_id_index {
+    ($name:ident) => {
+        impl IdIndex for $name {
+            #[inline]
+            fn index(self) -> usize {
+                self.0 as usize
+            }
+        }
+    };
+}
+impl_id_index!(BlockId);
+impl_id_index!(ScopeId);
+impl_id_index!(IdentifierId);
+impl_id_index!(DeclarationId);
+impl_id_index!(InstructionId);
+impl_id_index!(TypeId);
+
+/// A `Vec<Option<T>>` indexed by an ID type. O(1) lookup with no hashing.
+pub struct IdVec<Id, T> {
+    inner: Vec<Option<T>>,
+    _marker: std::marker::PhantomData<Id>,
+}
+impl<Id: IdIndex, T> Default for IdVec<Id, T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl<Id, T: fmt::Debug> fmt::Debug for IdVec<Id, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list()
+            .entries(self.inner.iter().enumerate().filter_map(|(i, v)| v.as_ref().map(|v| (i, v))))
+            .finish()
+    }
+}
+impl<Id, T: Clone> Clone for IdVec<Id, T> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone(), _marker: std::marker::PhantomData }
+    }
+}
+impl<Id: IdIndex, T> IdVec<Id, T> {
+    #[inline]
+    pub fn new() -> Self {
+        Self { inner: Vec::new(), _marker: std::marker::PhantomData }
+    }
+    #[inline]
+    pub fn with_capacity(cap: usize) -> Self {
+        Self { inner: Vec::with_capacity(cap), _marker: std::marker::PhantomData }
+    }
+    #[inline]
+    pub fn get(&self, id: Id) -> Option<&T> {
+        self.inner.get(id.index())?.as_ref()
+    }
+    #[inline]
+    pub fn get_mut(&mut self, id: Id) -> Option<&mut T> {
+        self.inner.get_mut(id.index())?.as_mut()
+    }
+    #[inline]
+    pub fn insert(&mut self, id: Id, value: T) {
+        let idx = id.index();
+        if idx >= self.inner.len() {
+            self.inner.resize_with(idx + 1, || None);
+        }
+        self.inner[idx] = Some(value);
+    }
+    #[inline]
+    pub fn entry_or_insert_with(&mut self, id: Id, f: impl FnOnce() -> T) -> &mut T {
+        let idx = id.index();
+        if idx >= self.inner.len() {
+            self.inner.resize_with(idx + 1, || None);
+        }
+        if self.inner[idx].is_none() {
+            self.inner[idx] = Some(f());
+        }
+        self.inner[idx].as_mut().unwrap()
+    }
+    #[inline]
+    pub fn contains_key(&self, id: Id) -> bool {
+        self.inner.get(id.index()).is_some_and(Option::is_some)
+    }
+    #[inline]
+    pub fn remove(&mut self, id: Id) -> Option<T> {
+        self.inner.get_mut(id.index())?.take()
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (usize, &T)> {
+        self.inner.iter().enumerate().filter_map(|(i, v)| v.as_ref().map(|v| (i, v)))
+    }
+    pub fn values(&self) -> impl Iterator<Item = &T> {
+        self.inner.iter().filter_map(|v| v.as_ref())
+    }
+    #[inline]
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+    pub fn is_empty(&self) -> bool {
+        !self.inner.iter().any(Option::is_some)
+    }
+}
+
+/// A `Vec<bool>` indexed by an ID type. O(1) membership test with no hashing.
+pub struct IdSet<Id> {
+    inner: Vec<bool>,
+    _marker: std::marker::PhantomData<Id>,
+}
+impl<Id: IdIndex> Default for IdSet<Id> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl<Id> fmt::Debug for IdSet<Id> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_set()
+            .entries(
+                self.inner.iter().enumerate().filter_map(|(i, &v)| if v { Some(i) } else { None }),
+            )
+            .finish()
+    }
+}
+impl<Id> Clone for IdSet<Id> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone(), _marker: std::marker::PhantomData }
+    }
+}
+impl<Id: IdIndex> IdSet<Id> {
+    #[inline]
+    pub fn new() -> Self {
+        Self { inner: Vec::new(), _marker: std::marker::PhantomData }
+    }
+    #[inline]
+    pub fn with_capacity(cap: usize) -> Self {
+        Self { inner: vec![false; cap], _marker: std::marker::PhantomData }
+    }
+    #[inline]
+    pub fn insert(&mut self, id: Id) -> bool {
+        let idx = id.index();
+        if idx >= self.inner.len() {
+            self.inner.resize(idx + 1, false);
+        }
+        let prev = self.inner[idx];
+        self.inner[idx] = true;
+        !prev
+    }
+    #[inline]
+    pub fn contains(&self, id: Id) -> bool {
+        self.inner.get(id.index()).copied().unwrap_or(false)
+    }
+    #[inline]
+    pub fn remove(&mut self, id: Id) -> bool {
+        if let Some(slot) = self.inner.get_mut(id.index()) {
+            let prev = *slot;
+            *slot = false;
+            prev
+        } else {
+            false
+        }
+    }
+    pub fn iter_indices(&self) -> impl Iterator<Item = usize> + '_ {
+        self.inner.iter().enumerate().filter_map(|(i, &v)| if v { Some(i) } else { None })
+    }
+    pub fn is_empty(&self) -> bool {
+        !self.inner.iter().any(|&v| v)
+    }
+    #[inline]
+    pub fn clear(&mut self) {
+        self.inner.fill(false);
+    }
+}
+impl<Id: IdIndex> FromIterator<Id> for IdSet<Id> {
+    fn from_iter<I: IntoIterator<Item = Id>>(iter: I) -> Self {
+        let mut set = IdSet::new();
+        for id in iter {
+            set.insert(id);
+        }
+        set
+    }
+}
+
+// ---------------------------------------------------------------------------
 // MutableRange
 // ---------------------------------------------------------------------------
 

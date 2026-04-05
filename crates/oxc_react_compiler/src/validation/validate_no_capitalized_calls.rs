@@ -1,7 +1,6 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::globals::is_hook_name;
-use crate::hir::types::{HIR, IdentifierId, InstructionValue};
-use rustc_hash::FxHashMap;
+use crate::hir::types::{HIR, IdVec, IdentifierId, InstructionValue};
 
 /// Validate that PascalCase functions are not called as regular functions.
 ///
@@ -11,7 +10,7 @@ use rustc_hash::FxHashMap;
 pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
     // Build a map from identifier ID → resolved name for SSA resolution.
     // Globals like `SomeFunc()` decompose to `t0 = LoadGlobal(SomeFunc); Call(t0)`.
-    let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
+    let mut id_to_name: IdVec<IdentifierId, String> = IdVec::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -25,14 +24,14 @@ pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
                     }
                     // Propagate resolved capitalized names through LoadLocal chains:
                     // if the source place resolves to a capitalized name, map the lvalue too
-                    if let Some(resolved) = id_to_name.get(&place.identifier.id).cloned() {
+                    if let Some(resolved) = id_to_name.get(place.identifier.id).cloned() {
                         id_to_name.insert(instr.lvalue.identifier.id, resolved);
                     }
                 }
                 // Propagate capitalized names through StoreLocal: let x = Bar
                 InstructionValue::StoreLocal { lvalue, value, .. }
                 | InstructionValue::StoreContext { lvalue, value } => {
-                    if let Some(resolved) = id_to_name.get(&value.identifier.id).cloned() {
+                    if let Some(resolved) = id_to_name.get(value.identifier.id).cloned() {
                         id_to_name.insert(lvalue.identifier.id, resolved.clone());
                         id_to_name.insert(instr.lvalue.identifier.id, resolved);
                     }
@@ -40,7 +39,7 @@ pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
                 _ => {}
             }
             if let Some(name) = &instr.lvalue.identifier.name {
-                id_to_name.entry(instr.lvalue.identifier.id).or_insert_with(|| name.clone());
+                id_to_name.entry_or_insert_with(instr.lvalue.identifier.id, || name.clone());
             }
         }
     }
@@ -53,7 +52,7 @@ pub fn validate_no_capitalized_calls(hir: &HIR, errors: &mut ErrorCollector) {
                         .identifier
                         .name
                         .clone()
-                        .or_else(|| id_to_name.get(&callee.identifier.id).cloned());
+                        .or_else(|| id_to_name.get(callee.identifier.id).cloned());
 
                     if let Some(name) = name {
                         // Skip hook calls (useXxx) — those are valid PascalCase-like calls

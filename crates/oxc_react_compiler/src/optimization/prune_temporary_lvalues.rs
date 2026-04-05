@@ -9,9 +9,7 @@
 //! This is a lightweight optimization that improves codegen readability
 //! without affecting correctness.
 
-use rustc_hash::FxHashMap;
-
-use crate::hir::types::{HIR, IdentifierId, InstructionValue};
+use crate::hir::types::{HIR, IdVec, IdentifierId, InstructionValue};
 
 /// Prune unnecessary temporary lvalue assignments.
 ///
@@ -20,24 +18,24 @@ use crate::hir::types::{HIR, IdentifierId, InstructionValue};
 /// intermediate assignment.
 pub fn prune_temporary_lvalues(hir: &mut HIR) {
     // Phase 1: Count uses of each identifier
-    let mut use_counts: FxHashMap<IdentifierId, usize> = FxHashMap::default();
+    let mut use_counts: IdVec<IdentifierId, usize> = IdVec::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             for place in collect_operand_ids(&instr.value) {
-                *use_counts.entry(place).or_insert(0) += 1;
+                *use_counts.entry_or_insert_with(place, || 0) += 1;
             }
         }
     }
 
     // Phase 2: Mark single-use temporaries whose only use is StoreLocal
-    let mut removable: FxHashMap<IdentifierId, usize> = FxHashMap::default();
+    let mut removable: IdVec<IdentifierId, usize> = IdVec::new();
 
     for (_, block) in &hir.blocks {
         for (idx, instr) in block.instructions.iter().enumerate() {
             if let InstructionValue::StoreLocal { value, .. } = &instr.value {
                 let val_id = value.identifier.id;
-                if use_counts.get(&val_id).copied().unwrap_or(0) == 1
+                if use_counts.get(val_id).copied().unwrap_or(0) == 1
                     && instr.lvalue.identifier.name.is_none()
                 {
                     // This is a single-use temporary being stored — mark for removal

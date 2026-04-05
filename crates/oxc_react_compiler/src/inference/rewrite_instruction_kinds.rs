@@ -1,5 +1,4 @@
-use crate::hir::types::{HIR, IdentifierId, InstructionKind, InstructionValue};
-use rustc_hash::FxHashSet;
+use crate::hir::types::{HIR, IdSet, IdVec, IdentifierId, InstructionKind, InstructionValue};
 
 /// Rewrite instruction kinds based on variable reassignment.
 ///
@@ -8,17 +7,16 @@ use rustc_hash::FxHashSet;
 /// variable that was in different branches.
 pub fn rewrite_instruction_kinds_based_on_reassignment(hir: &mut HIR) {
     // Phase 1: Find identifiers that are assigned more than once
-    let mut assignment_counts: rustc_hash::FxHashMap<IdentifierId, u32> =
-        rustc_hash::FxHashMap::default();
+    let mut assignment_counts: IdVec<IdentifierId, u32> = IdVec::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
                 InstructionValue::StoreLocal { lvalue, .. } => {
-                    *assignment_counts.entry(lvalue.identifier.id).or_insert(0) += 1;
+                    *assignment_counts.entry_or_insert_with(lvalue.identifier.id, || 0) += 1;
                 }
                 InstructionValue::DeclareLocal { lvalue, .. } => {
-                    *assignment_counts.entry(lvalue.identifier.id).or_insert(0) += 1;
+                    *assignment_counts.entry_or_insert_with(lvalue.identifier.id, || 0) += 1;
                 }
                 _ => {}
             }
@@ -26,8 +24,12 @@ pub fn rewrite_instruction_kinds_based_on_reassignment(hir: &mut HIR) {
     }
 
     // Phase 2: Collect identifiers assigned more than once
-    let reassigned: FxHashSet<IdentifierId> =
-        assignment_counts.into_iter().filter(|(_, count)| *count > 1).map(|(id, _)| id).collect();
+    let mut reassigned: IdSet<IdentifierId> = IdSet::new();
+    for (idx, count) in assignment_counts.iter() {
+        if *count > 1 {
+            reassigned.insert(IdentifierId(idx as u32));
+        }
+    }
 
     if reassigned.is_empty() {
         return;
@@ -37,7 +39,7 @@ pub fn rewrite_instruction_kinds_based_on_reassignment(hir: &mut HIR) {
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if let InstructionValue::DeclareLocal { lvalue, type_ } = &mut instr.value
-                && reassigned.contains(&lvalue.identifier.id)
+                && reassigned.contains(lvalue.identifier.id)
                 && *type_ == InstructionKind::Const
             {
                 *type_ = InstructionKind::Let;

@@ -5,13 +5,12 @@
 // upstream's behavior which also only catches direct `eval()` global calls.
 
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
-use crate::hir::types::{HIR, IdentifierId, InstructionValue};
-use rustc_hash::FxHashSet;
+use crate::hir::types::{HIR, IdSet, IdentifierId, InstructionValue};
 
 /// Detect any call to `eval()` and emit a bail-out error.
 pub fn validate_no_eval(hir: &HIR, errors: &mut ErrorCollector) {
     // Phase 1: Collect lvalue IDs of LoadGlobal instructions for 'eval'
-    let mut eval_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut eval_ids: IdSet<IdentifierId> = IdSet::new();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -31,7 +30,7 @@ pub fn validate_no_eval(hir: &HIR, errors: &mut ErrorCollector) {
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let InstructionValue::CallExpression { callee, .. } = &instr.value
-                && eval_ids.contains(&callee.identifier.id)
+                && eval_ids.contains(callee.identifier.id)
             {
                 errors.push(CompilerError::invalid_js_with_kind(
                     instr.loc,
