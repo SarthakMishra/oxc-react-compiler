@@ -1,7 +1,7 @@
 # oxc-react-compiler — Remaining Work
 
 > **Conformance: 559/1717 (32.6%)** | Known failures: 1158 | 0 panics | 0 unexpected divergences
-> Last updated: 2026-04-05
+> Last updated: 2026-04-05 (Phase 178)
 
 ---
 
@@ -146,8 +146,8 @@ Nested function expressions use LoadLocal/StoreLocal instead of LoadContext/Stor
 
 **Status: Core issue fixed. 3 remaining sub-issues.**
 
-- [ ] **E4:** For-loop update expression lost to DCE/SSA (phi elimination)
-- [ ] **E5:** Self-assignment stripping now works globally ✅
+- [x] **E4:** For-loop update expression preserved — DCE no longer removes PostfixUpdate/PrefixUpdate ✅
+- [x] **E5:** Self-assignment stripping works globally ✅
 - [ ] **E6:** Do-while with continue falls back to `while(true)`
 
 ---
