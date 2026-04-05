@@ -224,8 +224,10 @@ pub fn compute_instruction_effects(
                 value: ValueKind::Mutable,
                 reason: ValueReason::Other,
             });
-            effects.push(AliasingEffect::MutateTransitiveConditionally { value: value.clone() });
+            // Capture before Mutate: same ordering principle as PropertyStore.
+            // The BFS skips edges with index >= mutation_index.
             effects.push(AliasingEffect::Capture { from: value.clone(), into: lvalue.clone() });
+            effects.push(AliasingEffect::MutateTransitiveConditionally { value: value.clone() });
         }
 
         InstructionValue::NewExpression { callee, args } => {
