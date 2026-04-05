@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::hir::types::{HIR, InstructionValue, Terminal};
 
 /// Align method call scopes: ensure receiver and method call are in the same scope.
@@ -13,8 +15,9 @@ pub fn align_method_call_scopes(hir: &mut HIR) {
                     // Extend lvalue scope range to include receiver scope range
                     let new_start = lvalue_scope.range.start.0.min(receiver_scope.range.start.0);
                     let new_end = lvalue_scope.range.end.0.max(receiver_scope.range.end.0);
-                    lvalue_scope.range.start.0 = new_start;
-                    lvalue_scope.range.end.0 = new_end;
+                    let scope = Rc::make_mut(lvalue_scope);
+                    scope.range.start.0 = new_start;
+                    scope.range.end.0 = new_end;
                 }
             }
         }
@@ -33,8 +36,9 @@ pub fn align_object_method_scopes(hir: &mut HIR) {
                     {
                         let new_start = lvalue_scope.range.start.0.min(prop_scope.range.start.0);
                         let new_end = lvalue_scope.range.end.0.max(prop_scope.range.end.0);
-                        lvalue_scope.range.start.0 = new_start;
-                        lvalue_scope.range.end.0 = new_end;
+                        let scope = Rc::make_mut(lvalue_scope);
+                        scope.range.start.0 = new_start;
+                        scope.range.end.0 = new_end;
                     }
                 }
             }
@@ -59,8 +63,9 @@ pub fn align_reactive_scopes_to_block_scopes_hir(hir: &mut HIR) {
         let block_end = block.instructions.last().map_or(0, |i| i.id.0 + 1);
 
         for instr in &mut block.instructions {
-            if let Some(ref mut scope) = instr.lvalue.identifier.scope {
+            if let Some(ref mut scope_rc) = instr.lvalue.identifier.scope {
                 // Clamp scope range to not exceed the block
+                let scope = Rc::make_mut(scope_rc);
                 if scope.range.start.0 < block_start {
                     scope.range.start.0 = block_start;
                 }

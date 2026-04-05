@@ -5,6 +5,7 @@
 //! and hooks after lowering from the AST.
 
 use std::fmt;
+use std::rc::Rc;
 
 use oxc_span::Span;
 
@@ -258,7 +259,7 @@ pub struct Identifier {
     /// Populated by `annotate_last_use()` after `infer_mutation_aliasing_ranges`.
     /// Used by scope inference to decide if a call result escapes its definition site.
     pub last_use: InstructionId,
-    pub scope: Option<Box<ReactiveScope>>,
+    pub scope: Option<Rc<ReactiveScope>>,
     pub type_: Type,
     pub loc: SourceLocation,
 }

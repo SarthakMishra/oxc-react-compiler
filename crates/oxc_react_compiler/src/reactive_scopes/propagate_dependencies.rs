@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::hir::types::{
     BlockId, DeclarationId, HIR, IdentifierId, InstructionId, InstructionValue,
     ReactiveScopeDeclaration, ReactiveScopeDependency, ScopeId, Terminal, Type,
@@ -1252,12 +1254,18 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
     // `build_reactive_function` may read the scope from any instruction.
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if let Some(ref mut scope) = instr.lvalue.identifier.scope {
-                if let Some(deps) = scope_deps.get(&scope.id) {
-                    scope.dependencies.clone_from(deps);
-                }
-                if let Some(decls) = scope_decls.get(&scope.id) {
-                    scope.declarations.clone_from(decls);
+            if let Some(ref mut scope_rc) = instr.lvalue.identifier.scope {
+                let sid = scope_rc.id;
+                let has_deps = scope_deps.contains_key(&sid);
+                let has_decls = scope_decls.contains_key(&sid);
+                if has_deps || has_decls {
+                    let scope = Rc::make_mut(scope_rc);
+                    if let Some(deps) = scope_deps.get(&sid) {
+                        scope.dependencies.clone_from(deps);
+                    }
+                    if let Some(decls) = scope_decls.get(&sid) {
+                        scope.declarations.clone_from(decls);
+                    }
                 }
             }
         }

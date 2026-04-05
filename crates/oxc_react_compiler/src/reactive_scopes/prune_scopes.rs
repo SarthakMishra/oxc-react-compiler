@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::rc::Rc;
+
 use crate::hir::types::{
     ArrayElement, BasicBlock, BlockId, BlockKind, HIR, IdentifierId, InstructionKind,
     InstructionValue, ObjectPropertyKey, Param, Place, ReactiveBlock, ReactiveFunction,
@@ -2813,7 +2815,7 @@ fn insert_scope_terminal_by_position(
     if let Some(ref_scope) = ref_scope {
         for instr in &mut scope_instrs {
             if instr.lvalue.identifier.scope.is_none() {
-                instr.lvalue.identifier.scope = Some(Box::new(crate::hir::types::ReactiveScope {
+                instr.lvalue.identifier.scope = Some(Rc::new(crate::hir::types::ReactiveScope {
                     id: scope_id,
                     range: ref_scope.range,
                     dependencies: Vec::new(),
@@ -3159,10 +3161,10 @@ pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
                         current_new_scope_id = Some(ScopeId(next_scope_id));
                         next_scope_id += 1;
                     }
-                    if let Some(ref mut scope) = instr.lvalue.identifier.scope {
-                        // Clone the scope with a new ID
+                    if let Some(ref scope) = instr.lvalue.identifier.scope {
+                        // Replace the scope Rc with a new one carrying a fresh ID
                         let new_id = current_new_scope_id.unwrap();
-                        **scope = ReactiveScope {
+                        instr.lvalue.identifier.scope = Some(Rc::new(ReactiveScope {
                             id: new_id,
                             range: scope.range,
                             dependencies: Vec::new(),
@@ -3172,7 +3174,7 @@ pub fn flatten_scopes_with_hooks_or_use_hir(hir: &mut HIR) {
                             merged: Vec::new(),
                             loc: scope.loc,
                             is_allocating: scope.is_allocating,
-                        };
+                        }));
                     }
                 }
                 // else: before any hook — keep the original scope ID

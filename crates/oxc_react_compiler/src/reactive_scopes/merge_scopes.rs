@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::hir::types::{
     AliasingEffect, ArrayElement, DeclarationId, DependencyPathEntry, DestructurePattern,
     DestructureTarget, HIR, IdentifierId, Instruction, InstructionId, InstructionKind,
@@ -660,9 +662,10 @@ pub fn merge_overlapping_reactive_scopes_hir(hir: &mut HIR) {
     // Apply remap to all identifier scope annotations
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if let Some(ref mut scope) = instr.lvalue.identifier.scope
-                && let Some(&(rep, new_start, new_end)) = remap.get(&scope.id)
+            if let Some(ref mut scope_rc) = instr.lvalue.identifier.scope
+                && let Some(&(rep, new_start, new_end)) = remap.get(&scope_rc.id)
             {
+                let scope = Rc::make_mut(scope_rc);
                 scope.id = rep;
                 scope.range.start = InstructionId(new_start);
                 scope.range.end = InstructionId(new_end);

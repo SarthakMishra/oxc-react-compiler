@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::hir::types::{
     DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId, InstructionId,
     InstructionValue, MutableRange, ReactiveScope, ScopeId, SourceLocation, Type,
@@ -311,16 +313,18 @@ pub fn infer_reactive_scope_variables(
     }
 
     // Phase 5: Assign scopes back to identifiers in the HIR.
-    // Only here do we clone + box, once per identifier that needs a scope.
+    // Wrap each scope in Rc once, then share via Rc::clone (cheap pointer copy)
+    // instead of deep-cloning the entire ReactiveScope struct per identifier.
+    let rc_scopes: Vec<Rc<ReactiveScope>> = scopes.iter().map(|s| Rc::new(s.clone())).collect();
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
             if let Some(&idx) = id_to_scope_idx.get(&instr.lvalue.identifier.id) {
-                instr.lvalue.identifier.scope = Some(Box::new(scopes[idx].clone()));
+                instr.lvalue.identifier.scope = Some(Rc::clone(&rc_scopes[idx]));
             }
         }
         for phi in &mut block.phis {
             if let Some(&idx) = id_to_scope_idx.get(&phi.place.identifier.id) {
-                phi.place.identifier.scope = Some(Box::new(scopes[idx].clone()));
+                phi.place.identifier.scope = Some(Rc::clone(&rc_scopes[idx]));
             }
         }
     }
@@ -355,19 +359,19 @@ pub fn propagate_scope_membership_hir(hir: &mut HIR) {
     // Phase 1: Build a map from IdentifierId → ScopeId for all currently-scoped identifiers.
     // Also collect a ReactiveScope clone per ScopeId so we can assign it to newly-scoped IDs.
     let mut id_to_scope_id: FxHashMap<IdentifierId, ScopeId> = FxHashMap::default();
-    let mut scope_by_id: FxHashMap<ScopeId, ReactiveScope> = FxHashMap::default();
+    let mut scope_by_id: FxHashMap<ScopeId, Rc<ReactiveScope>> = FxHashMap::default();
 
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
             if let Some(ref scope) = instr.lvalue.identifier.scope {
                 id_to_scope_id.insert(instr.lvalue.identifier.id, scope.id);
-                scope_by_id.entry(scope.id).or_insert_with(|| (**scope).clone());
+                scope_by_id.entry(scope.id).or_insert_with(|| Rc::clone(scope));
             }
         }
         for phi in &block.phis {
             if let Some(ref scope) = phi.place.identifier.scope {
                 id_to_scope_id.insert(phi.place.identifier.id, scope.id);
-                scope_by_id.entry(scope.id).or_insert_with(|| (**scope).clone());
+                scope_by_id.entry(scope.id).or_insert_with(|| Rc::clone(scope));
             }
         }
     }
@@ -467,7 +471,7 @@ pub fn propagate_scope_membership_hir(hir: &mut HIR) {
                 && let Some(&scope_id) = id_to_scope_id.get(&id)
                 && let Some(scope) = scope_by_id.get(&scope_id)
             {
-                instr.lvalue.identifier.scope = Some(Box::new(scope.clone()));
+                instr.lvalue.identifier.scope = Some(Rc::clone(scope));
             }
         }
         for phi in &mut block.phis {
@@ -476,7 +480,7 @@ pub fn propagate_scope_membership_hir(hir: &mut HIR) {
                 && let Some(&scope_id) = id_to_scope_id.get(&id)
                 && let Some(scope) = scope_by_id.get(&scope_id)
             {
-                phi.place.identifier.scope = Some(Box::new(scope.clone()));
+                phi.place.identifier.scope = Some(Rc::clone(scope));
             }
         }
     }

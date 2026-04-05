@@ -7,6 +7,8 @@
 //! we build a tree of property paths and prune children whose parent is already
 //! a dependency.
 
+use std::rc::Rc;
+
 use crate::hir::types::HIR;
 use crate::reactive_scopes::scope_dependency_utils::add_dependency;
 
@@ -17,10 +19,11 @@ use crate::reactive_scopes::scope_dependency_utils::add_dependency;
 pub fn derive_minimal_dependencies_hir(hir: &mut HIR) {
     for (_, block) in &mut hir.blocks {
         for instr in &mut block.instructions {
-            if let Some(ref mut scope) = instr.lvalue.identifier.scope {
-                if scope.dependencies.len() <= 1 {
+            if let Some(ref mut scope_rc) = instr.lvalue.identifier.scope {
+                if scope_rc.dependencies.len() <= 1 {
                     continue; // nothing to minimize
                 }
+                let scope = Rc::make_mut(scope_rc);
                 let original = std::mem::take(&mut scope.dependencies);
                 let mut minimal = Vec::with_capacity(original.len());
                 for dep in original {
@@ -74,7 +77,7 @@ mod tests {
                     name: None,
                     mutable_range: MutableRange { start: InstructionId(0), end: InstructionId(0) },
                     last_use: InstructionId(0),
-                    scope: Some(Box::new(ReactiveScope {
+                    scope: Some(Rc::new(ReactiveScope {
                         id: ScopeId(0),
                         range: MutableRange { start: InstructionId(0), end: InstructionId(10) },
                         dependencies: deps,
