@@ -225,7 +225,9 @@ fn mutate(
         kind: start_kind,
     });
 
-    while let Some(item) = bufs.queue.pop_front() {
+    // Use pop_back (stack/DFS) to match upstream's queue.pop() behavior.
+    // The traversal order affects which MutationKind wins during dedup.
+    while let Some(item) = bufs.queue.pop_back() {
         // Dedup: skip if already visited with equal or stronger kind
         if let Some(&prev) = bufs.seen.get(&item.place)
             && prev >= item.kind
@@ -623,7 +625,7 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR, returns_id: Option<Identifi
     //
     // Build a set of all identifiers that are mutated (have range.end > range.start + 1
     // or appear in the mutations list).
-    annotate_place_effects(hir);
+    annotate_place_effects(hir, &ranges);
 }
 
 // ---------------------------------------------------------------------------
@@ -647,7 +649,7 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR, returns_id: Option<Identifi
 /// - Mutate → `Store`
 /// - MutateTransitive/Conditional variants → `ConditionallyMutate`
 /// - Freeze → `Freeze`
-fn annotate_place_effects(hir: &mut HIR) {
+fn annotate_place_effects(hir: &mut HIR, ranges: &FxHashMap<IdentifierId, MutableRange>) {
     for (_, block) in &mut hir.blocks {
         // Upstream: firstInstructionIdOfBlock = block.instructions[0]?.id ?? block.terminal.id
         let first_instr_id_of_block = first_instruction_id_of_block(block);
@@ -693,9 +695,11 @@ fn annotate_place_effects(hir: &mut HIR) {
                         | AliasingEffect::Alias { from, into }
                         | AliasingEffect::CreateFrom { from, into }
                         | AliasingEffect::MaybeAlias { from, into } => {
-                            // Upstream: isMutatedOrReassigned = mutableRange.end > instr.id
+                            // Use BFS-computed ranges (not the stale copies on effect identifiers).
+                            // In JS, Place.identifier is a shared reference, so BFS mutations are
+                            // visible here. In Rust, we must look up from the ranges map.
                             let is_mutated_or_reassigned =
-                                into.identifier.mutable_range.end > instr.id;
+                                ranges.get(&into.identifier.id).is_some_and(|r| r.end > instr.id);
                             // Target gets Store
                             operand_effects.insert(into.identifier.id, Effect::Store);
                             // Source: Capture if target is later mutated, else Read
@@ -704,19 +708,12 @@ fn annotate_place_effects(hir: &mut HIR) {
                             } else {
                                 Effect::Read
                             };
-                            // Only upgrade, don't downgrade
-                            operand_effects
-                                .entry(from.identifier.id)
-                                .and_modify(|e| {
-                                    if effect_priority(source_effect) > effect_priority(*e) {
-                                        *e = source_effect;
-                                    }
-                                })
-                                .or_insert(source_effect);
+                            // Last-write-wins, matching upstream's Map.set() behavior
+                            operand_effects.insert(from.identifier.id, source_effect);
                         }
                         AliasingEffect::Capture { from, into } => {
                             let is_mutated_or_reassigned =
-                                into.identifier.mutable_range.end > instr.id;
+                                ranges.get(&into.identifier.id).is_some_and(|r| r.end > instr.id);
                             operand_effects.insert(into.identifier.id, Effect::Store);
                             let source_effect = if is_mutated_or_reassigned {
                                 Effect::Capture
