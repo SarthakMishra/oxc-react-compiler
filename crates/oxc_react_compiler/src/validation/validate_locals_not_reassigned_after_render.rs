@@ -107,6 +107,13 @@ fn check_nested_reassignments_silent(
                 return true;
             }
 
+            if let InstructionValue::StoreContext { lvalue, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+                && render_assigned.contains(name)
+            {
+                return true;
+            }
+
             if check_deeply
                 && let InstructionValue::FunctionExpression { lowered_func, .. } = &instr.value
                 && check_nested_reassignments_silent(&lowered_func.body, render_assigned, true)
@@ -163,6 +170,22 @@ fn check_nested_reassignments(
                 && let Some(name) = &lvalue.identifier.name
                 && render_assigned.contains(name)
                 && is_reassignment_kind(*type_)
+            {
+                errors.push(CompilerError::invalid_react_with_kind(
+                    instr.loc,
+                    format!(
+                        "Local variable \"{name}\" is assigned during render but \
+                         reassigned inside a nested function (effect or event handler). \
+                         This prevents the compiler from memoizing correctly."
+                    ),
+                    DiagnosticKind::LocalsReassignedAfterRender,
+                ));
+            }
+
+            // Check 1b: StoreContext reassignment of render-assigned variable
+            if let InstructionValue::StoreContext { lvalue, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+                && render_assigned.contains(name)
             {
                 errors.push(CompilerError::invalid_react_with_kind(
                     instr.loc,

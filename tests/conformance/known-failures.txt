@@ -110,6 +110,7 @@ capturing-func-alias-receiver-computed-mutate.js
 capturing-func-alias-receiver-mutate-iife.js
 capturing-func-alias-receiver-mutate.js
 capturing-func-mutate.js
+capturing-func-mutate-2.js
 capturing-func-no-mutate.js
 capturing-func-simple-alias-iife.js
 capturing-func-simple-alias.js

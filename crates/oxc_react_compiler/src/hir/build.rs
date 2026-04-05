@@ -162,6 +162,27 @@ pub struct HIRBuilder {
     binding_scopes: Vec<FxHashMap<String, (IdentifierId, DeclarationId)>>,
 }
 
+/// Collect distinct Places from LoadContext/StoreContext instructions in a function's blocks.
+/// These form the `HIRFunction.context` vector representing captured variables.
+fn collect_context_places(blocks: &[(BlockId, BasicBlock)]) -> Vec<Place> {
+    let mut seen: FxHashSet<IdentifierId> = FxHashSet::default();
+    let mut context = Vec::new();
+    for (_, block) in blocks {
+        for instr in &block.instructions {
+            match &instr.value {
+                InstructionValue::LoadContext { place }
+                | InstructionValue::StoreContext { lvalue: place, .. } => {
+                    if seen.insert(place.identifier.id) {
+                        context.push(place.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    context
+}
+
 impl HIRBuilder {
     // ------------------------------------------------------------------
     // Construction
@@ -198,6 +219,12 @@ impl HIRBuilder {
     /// Call this when building a nested function to set up context tracking.
     fn setup_context_variables(&mut self, outer_scope_vars: &[String]) {
         self.context_vars = outer_scope_vars.iter().cloned().collect();
+    }
+
+    /// Collect all variable names from the current builder's binding scopes.
+    /// Used to pass to a nested function's `setup_context_variables`.
+    fn collect_scope_var_names(&self) -> Vec<String> {
+        self.binding_scopes.iter().flat_map(|frame| frame.keys().cloned()).collect()
     }
 
     /// Push a new scope frame (entering a block statement or other lexical scope).
@@ -495,7 +522,20 @@ impl HIRBuilder {
         let mut inner = HIRBuilder::new(EnvironmentConfig::default());
         let loc = arrow.span;
 
+        // Set up context tracking: outer scope vars become context vars in the inner builder
+        let outer_vars = self.collect_scope_var_names();
+        inner.setup_context_variables(&outer_vars);
+
         let params = inner.lower_formal_params(&arrow.params);
+
+        // Remove param names from context_vars — params shadow outer variables
+        for p in &params {
+            if let Param::Identifier(place) = p
+                && let Some(name) = &place.identifier.name
+            {
+                inner.context_vars.remove(name.as_str());
+            }
+        }
 
         let directives =
             arrow.body.directives.iter().map(|d| d.directive.to_string()).collect::<Vec<_>>();
@@ -526,6 +566,7 @@ impl HIRBuilder {
             inner.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
+        let context = collect_context_places(&inner.blocks);
         let returns = FunctionReturns { place: inner.make_temp(loc) };
         let entry = inner.blocks.first().map(|(id, _)| *id).unwrap();
 
@@ -535,7 +576,7 @@ impl HIRBuilder {
             fn_type: ReactFunctionType::Other,
             params,
             returns,
-            context: Vec::new(),
+            context,
             body: HIR { entry, blocks: inner.blocks },
             is_async: arrow.r#async,
             is_generator: false,
@@ -1480,8 +1521,13 @@ impl HIRBuilder {
                 }
             }
             ForStatementLeft::AssignmentTargetIdentifier(id) => {
-                let lvalue = self.make_named_place(&id.name, id.span);
-                self.emit(InstructionValue::StoreLocal { lvalue, value, type_: None }, loc);
+                let name = id.name.to_string();
+                let lvalue = self.make_named_place(&name, id.span);
+                if self.context_vars.contains(&name) {
+                    self.emit(InstructionValue::StoreContext { lvalue, value }, loc);
+                } else {
+                    self.emit(InstructionValue::StoreLocal { lvalue, value, type_: None }, loc);
+                }
             }
             _ => {
                 self.emit(
@@ -1702,8 +1748,10 @@ impl HIRBuilder {
         let name = func.id.as_ref().map(|id| id.name.to_string());
         let loc = func.span;
 
-        // Build inner function HIR
+        // Build inner function HIR with context variable tracking
+        let outer_vars = self.collect_scope_var_names();
         let mut inner_builder = HIRBuilder::new(EnvironmentConfig::default());
+        inner_builder.setup_context_variables(&outer_vars);
         let inner_hir = inner_builder.build_function_inner(func);
 
         let lvalue = if let Some(ref n) = name {
@@ -1748,6 +1796,15 @@ impl HIRBuilder {
 
         let params = self.lower_formal_params(&func.params);
 
+        // Remove param names from context_vars — params shadow outer variables
+        for p in &params {
+            if let Param::Identifier(place) = p
+                && let Some(name) = &place.identifier.name
+            {
+                self.context_vars.remove(name.as_str());
+            }
+        }
+
         let directives = func
             .body
             .as_ref()
@@ -1765,6 +1822,7 @@ impl HIRBuilder {
             self.emit_terminal(Terminal::Return { value: undef, effects: None });
         }
 
+        let context = collect_context_places(&self.blocks);
         let returns = FunctionReturns { place: self.make_temp(loc) };
         let entry = self.blocks.first().map(|(id, _)| *id).unwrap();
 
@@ -1774,7 +1832,7 @@ impl HIRBuilder {
             fn_type: ReactFunctionType::Other,
             params,
             returns,
-            context: Vec::new(),
+            context,
             body: HIR { entry, blocks: std::mem::take(&mut self.blocks) },
             is_async: func.r#async,
             is_generator: func.generator,
@@ -2037,7 +2095,9 @@ impl HIRBuilder {
             // Function expression
             Expression::FunctionExpression(func) => {
                 let name = func.id.as_ref().map(|id| id.name.to_string());
+                let outer_vars = self.collect_scope_var_names();
                 let mut inner_builder = HIRBuilder::new(EnvironmentConfig::default());
+                inner_builder.setup_context_variables(&outer_vars);
                 let hir_func = inner_builder.build_function_inner(func);
                 self.emit(
                     InstructionValue::FunctionExpression {
@@ -2332,7 +2392,11 @@ impl HIRBuilder {
             AssignmentTarget::AssignmentTargetIdentifier(id) => {
                 let name = id.name.to_string();
                 let place = self.make_named_place(&name, id.span);
-                self.emit(InstructionValue::LoadLocal { place }, loc)
+                if self.context_vars.contains(&name) {
+                    self.emit(InstructionValue::LoadContext { place }, loc)
+                } else {
+                    self.emit(InstructionValue::LoadLocal { place }, loc)
+                }
             }
             AssignmentTarget::StaticMemberExpression(member) => {
                 let object = self.lower_expression(&member.object);
@@ -2369,6 +2433,9 @@ impl HIRBuilder {
                 let name = id.name.to_string();
                 if is_global_name(&name) {
                     self.emit(InstructionValue::StoreGlobal { name, value: value.clone() }, loc);
+                } else if self.context_vars.contains(&name) {
+                    let lvalue = self.make_named_place(&name, id.span);
+                    self.emit(InstructionValue::StoreContext { lvalue, value: value.clone() }, loc);
                 } else {
                     let lvalue = self.make_named_place(&name, id.span);
                     self.emit(

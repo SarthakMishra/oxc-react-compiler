@@ -214,10 +214,10 @@ fn check_fbt_in_function_params(func: &HIRFunction, errors: &mut ErrorCollector)
 ///
 /// DIVERGENCE: Upstream detects this in BuildHIR by checking if the variable
 /// being updated is captured from an outer scope (using LoadContext/StoreContext).
-/// Since our `build_arrow` does not call `setup_context_variables`, inner functions
-/// use LoadLocal/StoreLocal instead. We detect captured variables by comparing
-/// names declared in the outer scope against PrefixUpdate/PostfixUpdate targets
-/// in the inner function body.
+/// Now that `build_arrow` calls `setup_context_variables`, inner functions do emit
+/// LoadContext/StoreContext for captured variables. However, PrefixUpdate/PostfixUpdate
+/// still uses the name-based approach to detect captured update targets, since the
+/// update instructions themselves don't distinguish context vs local.
 fn check_update_context_identifiers(
     outer_hir: &HIR,
     inner_func: &HIRFunction,

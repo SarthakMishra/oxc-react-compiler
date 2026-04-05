@@ -1,10 +1,11 @@
 // DIVERGENCE: Upstream relies on StoreContext instructions (populated when the
 // HIR builder is aware of outer-scope captures via context_vars) to detect
 // reassignment of module-level variables from within component/hook bodies.
-// Our HIR builder does not populate context_vars for nested function builders,
-// so module-level assignments in nested functions produce StoreLocal (not
-// StoreContext or StoreGlobal). We use a name-based approach: collect locally
-// declared variables and flag any StoreLocal/Reassign targeting undeclared names.
+// Our HIR builder now populates context_vars for nested function builders,
+// so nested functions correctly emit StoreContext/LoadContext for captured vars.
+// We still use a name-based approach for the top-level component scope: collect
+// locally declared variables and flag any StoreLocal/StoreContext/Reassign
+// targeting undeclared names.
 
 use crate::error::{CompilerError, ErrorCollector};
 use crate::hir::types::{
@@ -385,7 +386,8 @@ fn check_nested_for_outer_scope_stores(
                     type_: Some(InstructionKind::Reassign),
                     ..
                 }
-                | InstructionValue::StoreLocal { lvalue, type_: None, .. } => {
+                | InstructionValue::StoreLocal { lvalue, type_: None, .. }
+                | InstructionValue::StoreContext { lvalue, .. } => {
                     if let Some(name) = &lvalue.identifier.name
                         && !nested_locals.contains(name)
                         && !all_ancestor_locals.contains(name)
