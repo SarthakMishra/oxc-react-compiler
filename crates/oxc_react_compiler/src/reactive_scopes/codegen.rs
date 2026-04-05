@@ -2645,9 +2645,18 @@ fn codegen_for_update_expr(update: &ReactiveBlock, tag_constants: &TagConstantMa
     codegen_block(update, &mut buf, &mut 0, 0, &mut declared, tag_constants);
     let stmts: Vec<&str> = buf.split('\n').map(str::trim).filter(|s| !s.is_empty()).collect();
     if stmts.len() == 1 {
-        return stmts[0].strip_suffix(';').unwrap_or(stmts[0]).to_string();
+        let stmt = stmts[0].strip_suffix(';').unwrap_or(stmts[0]);
+        // Extract bare expression from `let tN = expr` or `tN = expr`
+        return extract_rhs_from_stmt(&format!("{stmt};"));
     }
-    stmts.iter().map(|s| s.strip_suffix(';').unwrap_or(s)).collect::<Vec<_>>().join(", ")
+    stmts
+        .iter()
+        .map(|s| {
+            let s = s.strip_suffix(';').unwrap_or(s);
+            extract_rhs_from_stmt(&format!("{s};"))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn codegen_terminal(

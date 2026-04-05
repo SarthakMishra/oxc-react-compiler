@@ -49,16 +49,13 @@ fn dead_code_elimination_inner(hir: &mut HIR, remove_unused_declares: bool) -> u
                     if let InstructionValue::StoreLocal { lvalue, .. } = &instr.value {
                         return read_used.contains(&lvalue.identifier.id);
                     }
-                    // PrefixUpdate/PostfixUpdate: remove when the result is never used.
-                    // In SSA, the update creates a new version; if that version is never
-                    // read, the update is dead.
-                    if matches!(
-                        &instr.value,
-                        InstructionValue::PrefixUpdate { .. }
-                            | InstructionValue::PostfixUpdate { .. }
-                    ) {
-                        return used.contains(&instr.lvalue.identifier.id);
-                    }
+                    // PrefixUpdate/PostfixUpdate: always keep. These mutate a variable
+                    // in place (i++, --i) which is a side effect regardless of whether
+                    // the expression result (old/new value) is used. In for-loop update
+                    // blocks, the result temp is typically unused but the mutation is
+                    // essential for the loop to make progress.
+                    // (Previously removed when result was unused, causing for-loop
+                    // update expressions like `i++` to be eliminated.)
                 }
                 return true;
             }
