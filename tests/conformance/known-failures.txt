@@ -19,7 +19,6 @@ align-scopes-nested-block-structure.ts
 align-scopes-reactive-scope-overlaps-if.ts
 align-scopes-reactive-scope-overlaps-label.ts
 align-scopes-reactive-scope-overlaps-try.ts
-align-scopes-trycatch-nested-overlapping-range.ts
 align-scopes-within-nested-valueblock-in-array.tsx
 allocating-logical-expression-instruction-scope.ts
 allocating-primitive-as-dep-nested-scope.js
@@ -349,7 +348,6 @@ for-of-continue.js
 for-of-destructure.js
 for-of-immutable-collection.js
 for-of-iterator-of-immutable-collection.js
-for-of-mutate-item-of-local-collection.js
 for-of-mutate.tsx
 for-of-nonmutating-loop-local-collection.js
 for-of-simple.js
