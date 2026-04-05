@@ -183,10 +183,29 @@ struct WorkItem {
     kind: MutationKind,
 }
 
+/// Reusable BFS buffers to avoid per-mutation allocation.
+struct BfsBuffers {
+    seen: FxHashMap<IdentifierId, MutationKind>,
+    queue: VecDeque<WorkItem>,
+}
+
+impl BfsBuffers {
+    fn new() -> Self {
+        Self { seen: FxHashMap::default(), queue: VecDeque::new() }
+    }
+
+    fn clear(&mut self) {
+        self.seen.clear();
+        self.queue.clear();
+    }
+}
+
 /// Propagate a mutation from `start` through the alias/capture graph via BFS.
 ///
 /// For each reachable node, extends `mutableRange.end` to `end_instr`.
 /// Upstream: `mutate()` in `InferMutationAliasingRanges.ts`.
+///
+/// PERF: Takes reusable BFS buffers to avoid per-mutation HashMap/VecDeque allocation.
 fn mutate(
     graph: &AliasingGraph,
     ranges: &mut FxHashMap<IdentifierId, MutableRange>,
@@ -196,24 +215,24 @@ fn mutate(
     transitive: bool,
     start_kind: MutationKind,
     phi_ids: &FxHashSet<IdentifierId>,
+    bufs: &mut BfsBuffers,
 ) {
-    let mut seen: FxHashMap<IdentifierId, MutationKind> = FxHashMap::default();
-    let mut queue: VecDeque<WorkItem> = VecDeque::new();
-    queue.push_back(WorkItem {
+    bufs.clear();
+    bufs.queue.push_back(WorkItem {
         place: start,
         transitive,
         direction: Direction::Backwards,
         kind: start_kind,
     });
 
-    while let Some(item) = queue.pop_front() {
+    while let Some(item) = bufs.queue.pop_front() {
         // Dedup: skip if already visited with equal or stronger kind
-        if let Some(&prev) = seen.get(&item.place)
+        if let Some(&prev) = bufs.seen.get(&item.place)
             && prev >= item.kind
         {
             continue;
         }
-        seen.insert(item.place, item.kind);
+        bufs.seen.insert(item.place, item.kind);
 
         // Extend mutable range end (start is set by creation_map in Phase 3)
         if let Some(range) = ranges.get_mut(&item.place)
@@ -234,7 +253,7 @@ fn mutate(
             } else {
                 item.kind
             };
-            queue.push_back(WorkItem {
+            bufs.queue.push_back(WorkItem {
                 place: edge.target,
                 transitive: item.transitive,
                 direction: Direction::Forwards,
@@ -247,7 +266,7 @@ fn mutate(
             if when >= mutation_index {
                 continue;
             }
-            queue.push_back(WorkItem {
+            bufs.queue.push_back(WorkItem {
                 place: from,
                 transitive: true,
                 direction: Direction::Backwards,
@@ -265,7 +284,7 @@ fn mutate(
                 if when >= mutation_index {
                     continue;
                 }
-                queue.push_back(WorkItem {
+                bufs.queue.push_back(WorkItem {
                     place: alias,
                     transitive: item.transitive,
                     direction: Direction::Backwards,
@@ -276,7 +295,7 @@ fn mutate(
                 if when >= mutation_index {
                     continue;
                 }
-                queue.push_back(WorkItem {
+                bufs.queue.push_back(WorkItem {
                     place: alias,
                     transitive: item.transitive,
                     direction: Direction::Backwards,
@@ -291,7 +310,7 @@ fn mutate(
                 if when >= mutation_index {
                     continue;
                 }
-                queue.push_back(WorkItem {
+                bufs.queue.push_back(WorkItem {
                     place: cap,
                     transitive: item.transitive,
                     direction: Direction::Backwards,
@@ -317,9 +336,13 @@ fn mutate(
 pub fn infer_mutation_aliasing_ranges(hir: &mut HIR, returns_id: Option<IdentifierId>) {
     let mut graph = AliasingGraph::new();
     let mut phi_ids: FxHashSet<IdentifierId> = FxHashSet::default();
-    let mut ranges: FxHashMap<IdentifierId, MutableRange> = FxHashMap::default();
+    // PERF: Pre-size maps based on instruction count to reduce rehashing.
+    let instr_count_hint: usize = hir.blocks.iter().map(|(_, b)| b.instructions.len()).sum();
+    let mut ranges: FxHashMap<IdentifierId, MutableRange> =
+        FxHashMap::with_capacity_and_hasher(instr_count_hint, rustc_hash::FxBuildHasher);
     let mut mutations: Vec<PendingMutation> = Vec::new();
-    let mut creation_map: FxHashMap<IdentifierId, InstructionId> = FxHashMap::default();
+    let mut creation_map: FxHashMap<IdentifierId, InstructionId> =
+        FxHashMap::with_capacity_and_hasher(instr_count_hint, rustc_hash::FxBuildHasher);
 
     // Pending phi operands for back-edges (predecessor block not yet visited)
     let mut pending_phis: FxHashMap<BlockId, Vec<(u32, IdentifierId, IdentifierId)>> =
@@ -554,9 +577,21 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR, returns_id: Option<Identifi
     }
 
     // Phase 2: Process all mutations against the completed graph
+    // PERF: Reuse BFS buffers across mutations to avoid per-mutation allocation.
+    let mut bfs_bufs = BfsBuffers::new();
     for m in &mutations {
         let end = InstructionId(m.instr_id.0 + 1);
-        mutate(&graph, &mut ranges, m.place_id, m.index, end, m.transitive, m.kind, &phi_ids);
+        mutate(
+            &graph,
+            &mut ranges,
+            m.place_id,
+            m.index,
+            end,
+            m.transitive,
+            m.kind,
+            &phi_ids,
+            &mut bfs_bufs,
+        );
     }
 
     // Phase 3: Write mutable ranges back to HIR lvalue identifiers
@@ -1081,15 +1116,16 @@ pub fn annotate_last_use(hir: &mut HIR) {
     let mut last_use_map: FxHashMap<IdentifierId, InstructionId> = FxHashMap::default();
 
     // Collect last-use sites from instructions and terminals
+    // PERF: Use a callback pattern instead of collecting IDs into a Vec per instruction.
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
-            let operand_ids = collect_operand_ids(&instr.value);
-            for op_id in operand_ids {
-                let entry = last_use_map.entry(op_id).or_insert(instr.id);
-                if instr.id > *entry {
-                    *entry = instr.id;
+            let instr_id = instr.id;
+            visit_operand_ids(&instr.value, &mut |op_id| {
+                let entry = last_use_map.entry(op_id).or_insert(instr_id);
+                if instr_id > *entry {
+                    *entry = instr_id;
                 }
-            }
+            });
         }
 
         // Track terminal uses
@@ -1130,72 +1166,71 @@ pub fn annotate_last_use(hir: &mut HIR) {
     }
 }
 
-/// Collect operand identifier IDs from an instruction value (for last-use tracking).
-fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
-    let mut ids = Vec::new();
+/// PERF: Visit operand IDs via callback to avoid per-instruction Vec allocation.
+fn visit_operand_ids(value: &InstructionValue, visitor: &mut dyn FnMut(IdentifierId)) {
     match value {
         InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
-            ids.push(place.identifier.id);
+            visitor(place.identifier.id);
         }
         InstructionValue::StoreLocal { lvalue, value, .. }
         | InstructionValue::StoreContext { lvalue, value } => {
-            ids.push(lvalue.identifier.id);
-            ids.push(value.identifier.id);
+            visitor(lvalue.identifier.id);
+            visitor(value.identifier.id);
         }
         InstructionValue::DeclareLocal { lvalue, .. }
         | InstructionValue::DeclareContext { lvalue } => {
-            ids.push(lvalue.identifier.id);
+            visitor(lvalue.identifier.id);
         }
         InstructionValue::Destructure { value, .. } => {
-            ids.push(value.identifier.id);
+            visitor(value.identifier.id);
         }
         InstructionValue::BinaryExpression { left, right, .. } => {
-            ids.push(left.identifier.id);
-            ids.push(right.identifier.id);
+            visitor(left.identifier.id);
+            visitor(right.identifier.id);
         }
         InstructionValue::UnaryExpression { value, .. } => {
-            ids.push(value.identifier.id);
+            visitor(value.identifier.id);
         }
         InstructionValue::PrefixUpdate { lvalue, .. }
         | InstructionValue::PostfixUpdate { lvalue, .. } => {
-            ids.push(lvalue.identifier.id);
+            visitor(lvalue.identifier.id);
         }
         InstructionValue::CallExpression { callee, args, .. }
         | InstructionValue::NewExpression { callee, args } => {
-            ids.push(callee.identifier.id);
+            visitor(callee.identifier.id);
             for arg in args {
-                ids.push(arg.identifier.id);
+                visitor(arg.identifier.id);
             }
         }
         InstructionValue::MethodCall { receiver, args, .. } => {
-            ids.push(receiver.identifier.id);
+            visitor(receiver.identifier.id);
             for arg in args {
-                ids.push(arg.identifier.id);
+                visitor(arg.identifier.id);
             }
         }
         InstructionValue::PropertyLoad { object, .. }
         | InstructionValue::PropertyDelete { object, .. } => {
-            ids.push(object.identifier.id);
+            visitor(object.identifier.id);
         }
         InstructionValue::PropertyStore { object, value, .. } => {
-            ids.push(object.identifier.id);
-            ids.push(value.identifier.id);
+            visitor(object.identifier.id);
+            visitor(value.identifier.id);
         }
         InstructionValue::ComputedLoad { object, property, .. }
         | InstructionValue::ComputedDelete { object, property } => {
-            ids.push(object.identifier.id);
-            ids.push(property.identifier.id);
+            visitor(object.identifier.id);
+            visitor(property.identifier.id);
         }
         InstructionValue::ComputedStore { object, property, value } => {
-            ids.push(object.identifier.id);
-            ids.push(property.identifier.id);
-            ids.push(value.identifier.id);
+            visitor(object.identifier.id);
+            visitor(property.identifier.id);
+            visitor(value.identifier.id);
         }
         InstructionValue::ObjectExpression { properties } => {
             for prop in properties {
-                ids.push(prop.value.identifier.id);
+                visitor(prop.value.identifier.id);
                 if let crate::hir::types::ObjectPropertyKey::Computed(p) = &prop.key {
-                    ids.push(p.identifier.id);
+                    visitor(p.identifier.id);
                 }
             }
         }
@@ -1203,52 +1238,52 @@ fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
             for elem in elements {
                 match elem {
                     crate::hir::types::ArrayElement::Expression(p)
-                    | crate::hir::types::ArrayElement::Spread(p) => ids.push(p.identifier.id),
+                    | crate::hir::types::ArrayElement::Spread(p) => visitor(p.identifier.id),
                     crate::hir::types::ArrayElement::Hole => {}
                 }
             }
         }
         InstructionValue::JsxExpression { tag, props, children } => {
-            ids.push(tag.identifier.id);
+            visitor(tag.identifier.id);
             for attr in props {
-                ids.push(attr.value.identifier.id);
+                visitor(attr.value.identifier.id);
             }
             for child in children {
-                ids.push(child.identifier.id);
+                visitor(child.identifier.id);
             }
         }
         InstructionValue::JsxFragment { children } => {
             for child in children {
-                ids.push(child.identifier.id);
+                visitor(child.identifier.id);
             }
         }
         InstructionValue::TemplateLiteral { subexpressions, .. } => {
             for sub in subexpressions {
-                ids.push(sub.identifier.id);
+                visitor(sub.identifier.id);
             }
         }
         InstructionValue::TaggedTemplateExpression { tag, value } => {
-            ids.push(tag.identifier.id);
+            visitor(tag.identifier.id);
             for sub in &value.subexpressions {
-                ids.push(sub.identifier.id);
+                visitor(sub.identifier.id);
             }
         }
         InstructionValue::Await { value }
         | InstructionValue::StoreGlobal { value, .. }
         | InstructionValue::NextPropertyOf { value }
         | InstructionValue::TypeCastExpression { value, .. } => {
-            ids.push(value.identifier.id);
+            visitor(value.identifier.id);
         }
         InstructionValue::GetIterator { collection } => {
-            ids.push(collection.identifier.id);
+            visitor(collection.identifier.id);
         }
         InstructionValue::IteratorNext { iterator, .. } => {
-            ids.push(iterator.identifier.id);
+            visitor(iterator.identifier.id);
         }
         InstructionValue::FinishMemoize { decl, deps, .. } => {
-            ids.push(decl.identifier.id);
+            visitor(decl.identifier.id);
             for dep in deps {
-                ids.push(dep.identifier.id);
+                visitor(dep.identifier.id);
             }
         }
         InstructionValue::Primitive { .. }
@@ -1260,5 +1295,7 @@ fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
         | InstructionValue::FunctionExpression { .. }
         | InstructionValue::ObjectMethod { .. } => {}
     }
-    ids
 }
+
+// Note: collect_operand_ids was replaced by visit_operand_ids (callback pattern)
+// to avoid per-instruction Vec allocation. Other files still have their own copies.

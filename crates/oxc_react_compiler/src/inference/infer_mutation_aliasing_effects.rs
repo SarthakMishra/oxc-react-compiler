@@ -244,26 +244,28 @@ impl InferenceState {
     fn merge(&mut self, other: &InferenceState) -> bool {
         let mut changed = false;
 
-        // Merge values: for values that exist in both, merge their kinds
-        // For this we need to handle the case where the same AbstractValueId
-        // exists in both states with different kinds.
-        // Since we share the values array by cloning, we need to merge carefully.
+        // Merge values: for values that exist in both, merge their kinds.
+        // PERF: Merge in-place instead of allocating a new AbstractValue per merge.
 
         // Ensure our values array is large enough
         if other.values.len() > self.values.len() {
-            for i in self.values.len()..other.values.len() {
-                self.values.push(other.values[i].clone());
-                changed = true;
-            }
+            self.values.extend_from_slice(&other.values[self.values.len()..]);
+            changed = true;
         }
 
-        // Merge kinds for shared values
+        // Merge kinds for shared values — in-place to avoid allocations
         for (i, other_val) in other.values.iter().enumerate() {
             if i < self.values.len() {
-                let self_val = &self.values[i];
-                let merged = merge_abstract_values(self_val, other_val);
-                if merged.kind != self_val.kind || merged.reasons != self_val.reasons {
-                    self.values[i] = merged;
+                let self_val = &mut self.values[i];
+                let merged_kind = merge_value_kinds(self_val.kind, other_val.kind);
+                if merged_kind != self_val.kind {
+                    self_val.kind = merged_kind;
+                    changed = true;
+                }
+                // Merge reasons in-place
+                let before_len = self_val.reasons.len();
+                self_val.reasons.extend(&other_val.reasons);
+                if self_val.reasons.len() != before_len {
                     changed = true;
                 }
             }
@@ -299,6 +301,20 @@ impl InferenceState {
         }
         if !values.is_empty() {
             self.variables.insert(phi.place.identifier.id, values);
+        }
+    }
+
+    /// PERF: Lightweight phi processing that takes pre-extracted IDs instead of full Phi struct.
+    /// Avoids cloning Phi (which contains Place with String/Box fields).
+    fn infer_phi_lightweight(&mut self, place_id: IdentifierId, operand_ids: &[IdentifierId]) {
+        let mut values = FxHashSet::default();
+        for &operand_id in operand_ids {
+            if let Some(operand_values) = self.variables.get(&operand_id) {
+                values.extend(operand_values);
+            }
+        }
+        if !values.is_empty() {
+            self.variables.insert(place_id, values);
         }
     }
 }
@@ -450,6 +466,11 @@ fn infer_mutation_aliasing_effects_inner(
     // Queue the entry block with the initial state.
     queued_states.insert(hir.entry, state);
 
+    // PERF: Reuse a sorted buffer across iterations to avoid per-iteration allocation.
+    let mut sorted_queue: Vec<(usize, BlockId, InferenceState)> = Vec::new();
+    // PERF: Reuse successor buffer to avoid per-block Vec allocation.
+    let mut successor_buf: Vec<BlockId> = Vec::with_capacity(8);
+
     let mut iteration_count = 0;
     while !queued_states.is_empty() {
         iteration_count += 1;
@@ -458,14 +479,23 @@ fn infer_mutation_aliasing_effects_inner(
             break;
         }
 
-        // Process blocks in order (matching upstream: `for (const [blockId, block] of fn.body.blocks)`)
-        let current_queue: Vec<(BlockId, InferenceState)> = queued_states.drain().collect();
+        // PERF: Drain into a reusable buffer and sort by block index for program-order
+        // processing. This improves convergence speed (forward dataflow converges faster
+        // when processed in forward order) and avoids allocating a new Vec each iteration.
+        sorted_queue.clear();
+        for (block_id, incoming_state) in queued_states.drain() {
+            if let Some(&block_idx) = block_index.get(&block_id) {
+                sorted_queue.push((block_idx, block_id, incoming_state));
+            }
+        }
+        sorted_queue.sort_unstable_by_key(|(idx, _, _)| *idx);
 
-        for (block_id, incoming_state) in current_queue {
-            let Some(&block_idx) = block_index.get(&block_id) else {
-                continue;
-            };
-
+        // PERF: drain(..) reuses the Vec's allocation across iterations (unlike into_iter()).
+        #[expect(clippy::iter_with_drain)]
+        for (block_idx, block_id, incoming_state) in sorted_queue.drain(..) {
+            // PERF: Move the incoming state directly into block_state instead of cloning.
+            // We save a reference copy in states_by_block for the merge check in queue_state,
+            // but use the moved original for block processing.
             states_by_block.insert(block_id, incoming_state.clone());
             let mut block_state = incoming_state;
 
@@ -480,8 +510,10 @@ fn infer_mutation_aliasing_effects_inner(
             );
 
             // Queue successor blocks
-            let successors = terminal_successors(&hir.blocks[block_idx].1.terminal);
-            for succ_id in successors {
+            // PERF: Reuse successor buffer instead of allocating Vec per block.
+            successor_buf.clear();
+            terminal_successors_into(&hir.blocks[block_idx].1.terminal, &mut successor_buf);
+            for &succ_id in &successor_buf {
                 queue_state(&mut queued_states, &states_by_block, succ_id, &block_state);
             }
         }
@@ -695,18 +727,29 @@ fn infer_block(
     fn_signatures: &FxHashMap<IdentifierId, FunctionSignature>,
     method_signatures: &MethodSignatures,
 ) {
-    let block = &hir.blocks[block_idx].1;
-
-    // Process phi nodes
-    let phis = block.phis.clone();
-    for phi in &phis {
-        state.infer_phi(phi);
+    // PERF: Process phi nodes without cloning the full Phi structs.
+    // We only need the place id and operand ids for state.infer_phi().
+    // Extract the lightweight data first, then process against the state.
+    let phi_data: Vec<(IdentifierId, Vec<IdentifierId>)> = hir.blocks[block_idx]
+        .1
+        .phis
+        .iter()
+        .map(|phi| {
+            let operand_ids: Vec<IdentifierId> =
+                phi.operands.iter().map(|(_, op)| op.identifier.id).collect();
+            (phi.place.identifier.id, operand_ids)
+        })
+        .collect();
+    for (place_id, operand_ids) in &phi_data {
+        state.infer_phi_lightweight(*place_id, operand_ids);
     }
 
     // Process instructions
-    let num_instrs = block.instructions.len();
+    let num_instrs = hir.blocks[block_idx].1.instructions.len();
     for instr_idx in 0..num_instrs {
-        // Get or compute the candidate signature for this instruction
+        // Get or compute the candidate signature for this instruction.
+        // PERF: Compute once and cache. The clone is needed because apply_signature
+        // takes &mut ctx (for catch_handlers/is_function_expression access).
         let cache_key = (block_idx, instr_idx);
         let signature = if let Some(sig) = ctx.instruction_signature_cache.get(&cache_key) {
             sig.clone()
@@ -2050,46 +2093,62 @@ fn get_write_error_reason(value: &AbstractValue) -> String {
 // terminal_successors
 // ---------------------------------------------------------------------------
 
-fn terminal_successors(terminal: &Terminal) -> Vec<BlockId> {
+/// PERF: Push terminal successors into an existing buffer to avoid per-call Vec allocation.
+fn terminal_successors_into(terminal: &Terminal, buf: &mut Vec<BlockId>) {
     match terminal {
-        Terminal::Goto { block } => vec![*block],
+        Terminal::Goto { block } => buf.push(*block),
         Terminal::If { consequent, alternate, fallthrough, .. } => {
-            vec![*consequent, *alternate, *fallthrough]
+            buf.extend_from_slice(&[*consequent, *alternate, *fallthrough]);
         }
-        Terminal::Branch { consequent, alternate, .. } => vec![*consequent, *alternate],
+        Terminal::Branch { consequent, alternate, .. } => {
+            buf.extend_from_slice(&[*consequent, *alternate]);
+        }
         Terminal::Switch { cases, fallthrough, .. } => {
-            let mut succs: Vec<BlockId> = cases.iter().map(|c| c.block).collect();
-            succs.push(*fallthrough);
-            succs
+            buf.extend(cases.iter().map(|c| c.block));
+            buf.push(*fallthrough);
         }
-        Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => vec![],
+        Terminal::Return { .. } | Terminal::Throw { .. } | Terminal::Unreachable => {}
         Terminal::For { init, test, update, body, fallthrough } => {
-            let mut succs = vec![*init, *test, *body, *fallthrough];
+            buf.extend_from_slice(&[*init, *test, *body, *fallthrough]);
             if let Some(u) = update {
-                succs.push(*u);
+                buf.push(*u);
             }
-            succs
         }
         Terminal::ForOf { init, test, body, fallthrough }
         | Terminal::ForIn { init, test, body, fallthrough } => {
-            vec![*init, *test, *body, *fallthrough]
+            buf.extend_from_slice(&[*init, *test, *body, *fallthrough]);
         }
-        Terminal::DoWhile { body, test, fallthrough } => vec![*body, *test, *fallthrough],
-        Terminal::While { test, body, fallthrough } => vec![*test, *body, *fallthrough],
-        Terminal::Logical { left, right, fallthrough, .. } => vec![*left, *right, *fallthrough],
+        Terminal::DoWhile { body, test, fallthrough } => {
+            buf.extend_from_slice(&[*body, *test, *fallthrough]);
+        }
+        Terminal::While { test, body, fallthrough } => {
+            buf.extend_from_slice(&[*test, *body, *fallthrough]);
+        }
+        Terminal::Logical { left, right, fallthrough, .. } => {
+            buf.extend_from_slice(&[*left, *right, *fallthrough]);
+        }
         Terminal::Ternary { consequent, alternate, fallthrough, .. } => {
-            vec![*consequent, *alternate, *fallthrough]
+            buf.extend_from_slice(&[*consequent, *alternate, *fallthrough]);
         }
-        Terminal::Optional { consequent, fallthrough, .. } => vec![*consequent, *fallthrough],
+        Terminal::Optional { consequent, fallthrough, .. } => {
+            buf.extend_from_slice(&[*consequent, *fallthrough]);
+        }
         Terminal::Sequence { blocks, fallthrough } => {
-            let mut succs = blocks.clone();
-            succs.push(*fallthrough);
-            succs
+            buf.extend_from_slice(blocks);
+            buf.push(*fallthrough);
         }
-        Terminal::Label { block, fallthrough, .. } => vec![*block, *fallthrough],
-        Terminal::MaybeThrow { continuation, handler, .. } => vec![*continuation, *handler],
-        Terminal::Try { block, handler, fallthrough } => vec![*block, *handler, *fallthrough],
+        Terminal::Label { block, fallthrough, .. } => {
+            buf.extend_from_slice(&[*block, *fallthrough]);
+        }
+        Terminal::MaybeThrow { continuation, handler, .. } => {
+            buf.extend_from_slice(&[*continuation, *handler]);
+        }
+        Terminal::Try { block, handler, fallthrough } => {
+            buf.extend_from_slice(&[*block, *handler, *fallthrough]);
+        }
         Terminal::Scope { block, fallthrough, .. }
-        | Terminal::PrunedScope { block, fallthrough, .. } => vec![*block, *fallthrough],
+        | Terminal::PrunedScope { block, fallthrough, .. } => {
+            buf.extend_from_slice(&[*block, *fallthrough]);
+        }
     }
 }

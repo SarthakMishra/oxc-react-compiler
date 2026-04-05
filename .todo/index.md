@@ -1,7 +1,7 @@
 # oxc-react-compiler — Remaining Work
 
 > **Conformance: 560/1717 (32.6%)** | Known failures: 1157 | 0 panics | 0 unexpected divergences
-> Last updated: 2026-04-05 (Phase 178)
+> Last updated: 2026-04-05 (Phase 178 — perf optimizations: 21-35% on large fixtures)
 
 ---
 
@@ -197,10 +197,10 @@ Root causes:
 - No structural sharing, no widening operator, no worklist priority ordering
 
 Sub-tasks:
-- [ ] **I1.1:** Profile Pass 16 on large fixtures (multi-step-form, canvas-sidebar) to confirm hotspots
-- [ ] **I1.2:** Incremental state diffing — only clone/propagate changed parts of state at phi nodes
-- [ ] **I1.3:** Worklist priority ordering (reverse postorder) to minimize re-queuing
-- [ ] **I1.4:** Verify zero test regressions after each optimization
+- [x] **I1.1:** Profile Pass 16 on large fixtures (canvas-sidebar, booking-list, data-table) to confirm hotspots ✅
+- [x] **I1.2:** In-place state merging, sorted block processing, reused buffers, lightweight phi ✅ (21-35% improvement)
+- [x] **I1.3:** Worklist priority ordering (sorted by block index for forward convergence) ✅
+- [x] **I1.4:** Verify zero test regressions after each optimization ✅ (560/1717 maintained)
 
 #### I2: Pass 20 — `infer_mutation_aliasing_ranges` (graph BFS range propagation)
 
@@ -214,11 +214,14 @@ Root causes:
 - Instruction effects computed in Pass 16 then recomputed from scratch in Pass 20
 
 Sub-tasks:
-- [ ] **I2.1:** Profile Pass 20 on large fixtures to confirm hotspots
+- [x] **I2.1:** Profile Pass 20 on large fixtures to confirm hotspots ✅
+- [x] **I2.2a:** Reusable BFS buffers across mutations (clear instead of realloc) ✅
+- [x] **I2.2b:** Pre-sized hash maps based on instruction count ✅
+- [x] **I2.2c:** Visitor-based operand ID collection (avoid per-instruction Vec alloc) ✅
 - [ ] **I2.2:** Batch mutation BFS — single reverse-reachability pass instead of per-mutation
 - [ ] **I2.3:** Merge `annotate_place_effects` + `annotate_last_use` into single HIR traversal
 - [ ] **I2.4:** Cache and reuse instruction effects between Pass 16 and Pass 20
-- [ ] **I2.5:** Verify zero test regressions after each optimization
+- [x] **I2.5:** Verify zero test regressions after each optimization ✅ (560/1717 maintained)
 
 #### Constraint
 
