@@ -1,6 +1,6 @@
 # oxc-react-compiler — Remaining Work
 
-> **Conformance: 558/1717 (32.5%)** | Known failures: 1159 | 0 panics | 0 unexpected divergences
+> **Conformance: 559/1717 (32.6%)** | Known failures: 1158 | 0 panics | 0 unexpected divergences
 > Last updated: 2026-04-05
 
 ---
@@ -85,8 +85,8 @@ Example: `allocating-logical-expression-instruction-scope.ts` — we use sentine
 **Files:** `propagate_dependencies.rs`
 
 - [x] **A2.1:** Investigated — Phase 2 only processes scoped instructions, missing loop test blocks ✅
-- [ ] **A2.2:** ATTEMPTED: Added Phase 2b + collect_scope_blocks for loops — **REVERTED (-1 regression)**. Adding deps broadly disturbs the coupled system. Needs fixture-by-fixture approach.
-- [ ] **A2.3:** Try targeted dep injection for specific patterns (loop conditions, hook returns) rather than broad collection
+- [x] **A2.2:** FIXED: Phase 2b collects deps from while/do-while test blocks using `collect_read_operand_places` (not `_for_deps` which skips LoadLocal). +1 conformance (558→559), 0 regressions ✅
+- [ ] **A2.3:** Extend to for-loop conditions (currently excluded due to regressions) and hook return values
 
 #### A3: Scope Boundary Accuracy (~300+ fixtures, effective_range over-merging)
 
