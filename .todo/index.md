@@ -120,10 +120,41 @@ Also tried: use_mutable_range=true (-40, reverted) -- mutable ranges alone still
 3. Audit `dep.reactive` flag assignment against upstream semantics
 4. Understand scope merging algorithm in detail before attempting changes
 
-**Remaining (all blocked by prerequisites):**
-- [ ] **Stage 3b:** Fix dominant slot diff patterns. HIGH risk.
-- [ ] **Stage 3c:** Fix secondary +/-1 patterns.
-- [ ] **Stage 3d:** +/-2 slot diff quick wins.
+### Investigation Results (Phase 176) — +1 Surplus Deep Debug
+
+A deep-work session debugged +1 surplus fixtures and identified 3 distinct categories:
+
+| Category | ~Count | Description | Status |
+|----------|--------|-------------|--------|
+| **Loop codegen bugs** | ~12 | do-while body flattened, for-of body dropped. This is a codegen/reactive-tree issue, NOT scope inference. | NEW investigation track |
+| **Sentinel dep scopes** | ~10 | Scopes with deps exclusively on sentinel-cached values that never invalidate. | FIXED: `prune_scopes_with_sentinel_only_deps` (+1 slot match) |
+| **Redundant declarations** | ~30 | Aliases (y=x) stored as separate slot entries in codegen output. | Open |
+
+**New pass added:** `prune_scopes_with_sentinel_only_deps` in `prune_scopes.rs`. Prunes reactive scopes whose only dependencies are sentinel-cached values (values that never change and thus never invalidate the scope). This converts +1 surplus fixtures to exact slot matches.
+
+**Key finding: Loop codegen bugs are a separate track from scope inference.** The do-while body flattening and for-of body dropping issues affect both slot counts AND correctness. These are codegen/reactive-tree structural problems, not mutable range or scope merging issues. They should be investigated independently of the Stage 3 mutable range accuracy work.
+
+**Next step: Stage 3e — Targeted mutable range debugging**
+
+Approach: fixture-driven, NOT blanket model changes. The +1 surplus fixtures (74 of them) are the best starting point -- each likely has a single extra scope from a single over-extended mutable range. Phase 176 narrowed the +1 surplus into 3 categories; the remaining ~30 redundant-declaration fixtures and the loop codegen bugs (~12) are now separately trackable.
+
+1. Pick 3-5 fixtures from the +1 surplus pool.
+2. Add debug logging to `infer_mutation_aliasing_ranges.rs` to print mutable ranges for all identifiers.
+3. Run the same fixtures through upstream TypeScript compiler with equivalent logging.
+4. Compare ranges side-by-side: which identifiers have wider ranges in our output?
+5. Trace backward to identify the specific effect/instruction that extends the range wider than upstream.
+6. Fix THAT specific pattern and test for regression.
+
+Key question to answer: is the divergence in (a) Apply effect resolution, (b) cross-arg Capture, (c) `last_use_map` extension logic, (d) receiver mutation propagation, or (e) something else?
+
+**Additional track: Loop codegen bugs (do-while/for-of)** — These are independent of scope inference and should be investigated as a separate codegen correctness issue. ~12 fixtures affected.
+
+**Remaining:**
+- [ ] **Stage 3b:** Fix dominant slot diff patterns. HIGH risk. Blocked by mutable range accuracy.
+- [ ] **Stage 3c:** Fix secondary +/-1 patterns. Blocked by mutable range accuracy.
+- [ ] **Stage 3d:** +/-2 slot diff quick wins. Blocked by mutable range accuracy.
+- [ ] **Stage 3f: Loop codegen bugs (~12 fixtures)** — do-while body flattened, for-of body dropped. Codegen/reactive-tree issue, NOT scope inference. Independent investigation track.
+- [ ] **Stage 3g: Redundant declarations (~30 fixtures)** — Aliases (y=x) stored as separate slot entries. Investigate codegen deduplication or scope merging for aliased identifiers.
 
 **Upstream:** `InferReactiveScopeVariables.ts`, `InferMutationAliasingRanges.ts`, `PropagateScopeDependencies.ts`
 **Our files:** `infer_reactive_scope_variables.rs`, `infer_mutation_aliasing_ranges.rs`, `propagate_dependencies.rs`
@@ -213,7 +244,8 @@ Also tried: use_mutable_range=true (-40, reverted) -- mutable ranges alone still
 
 ## Active Work
 
-- [~] **Preserve-memo Check 1 scope inference** — [bail-out-investigation.md](bail-out-investigation.md)#preserve-memo-check-1-scope-inference -- Scope propagation to FinishMemoize.decl TESTED: bails 94->14 (-80!) but -52 conformance regression. Infrastructure is READY but BLOCKED by Stage 3 scope inference accuracy. The 52 regressed fixtures are error fixtures where our surplus scopes cause Check 1 to incorrectly pass. Dependency chain: Stage 3 scope accuracy -> scope propagation -> correct Check 1 -> up to +80 preserve-memo fixtures.
+- [~] **Stage 3e: Targeted mutable range debugging** — Fixture-driven approach: pick +1 surplus slot-differ fixtures, trace mutable ranges through upstream `InferMutationAliasingRanges.ts` vs our `infer_mutation_aliasing_ranges.rs`, identify specific divergence patterns. This is Step 1 of the confirmed fix sequence (mutable range accuracy -> use_mutable_range=true -> scope inference fixes). All other major pools (572 slot-differ, 94 preserve-memo, 98 both-no-memo, 69 surplus) are gated by this.
+- [~] **Preserve-memo Check 1 scope inference** — [bail-out-investigation.md](bail-out-investigation.md)#preserve-memo-check-1-scope-inference -- BLOCKED by Stage 3. Scope propagation to FinishMemoize.decl TESTED: bails 94->14 (-80!) but -52 conformance regression. Infrastructure is READY but BLOCKED by Stage 3 scope inference accuracy. Dependency chain: Stage 3 scope accuracy -> scope propagation -> correct Check 1 -> up to +80 preserve-memo fixtures.
 
 ---
 
@@ -361,6 +393,13 @@ The project has reached a clear inflection point. All low-risk, codegen-only, an
 
 Every remaining conformance gain of significant size (>10 fixtures) depends on one or both of these. The only exception is the ~9 remaining "Found 1 error" bail-outs in Stage 4f, which are safe incremental gains.
 
+**Alternative pools assessed and deprioritized (2026-04-04):**
+- **MethodCall codegen bails (5 fixtures):** These bail on `check_nested_method_call_as_argument` but upstream compiles them. Our codegen uses string property names (not MemberExpression refs) so it would handle them. However, removing the check yields +0 conformance — all 5 are complex fixtures with `@validatePreserveExistingMemoizationGuarantees` or chained method calls that would land in slot-differ or preserve-memo bail pools. Not worth pursuing independently.
+- **4-diff SLOTS-MATCH fixtures (3 fixtures):** 2 are gating import wrappers (`isForgetEnabled_Fixtures` codegen), 1 is computed key string literal (`L0` vs `foo`). Best case +1 from the computed key fix. Too small to prioritize.
+- **Both-no-memo (98 fixtures):** Dominated by DCE/CP gaps and variable naming. Blocked by 0-slot codegen (scope inference). Not independently fixable.
+- **setState-in-render false positives (1 fixture):** `validate-no-set-state-in-render-unconditional-lambda-which-conditionally-sets-state-ok` needs transitive call-graph conditional analysis. Non-trivial for +1.
+- **"Found 1 error" bails (5 fixtures):** All 5 documented as blocked (unnamed-temporary, JSX captures, preserve-memo x2, plus 1 other). No unblocked items.
+
 **Key invariants discovered through failure:**
 - `effective_range` cannot be replaced with `mutable_range` (6 attempts, all regressed)
 - `collect_all_scope_declarations` is load-bearing for render (96%->24% without it)
@@ -374,3 +413,4 @@ Every remaining conformance gain of significant size (>10 fixtures) depends on o
 - The conservative unknown-call mutation model is a balanced tradeoff: every attempted relaxation (non-transitive mutation, cross-arg capture removal, Apply processing, StoreLocal range extension) causes an identical -10 slot MATCH shift. The 10 affected fixtures are load-bearing for the current conformance count. Further scope inference gains require porting upstream's EXACT mutation resolution logic, not tuning the conservative fallback.
 - Frozen-mutation Check 6 (context variable reassignment) MUST verify `frozen_at` instruction ordering — without the `freeze_id < instr.id` guard, the check produces a false positive on `hoisting-reassigned-let-declaration` where the let declaration appears after the freeze point in source but before it in instruction order. Always check temporal ordering, not just set membership.
 - `promote_used_temporaries` blanket-names ALL identifiers, making upstream-style "unnamed temporary" invariant checks impossible. Any future work requiring unnamed-vs-named distinction needs this pass refactored to selective promotion first.
+- **+1 surplus fixtures decompose into 3 distinct categories** (Phase 176): loop codegen bugs (~12, do-while/for-of body structural issues), sentinel dep scopes (~10, FIXED by `prune_scopes_with_sentinel_only_deps`), and redundant declarations (~30, alias y=x stored as separate slots). Loop codegen bugs are NOT scope inference -- they are a separate codegen/reactive-tree correctness track.
