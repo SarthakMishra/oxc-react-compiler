@@ -1126,12 +1126,18 @@ pub enum ReactiveTerminal {
     },
     While {
         test: ReactiveBlock,
+        /// The condition Place extracted from the Branch terminal.
+        /// When present, codegen emits `while (<condition>)` instead of `while (true)`.
+        condition: Option<Place>,
         body: ReactiveBlock,
         id: BlockId,
     },
     DoWhile {
         body: ReactiveBlock,
         test: ReactiveBlock,
+        /// The condition Place extracted from the Branch terminal.
+        /// When present, codegen emits `do { } while (<condition>)` instead of `while (true)`.
+        condition: Option<Place>,
         id: BlockId,
     },
     Label {

@@ -1497,7 +1497,7 @@ impl HIRBuilder {
         let body_block = self.new_block(BlockKind::Loop);
         let fallthrough = self.new_block(BlockKind::Block);
 
-        self.emit_terminal(Terminal::Goto { block: test_block });
+        self.emit_terminal(Terminal::While { test: test_block, body: body_block, fallthrough });
 
         // Test
         self.switch_block(test_block);
@@ -1529,7 +1529,7 @@ impl HIRBuilder {
         let test_block = self.new_block(BlockKind::Value);
         let fallthrough = self.new_block(BlockKind::Block);
 
-        self.emit_terminal(Terminal::Goto { block: body_block });
+        self.emit_terminal(Terminal::DoWhile { body: body_block, test: test_block, fallthrough });
 
         // Body
         self.break_targets.push(fallthrough);

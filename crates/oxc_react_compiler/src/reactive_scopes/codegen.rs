@@ -2525,6 +2525,65 @@ fn codegen_instruction(
     }
 }
 
+/// Resolve a loop condition Place to its expression string by building
+/// a mini inline map from the test block's instructions. The condition temp
+/// is the last instruction's output, which needs to be inlined (e.g., t5 → "x.length").
+fn resolve_loop_condition(
+    condition: &Place,
+    test_instructions: &[ReactiveInstruction],
+    tag_constants: &TagConstantMap,
+) -> String {
+    // Build an inline map that inlines ALL single-instruction temps,
+    // ignoring use counts (since the "use" is the Branch terminal, not
+    // in the instruction list). We manually build a chain.
+    let mut inline_map: InlineMap = FxHashMap::default();
+
+    for ri in test_instructions {
+        let ReactiveInstruction::Instruction(instr) = ri else { continue };
+        if !is_temp_place(&instr.lvalue) {
+            continue;
+        }
+        let temp_name = format!("t{}", instr.lvalue.identifier.id.0);
+        // Generate the expression for this instruction
+        let mut buf = String::new();
+        codegen_instruction(
+            instr,
+            &mut buf,
+            "",
+            &mut FxHashSet::default(),
+            &inline_map, // use current inline map for chaining
+            tag_constants,
+        );
+        // Extract the RHS from "let tN = <expr>;\n" or "tN = <expr>;\n" or "<expr>;\n"
+        let expr = extract_rhs_from_stmt(&buf);
+        inline_map.insert(temp_name, expr);
+    }
+
+    resolve_place(condition, &inline_map).into_owned()
+}
+
+/// Extract the RHS expression from a codegen'd statement like "let x = expr;\n" or "expr;\n"
+fn extract_rhs_from_stmt(stmt: &str) -> String {
+    let trimmed = stmt.trim();
+    let trimmed = trimmed.strip_suffix(';').unwrap_or(trimmed).trim();
+
+    // Try "let x = expr" or "const x = expr" or "var x = expr"
+    if let Some(rest) = trimmed
+        .strip_prefix("let ")
+        .or_else(|| trimmed.strip_prefix("const "))
+        .or_else(|| trimmed.strip_prefix("var "))
+        && let Some(eq_pos) = rest.find(" = ")
+    {
+        return rest[eq_pos + 3..].to_string();
+    }
+    // Try "x = expr"
+    if let Some(eq_pos) = trimmed.find(" = ") {
+        return trimmed[eq_pos + 3..].to_string();
+    }
+    // Bare expression
+    trimmed.to_string()
+}
+
 fn codegen_terminal(
     terminal: &ReactiveTerminal,
     output: &mut String,
@@ -2584,18 +2643,30 @@ fn codegen_terminal(
             }
             output.push_str(&format!("{indent_str}}}\n"));
         }
-        ReactiveTerminal::While { test, body, .. } => {
-            output.push_str(&format!("{indent_str}while (true) {{\n"));
-            codegen_block(test, output, cache_slot, indent + 1, declared, tag_constants);
+        ReactiveTerminal::While { test, condition, body, .. } => {
+            // Resolve the condition by building a local inline map from
+            // the test block's instructions. Force single-use count for
+            // the condition temp so it gets inlined.
+            let cond_str: String = if let Some(cond) = condition {
+                resolve_loop_condition(cond, &test.instructions, tag_constants)
+            } else {
+                "true".to_string()
+            };
+            output.push_str(&format!("{indent_str}while ({cond_str}) {{\n"));
             codegen_block(body, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}}\n"));
         }
-        ReactiveTerminal::DoWhile { body, test, .. } => {
+        ReactiveTerminal::DoWhile { body, test, condition, .. } => {
+            // Resolve the condition by building a local inline map from
+            // the test block's instructions.
+            let cond_str: String = if let Some(cond) = condition {
+                resolve_loop_condition(cond, &test.instructions, tag_constants)
+            } else {
+                "true".to_string()
+            };
             output.push_str(&format!("{indent_str}do {{\n"));
             codegen_block(body, output, cache_slot, indent + 1, declared, tag_constants);
-            output.push_str(&format!("{indent_str}}} while (true);\n"));
-            // Test block is evaluated inside the loop for condition
-            let _ = test;
+            output.push_str(&format!("{indent_str}}} while ({cond_str});\n"));
         }
         ReactiveTerminal::For { init, test, update, body, .. } => {
             output.push_str(&format!("{indent_str}for (;;) {{\n"));

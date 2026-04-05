@@ -7,31 +7,24 @@ diagnostics: 0
 ---
 import { c as _c } from "react/compiler-runtime";
 function useCounter() {
-  const $ = _c(4);
-  let t0;
-  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t0 = 0;
-    $[0] = t0;
-  } else {
-    t0 = $[0];
-  }
-  let t1 = useState(t0);
+  const $ = _c(3);
+  let t0 = useState(0);
   let count;
   let setCount;
-  ([count, setCount] = t1);
-  let t2;
-  if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    let t3 = () => {
+  ([count, setCount] = t0);
+  let t1;
+  if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
+    let t2 = () => {
       return setCount((count + 1));
     };
-    t2 = { count, increment: t3 };
-    $[1] = t2;
-    $[2] = count;
-    $[3] = setCount;
+    t1 = { count, increment: t2 };
+    $[0] = t1;
+    $[1] = count;
+    $[2] = setCount;
   } else {
-    t2 = $[1];
-    count = $[2];
-    setCount = $[3];
+    t1 = $[0];
+    count = $[1];
+    setCount = $[2];
   }
-  return t2;
+  return t1;
 }
