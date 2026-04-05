@@ -1,63 +1,117 @@
 # oxc-react-compiler — Remaining Work
 
-> **Conformance: 555/1717 (32.3%)** | Known failures: 1162 | 0 panics | 0 unexpected divergences
+> **Conformance: 557/1717 (32.4%)** | Known failures: 1160 | 0 panics | 0 unexpected divergences
 > Last updated: 2026-04-05
 
 ---
 
-## Failure Breakdown (1162 divergences)
+## Failure Breakdown (1160 divergences)
 
 | Category | Count | % | Description |
 |----------|------:|---|-------------|
 | Both compile, slots DIFFER | 565 | 49% | We compile, they compile, but different scope/slot counts |
-| Both compile, slots MATCH | 229 | 20% | Same slots but codegen token diffs (naming, structure) |
+| Both compile, slots MATCH | 227 | 20% | Same slots but codegen token diffs (naming, structure) |
 | We bail, they compile | 199 | 17% | False-positive bail-outs |
 | Both no memo (format diff) | 98 | 8% | Neither side memoizes, format differs |
 | We compile, they don't | 71 | 6% | We compile, upstream bails with error |
 
+### Slot Diff Distribution (565 slot-DIFFER fixtures)
+
+| Diff | Count | Meaning |
+|------|------:|---------|
+| -1 | 146 | We under-split (over-merge) — too few scopes |
+| -2 | 122 | |
+| -3 | 59 | |
+| -4 to -23 | 92 | |
+| +1 | 54 | We over-split — too many scopes |
+| +2 to +4 | 54 | |
+
+**The dominant problem is under-splitting (over-merging): 419 fixtures have negative diff vs 108 positive.**
+
 ---
 
-## Grouped Remaining Tasks (by root cause)
+## Root Cause Analysis (Verified April 2026)
 
-### Group A: Scope Inference — Mutable Range Accuracy (CRITICAL PATH)
+### What was DISPROVEN:
 
-**Affects: ~565 slot-DIFFER + 94 preserve-memo + 98 both-no-memo + 71 we-compile-they-don't**
-**Potential: +100-200 fixtures**
-**Status: Investigation complete, implementation needed**
+- ❌ **"Apply effects are skipped"** — Apply effects ARE fully resolved in Pass 16 (`infer_mutation_aliasing_effects.rs` lines 1035-1135). The `AliasingEffect::Apply { .. } => {}` skip in Pass 17 is a correct no-op matching upstream's invariant.
+- ❌ **"Switching to `use_mutable_range=true` would fix it"** — Tested: **-40 regression** (557→517). Despite producing correct slot counts for individually tested fixtures, the net effect is strongly negative. The `effective_range` workaround is more load-bearing than previously understood.
 
-The single largest blocker. Our scope inference creates too many or too few scopes compared to upstream because mutable ranges are slightly inaccurate. The `effective_range = max(mutable_range.end, last_use + 1)` workaround compensates for narrow ranges but causes over-merging.
+### What IS verified:
 
-#### What we know (from 10 approaches + 2 investigations):
+1. **The `effective_range = max(mutable_range.end, last_use + 1)` workaround creates a coupled system.** It compensates for narrow `mutable_range` values by extending ranges. This over-extends some ranges (causing over-merging → too few scopes) while correctly extending others (preventing over-splitting). Both directions of error exist simultaneously.
 
-1. **Pipeline is structurally correct** — effects pass (Pass 16) → ranges pass (Pass 20) → scope inference all match upstream architecture. Apply effects ARE pre-resolved.
-2. **Individual scope inference fixes cascade** — tested `mutableRange.start > 0` guard (-2 regression), PropertyStore allocating (+1/-1 neutral), spread Destructure (regression). Each fix disturbs compensating errors.
-3. **Correct fix order confirmed:** (1) Fix mutable range accuracy → (2) Switch to `use_mutable_range=true` → (3) Apply scope inference fixes
-4. **Conservative unknown-call fallback is load-bearing** — MutateTransitiveConditionally on all operands + O(n²) cross-arg Capture produces wide ranges needed for 10 fixtures. Cannot relax without introducing equal deficit.
+2. **Three distinct root causes for slot differences:**
 
-#### Three sub-categories of +1 surplus (52 fixtures, Phase 176):
+   | Root Cause | Direction | ~Count | Example |
+   |-----------|-----------|--------|---------|
+   | Missing reactive dependencies | both | ~200+ | Sentinel scope where upstream uses reactive dep check |
+   | Over-declaring scope outputs | +N | ~50+ | Caching internal variables (`b`, `c` in while loop) |
+   | Wrong scope boundaries from effective_range | -N | ~300+ | Over-merged scopes due to artificially widened ranges |
 
-| Sub-category | ~Count | Root Cause | Status |
-|-------------|--------|-----------|--------|
-| Loop codegen bugs | ~12 | do-while flattened, for-of body dropped | **MOSTLY FIXED** (Phase 177) — remaining: SSA/DCE, self-assign, do-while+continue |
-| Sentinel dep scopes | ~10 | Deps on never-changing sentinel values | **FIXED** (`prune_scopes_with_sentinel_only_deps`) |
-| Redundant declarations | ~30 | Aliases (y=x) stored as separate slots | Open |
+3. **Apply resolution quality matters.** While Apply IS resolved, our resolution may produce different concrete effects than upstream's. The conservative fallback (MutateTransitiveConditionally + O(n²) cross-arg Capture) is load-bearing for 10 fixtures. The resolution quality affects downstream range computation.
 
-#### Next steps:
+---
 
-- [ ] **A1: Fixture-driven mutable range debugging** — Pick 3-5 simple +1 surplus fixtures (NOT loop-related), add debug logging to `infer_mutation_aliasing_ranges.rs`, compare ranges with upstream, identify specific divergence patterns. Key question: is divergence from (a) effect resolution, (b) cross-arg Capture, (c) receiver mutation, or (d) something else?
-- [ ] **A2: Fix identified range divergences** — Targeted fixes based on A1 findings
-- [ ] **A3: Switch to `use_mutable_range=true`** — Currently -40 regression. Retry after A2 narrows the gap.
-- [ ] **A4: Apply scope inference fixes** — `mutableRange.start > 0` guard, remove `any_reactive && any_mutable` pre-filter, PropertyStore/ComputedStore allocating, spread Destructure allocating
-- [ ] **A5: Redundant declaration deduplication** — Aliases stored as separate slots (~30 fixtures)
+## Grouped Remaining Tasks
 
-**Key files:** `infer_mutation_aliasing_ranges.rs`, `infer_mutation_aliasing_effects.rs`, `infer_reactive_scope_variables.rs`
-**Upstream:** `InferMutationAliasingRanges.ts`, `InferMutationAliasingEffects.ts`, `InferReactiveScopeVariables.ts`
+### Group A: Scope Inference Accuracy (CRITICAL PATH)
 
-#### ⚠️ What NOT to do (learned from 10 failed approaches):
-- Do NOT make blanket model changes (relaxing mutation model, removing heuristics). They shift the balance without fixing root cause.
-- Do NOT filter deps by name pattern (post-naming). Only structural filters (pre-naming, `name == None`) are safe.
-- Do NOT re-enable scope propagation to FinishMemoize.decl until scope accuracy improves (-52 regression).
-- Do NOT attempt individual scope inference fixes without fixing mutable ranges first (cascading regressions).
+**Affects: ~565 slot-DIFFER + 94 preserve-memo bails**
+**Status: Deep investigation complete, multiple sub-problems identified**
+
+The scope inference problem is NOT a single bug. It's a coupled system where the `effective_range` workaround creates compensating errors. Three sub-problems must be addressed:
+
+#### A1: Scope Output Over-Declaration (~50+ fixtures, +N surplus)
+
+Variables used only INSIDE a scope body are incorrectly declared as scope outputs, adding extra cache slots. Example: in `alias-while.js`, `b` and `c` are internal to the while loop scope but get cached.
+
+**Root cause:** `propagate_scope_dependencies_hir` or the scope declaration logic doesn't distinguish "used inside scope" from "used after scope".
+
+**Files:** `propagate_dependencies.rs`, `infer_reactive_scope_variables.rs`
+
+- [ ] **A1.1:** Investigate scope output declaration logic — when does a variable become a scope "declaration" (output)?
+- [ ] **A1.2:** Compare with upstream `PropagateScopeDependencies.ts` to find the filtering condition
+- [ ] **A1.3:** Implement filtering: only declare variables whose last use is AFTER the scope boundary
+
+#### A2: Missing Reactive Dependencies (~200+ fixtures, wrong dep detection)
+
+We use sentinel scopes (one-time computation) where upstream uses reactive scopes (re-compute when deps change). This means we DON'T re-compute when reactive values change.
+
+Example: `allocating-logical-expression-instruction-scope.ts` — we use sentinel scope, upstream depends on `data` from `useFragment()`.
+
+**Root cause:** `propagate_scope_dependencies_hir` doesn't correctly identify reactive external dependencies, especially hook return values.
+
+**Files:** `propagate_dependencies.rs`
+
+- [ ] **A2.1:** Compare our dep propagation with upstream `PropagateScopeDependencies.ts`
+- [ ] **A2.2:** Add test fixtures that isolate the dep detection issue
+- [ ] **A2.3:** Fix dep propagation to detect reactive values from hooks
+
+#### A3: Scope Boundary Accuracy (~300+ fixtures, effective_range over-merging)
+
+The `effective_range = max(mutable_range.end, last_use + 1)` workaround in `infer_reactive_scope_variables.rs` causes over-merging. Variables with artificially extended ranges overlap and get unioned into the same scope.
+
+**This cannot be fixed by just switching to `use_mutable_range=true`** (tested: -40 regression). The raw `mutable_range` values are too narrow for many fixtures.
+
+**The gap is in range computation, not effect resolution.** Our BFS range propagation in `infer_mutation_aliasing_ranges.rs` produces narrower ranges than upstream for reasons not yet fully understood. Possible causes:
+- Different graph edge construction
+- Different BFS traversal order
+- Missing implicit edges from Create/Capture chains
+
+**Files:** `infer_mutation_aliasing_ranges.rs`, `infer_reactive_scope_variables.rs`
+
+- [ ] **A3.1:** Line-by-line comparison of `InferMutationAliasingRanges.ts` with our `infer_mutation_aliasing_ranges.rs`
+- [ ] **A3.2:** Identify specific range differences for 3-5 -1 fixtures
+- [ ] **A3.3:** Fix range computation to produce wider ranges where needed
+- [ ] **A3.4:** Re-test `use_mutable_range=true` after A3.3
+
+#### ⚠️ What NOT to do (proven by 10+ failed attempts):
+- Do NOT make blanket model changes (cascading regressions)
+- Do NOT switch `use_mutable_range` without fixing range computation first
+- Do NOT filter deps by name pattern (post-naming). Only structural filters work.
+- Do NOT re-enable scope propagation to FinishMemoize.decl until scope accuracy improves (-52 regression)
+- Do NOT attempt individual scope inference fixes without understanding the coupled system
 
 ---
 
@@ -66,153 +120,71 @@ The single largest blocker. Our scope inference creates too many or too few scop
 **Bail error: "Existing memoization could not be preserved"**
 **Status: BLOCKED by Group A**
 
-All 94 bails are Check 1 ("value was not memoized" / scope not completed). Check 2 (dep mismatch) was ELIMINATED by approach #10 (skip unnamed SSA temps).
+Infrastructure is READY. Scope propagation to `FinishMemoize.decl` reduces bails 94→14 (-80) but causes -52 conformance regression from scope surplus. Needs accurate scope inference first.
 
-**Infrastructure is READY:** Scope propagation to `FinishMemoize.decl` tested — reduces bails 94→14 (-80!) but causes -52 conformance regression from scope surplus. The code works; it just needs accurate scope inference underneath.
-
-**Dependency chain:** Group A scope accuracy → re-enable scope propagation → correct Check 1 → up to +80 fixtures
-
-**History (10 approaches to dep resolution):**
-
-| # | Approach | Result | Lesson |
-|---|----------|--------|--------|
-| 1-9 | Various skip/filter strategies | -4 to -56 | Post-naming filters catch both false and true positives |
-| **10** | **Skip unnamed SSA temps (name==None)** | **+3 slot, 0 conf** | **Pre-naming structural filter works. Check 2 eliminated.** |
+**Dependency:** A1 + A2 → re-enable scope propagation → +80 fixtures
 
 ---
 
 ### Group C: Frozen-Mutation False Bails (14 fixtures)
 
-**Bail error: "This value cannot be modified"**
-**Status: BLOCKED by aliasing pass**
+**Status: BLOCKED by aliasing pass semantics**
 
-Our aliasing pass over-propagates freeze status through capture chains. When a mutable container `y` captures frozen data via `y.x = x`, `y` becomes MaybeFrozen. Then `mutate(y)` triggers MutateFrozen — a false positive.
-
-**3 approaches tried, all failed:**
-1. IIFE detection improvement (no effect on false positives)
-2. IIFE skip in Check 1 (wrong source of false positive)
-3. Cross-check MutateFrozen vs frozen_ids (-2 regression, lost true positives)
-
-**Root cause:** `infer_mutation_aliasing_effects.rs` `mutate()` upgrades Mutate→MutateFrozen based on transitive freeze status. Fix must distinguish "container holds frozen data" from "container IS frozen" — either in the aliasing pass or the validator.
-
-**Do NOT attempt until:** Aliasing pass freeze propagation semantics are better understood via line-by-line comparison with upstream `InferMutationAliasingEffects.ts`.
+Our aliasing pass over-propagates freeze through capture chains. `mutate()` upgrades to MutateFrozen based on transitive freeze. Needs "container holds frozen" vs "container IS frozen" distinction.
 
 ---
 
-### Group D: Context Variable / Reassignment Bails (16 fixtures)
+### Group D: Context Variable Bails (16 fixtures)
 
-**Bail errors: "Cannot reassign variables" (9) + "Local variable reassigned" (7)**
+**Status: BLOCKED by HIR builder context variable support**
 
-#### D1: Cannot reassign outside component (9 fixtures)
-**BLOCKED.** Requires DeclareContext/StoreContext HIR lowering for context variables. Previous attempt: -4 net regression.
-
-#### D2: Local variable reassignment in render (7 fixtures)
-These are context variables reassigned inside closures. Our validation fires when upstream doesn't because upstream models context variable semantics more precisely. Related to nested HIR builders not emitting LoadContext/StoreContext.
-
-**Both sub-groups share the same root cause:** Our HIR builder's `build_arrow` doesn't call `setup_context_variables`, so nested functions use LoadLocal/StoreLocal instead of LoadContext/StoreContext. This prevents proper context variable modeling.
+Nested function expressions use LoadLocal/StoreLocal instead of LoadContext/StoreContext. Affects 16 fixtures across reassignment and render-time mutation validation.
 
 ---
 
-### Group E: Loop Codegen Bugs (~12 fixtures)
+### Group E: Loop Codegen (MOSTLY FIXED — Phase 177)
 
-**Status: MOSTLY FIXED (Phase 177) — root cause found and resolved**
-**Independent of scope inference**
+**Status: Core issue fixed. 3 remaining sub-issues.**
 
-**Root cause found:** `build_scope_block_only` silently dropped all loop terminals. Fixed in Phase 177.
-
-**What was fixed:**
-- While and DoWhile now emit proper HIR terminals instead of Goto+Branch
-- Codegen emits proper `while(cond)`, `do{}while(cond)`, `for(init;cond;update)` syntax
-- For-of and for-in loops now appear in output when inside reactive scopes
-
-**Remaining issues (not codegen bugs — deeper pipeline issues):**
-- [ ] **E4: For-loop update expression lost to DCE/SSA** — `i++` PostfixUpdate gets eliminated because the new SSA version appears unused (phi elimination issue). This is an SSA/DCE bug, not codegen.
-- [ ] **E5: Self-assignments after loops** — Scope declarations re-assign to themselves (`ret = ret;`, `x = x;`). Codegen artifact from scope variable handling.
-- [ ] **E6: Do-while with continue** — Falls back to `while(true)` instead of emitting proper condition
-
-**Conformance:** Still 555/1717 (32.3%) — loop fixtures have other differences preventing exact match, but loops now actually appear in output.
-
-**Affected fixtures (sample):** do-while-simple, do-while-continue, for-of-simple, for-of-continue, for-of-mutate, for-in-statement-break, for-in-statement-continue, alias-while, reactive-control-dependency-*-while
+- [ ] **E4:** For-loop update expression lost to DCE/SSA (phi elimination)
+- [ ] **E5:** Self-assignment stripping now works globally ✅
+- [ ] **E6:** Do-while with continue falls back to `while(true)`
 
 ---
 
-### Group F: Silent / Miscellaneous Bails (9 + 27 fixtures)
+### Group F: Miscellaneous Bails (36 fixtures)
 
-#### F1: Silent bails — no error message (9 fixtures)
-| Fixture | Root Cause |
-|---------|-----------|
-| `babel-existing-react-runtime-import.js` | Import merging needed |
-| `infer-functions-component-with-ref-arg.js` | Infer mode: function with ref arg not detected |
-| `unused-object-element-with-rest.js` | 0 scopes survive pipeline |
-| `invalid-jsx-in-catch-in-outer-try-with-catch.js` | try-catch HIR lowering |
-| `invalid-jsx-in-try-with-catch.js` | try-catch HIR lowering |
-| `valid-set-state-in-useEffect-from-ref.js` | setState-in-effect validation |
-| `valid-setState-in-effect-from-ref-arithmetic.js` | setState-in-effect validation |
-| `capturing-reference-changes-type.js` | Unknown |
-| `gating/infer-function-expression-React-memo-gating.js` | Gating not detected |
-
-#### F2: Other bail categories (27 fixtures combined)
-| Error | Count | Notes |
-|-------|------:|-------|
-| setState in useEffect | 7 | Need to distinguish direct vs indirect setState, ref-sourced values |
-| Cannot access refs in render | 7 | False positives: ref-typed values not properly excluded |
-| MethodCall codegen internal error | 5 | `MethodCall::property must be unquoted` — codegen limitation for computed methods |
-| Cannot call setState during render | 4 | False positives on conditional lambda setState |
-| Cannot modify locals after render | 4 | Overlap with Group D reassignment issues |
-| Hooks as normal values | 3 | PropertyLoad callee-name vector not checked |
-| Exhaustive deps | 3 | Missing/extra dep detection gaps |
-| Other (1-2 each) | ~10 | DefaultParam, NestedDestructuring, PruneHoistedContexts, etc. |
+| Error | Count | Difficulty |
+|-------|------:|-----------|
+| setState in useEffect | 7 | Medium (transitive conditional analysis) |
+| Cannot access refs in render | 9 | Medium (ref type exclusion) |
+| MethodCall codegen internal error | 5 | Hard (nested method call codegen) |
+| Cannot call setState during render | 4 | Hard (conditional lambda tracking) |
+| Hooks as normal values | 3 | Easy (PropertyLoad local object check) — but tested, causes regression |
+| Other (1-2 each) | 8 | Various |
 
 ---
 
 ### Group G: "We Compile, They Don't" (71 fixtures)
 
-Upstream bails with an error, but we compile through. Fixing = adding missing validation.
-
-| Sub-group | Count | Status |
-|-----------|------:|--------|
-| No upstream error header (scope surplus) | 58 | BLOCKED by Group A — our surplus scopes produce output where upstream doesn't |
-| "Found 1 error" bails | 5 | 1 blocked (unnamed-temp invariant), 2 blocked (infrastructure), 2 blocked (new-mutability model) |
-| Flow parse errors | 2 | `.flow.js` files need Flow parser support |
-| Ref mutation patterns | 4 | Various ref-in-hook patterns |
-| Other | 2 | Misc |
+58 of 71 are BLOCKED by Group A (scope surplus causes us to compile where upstream bails). Fixing scope accuracy would naturally fix most.
 
 ---
 
 ### Group H: "Both No Memo" Format Diffs (98 fixtures)
 
-Neither side memoizes, but our output format differs. Dominated by:
-- **0-slot codegen** — We create scopes where upstream doesn't → produce `_c(N)` cache vs no cache. BLOCKED by Group A scope surplus.
-- **DCE/CP gaps** — Some dead code not eliminated. DCE/CP ceiling mostly reached (+7 from Stages 5a/5b).
-- **Variable naming** — Different temp names, scope variable naming
+Dominated by DCE/constant-propagation gaps and variable naming differences. Low priority — doesn't affect memoization correctness.
 
 ---
 
-## Completed Work (condensed)
+## Recommended Priority Order
 
-**Total gain: +105 fixtures across all stages (450→555)**
-
-| Stage | Gain | Summary |
-|-------|-----:|---------|
-| 1: Codegen structure | +26 | Temp renumbering, scope placement, gating directives |
-| 2: Bail-out fixes | +21 | File-level bails, `_exp` handling, error sweep, infer mode |
-| 3: Scope inference | +4 | is_mutable hook exclusion (+3), sentinel dep pruning (+1 slot match) |
-| 4: Validation gaps | +47 | Preserve-memo, todo errors, frozen mutations, context vars |
-| 5: DCE/CP | +7 | Dead code elimination, constant propagation |
-
----
-
-## Critical Architecture Notes
-
-1. **`effective_range` is load-bearing.** 6 attempts to switch to `mutable_range` all regressed. The workaround compensates for narrow mutable ranges.
-2. **Conservative unknown-call fallback is load-bearing for 10 fixtures.** Any relaxation causes identical -10 slot shift.
-3. **Nested HIR builders don't emit LoadContext.** Context variables appear as LoadLocal in nested functions. Affects Groups D, validation accuracy.
-4. **Pre-validation DCE must not remove StoreLocal/DeclareLocal.** Validators at Pass 21-32 depend on them.
-5. **Block iteration order != source order for loops.** Affects freeze ordering checks (Check 6 needs `frozen_at` verification).
-6. **Scope propagation to FinishMemoize.decl causes -52 if scope accuracy is wrong.** Do NOT re-enable until Group A is resolved.
-7. **Post-naming dep filters are ALWAYS dangerous.** Only pre-naming structural filters (name==None) are safe. 9 failed approaches prove this.
-8. **Individual scope inference fixes cascade.** Each fix disturbs compensating errors in the effective_range workaround. Must fix mutable range accuracy FIRST.
-9. **+1 surplus has 3 distinct categories** (loop codegen ~12 MOSTLY FIXED, sentinel deps ~10 FIXED, redundant decls ~30). Not all are scope inference.
+1. **A1 (scope output over-declaration)** — Most isolated sub-problem, likely quickest win
+2. **A2 (missing reactive dependencies)** — High impact, may fix ~200 fixtures
+3. **E4 (for-loop SSA/DCE)** — Independent of scope inference
+4. **A3 (range computation accuracy)** — Hardest, requires line-by-line upstream comparison
+5. **B (preserve-memo)** — Blocked until A1+A2 are resolved
+6. **Everything else** — Diminishing returns
 
 ---
 
@@ -224,14 +196,12 @@ Neither side memoizes, but our output format differs. Dominated by:
 | HIR types | `src/hir/types.rs` |
 | HIR builder | `src/hir/build.rs` |
 | Code generation | `src/reactive_scopes/codegen.rs` |
-| Aliasing effects | `src/inference/aliasing_effects.rs` |
 | Mutation effects (abstract interp) | `src/inference/infer_mutation_aliasing_effects.rs` |
 | Mutation ranges (graph BFS) | `src/inference/infer_mutation_aliasing_ranges.rs` |
 | Scope grouping (union-find) | `src/reactive_scopes/infer_reactive_scope_variables.rs` |
 | Scope dependencies | `src/reactive_scopes/propagate_dependencies.rs` |
 | Scope pruning + promotion | `src/reactive_scopes/prune_scopes.rs` |
 | Scope merging | `src/reactive_scopes/merge_scopes.rs` |
-| Frozen mutation validation | `src/validation/validate_no_mutation_after_freeze.rs` |
-| Preserve-memo validation | `src/validation/validate_preserved_manual_memoization.rs` |
+| Environment config | `src/hir/environment.rs` |
 | Conformance test runner | `tests/conformance_tests.rs` |
 | Known failures | `tests/conformance/known-failures.txt` |
