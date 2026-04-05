@@ -899,6 +899,96 @@ fn prune_unused_scopes_in_block(block: &mut ReactiveBlock, referenced: &FxHashSe
     block.instructions = new_instructions;
 }
 
+/// Prune scopes whose deps are all declared by sentinel scopes.
+///
+/// A sentinel scope (empty deps, `is_allocating=true`) caches a value that
+/// never changes after the first render. Any scope depending ONLY on
+/// sentinel-declared values will also never invalidate, making the scope
+/// unnecessary — it can be unwrapped.
+///
+/// Example: `const a = []; ... call(a);` where `a` is sentinel-cached.
+/// A scope `if ($[1] !== a) { call(a); $[1] = a; }` never invalidates
+/// because `a` is always the same reference.
+pub fn prune_scopes_with_sentinel_only_deps(rf: &mut ReactiveFunction) {
+    // Pass 1: collect IDs declared by sentinel scopes
+    let mut sentinel_ids: FxHashSet<IdentifierId> = FxHashSet::default();
+    collect_sentinel_declared_ids(&rf.body, &mut sentinel_ids);
+
+    if sentinel_ids.is_empty() {
+        return;
+    }
+
+    // Pass 2: unwrap scopes whose deps are ALL in sentinel_ids
+    prune_sentinel_dep_scopes(&mut rf.body, &sentinel_ids);
+}
+
+fn collect_sentinel_declared_ids(
+    block: &ReactiveBlock,
+    sentinel_ids: &mut FxHashSet<IdentifierId>,
+) {
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Scope(scope_block) => {
+                // A sentinel scope: no dependencies and is_allocating
+                if scope_block.scope.dependencies.is_empty() && scope_block.scope.is_allocating {
+                    for (id, _) in &scope_block.scope.declarations {
+                        sentinel_ids.insert(*id);
+                    }
+                }
+                collect_sentinel_declared_ids(&scope_block.instructions, sentinel_ids);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                for_each_block_in_terminal(terminal, |inner_block| {
+                    collect_sentinel_declared_ids(inner_block, sentinel_ids);
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+fn prune_sentinel_dep_scopes(block: &mut ReactiveBlock, sentinel_ids: &FxHashSet<IdentifierId>) {
+    let mut new_instructions = Vec::new();
+
+    for instr in std::mem::take(&mut block.instructions) {
+        match instr {
+            ReactiveInstruction::Scope(mut scope_block) => {
+                // Recurse into nested scopes first
+                prune_sentinel_dep_scopes(&mut scope_block.instructions, sentinel_ids);
+
+                // Check if this scope's deps are ALL sentinel-declared
+                let has_deps = !scope_block.scope.dependencies.is_empty();
+                let all_deps_sentinel = has_deps
+                    && scope_block
+                        .scope
+                        .dependencies
+                        .iter()
+                        .all(|dep| sentinel_ids.contains(&dep.identifier.id));
+
+                if all_deps_sentinel {
+                    // Unwrap: inline the scope's instructions into the parent
+                    for inner in scope_block.instructions.instructions {
+                        new_instructions.push(inner);
+                    }
+                } else {
+                    new_instructions.push(ReactiveInstruction::Scope(scope_block));
+                }
+            }
+            ReactiveInstruction::Terminal(mut terminal) => {
+                for_each_block_in_terminal_mut(&mut terminal, |inner_block| {
+                    prune_sentinel_dep_scopes(inner_block, sentinel_ids);
+                });
+                new_instructions.push(ReactiveInstruction::Terminal(terminal));
+            }
+            other => {
+                new_instructions.push(other);
+            }
+        }
+    }
+
+    block.instructions = new_instructions;
+}
+
 /// Prune scopes that always invalidate (deps change every render).
 ///
 /// Upstream: PruneAlwaysInvalidatingScopes.ts

@@ -439,6 +439,7 @@ pub fn run_full_pipeline(
     crate::reactive_scopes::prune_scopes::prune_unused_scopes(&mut rf);
     crate::reactive_scopes::merge_scopes::merge_reactive_scopes_that_invalidate_together(&mut rf);
     crate::reactive_scopes::prune_scopes::prune_always_invalidating_scopes(&mut rf);
+    crate::reactive_scopes::prune_scopes::prune_scopes_with_sentinel_only_deps(&mut rf);
     crate::reactive_scopes::prune_scopes::propagate_early_returns(&mut rf);
 
     crate::reactive_scopes::prune_scopes::inline_load_locals(&mut rf);
