@@ -177,14 +177,192 @@ Dominated by DCE/constant-propagation gaps and variable naming differences. Low 
 
 ---
 
+### Group I: O(n^2+) Performance Regression in Mutation/Aliasing Passes (HIGH PRIORITY)
+
+**Affects: Real-world adoption — OXC is SLOWER than Babel on medium/large files**
+**Status: Root causes identified, needs profiling confirmation and targeted fixes**
+
+O(n^2+) scaling in `infer_mutation_aliasing_effects` (Pass 16) and `infer_mutation_aliasing_ranges` (Pass 20) causes OXC to run at 0.2x-0.7x Babel speed on medium/large files. Batch throughput is 0.5x Babel. Regression introduced in Phases 113-130.
+
+#### I1: Pass 16 — `infer_mutation_aliasing_effects` (abstract interpretation fixpoint)
+
+**Files:** `crates/oxc_react_compiler/src/inference/infer_mutation_aliasing_effects.rs`
+**Upstream:** `src/Inference/InferMutationAliasingEffects.ts`
+
+Root causes:
+- Full `InferenceState` clone on every block visit (Vec + FxHashMap of FxHashSets) — 10,000+ clones for large functions
+- Cascading re-queuing: single phi convergence triggers entire function re-traversal
+- Full instruction re-processing per iteration (including expensive signature computation)
+- Hard-coded iteration limit of 100 with no convergence acceleration
+- No structural sharing, no widening operator, no worklist priority ordering
+
+Sub-tasks:
+- [ ] **I1.1:** Profile Pass 16 on large fixtures (multi-step-form, canvas-sidebar) to confirm hotspots
+- [ ] **I1.2:** Incremental state diffing — only clone/propagate changed parts of state at phi nodes
+- [ ] **I1.3:** Worklist priority ordering (reverse postorder) to minimize re-queuing
+- [ ] **I1.4:** Verify zero test regressions after each optimization
+
+#### I2: Pass 20 — `infer_mutation_aliasing_ranges` (graph BFS range propagation)
+
+**Files:** `crates/oxc_react_compiler/src/inference/infer_mutation_aliasing_ranges.rs`
+**Upstream:** `src/Inference/InferMutationAliasingRanges.ts`
+
+Root causes:
+- Independent BFS per mutation instead of batched graph reachability
+- Linear edge filtering O(E) per node visit
+- Two redundant full-HIR traversals (`annotate_place_effects` + `annotate_last_use`) that could be merged
+- Instruction effects computed in Pass 16 then recomputed from scratch in Pass 20
+
+Sub-tasks:
+- [ ] **I2.1:** Profile Pass 20 on large fixtures to confirm hotspots
+- [ ] **I2.2:** Batch mutation BFS — single reverse-reachability pass instead of per-mutation
+- [ ] **I2.3:** Merge `annotate_place_effects` + `annotate_last_use` into single HIR traversal
+- [ ] **I2.4:** Cache and reuse instruction effects between Pass 16 and Pass 20
+- [ ] **I2.5:** Verify zero test regressions after each optimization
+
+#### Constraint
+
+NO test regressions allowed. Each optimization must be verified against the full conformance suite before merging.
+
+---
+
+### Group J: Rust Data Structure Optimizations (HIGH PRIORITY)
+
+**Affects: Compile-time performance across ALL passes — fundamental porting debt**
+**Status: Investigation complete, implementation needed**
+
+The TypeScript to Rust port preserved JS reference semantics as Rust clones. In JS, passing an object is a pointer copy. In Rust, each `.clone()` is a deep copy with heap allocations. These issues compound across all 65 passes.
+
+#### J1: Replace `HashMap<IdentifierId, T>` with `Vec<T>` indexed by ID
+
+17+ validation passes create `FxHashMap<IdentifierId, String>` for name lookups. Since IdentifierId is a sequential u32, a `Vec<Option<String>>` indexed by the raw u32 would be O(1) with no hashing, better cache locality, and lower memory overhead.
+
+**Files:** All files in `src/validation/*.rs`, `src/inference/*.rs`
+
+- [ ] **J1.1:** Create a `IdVec<Id, T>` newtype wrapper for indexed-by-ID vectors
+- [ ] **J1.2:** Replace HashMap<IdentifierId, T> with IdVec in validation passes (17+ files)
+- [ ] **J1.3:** Replace HashMap<BlockId, T> with IdVec in inference passes
+- [ ] **J1.4:** Verify zero test regressions
+
+#### J2: Replace owned `Place` in `AliasingEffect` with `IdentifierId`
+
+The `AliasingEffect` enum stores full `Place` structs (88 bytes each, heap-allocated) in every variant. A CallExpression with N args generates N+3 effects, each cloning 2-3 Places. Storing `IdentifierId` (4 bytes, Copy) and resolving on demand would eliminate thousands of clones per function.
+
+**Files:** `src/hir/types.rs` (AliasingEffect enum), `src/inference/infer_mutation_aliasing_effects.rs`
+
+- [ ] **J2.1:** Audit all AliasingEffect consumers to determine minimal data needed
+- [ ] **J2.2:** Replace Place with IdentifierId in AliasingEffect variants
+- [ ] **J2.3:** Add resolution helper to look up Place from IdentifierId when needed
+- [ ] **J2.4:** Verify zero test regressions
+
+#### J3: Replace `String` with `oxc_span::Atom` for property names and identifiers
+
+`Identifier.name`, `PropertyLoad.property`, `MethodCall.property`, `ObjectPropertyKey`, `JsxAttributeName` — all use owned `String` (24 bytes + heap alloc). The OXC ecosystem provides `Atom` (8 bytes, interned). Switching shrinks Identifier 72 to 56 bytes, Place 88 to 72 bytes, eliminates heap allocations for property names.
+
+**Files:** `src/hir/types.rs`, `src/hir/build.rs` (60+ `.to_string()` calls)
+
+- [ ] **J3.1:** Replace `Identifier.name: Option<String>` with `Option<Atom>`
+- [ ] **J3.2:** Replace String property fields (PropertyLoad, MethodCall, etc.) with Atom
+- [ ] **J3.3:** Update build.rs to use Atom instead of `.to_string()`
+- [ ] **J3.4:** Verify zero test regressions
+
+#### J4: Use `Rc<ReactiveScope>` instead of cloning per-identifier
+
+In `infer_reactive_scope_variables.rs`, every identifier belonging to a scope gets `Some(Box::new(scope.clone()))`. If 50 identifiers share one scope, that's 50 deep clones of a struct containing Vec<Place>, Vec<ScopeId>, etc. Should use Rc for shared ownership.
+
+**Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`, `src/hir/types.rs`
+
+- [ ] **J4.1:** Change `Identifier.scope` from `Option<Box<ReactiveScope>>` to `Option<Rc<ReactiveScope>>`
+- [ ] **J4.2:** Update scope writeback to use Rc::clone instead of deep clone
+- [ ] **J4.3:** Verify zero test regressions
+
+#### J5: Reduce Place cloning in HIR builder (45+ clone sites)
+
+The HIR builder clones Place for every instruction operand. Place contains Identifier with Option<String> and Option<Box<ReactiveScope>>. In TypeScript these are cheap reference copies.
+
+**Files:** `src/hir/build.rs`
+
+- [ ] **J5.1:** Audit Place clone sites in build.rs — determine which can be eliminated
+- [ ] **J5.2:** Restructure instruction building to avoid intermediate clones where possible
+- [ ] **J5.3:** Verify zero test regressions
+
+---
+
+### Group K: Rust Pipeline Optimizations (MEDIUM PRIORITY)
+
+**Affects: Compile-time performance — redundant work across passes**
+**Status: Investigation complete, implementation needed**
+
+#### K1: Consolidate id-to-name map rebuilding
+
+Three consecutive passes (`infer_types`, `infer_reactive_places`, `infer_reactive_scope_variables`) each rebuild `FxHashMap<IdentifierId, String>` by scanning all instructions. Should compute once after SSA and thread through.
+
+**Files:** `src/inference/infer_types.rs`, `src/inference/infer_reactive_places.rs`, `src/reactive_scopes/infer_reactive_scope_variables.rs`
+
+- [ ] **K1.1:** Build id_to_name map once in an early pass
+- [ ] **K1.2:** Thread it through subsequent passes as a parameter
+- [ ] **K1.3:** Verify zero test regressions
+
+#### K2: Replace naive O(N^2) fixpoint in scope membership propagation
+
+`infer_reactive_scope_variables.rs` Phase 4 re-scans ALL instructions on each iteration. Should use a worklist of affected instructions.
+
+**Files:** `src/reactive_scopes/infer_reactive_scope_variables.rs`
+
+- [ ] **K2.1:** Implement worklist-based propagation instead of full re-scan
+- [ ] **K2.2:** Verify zero test regressions
+
+#### K3: Add SmallVec for common small collections
+
+`CallExpression.args`, `JsxExpression.children`, `FinishMemoize.deps`, `Switch.cases`, `Sequence.blocks` — all use `Vec` but typically hold 1-4 elements. `SmallVec<[T; 4]>` eliminates heap allocation for the common case.
+
+**Files:** `src/hir/types.rs`
+
+- [ ] **K3.1:** Add SmallVec dependency
+- [ ] **K3.2:** Replace Vec with SmallVec for identified fields
+- [ ] **K3.3:** Verify zero test regressions and size assertions still pass
+
+#### K4: Mark `Type` enum as `Copy`
+
+The `Type` enum contains no heap data but is only `Clone`. Should be `Copy` to avoid explicit clone calls in type inference.
+
+**Files:** `src/hir/types.rs`
+
+- [ ] **K4.1:** Add `Copy` derive to `Type` and `PrimitiveType` enums
+- [ ] **K4.2:** Remove unnecessary `.clone()` calls on Type values
+- [ ] **K4.3:** Verify zero test regressions
+
+#### K5: Eliminate `.collect::<Vec<_>>().join()` in codegen
+
+At least 4 locations in codegen.rs collect into a temporary Vec just to call `.join()`. Should iterate directly.
+
+**Files:** `src/reactive_scopes/codegen.rs`
+
+- [ ] **K5.1:** Replace collect-then-join with direct iteration (lines ~2638, 2659, 3551)
+- [ ] **K5.2:** Verify zero test regressions
+
+#### K6: Worklist-based DCE instead of 8-iteration fixpoint
+
+`pipeline.rs` runs constant propagation + DCE up to 8 times with full HIR scans. Should track affected instructions.
+
+**Files:** `src/entrypoint/pipeline.rs`
+
+- [ ] **K6.1:** Implement worklist tracking for DCE/constant propagation
+- [ ] **K6.2:** Verify zero test regressions
+
+---
+
 ## Recommended Priority Order
 
 1. **A1 (scope output over-declaration)** — Most isolated sub-problem, likely quickest win
-2. **A2 (missing reactive dependencies)** — High impact, may fix ~200 fixtures
-3. **E4 (for-loop SSA/DCE)** — Independent of scope inference
-4. **A3 (range computation accuracy)** — Hardest, requires line-by-line upstream comparison
-5. **B (preserve-memo)** — Blocked until A1+A2 are resolved
-6. **Everything else** — Diminishing returns
+2. **I (O(n^2+) perf regression in Pass 16 + Pass 20)** — Blocks real-world adoption
+3. **J (Rust data structure optimizations)** — Fundamental porting debt, compounds across all passes
+4. **A2 (missing reactive dependencies)** — High impact, may fix ~200 fixtures
+5. **E6 (do-while codegen)** — Independent of scope inference
+6. **A3 (range computation accuracy)** — Hardest, requires line-by-line upstream comparison
+7. **K (Rust pipeline optimizations)** — Medium priority, incremental improvements
+8. **B (preserve-memo)** — Blocked until A1+A2 are resolved
+9. **Everything else** — Diminishing returns
 
 ---
 
