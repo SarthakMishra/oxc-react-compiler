@@ -1,5 +1,5 @@
 use crate::hir::types::{BlockId, HIR, Terminal};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Merge basic blocks that have a single predecessor/successor relationship.
 ///
@@ -25,12 +25,51 @@ fn find_merge_candidate(hir: &HIR) -> Option<(BlockId, BlockId)> {
     // Build predecessor counts
     let pred_counts = compute_predecessor_counts(hir);
 
+    // Collect blocks that are directly referenced as sub-blocks of loop terminals.
+    // These must not be merged because the loop terminal needs them as separate blocks.
+    let mut loop_sub_blocks: FxHashSet<BlockId> = FxHashSet::default();
+    for (_, block) in &hir.blocks {
+        match &block.terminal {
+            Terminal::For { init, test, update, body, fallthrough } => {
+                loop_sub_blocks.insert(*init);
+                loop_sub_blocks.insert(*test);
+                loop_sub_blocks.insert(*body);
+                loop_sub_blocks.insert(*fallthrough);
+                if let Some(u) = update {
+                    loop_sub_blocks.insert(*u);
+                }
+            }
+            Terminal::ForOf { init, test, body, fallthrough }
+            | Terminal::ForIn { init, test, body, fallthrough } => {
+                loop_sub_blocks.insert(*init);
+                loop_sub_blocks.insert(*test);
+                loop_sub_blocks.insert(*body);
+                loop_sub_blocks.insert(*fallthrough);
+            }
+            Terminal::While { test, body, fallthrough } => {
+                loop_sub_blocks.insert(*test);
+                loop_sub_blocks.insert(*body);
+                loop_sub_blocks.insert(*fallthrough);
+            }
+            Terminal::DoWhile { body, test, fallthrough } => {
+                loop_sub_blocks.insert(*body);
+                loop_sub_blocks.insert(*test);
+                loop_sub_blocks.insert(*fallthrough);
+            }
+            _ => {}
+        }
+    }
+
     for (block_id, block) in &hir.blocks {
         if let Terminal::Goto { block: target } = &block.terminal {
             // B must have exactly one predecessor
             if pred_counts.get(target).copied().unwrap_or(0) == 1 {
                 // Don't merge a block into itself
                 if block_id != target {
+                    // Don't merge blocks that are loop sub-blocks
+                    if loop_sub_blocks.contains(target) || loop_sub_blocks.contains(block_id) {
+                        continue;
+                    }
                     return Some((*block_id, *target));
                 }
             }

@@ -179,19 +179,29 @@ fn build_reactive_block_until(
                 continue;
             }
             Terminal::For { init, test, update, body, fallthrough } => {
-                let init_block = build_reactive_block_until(hir, *init, None, visited, loop_ctx);
-                let test_block = build_reactive_block_until(hir, *test, None, visited, loop_ctx);
+                // Use stop_at boundaries to prevent sub-blocks from consuming each other.
+                let init_block =
+                    build_reactive_block_until(hir, *init, Some(*test), visited, loop_ctx);
+                let (test_block, condition) =
+                    build_loop_test_block(hir, *test, *body, *fallthrough, visited, loop_ctx);
                 // continue goes to update (or test if no update), break goes to fallthrough
                 let continue_target = update.unwrap_or(*test);
                 let body_loop_ctx =
                     Some(LoopContext { continue_target, break_target: *fallthrough });
-                let update_block = update
-                    .map(|u| build_reactive_block_until(hir, u, None, visited, body_loop_ctx));
-                let body_block =
-                    build_reactive_block_until(hir, *body, None, visited, body_loop_ctx);
+                let body_block = build_reactive_block_until(
+                    hir,
+                    *body,
+                    Some(continue_target),
+                    visited,
+                    body_loop_ctx,
+                );
+                let update_block = update.map(|u| {
+                    build_reactive_block_until(hir, u, Some(*test), visited, body_loop_ctx)
+                });
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::For {
                     init: init_block,
                     test: test_block,
+                    condition,
                     update: update_block,
                     body: body_block,
                     id: current,
@@ -684,19 +694,25 @@ fn build_scope_block_only(
             Terminal::For { init, test, update, body, fallthrough } => {
                 let init_block =
                     build_reactive_block_until(hir, *init, Some(*test), visited, loop_ctx);
-                let test_block =
-                    build_reactive_block_until(hir, *test, Some(*body), visited, loop_ctx);
+                let (test_block, condition) =
+                    build_loop_test_block(hir, *test, *body, *fallthrough, visited, loop_ctx);
                 let continue_target = update.unwrap_or(*test);
                 let body_loop_ctx =
                     Some(LoopContext { continue_target, break_target: *fallthrough });
+                let body_block = build_reactive_block_until(
+                    hir,
+                    *body,
+                    Some(continue_target),
+                    visited,
+                    body_loop_ctx,
+                );
                 let update_block = update.map(|u| {
                     build_reactive_block_until(hir, u, Some(*test), visited, body_loop_ctx)
                 });
-                let body_block =
-                    build_reactive_block_until(hir, *body, None, visited, body_loop_ctx);
                 instructions.push(ReactiveInstruction::Terminal(ReactiveTerminal::For {
                     init: init_block,
                     test: test_block,
+                    condition,
                     update: update_block,
                     body: body_block,
                     id: block_id,

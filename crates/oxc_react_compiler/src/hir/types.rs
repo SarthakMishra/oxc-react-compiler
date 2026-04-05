@@ -1108,6 +1108,8 @@ pub enum ReactiveTerminal {
     For {
         init: ReactiveBlock,
         test: ReactiveBlock,
+        /// The condition Place extracted from the test block's Branch terminal.
+        condition: Option<Place>,
         update: Option<ReactiveBlock>,
         body: ReactiveBlock,
         id: BlockId,

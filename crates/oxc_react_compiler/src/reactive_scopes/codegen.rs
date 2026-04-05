@@ -2584,6 +2584,47 @@ fn extract_rhs_from_stmt(stmt: &str) -> String {
     trimmed.to_string()
 }
 
+/// Extract the init expression for a for-loop header from the init block.
+/// Codegen's the block, then joins multiple statements into one line,
+/// handling DeclareLocal+StoreLocal merging.
+fn codegen_for_init_expr(init: &ReactiveBlock, tag_constants: &TagConstantMap) -> String {
+    let mut buf = String::new();
+    let mut declared = FxHashSet::default();
+    codegen_block(init, &mut buf, &mut 0, 0, &mut declared, tag_constants);
+    // Extract statements, strip semicolons, join with comma for multi-statement inits
+    let stmts: Vec<&str> = buf.split('\n').map(str::trim).filter(|s| !s.is_empty()).collect();
+    // Merge "let x;" + "x = val;" into "let x = val"
+    if stmts.len() == 2
+        && stmts[0].starts_with("let ")
+        && stmts[0].ends_with(';')
+        && stmts[1].ends_with(';')
+    {
+        let var_name = stmts[0].strip_prefix("let ").unwrap().strip_suffix(';').unwrap().trim();
+        let assign = stmts[1].strip_suffix(';').unwrap().trim();
+        if let Some(rhs) = assign.strip_prefix(&format!("{var_name} = ")) {
+            return format!("let {var_name} = {rhs}");
+        }
+    }
+    // Single statement: strip semicolon
+    if stmts.len() == 1 {
+        return stmts[0].strip_suffix(';').unwrap_or(stmts[0]).to_string();
+    }
+    // Multi-statement: join with comma
+    stmts.iter().map(|s| s.strip_suffix(';').unwrap_or(s)).collect::<Vec<_>>().join(", ")
+}
+
+/// Extract the update expression for a for-loop header from the update block.
+fn codegen_for_update_expr(update: &ReactiveBlock, tag_constants: &TagConstantMap) -> String {
+    let mut buf = String::new();
+    let mut declared = FxHashSet::default();
+    codegen_block(update, &mut buf, &mut 0, 0, &mut declared, tag_constants);
+    let stmts: Vec<&str> = buf.split('\n').map(str::trim).filter(|s| !s.is_empty()).collect();
+    if stmts.len() == 1 {
+        return stmts[0].strip_suffix(';').unwrap_or(stmts[0]).to_string();
+    }
+    stmts.iter().map(|s| s.strip_suffix(';').unwrap_or(s)).collect::<Vec<_>>().join(", ")
+}
+
 fn codegen_terminal(
     terminal: &ReactiveTerminal,
     output: &mut String,
@@ -2668,14 +2709,24 @@ fn codegen_terminal(
             codegen_block(body, output, cache_slot, indent + 1, declared, tag_constants);
             output.push_str(&format!("{indent_str}}} while ({cond_str});\n"));
         }
-        ReactiveTerminal::For { init, test, update, body, .. } => {
-            output.push_str(&format!("{indent_str}for (;;) {{\n"));
-            codegen_block(init, output, cache_slot, indent + 1, declared, tag_constants);
-            codegen_block(test, output, cache_slot, indent + 1, declared, tag_constants);
+        ReactiveTerminal::For { init, test, condition, update, body, .. } => {
+            // Extract init expression from the init block
+            let init_str = codegen_for_init_expr(init, tag_constants);
+            // Resolve condition
+            let cond_str = if let Some(cond) = condition {
+                resolve_loop_condition(cond, &test.instructions, tag_constants)
+            } else {
+                String::new()
+            };
+            // Extract update expression from the update block
+            let update_str = if let Some(upd) = update {
+                codegen_for_update_expr(upd, tag_constants)
+            } else {
+                String::new()
+            };
+            output
+                .push_str(&format!("{indent_str}for ({init_str}; {cond_str}; {update_str}) {{\n"));
             codegen_block(body, output, cache_slot, indent + 1, declared, tag_constants);
-            if let Some(upd) = update {
-                codegen_block(upd, output, cache_slot, indent + 1, declared, tag_constants);
-            }
             output.push_str(&format!("{indent_str}}}\n"));
         }
         ReactiveTerminal::ForOf { init, test, body, .. } => {
