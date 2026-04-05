@@ -1,7 +1,7 @@
 # oxc-react-compiler — Remaining Work
 
 > **Conformance: 560/1717 (32.6%)** | Known failures: 1157 | 0 panics | 0 unexpected divergences
-> Last updated: 2026-04-05 (Phase 178 — perf optimizations: 21-35% on large fixtures)
+> Last updated: 2026-04-05 (Phase 179 — IdVec/IdSet types + 6 pass conversions)
 
 ---
 
@@ -242,10 +242,10 @@ The TypeScript to Rust port preserved JS reference semantics as Rust clones. In 
 
 **Files:** All files in `src/validation/*.rs`, `src/inference/*.rs`
 
-- [ ] **J1.1:** Create a `IdVec<Id, T>` newtype wrapper for indexed-by-ID vectors
-- [ ] **J1.2:** Replace HashMap<IdentifierId, T> with IdVec in validation passes (17+ files)
+- [x] **J1.1:** Create `IdVec<Id, T>` and `IdSet<Id>` types in `types.rs` ✅
+- [~] **J1.2:** Replace HashMap<IdentifierId, T> with IdVec in validation passes (6 of 17+ files done)
 - [ ] **J1.3:** Replace HashMap<BlockId, T> with IdVec in inference passes
-- [ ] **J1.4:** Verify zero test regressions
+- [x] **J1.4:** Verify zero test regressions ✅ (560/1717 maintained)
 
 #### J2: Replace owned `Place` in `AliasingEffect` with `IdentifierId`
 
