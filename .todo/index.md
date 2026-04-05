@@ -27,7 +27,7 @@
 |-----------|-----------|---------------|--------|
 | Scope dep resolution (unnamed skip) | 94 preserve-memo false bails (Check 1) | +20-80 | **INFRASTRUCTURE READY, BLOCKED by Stage 3.** Approach #10 eliminated Check 2 bails (154->0). Scope propagation to FinishMemoize.decl tested: bails 94->14 (-80!) but -52 conformance regression from scope surplus. Code is ready; needs Stage 3 scope inference accuracy first. See [Deferred/Blocked](#scope-dep-resolution-ssa-temp---named-variable-mapping----partially-resolved). |
 | Scope inference fixes (slots-DIFFER) | ~572 | +50-100 | FIRST SUCCESS (+3 from is_mutable exclusion). 9 approaches tried, 1 positive. HIGH risk — cascading regression, scope MERGING is bottleneck |
-| Stage 4f remaining "Found 1 error" bails | ~9 | +5-9 | LOW risk — bail-to-pass, zero regression |
+| Stage 4f remaining "Found 1 error" bails | ~7 | +3-7 | LOW risk — bail-to-pass, zero regression. 4 blocked by infrastructure, 1 blocked by promote_used_temporaries restructure. |
 | DCE + constant propagation remaining | ~90 | +5-15 | Blocked by 0-slot codegen (scope inference) |
 | Variable name preservation (B2) | 40 | +10-20 | Scope-inference dependent, NOT codegen-only |
 | Remaining bail-out fixes (2d-2g residual) | ~60 | +10-15 | Various blockers |
@@ -124,7 +124,7 @@ Also tried: use_mutable_range=true (-40, reverted) -- mutable ranges alone still
 
 #### Stage 4c: Todo error detection -- MOSTLY COMPLETE (+15 net)
 
-22/27 done. **4 remaining:** hoisting patterns (2), optional terminal (1), context var update (1, BLOCKED by nested HIR LoadContext gap).
+23/27 done. **3 remaining:** hoisting patterns (2), optional terminal (1). Context var update resolved via Stage 4f Group D (name-based detection in `validate_no_unsupported_nodes.rs`).
 
 #### Stage 4d: Frozen-mutation false negatives -- COMPLETE (+10 net)
 
@@ -155,12 +155,29 @@ Also tried: use_mutable_range=true (-40, reverted) -- mutable ranges alone still
 | G: Preserve-memo | 2 | BLOCKED by scope dep resolution |
 | H: Hoisting access-before-declare | 2 | COMPLETE (+2) |
 
-**Remaining tractable (low risk, 3 fixtures):**
-- Group D simple #1: `error.todo-for-loop-with-context-variable-iterator.js` -- Upstream: "Error: This value cannot be modified" (for-loop iterator `i` is a context variable reassigned in updater, modification after JSX use). Requires detecting context-variable modification after JSX capture.
-- Group D simple #2: `error.todo-handle-update-context-identifiers.js` -- Upstream: "Todo: Handle UpdateExpression to variables captured within lambdas" (`counter++` inside arrow function). Requires detecting UpdateExpression on context variables in nested lambdas during HIR lowering.
-- Group F unnamed-temporary: `error.bug-invariant-unnamed-temporary.js` -- Upstream: "Invariant: Expected temporaries to be promoted to named identifiers in an earlier pass" (rest params `...props` in nested arrow produces unnamed identifier 15). Requires adding a `promoteTemporary`-style invariant check after `promote_used_temporaries` pass.
+**Completed this session (+2):**
+- ~~Group D simple #1: `error.todo-for-loop-with-context-variable-iterator.js`~~ -- COMPLETE. Added Check 6 to `validate_no_mutation_after_freeze.rs`: detects `StoreLocal { Reassign }` on names that are both frozen and closure-captured. Critical: must verify `frozen_at` ordering (freeze before reassignment) to avoid false positive on `hoisting-reassigned-let-declaration` fixture.
+- ~~Group D simple #2: `error.todo-handle-update-context-identifiers.js`~~ -- COMPLETE. Reworked `check_update_context_identifiers` in `validate_no_unsupported_nodes.rs` to compare outer-scope declared names against inner-function PrefixUpdate/PostfixUpdate targets (with shadowing exclusion), since our nested HIR builders don't emit LoadContext/StoreContext.
 
-**Blocked (4 fixtures):** Group D-aliasing: `new-mutability/error.mutate-frozen-value.js` (needs `useFreeze` + `@enableNewMutationAliasingModel`). Group F-context: `error.invalid-jsx-captures-context-variable.js` (needs `@enableNewMutationAliasingModel` + nested HIR LoadContext). Group G: `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js` and `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js` (BLOCKED by scope dep resolution / preserve-memo Check 1).
+**Blocked (5 fixtures):**
+- Group F unnamed-temporary: `error.bug-invariant-unnamed-temporary.js` -- BLOCKED. Upstream invariant checks that temporaries were promoted to named identifiers. Our `promote_used_temporaries` blanket-names ALL identifiers (assigns `tN` to everything), making the upstream check impossible -- every identifier already has a name. Requires restructuring `promote_used_temporaries` to be SELECTIVE (only promote temporaries that are actually used across blocks/scopes) so that unused temporaries remain unnamed and the invariant can fire. See blocker report below.
+- Group D-aliasing: `new-mutability/error.mutate-frozen-value.js` (needs `useFreeze` + `@enableNewMutationAliasingModel`).
+- Group F-context: `error.invalid-jsx-captures-context-variable.js` (needs `@enableNewMutationAliasingModel` + nested HIR LoadContext).
+- Group G: `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js` and `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js` (BLOCKED by scope dep resolution / preserve-memo Check 1).
+
+### Blocker Report -- Group F unnamed-temporary (2026-04-04)
+
+**Approach attempted:** Add an invariant check after `promote_used_temporaries` that verifies all temporaries have been promoted to named identifiers.
+
+**Assumption that was wrong:** We assumed the invariant could be added on top of the existing `promote_used_temporaries` pass. In reality, our pass blanket-names ALL identifiers with `tN` names, whereas upstream's `promoteTemporary` is selective -- it only promotes temporaries that are actually used. This means our pass makes the invariant condition trivially true (every identifier has a name), so it can never fire.
+
+**What was discovered:** The fixture `error.bug-invariant-unnamed-temporary.js` has a rest param `...props` in a nested arrow function that produces an unnamed identifier (id 15) in the upstream compiler. Upstream's invariant fires because that identifier was never promoted. In our compiler, `promote_used_temporaries` already gave it a `tN` name, so the invariant sees it as promoted and does not fire.
+
+**Prerequisites for a successful attempt:**
+- Restructure `promote_used_temporaries` to be selective: only promote temporaries that are actually referenced in subsequent instructions (cross-block/cross-scope usage), matching upstream's selective promotion logic
+- This is a non-trivial refactor that may affect other passes depending on all identifiers having names
+
+**Do NOT attempt again until:** `promote_used_temporaries` has been refactored to selective promotion.
 
 ---
 
@@ -332,3 +349,5 @@ Every remaining conformance gain of significant size (>10 fixtures) depends on o
 - Scope propagation to FinishMemoize.decl is correct infrastructure but premature without Stage 3: reduces bails 94->14 but causes -52 from error fixtures that incorrectly pass Check 1 due to scope surplus. Stage 3 scope accuracy is the single gating prerequisite for both preserve-memo and slot-differ gains.
 - Apply effects in `infer_mutation_aliasing_ranges` are correctly skipped -- they are pre-resolved to concrete effects (Mutate, CreateFrom, Capture, etc.) by `infer_mutation_aliasing_effects` (Pass 16) before ranges (Pass 20) runs. The `Apply { .. } => {}` arm is NOT a bug.
 - The conservative unknown-call mutation model is a balanced tradeoff: every attempted relaxation (non-transitive mutation, cross-arg capture removal, Apply processing, StoreLocal range extension) causes an identical -10 slot MATCH shift. The 10 affected fixtures are load-bearing for the current conformance count. Further scope inference gains require porting upstream's EXACT mutation resolution logic, not tuning the conservative fallback.
+- Frozen-mutation Check 6 (context variable reassignment) MUST verify `frozen_at` instruction ordering — without the `freeze_id < instr.id` guard, the check produces a false positive on `hoisting-reassigned-let-declaration` where the let declaration appears after the freeze point in source but before it in instruction order. Always check temporal ordering, not just set membership.
+- `promote_used_temporaries` blanket-names ALL identifiers, making upstream-style "unnamed temporary" invariant checks impossible. Any future work requiring unnamed-vs-named distinction needs this pass refactored to selective promotion first.
