@@ -1,6 +1,6 @@
 use crate::hir::types::{
-    DeclarationId, HIR, IdentifierId, InstructionId, InstructionValue, ReactiveScopeDeclaration,
-    ReactiveScopeDependency, ScopeId, Type,
+    BlockId, DeclarationId, HIR, IdentifierId, InstructionId, InstructionValue,
+    ReactiveScopeDeclaration, ReactiveScopeDependency, ScopeId, Terminal, Type,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -672,8 +672,6 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
     // We use the Scope terminals in the HIR to build a block→scope map, then
     // determine which scope encloses each unscooped instruction.
     {
-        use crate::hir::types::{BlockId, Terminal};
-
         // Build block→scope map by walking Scope terminals.
         // Inner scopes override outer scopes (entry().or_insert avoids overwriting).
         let mut block_to_scope: FxHashMap<BlockId, ScopeId> = FxHashMap::default();
@@ -895,6 +893,245 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                         }
                     }
                     _ => {}
+                }
+            }
+        }
+    }
+
+    // Phase 2b: Collect dependencies from loop condition blocks inside scopes.
+    //
+    // Loop conditions (while/for/do-while test blocks) are in separate HIR blocks
+    // that lack scope annotations. When a scope encloses a loop, the condition's
+    // operands (e.g., parameter `cond` in `while(cond)`) should be scope dependencies.
+    //
+    // We only process loop TEST blocks, not all unscooped blocks, to avoid adding
+    // spurious dependencies from try-catch, label, and other structural blocks.
+    {
+        use crate::hir::types::Terminal;
+
+        // Collect (test_block_id, enclosing_scope_id) pairs for all loops inside scopes
+        let mut loop_test_blocks: Vec<(BlockId, ScopeId)> = Vec::new();
+        for (_, block) in &hir.blocks {
+            match &block.terminal {
+                Terminal::Scope { block: scope_block, scope, fallthrough: scope_ft } => {
+                    // Walk the scope body to find loop terminals
+                    fn find_loop_tests_in_scope(
+                        hir: &HIR,
+                        start: BlockId,
+                        stop: BlockId,
+                        scope_id: ScopeId,
+                        result: &mut Vec<(BlockId, ScopeId)>,
+                        visited: &mut FxHashSet<BlockId>,
+                    ) {
+                        if start == stop || !visited.insert(start) {
+                            return;
+                        }
+                        let block =
+                            match hir.blocks.iter().find(|(id, _)| *id == start).map(|(_, b)| b) {
+                                Some(b) => b,
+                                None => return,
+                            };
+                        match &block.terminal {
+                            Terminal::While { test, body, fallthrough }
+                            | Terminal::DoWhile { test, body, fallthrough } => {
+                                result.push((*test, scope_id));
+                                find_loop_tests_in_scope(
+                                    hir, *body, stop, scope_id, result, visited,
+                                );
+                                find_loop_tests_in_scope(
+                                    hir,
+                                    *fallthrough,
+                                    stop,
+                                    scope_id,
+                                    result,
+                                    visited,
+                                );
+                            }
+                            Terminal::For { init, test: _, update, body, fallthrough } => {
+                                // Don't add for-loop test blocks — their condition deps
+                                // cause regressions due to complex initialization patterns.
+                                // Still recurse into sub-blocks for nested loops.
+                                find_loop_tests_in_scope(
+                                    hir, *init, stop, scope_id, result, visited,
+                                );
+                                if let Some(upd) = update {
+                                    find_loop_tests_in_scope(
+                                        hir, *upd, stop, scope_id, result, visited,
+                                    );
+                                }
+                                find_loop_tests_in_scope(
+                                    hir, *body, stop, scope_id, result, visited,
+                                );
+                                find_loop_tests_in_scope(
+                                    hir,
+                                    *fallthrough,
+                                    stop,
+                                    scope_id,
+                                    result,
+                                    visited,
+                                );
+                            }
+                            Terminal::ForOf { init, test: _, body, fallthrough }
+                            | Terminal::ForIn { init, test: _, body, fallthrough } => {
+                                // Don't add for-of/for-in test blocks (empty by design).
+                                find_loop_tests_in_scope(
+                                    hir, *init, stop, scope_id, result, visited,
+                                );
+                                find_loop_tests_in_scope(
+                                    hir, *body, stop, scope_id, result, visited,
+                                );
+                                find_loop_tests_in_scope(
+                                    hir,
+                                    *fallthrough,
+                                    stop,
+                                    scope_id,
+                                    result,
+                                    visited,
+                                );
+                            }
+                            Terminal::Goto { block: next } => {
+                                find_loop_tests_in_scope(
+                                    hir, *next, stop, scope_id, result, visited,
+                                );
+                            }
+                            Terminal::If { consequent, alternate, fallthrough, .. }
+                            | Terminal::Ternary { consequent, alternate, fallthrough, .. } => {
+                                find_loop_tests_in_scope(
+                                    hir,
+                                    *consequent,
+                                    stop,
+                                    scope_id,
+                                    result,
+                                    visited,
+                                );
+                                find_loop_tests_in_scope(
+                                    hir, *alternate, stop, scope_id, result, visited,
+                                );
+                                find_loop_tests_in_scope(
+                                    hir,
+                                    *fallthrough,
+                                    stop,
+                                    scope_id,
+                                    result,
+                                    visited,
+                                );
+                            }
+                            Terminal::Scope { fallthrough: inner_ft, .. } => {
+                                // Don't recurse into inner scopes — they handle their own deps
+                                find_loop_tests_in_scope(
+                                    hir, *inner_ft, stop, scope_id, result, visited,
+                                );
+                            }
+                            _ => {}
+                        }
+                    }
+                    let mut visited = FxHashSet::default();
+                    find_loop_tests_in_scope(
+                        hir,
+                        *scope_block,
+                        *scope_ft,
+                        *scope,
+                        &mut loop_test_blocks,
+                        &mut visited,
+                    );
+                }
+                _ => {}
+            }
+        }
+
+        // Collect deps from loop test block instructions
+        for (test_block_id, enclosing_scope_id) in &loop_test_blocks {
+            let block = match hir.blocks.iter().find(|(id, _)| id == test_block_id).map(|(_, b)| b)
+            {
+                Some(b) => b,
+                None => continue,
+            };
+
+            let declared_ids = scope_ids.get(enclosing_scope_id);
+            let written_decl_ids = scope_written_decl_ids.get(enclosing_scope_id);
+
+            let is_internal = |place: &crate::hir::types::Place| -> bool {
+                if declared_ids.is_some_and(|s| s.contains(&place.identifier.id)) {
+                    return true;
+                }
+                if let Some(decl_id) = place.identifier.declaration_id
+                    && written_decl_ids.is_some_and(|s| s.contains(&decl_id))
+                {
+                    return true;
+                }
+                false
+            };
+
+            for instr in &block.instructions {
+                if instr.lvalue.identifier.scope.is_some() {
+                    continue;
+                }
+                // Use collect_read_operand_places (not _for_deps) because loop test
+                // blocks contain LoadLocal instructions that ARE the actual dependencies
+                // (e.g., LoadLocal(cond) in `while(cond)`). The _for_deps variant skips
+                // LoadLocal as a "path-building" instruction, but in loop conditions
+                // there's no downstream PropertyLoad chain to resolve through.
+                let operands = collect_read_operand_places(&instr.value);
+                for place in operands {
+                    if let Some(resolved) = temp_map.get(&place.identifier.id) {
+                        let root = resolved.to_identifier();
+                        let root_place = crate::hir::types::Place {
+                            identifier: root.clone(),
+                            effect: crate::hir::types::Effect::Read,
+                            reactive: resolved.root_reactive,
+                            loc: place.loc,
+                        };
+                        if !is_internal(&root_place)
+                            && !non_reactive_ids.contains(&root.id)
+                            && !root.name.as_deref().is_some_and(|n| non_reactive_names.contains(n))
+                        {
+                            let deps = scope_deps.entry(*enclosing_scope_id).or_default();
+                            let already = deps.iter().any(|d| {
+                                d.path == resolved.path
+                                    && match (
+                                        d.identifier.declaration_id,
+                                        resolved.root_declaration_id,
+                                    ) {
+                                        (Some(a), Some(b)) => a == b,
+                                        _ => d.identifier.id == root.id,
+                                    }
+                            });
+                            if !already {
+                                deps.push(ReactiveScopeDependency {
+                                    identifier: root,
+                                    reactive: resolved.root_reactive,
+                                    path: resolved.path.clone(),
+                                });
+                            }
+                        }
+                    } else if place.identifier.name.is_some()
+                        && !is_internal(place)
+                        && !non_reactive_ids.contains(&place.identifier.id)
+                        && !place
+                            .identifier
+                            .name
+                            .as_deref()
+                            .is_some_and(|n| non_reactive_names.contains(n))
+                    {
+                        let deps = scope_deps.entry(*enclosing_scope_id).or_default();
+                        let already = deps.iter().any(|d| {
+                            d.path.is_empty()
+                                && match (
+                                    d.identifier.declaration_id,
+                                    place.identifier.declaration_id,
+                                ) {
+                                    (Some(a), Some(b)) => a == b,
+                                    _ => d.identifier.id == place.identifier.id,
+                                }
+                        });
+                        if !already {
+                            deps.push(ReactiveScopeDependency {
+                                identifier: place.identifier.clone(),
+                                reactive: place.reactive,
+                                path: Vec::new(),
+                            });
+                        }
+                    }
                 }
             }
         }

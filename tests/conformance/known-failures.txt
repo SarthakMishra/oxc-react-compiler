@@ -229,7 +229,6 @@ destructuring-with-conditional-as-default-value.js
 destructuring.js
 do-while-break.js
 do-while-compound-test.js
-do-while-conditional-break.js
 do-while-continue.js
 do-while-early-unconditional-break.js
 do-while-simple.js
