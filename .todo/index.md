@@ -79,7 +79,27 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 
 4. **Current balance is the best achievable** without upstream's exact algorithm for Apply resolution and mutation propagation. Further gains require reading `InferMutationAliasingRanges.ts` and `InferMutationAliasingEffects.ts` line-by-line for the precise logic.
 
-**9 approaches tried for scope inference, 1 successful (+3):**
+### Investigation Results (Phase 175)
+
+The pipeline is structurally correct: effects (Pass 16) -> ranges (Pass 20) -> scope inference matches upstream architecture. The `Apply { .. } => {}` skip in `infer_mutation_aliasing_ranges.rs` is correct -- Apply effects are pre-resolved to concrete effects by `infer_mutation_aliasing_effects` before ranges runs.
+
+4 ranked divergences were identified during deep investigation. 2 were tested:
+
+1. **`mutableRange.start > 0` guard** (upstream skips identifiers with zero-start mutable ranges from scope creation): net -2 slot MATCH -- regression. Removing/adding this guard shifts the balance because our mutable ranges are not accurate enough for this filter to work correctly.
+2. **PropertyStore allocating** (upstream treats PropertyStore as allocating for scope creation): +1 matched but +1 unexpected divergence -- the global store creates a scope that upstream does not. Net neutral with risk.
+3. **Spread Destructure allocating** (treating destructure patterns as allocating): slight regression when tested.
+4. (Untested fourth divergence identified but not attempted due to cascading regression pattern.)
+
+**Key finding:** Individual fixes regress because the `effective_range` workaround has compensating errors. The correct fix order is:
+1. Fix mutable range accuracy (receiver mutation effects, precise Apply resolution)
+2. Switch to `use_mutable_range=true` (currently -40 regression)
+3. Apply scope inference fixes on top of accurate mutable ranges
+
+All 4 divergences require mutable range accuracy as a prerequisite. Without it, each fix disturbs a different set of compensating errors, producing cascading regressions.
+
+**Stale code note:** There is a stale `// DIVERGENCE` comment at line ~507 of `infer_mutation_aliasing_ranges.rs` that should be reviewed/updated -- it may refer to an assumption that has since been invalidated.
+
+**10 approaches tried for scope inference, 1 successful (+3), 1 investigation-only:**
 1. Heuristic removal (-5)
 2. Operand liveness blanket (-24)
 3. Operand liveness targeted (-17)
@@ -89,6 +109,8 @@ Key work: file-level bail removal (+5), `_exp` directive handling (+0 net, 20 mo
 7. **Exclude Call/MethodCall from is_mutable_instruction (+3, FIRST SUCCESS)** -- unknown-type values from calls should not unconditionally trigger scope creation
 8. Non-transitive MethodCall mutation (neutral) -- changed MutateTransitiveConditionally to MutateConditionally for unknown methods; safer mutation model
 9. Remove last_use>instr_id gate for is_allocating (-5, reverted) -- created more scopes than needed
+
+10. **Stage 3 full investigation (Phase 175)** -- identified 4 divergences in scope creation logic, tested 2. All require mutable range accuracy first. Individual fixes cause cascading regressions due to compensating errors in effective_range workaround. Correct fix order: mutable range accuracy -> use_mutable_range=true -> scope inference fixes.
 
 Also tried: use_mutable_range=true (-40, reverted) -- mutable ranges alone still too narrow for scope creation.
 

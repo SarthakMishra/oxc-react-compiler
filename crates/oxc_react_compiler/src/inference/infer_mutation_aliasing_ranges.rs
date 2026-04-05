@@ -502,8 +502,11 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR, returns_id: Option<Identifi
                         | AliasingEffect::MutateGlobal { .. }
                         | AliasingEffect::Impure { .. }
                         | AliasingEffect::Render { .. } => {}
-                        // DIVERGENCE: Apply should be resolved by analyse_functions
-                        // but we don't have that pass yet, so skip gracefully.
+                        // Apply effects are fully resolved by
+                        // infer_mutation_aliasing_effects (Pass 16) into concrete
+                        // Mutate/Capture/CreateFrom/etc. effects before this pass
+                        // runs. Any remaining Apply here is a no-op (matches upstream's
+                        // invariant that Apply must be resolved before range inference).
                         AliasingEffect::Apply { .. } => {}
                     }
                 }
