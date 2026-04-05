@@ -15,7 +15,7 @@ function Display(t0) {
   let t2;
   if ($[0] !== items.length) {
     count = items.length;
-    if ((count > 0)) {
+    if (count > 0) {
       t1 = "Has items";
     } else {
       t1 = "Empty";

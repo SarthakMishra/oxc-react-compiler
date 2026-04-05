@@ -13,7 +13,7 @@ function useCounter() {
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     let t2 = () => {
-      return setCount((count + 1));
+      return setCount(count + 1);
     };
     t1 = { count, increment: t2 };
     $[0] = t1;

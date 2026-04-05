@@ -13,7 +13,7 @@ function Summary(t0) {
   let t2;
   if ($[0] !== items.length || $[1] !== threshold) {
     count = items.length;
-    const hasMany = (count > threshold);
+    const hasMany = count > threshold;
     if (hasMany) {
       t1 = "Many items";
     } else {

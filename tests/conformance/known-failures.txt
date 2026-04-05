@@ -942,7 +942,6 @@ repro-propagate-type-of-ternary-nested.js
 repro-reassign-props.js
 repro-reassign-to-variable-without-mutable-range.js
 repro-ref-mutable-range.tsx
-repro-retain-source-when-bailout.js
 repro-returned-inner-fn-mutates-context.js
 repro-returned-inner-fn-reassigns-context.js
 repro-scope-missing-mutable-range.js

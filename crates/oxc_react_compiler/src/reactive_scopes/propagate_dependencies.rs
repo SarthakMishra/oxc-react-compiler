@@ -1,5 +1,5 @@
 use crate::hir::types::{
-    DeclarationId, HIR, IdentifierId, InstructionValue, ReactiveScopeDeclaration,
+    DeclarationId, HIR, IdentifierId, InstructionId, InstructionValue, ReactiveScopeDeclaration,
     ReactiveScopeDependency, ScopeId, Type,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -581,10 +581,20 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
         for instr in &block.instructions {
             if let Some(ref scope) = instr.lvalue.identifier.scope {
                 let id = instr.lvalue.identifier.id;
-                // Check if this identifier is used by any consumer outside this scope
-                let used_outside = operand_consumers.get(&id).is_some_and(|consumers| {
-                    consumers.iter().any(|consumer_scope| *consumer_scope != Some(scope.id))
-                });
+                // Check if this identifier is used outside this scope.
+                // Primary check: use instruction-order (last_use vs scope.range.end).
+                // This avoids false positives from the operand_consumers scope-ID
+                // check, which incorrectly treats unscooped instructions inside the
+                // scope body as "outside" consumers.
+                let scope_end = scope.range.end;
+                let used_outside = if instr.lvalue.identifier.last_use > InstructionId(0) {
+                    instr.lvalue.identifier.last_use.0 >= scope_end.0
+                } else {
+                    // Fallback to consumer-based check if last_use not populated
+                    operand_consumers.get(&id).is_some_and(|consumers| {
+                        consumers.iter().any(|consumer_scope| *consumer_scope != Some(scope.id))
+                    })
+                };
 
                 if used_outside {
                     let decls = scope_decls.entry(scope.id).or_default();
@@ -608,7 +618,10 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                     InstructionValue::StoreLocal { lvalue, .. }
                     | InstructionValue::StoreContext { lvalue, .. } => {
                         let target_id = lvalue.identifier.id;
-                        let target_used_outside =
+                        // Use instruction-order check for StoreLocal targets too
+                        let target_used_outside = if lvalue.identifier.last_use > InstructionId(0) {
+                            lvalue.identifier.last_use.0 >= scope_end.0
+                        } else {
                             operand_consumers.get(&target_id).is_some_and(|consumers| {
                                 consumers
                                     .iter()
@@ -619,7 +632,8 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                                         .iter()
                                         .any(|consumer_scope| *consumer_scope != Some(scope.id))
                                 })
-                            });
+                            })
+                        };
                         if target_used_outside {
                             let decls = scope_decls.entry(scope.id).or_default();
                             if !decls.iter().any(|(did, _)| *did == target_id) {
