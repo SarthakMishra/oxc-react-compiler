@@ -1,10 +1,10 @@
 # oxc-react-compiler Backlog
 
-> Last updated: 2026-04-03
-> Conformance: **553/1717 (32.2%)** (known-failures.txt has 1164 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
-> Latest session gains: +3 from excluding Call/MethodCall from is_mutable_instruction in scope creation (550->553). First successful scope inference fix after 6 prior failures. Deep investigation (2026-04-03): confirmed Apply effects are pre-resolved by Pass 16 (not skipped); conservative unknown-call mutation model is load-bearing for 10 fixtures (every relaxation causes identical -10 shift); current mutation balance is best achievable without upstream's exact Apply resolution logic.
-> Known-failures: 1164. False-positive bails: ~168 (83 preserve-memo now ALL Check 1, 14 frozen-mutation, 9 reassign, 7 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
-> WE-COMPILE-THEY-DON'T: ~88 (69 scope-surplus with no upstream error, ~9 "Found 1 error" bail-outs remaining, 10 Flow parse errors). Down from 94 after Session 2 fixes.
+> Last updated: 2026-04-04
+> Conformance: **555/1717 (32.3%)** (known-failures.txt has 1162 non-comment entries). Render: **92% (23/25)**. E2E: **95-100%**. Tests: all pass, 0 panics, 0 unexpected divergences.
+> Latest session gains: +2 from Stage 4f Group D simple — context-variable frozen-mutation detection (for-loop iterator reassignment) and update-expression-on-context-variable detection in nested lambdas (553->555).
+> Known-failures: 1162. False-positive bails: ~168 (83 preserve-memo now ALL Check 1, 14 frozen-mutation, 9 reassign, 7 silent, 7 ref-access, 7 context-variable, 7 setState-in-effect, 5 MethodCall codegen, rest misc).
+> WE-COMPILE-THEY-DON'T: ~86 (69 scope-surplus with no upstream error, ~7 "Found 1 error" bail-outs remaining, 10 Flow parse errors).
 > Note: Conformance tests use `compilationMode:"all"` which affects how fixtures are tested (all functions compiled, not just components/hooks).
 
 ---
@@ -142,20 +142,25 @@ Also tried: use_mutable_range=true (-40, reverted) -- mutable ranges alone still
 
 #### Stage 4f: "Found 1 error" Bail-Out Sweep -- MOSTLY COMPLETE
 
-**20 of 29 done.** Groups A (+10, try-catch value blocks), B (+3, optional chains), C (+4, computed keys), F-partial (+2, PruneHoistedContexts), H (+2, hook-destructure-before-use), E (+2, mutable function mutations) = 23 COMPLETE. ~9 remaining.
+**25 of 29 done (+25 fixtures).** Groups A (+10, try-catch value blocks), B (+3, optional chains), C (+4, computed keys), D-simple (+2, context variable mutations), E (+2, mutable function mutations), F-partial (+2, PruneHoistedContexts), H (+2, hook-destructure-before-use) = 25 COMPLETE. 4 remaining (1 blocked-by-restructure, 3 blocked-by-infrastructure).
 
 | Group | Fixtures | Status |
 |-------|----------|--------|
 | A: Try-catch value blocks | 10 | COMPLETE (+10) |
 | B: Optional terminal | 3 | COMPLETE (+3) |
 | C: Computed keys | 4 | COMPLETE (+4) |
-| D: Frozen mutation / value modification | 3 | 1 BLOCKED (useFreeze aliasing), 2 remaining |
+| D: Frozen mutation / value modification | 3 | 2 COMPLETE (+2, context variable mutations), 1 BLOCKED (useFreeze aliasing) |
 | E: Post-render mutation | 2 | COMPLETE (+2) |
-| F: Context/hoisting | 4 | 2 COMPLETE (PruneHoistedContexts +2), 1 BLOCKED (nested HIR LoadContext), 1 remaining (unnamed temporary) |
+| F: Context/hoisting | 4 | 2 COMPLETE (PruneHoistedContexts +2), 1 BLOCKED (nested HIR LoadContext), 1 BLOCKED (promote_used_temporaries restructure needed) |
 | G: Preserve-memo | 2 | BLOCKED by scope dep resolution |
 | H: Hoisting access-before-declare | 2 | COMPLETE (+2) |
 
-**Remaining tractable (low risk):** Group D simple (2 fixtures), Group F unnamed-temporary (1 fixture). **Blocked:** Group D-aliasing (1), Group F-context (1), Group G (2).
+**Remaining tractable (low risk, 3 fixtures):**
+- Group D simple #1: `error.todo-for-loop-with-context-variable-iterator.js` -- Upstream: "Error: This value cannot be modified" (for-loop iterator `i` is a context variable reassigned in updater, modification after JSX use). Requires detecting context-variable modification after JSX capture.
+- Group D simple #2: `error.todo-handle-update-context-identifiers.js` -- Upstream: "Todo: Handle UpdateExpression to variables captured within lambdas" (`counter++` inside arrow function). Requires detecting UpdateExpression on context variables in nested lambdas during HIR lowering.
+- Group F unnamed-temporary: `error.bug-invariant-unnamed-temporary.js` -- Upstream: "Invariant: Expected temporaries to be promoted to named identifiers in an earlier pass" (rest params `...props` in nested arrow produces unnamed identifier 15). Requires adding a `promoteTemporary`-style invariant check after `promote_used_temporaries` pass.
+
+**Blocked (4 fixtures):** Group D-aliasing: `new-mutability/error.mutate-frozen-value.js` (needs `useFreeze` + `@enableNewMutationAliasingModel`). Group F-context: `error.invalid-jsx-captures-context-variable.js` (needs `@enableNewMutationAliasingModel` + nested HIR LoadContext). Group G: `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js` and `error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js` (BLOCKED by scope dep resolution / preserve-memo Check 1).
 
 ---
 

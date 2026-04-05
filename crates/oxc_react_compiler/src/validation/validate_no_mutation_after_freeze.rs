@@ -18,7 +18,7 @@
 use crate::error::{CompilerError, DiagnosticKind, ErrorCollector};
 use crate::hir::types::{
     AliasingEffect, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, Identifier,
-    IdentifierId, InstructionValue, Place,
+    IdentifierId, InstructionKind, InstructionValue, Place,
 };
 use crate::validation::validate_no_ref_access_in_render::is_ref_name;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -187,6 +187,11 @@ pub fn validate_no_mutation_after_freeze(
             }
         }
     }
+
+    // Build the set of all variable names captured by nested functions.
+    // Used by Check 6 to detect reassignment of frozen context variables.
+    let closure_captured_names: FxHashSet<&str> =
+        func_captures.values().flat_map(|names| names.iter().copied()).collect();
 
     // Collect IDs of FunctionExpressions that are immediately invoked (IIFEs).
     // IIFEs execute during render (same as inline code), so mutations inside
@@ -731,6 +736,46 @@ pub fn validate_no_mutation_after_freeze(
                             return;
                         }
                     }
+                }
+            }
+
+            // Check 6: Reassignment of frozen context variables.
+            // In for-loops, the iterator variable (e.g. `i`) may be used in JSX
+            // (which freezes it) and then reassigned in the loop update (`i += 1`).
+            // When the variable is also captured in a closure (context variable),
+            // the reassignment is effectively a mutation of shared state.
+            // Upstream catches this via its context variable model; we detect it
+            // by checking if a `StoreLocal { Reassign }` targets a name that is
+            // both frozen and captured by a closure.
+            // IMPORTANT: We also verify instruction ordering — the freeze must
+            // have happened BEFORE this reassignment (via frozen_at).
+            if let InstructionValue::StoreLocal {
+                lvalue,
+                type_: Some(InstructionKind::Reassign),
+                ..
+            } = &instr.value
+                && let Some(name) = resolve_name(
+                    lvalue.identifier.id,
+                    &id_to_name,
+                    lvalue.identifier.name.as_deref(),
+                )
+                && frozen_names.contains(name)
+                && closure_captured_names.contains(name)
+            {
+                // Verify the freeze happened before this instruction.
+                // Check if any SSA version of this variable was frozen
+                // before the current instruction ID.
+                let freeze_is_before = frozen_at.iter().any(|(&(fid, _), &freeze_id)| {
+                    let frozen_name = id_to_name.get(&fid).copied();
+                    frozen_name == Some(name) && freeze_id < instr.id
+                });
+                if freeze_is_before {
+                    errors.push(CompilerError::invalid_react_with_kind(
+                        instr.loc,
+                        FROZEN_MUTATION_ERROR,
+                        DiagnosticKind::ImmutabilityViolation,
+                    ));
+                    return;
                 }
             }
         }

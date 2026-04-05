@@ -104,7 +104,7 @@ pub fn validate_no_unsupported_nodes(hir: &HIR, errors: &mut ErrorCollector) {
                     // Check for `fbt` as a function parameter name.
                     check_fbt_in_function_params(lowered_func, errors);
                     // Upstream: Todo: Handle UpdateExpression to variables captured within lambdas
-                    check_update_context_identifiers(&lowered_func.body, instr.loc, errors);
+                    check_update_context_identifiers(hir, lowered_func, instr.loc, errors);
                     validate_no_unsupported_nodes(&lowered_func.body, errors);
                 }
                 _ => {}
@@ -211,35 +211,69 @@ fn check_fbt_in_function_params(func: &HIRFunction, errors: &mut ErrorCollector)
 ///
 /// Detects the pattern: `let x = 0; const fn = () => { x++; };`
 /// The `x++` modifies a context variable which upstream cannot handle.
+///
+/// DIVERGENCE: Upstream detects this in BuildHIR by checking if the variable
+/// being updated is captured from an outer scope (using LoadContext/StoreContext).
+/// Since our `build_arrow` does not call `setup_context_variables`, inner functions
+/// use LoadLocal/StoreLocal instead. We detect captured variables by comparing
+/// names declared in the outer scope against PrefixUpdate/PostfixUpdate targets
+/// in the inner function body.
 fn check_update_context_identifiers(
-    func_hir: &HIR,
+    outer_hir: &HIR,
+    inner_func: &HIRFunction,
     func_loc: oxc_span::Span,
     errors: &mut ErrorCollector,
 ) {
-    // Collect all identifier IDs that appear as LoadContext/StoreContext targets.
-    // These are variables captured from the outer scope.
-    let mut context_ids: FxHashSet<IdentifierId> = FxHashSet::default();
-    for (_, block) in &func_hir.blocks {
+    // Collect variable names declared/stored in the outer function scope.
+    let mut outer_names: FxHashSet<&str> = FxHashSet::default();
+    for (_, block) in &outer_hir.blocks {
         for instr in &block.instructions {
             match &instr.value {
-                InstructionValue::LoadContext { place }
-                | InstructionValue::StoreContext { lvalue: place, .. } => {
-                    context_ids.insert(place.identifier.id);
+                InstructionValue::DeclareLocal { lvalue, .. }
+                | InstructionValue::StoreLocal { lvalue, .. } => {
+                    if let Some(name) = &lvalue.identifier.name {
+                        outer_names.insert(name.as_str());
+                    }
                 }
                 _ => {}
             }
         }
     }
-    if context_ids.is_empty() {
+    if outer_names.is_empty() {
         return;
     }
-    // Check for PrefixUpdate/PostfixUpdate on context variables
-    for (_, block) in &func_hir.blocks {
+
+    // Collect variable names declared INSIDE the inner function (to exclude shadowed names).
+    // Include both body declarations AND function parameters.
+    let mut inner_declared: FxHashSet<&str> = FxHashSet::default();
+    for param in &inner_func.params {
+        let place = match param {
+            Param::Identifier(p) | Param::Spread(p) => p,
+        };
+        if let Some(name) = &place.identifier.name {
+            inner_declared.insert(name.as_str());
+        }
+    }
+    for (_, block) in &inner_func.body.blocks {
+        for instr in &block.instructions {
+            if let InstructionValue::DeclareLocal { lvalue, .. } = &instr.value
+                && let Some(name) = &lvalue.identifier.name
+            {
+                inner_declared.insert(name.as_str());
+            }
+        }
+    }
+
+    // Check for PrefixUpdate/PostfixUpdate on outer-scope variables inside the lambda.
+    for (_, block) in &inner_func.body.blocks {
         for instr in &block.instructions {
             match &instr.value {
                 InstructionValue::PrefixUpdate { lvalue, .. }
                 | InstructionValue::PostfixUpdate { lvalue, .. } => {
-                    if context_ids.contains(&lvalue.identifier.id) {
+                    if let Some(name) = &lvalue.identifier.name
+                        && outer_names.contains(name.as_str())
+                        && !inner_declared.contains(name.as_str())
+                    {
                         errors.push(CompilerError::todo(
                             func_loc,
                             "(BuildHIR::lowerExpression) Handle UpdateExpression to variables captured within lambdas".to_string(),
