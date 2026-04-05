@@ -261,9 +261,19 @@ fn collect_used_in_instruction_value(value: &InstructionValue, used: &mut FxHash
             }
         }
         InstructionValue::StoreGlobal { value, .. } => add(value),
-        // Function expressions capture places internally; the captured
-        // variables are handled via the HIRFunction body, not directly here.
-        InstructionValue::FunctionExpression { .. } | InstructionValue::ObjectMethod { .. } => {}
+        // Function expressions capture variables via their context list.
+        // These captured variables must be marked as used so DCE doesn't
+        // eliminate the instructions that create them.
+        InstructionValue::FunctionExpression { lowered_func, .. } => {
+            for cap in &lowered_func.context {
+                add(cap);
+            }
+        }
+        InstructionValue::ObjectMethod { lowered_func, .. } => {
+            for cap in &lowered_func.context {
+                add(cap);
+            }
+        }
         InstructionValue::Primitive { .. }
         | InstructionValue::JSXText { .. }
         | InstructionValue::RegExpLiteral { .. }
