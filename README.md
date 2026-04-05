@@ -330,7 +330,7 @@ All numbers measured on the 16-fixture benchmark suite (`--release` build, 30 it
 
 > **Performance improvement in Phases 179–180:** In-place state merging, BFS buffer reuse, sorted worklist processing, `Rc<ReactiveScope>` (eliminating deep scope clones), and `IdVec`/`IdSet` O(1) lookups improved compile performance by 21–35% on large fixtures. Small fixtures (XS/S) are 2.5–75x faster than Babel. Medium fixtures are now 1.1–1.6x faster. The remaining regression is `canvas-sidebar` (272 LOC, 0.4x) which has the most complex scope structure.
 >
-> **Note:** 5 benchmark fixtures currently bail without compiling (form-validation, color-picker, command-menu, availability-schedule, multi-step-form) and are excluded from the table. Investigation pending.
+> **Note:** 5 benchmark fixtures currently bail without compiling (form-validation, color-picker, command-menu, availability-schedule, multi-step-form) and are excluded from the table. Root causes: nested MethodCall arguments (2), unsupported computed object keys (2), optional chaining in ternary tests (1). These are pre-existing unsupported syntax patterns, not regressions — naive bail removal causes -1 to -4 conformance regressions each because the compiled output doesn't match upstream.
 
 ### Batch Project Build (End-to-End Throughput)
 
@@ -449,25 +449,34 @@ node scripts/bench-compare.mjs --iterations 20 --warmup 5
 ### General
 
 - **Active development** — Upstream conformance is at 32.6% (560/1717 fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries, validation gaps).
-- **Performance regression on large files** — The mutation/aliasing analysis passes (Phases 113–130) introduced O(n²+) scaling. Phases 179–180 improved performance by 21–35% (in-place state merging, BFS buffer reuse, sorted worklist, Rc<ReactiveScope>, IdVec/IdSet lookups). Small components compile 5–67x faster than Babel, but large components (150+ LOC) may still be slower. Further optimization (batched BFS, String→Atom, reduced Place cloning) is ongoing.
+- **Performance on large files** — The mutation/aliasing analysis passes (Phases 113–130) introduced O(n²+) scaling. Phases 179–180 significantly improved performance:
+  - **Algorithmic**: Sorted worklist processing for forward-dataflow convergence, in-place `InferenceState::merge`, lightweight phi processing, reusable BFS buffers with clear-instead-of-realloc, pre-sized hash maps, visitor-based operand collection (no per-instruction Vec allocation)
+  - **Structural**: `Rc<ReactiveScope>` replacing `Box` (eliminates 50x deep scope clones per function), `IdVec<IdentifierId, T>` / `IdSet<IdentifierId>` replacing `FxHashMap`/`FxHashSet` for O(1) indexed lookups (10 passes converted)
+  - **Result**: 21–35% improvement on large fixtures. Batch throughput improved from 0.5x to 1.9x Babel. Small components compile 2.5–75x faster than Babel. One large fixture (canvas-sidebar, 272 LOC) remains at 0.4x.
+  - **Remaining**: Batched BFS (single reverse-reachability pass), `String`→`Atom` interning, reduced `Place` cloning in HIR builder (45+ clone sites), 30+ more files to convert to `IdVec`/`IdSet`
 - **No oxlint integration** — Lint rules exist in `crates/oxc_react_compiler_lint` and are callable via the NAPI binding, but they are not integrated into the oxlint binary. This would require upstream work in the [oxc repo](https://github.com/oxc-project/oxc) to support external plugin crates.
 - **Source maps** — Source map generation covers compiled function regions with per-line identity mappings for unmodified code. Complex source map chaining with other Vite plugins has not been verified.
 
 ### Memoization & Scope Analysis
 
-- **Slot count divergences (568 fixtures)** — The dominant failure category. Both sides compile but reactive scope computation produces different cache slot counts. Root cause: `effective_range` approximation over-merges independent scopes. Phase 178 fixed PropertyStore BFS edge ordering. A `use_mutable_range` A/B flag exists but net-regresses (-59) as mutable ranges are still too narrow for closures (blocked by Group D context variable support).
-- **Codegen structure (221 fixtures)** — Slot count matches upstream but code within scopes differs. Improved through formatting fixes (const/let, dead call elimination, dependency ordering, self-assignment stripping, proper loop syntax).
+- **Slot count divergences (568 fixtures)** — The dominant failure category. Both sides compile but reactive scope computation produces different cache slot counts. Two verified root causes:
+  - **Over-merging (419 fixtures, negative diff)**: The `effective_range = max(mutable_range, last_use + 1)` workaround extends identifier ranges to their last use point, causing independent allocations to overlap and merge into one scope. Cannot remove without fixing Group D (closure context variables) first — `use_mutable_range=true` causes -59 regression.
+  - **Over-splitting (108 fixtures, positive diff)**: Some scopes have extra outputs or dependencies. Phase 178 fixed scope output over-declaration (instruction-order `last_use` check) and PropertyStore BFS edge ordering (Capture before MutateTransitive).
+- **Codegen structure (221 fixtures)** — Slot count matches upstream but code within scopes differs. Phase 177 fixed all loop constructs (for, for-of, for-in, while, do-while) being silently dropped from output. Also improved: self-assignment stripping, proper loop syntax (`while(cond)`, `do{}while(cond)`, `for(init;cond;update)`), binary expression parenthesization.
 - **Manual memoization preservation** — 94 false-positive bail-outs remain (blocked by scope accuracy). Scope propagation to FinishMemoize.decl would reduce to ~14 but causes -52 regression without accurate scopes.
+- **Unsupported syntax patterns** — 5 fixtures bail on nested MethodCall arguments, 2 on optional chaining in ternary tests, 2 on computed object expression keys. These require HIR/codegen support, not just validation removal (naive removal causes -1 to -4 regressions each).
 - **Validation gaps (70 fixtures)** — We compile functions that upstream correctly rejects. Missing validation checks need to be ported.
 
 ### Validation
 
-- **False-positive bail-outs (200 fixtures)** — We reject functions that upstream compiles successfully. 94 are preserve-memo (blocked by scope accuracy), 14 frozen-mutation, 9 ref-access, 9 reassignment, and various others.
+- **False-positive bail-outs (200 fixtures)** — We reject functions that upstream compiles successfully. 94 are preserve-memo (blocked by scope accuracy), 14 frozen-mutation, 9 ref-access, 9 reassignment, 7 setState-in-effect, 5 nested MethodCall, and various others.
 - **Upstream errors we miss (70 fixtures)** — Validation gaps where upstream correctly bails but we compile successfully.
+- **Loop condition dependencies** — Phase 178 added reactive dependency collection from while/do-while condition blocks inside scopes. For-loop conditions are excluded (causes regressions from complex initialization patterns).
 
 ### Other
 
 - **@flow fixtures** — Flow component/hook syntax is preprocessed into standard function declarations (Phase 128). Some Flow type annotations still cause parse errors — these are permanently skipped as Flow is deprecated.
+- **Benchmark fixture bail-outs** — 6 of 16 benchmark fixtures currently bail without compiling: 2 from nested MethodCall arguments (color-picker, command-menu), 2 from unsupported computed object keys (availability-schedule, multi-step-form), 1 from optional chaining in ternary test (form-validation), and 1 from module-level variable reassignment detection (toolbar). These are the same unsupported patterns tracked in the conformance suite.
 
 ## License
 
