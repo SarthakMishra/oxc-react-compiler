@@ -1,6 +1,6 @@
 # oxc-react-compiler — Remaining Work
 
-> **Conformance: 559/1717 (32.6%)** | Known failures: 1158 | 0 panics | 0 unexpected divergences
+> **Conformance: 560/1717 (32.6%)** | Known failures: 1157 | 0 panics | 0 unexpected divergences
 > Last updated: 2026-04-05 (Phase 178)
 
 ---
