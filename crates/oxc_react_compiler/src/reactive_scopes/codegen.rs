@@ -1966,6 +1966,11 @@ fn codegen_instruction(
                 }
                 kw
             };
+            // Skip self-assignments (x = x;) — these are codegen artifacts from
+            // scope declarations for variables mutated inside loops.
+            if keyword.is_empty() && target_name == value_name {
+                return;
+            }
             output.push_str(&format!("{indent}{keyword}{target_name} = {value_name};\n"));
         }
         InstructionValue::CallExpression { callee, args, optional } => {
