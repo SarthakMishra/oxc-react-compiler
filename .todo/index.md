@@ -1,6 +1,6 @@
 # oxc-react-compiler — Remaining Work
 
-> **Conformance: 557/1717 (32.4%)** | Known failures: 1160 | 0 panics | 0 unexpected divergences
+> **Conformance: 558/1717 (32.5%)** | Known failures: 1159 | 0 panics | 0 unexpected divergences
 > Last updated: 2026-04-05
 
 ---
@@ -70,9 +70,9 @@ Variables used only INSIDE a scope body are incorrectly declared as scope output
 
 **Files:** `propagate_dependencies.rs`, `infer_reactive_scope_variables.rs`
 
-- [ ] **A1.1:** Investigate scope output declaration logic — when does a variable become a scope "declaration" (output)?
-- [ ] **A1.2:** Compare with upstream `PropagateScopeDependencies.ts` to find the filtering condition
-- [ ] **A1.3:** Implement filtering: only declare variables whose last use is AFTER the scope boundary
+- [x] **A1.1:** Investigate scope output declaration logic ✅
+- [x] **A1.2:** Compare with upstream — found operand_consumers scope-ID check is flawed ✅
+- [x] **A1.3:** Fix: replaced with `last_use >= scope.range.end` check ✅ (+1 conformance, -18 in -1 deficit, -15 in +2 surplus)
 
 #### A2: Missing Reactive Dependencies (~200+ fixtures, wrong dep detection)
 
@@ -84,9 +84,9 @@ Example: `allocating-logical-expression-instruction-scope.ts` — we use sentine
 
 **Files:** `propagate_dependencies.rs`
 
-- [ ] **A2.1:** Compare our dep propagation with upstream `PropagateScopeDependencies.ts`
-- [ ] **A2.2:** Add test fixtures that isolate the dep detection issue
-- [ ] **A2.3:** Fix dep propagation to detect reactive values from hooks
+- [x] **A2.1:** Investigated — Phase 2 only processes scoped instructions, missing loop test blocks ✅
+- [ ] **A2.2:** ATTEMPTED: Added Phase 2b + collect_scope_blocks for loops — **REVERTED (-1 regression)**. Adding deps broadly disturbs the coupled system. Needs fixture-by-fixture approach.
+- [ ] **A2.3:** Try targeted dep injection for specific patterns (loop conditions, hook returns) rather than broad collection
 
 #### A3: Scope Boundary Accuracy (~300+ fixtures, effective_range over-merging)
 
