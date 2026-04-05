@@ -2,7 +2,7 @@
 
 Native [OXC](https://oxc.rs/) port of Meta's [React Compiler](https://github.com/facebook/react/tree/main/compiler/packages/babel-plugin-react-compiler) for the Rolldown/Vite pipeline, plus React 19 compiler-based lint rules for oxlint.
 
-> **Status:** This is an active port — 166+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 32.3% (555/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
+> **Status:** This is an active port — 180+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 32.6% (560/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
 
 ## Vite Plugin Usage
 
@@ -213,54 +213,57 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 | Metric                      | Value        |
 | --------------------------- | ------------ |
 | Total upstream fixtures     | 1717         |
-| Passing (exact match)       | 555 (32.3%)  |
-| Failing (output divergence) | 1162         |
+| Passing (exact match)       | 560 (32.6%)  |
+| Failing (output divergence) | 1157         |
 | Panics / crashes            | 0            |
 | Render equivalence          | 92% (23/25)  |
 
-#### Divergence Breakdown (~1162 known failures)
+#### Divergence Breakdown (~1157 known failures)
 
 | Category                                 | Count | % of known |
 | ---------------------------------------- | ----- | ---------- |
-| Both compile, slots DIFFER               | 566   | 48.7%      |
-| Both compile, slots MATCH (codegen diff) | 228   | 19.6%      |
-| We compile, they don't (validation gaps) | 71    | 6.1%       |
-| We bail, they compile                    | 199   | 17.1%      |
-| Both no memo (format diff)               | 98    | 8.4%       |
+| Both compile, slots DIFFER               | 568   | 49.1%      |
+| Both compile, slots MATCH (codegen diff) | 221   | 19.1%      |
+| We compile, they don't (validation gaps) | 70    | 6.0%       |
+| We bail, they compile                    | 200   | 17.3%      |
+| Both no memo (format diff)               | 98    | 8.5%       |
 
-> Note: In Phase 133, expected files were rebaselined with `compilationMode: "all"` (matching the upstream test suite). Phase 138 added Todo error detection for 5 categories of unsupported syntax (+15 fixtures). Phase 139 added frozen-mutation freeze propagation (phi nodes, store chains, property loads, iterators) gaining +9 fixtures. Phase 142 fixed ref-access validation to detect `.current` access after inline_load_local_temps eliminates LoadLocal intermediaries (+1 fixture). Phase 150 implemented validateInferredDep (source dep extraction and comparison) for preserve-memo validation (+3 fixtures). Phase 155 fixed preserve-memo validation by pre-computing HIR temp map before inline_load_locals, correcting Subpath comparison, and removing `is_temp_name` skip that suppressed all dep mismatch detection (+31 fixtures).
+> Note: In Phase 133, expected files were rebaselined with `compilationMode: "all"` (matching the upstream test suite). Phase 138 added Todo error detection for 5 categories of unsupported syntax (+15 fixtures). Phase 139 added frozen-mutation freeze propagation (phi nodes, store chains, property loads, iterators) gaining +9 fixtures. Phase 142 fixed ref-access validation to detect `.current` access after inline_load_local_temps eliminates LoadLocal intermediaries (+1 fixture). Phase 150 implemented validateInferredDep (source dep extraction and comparison) for preserve-memo validation (+3 fixtures). Phase 155 fixed preserve-memo validation by pre-computing HIR temp map before inline_load_locals, correcting Subpath comparison, and removing `is_temp_name` skip that suppressed all dep mismatch detection (+31 fixtures). Phase 177 fixed all loop constructs (for, for-of, for-in, while, do-while) being silently dropped from output when inside reactive scopes. Phase 178 fixed scope output over-declaration (last_use-based check), loop condition reactive deps, PropertyStore aliasing BFS edge ordering, and for-loop update DCE preservation (+5 fixtures). Phases 179-180 added 21-35% compile performance improvements (in-place state merging, BFS buffer reuse, sorted worklist, lightweight phi processing) and structural optimizations (Rc<ReactiveScope>, IdVec/IdSet for O(1) lookups).
 
-#### Bail-out Breakdown (199 fixtures where we bail but upstream compiles)
+#### Bail-out Breakdown (200 fixtures where we bail but upstream compiles)
 
 | Error                                 | Count |
 | ------------------------------------- | ----- |
 | Preserve-memo false positives         | 94    |
-| Frozen-mutation false positives       | 17    |
+| Frozen-mutation false positives       | 14    |
 | Cannot reassign outside component     | 9     |
-| Ref-access in render false positives  | 7     |
+| Ref-access in render false positives  | 9     |
 | setState in effects                   | 7     |
+| Local variable reassignment           | 7     |
 | Silent bail-outs (no error)           | 9     |
-| Other                                 | 56    |
+| MethodCall codegen internal error     | 5     |
+| Other                                 | 46    |
 
-#### Slot Diff Distribution (688 fixtures where both compile but slot counts differ)
+#### Slot Diff Distribution (568 fixtures where both compile but slot counts differ)
 
 | Diff             | Count | Notes                     |
 | ---------------- | ----- | ------------------------- |
-| -1 (under-count) | 131   | Scope analysis gaps       |
-| +1 (over-count)  | 123   | Extra scopes or deps      |
-| +2               | 57    | Extra scopes              |
-| -2               | 120   | Under-memoization         |
-| other            | 257   |                           |
+| -1 (under-count) | 127   | Scope over-merging        |
+| -2               | 121   | Under-memoization         |
+| -3               | 71    | Scope analysis gaps       |
+| +1 (over-count)  | 65    | Extra scopes or deps      |
+| +2               | 22    | Extra scopes              |
+| other            | 162   |                           |                           |
 
 #### Key Divergence Patterns
 
 Most of the 1222 failures fall into a few root causes:
 
-- **Scope inference / codegen accuracy (620 fixtures)** — The dominant failure category. Both compilers compile the function but produce different slot counts. Improving mutable range propagation, scope merging, and codegen structure is the primary path to higher conformance.
-- **Codegen structure (241 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement). Declaration placement and variable name preservation are the largest sub-patterns.
-- **Missing validations (151 fixtures)** — We compile functions that upstream bails on. Down from 191 after Phase 155 fixed preserve-memo dep mismatch detection (+31 fixtures).
-- **False-positive bail-outs (119 fixtures)** — We reject functions that upstream compiles successfully. Increased from 70 to 119 due to preserve-memo validation now correctly detecting dep mismatches for some non-error fixtures too. Many are legitimate preserve-memo errors that will be resolved by improving scope dep resolution.
-- **Format-only divergences (91 fixtures)** — Neither side memoizes, but the output differs. Requires dead-code elimination and constant propagation passes.
+- **Scope inference accuracy (568 fixtures)** — The dominant failure category. Both compilers compile the function but produce different slot counts. Root cause: `effective_range` workaround over-merges independent scopes. Phase 178 fixed PropertyStore BFS edge ordering (+1). Further progress requires fixing closure context population (Group D) to enable raw `mutable_range`.
+- **Codegen structure (221 fixtures)** — Slot count matches upstream but code within scopes differs (ordering, scope boundaries, variable placement). Declaration placement and variable name preservation are the largest sub-patterns.
+- **False-positive bail-outs (200 fixtures)** — We reject functions that upstream compiles successfully. 94 are preserve-memo false positives (blocked by scope accuracy). Others include frozen-mutation (14), ref-access (9), setState validation (7+4), and various.
+- **Missing validations (70 fixtures)** — We compile functions that upstream bails on.
+- **Format-only divergences (98 fixtures)** — Neither side memoizes, but the output differs. Requires dead-code elimination and constant propagation passes.
 
 Conformance runs as a non-blocking CI check — failures are tracked in `tests/conformance/known-failures.txt` and ratcheted as improvements land.
 
@@ -450,22 +453,22 @@ node scripts/bench-compare.mjs --iterations 20 --warmup 5
 
 ### General
 
-- **Active development** — Upstream conformance is at 32.3% (555/1717 fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries, validation gaps).
-- **Performance regression on large files** — The mutation/aliasing analysis passes (Phases 113–130) introduced O(n²+) scaling. Small components compile 5–67x faster than Babel, but large components (150+ LOC) are currently slower. This is the highest-priority optimization target.
+- **Active development** — Upstream conformance is at 32.6% (560/1717 fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries, validation gaps).
+- **Performance regression on large files** — The mutation/aliasing analysis passes (Phases 113–130) introduced O(n²+) scaling. Phases 179–180 improved performance by 21–35% (in-place state merging, BFS buffer reuse, sorted worklist, Rc<ReactiveScope>, IdVec/IdSet lookups). Small components compile 5–67x faster than Babel, but large components (150+ LOC) may still be slower. Further optimization (batched BFS, String→Atom, reduced Place cloning) is ongoing.
 - **No oxlint integration** — Lint rules exist in `crates/oxc_react_compiler_lint` and are callable via the NAPI binding, but they are not integrated into the oxlint binary. This would require upstream work in the [oxc repo](https://github.com/oxc-project/oxc) to support external plugin crates.
 - **Source maps** — Source map generation covers compiled function regions with per-line identity mappings for unmodified code. Complex source map chaining with other Vite plugins has not been verified.
 
 ### Memoization & Scope Analysis
 
-- **Validation gaps (677 fixtures)** — The dominant failure category. We compile functions that upstream correctly rejects. Missing validation checks need to be ported from upstream.
-- **Slot count divergences (690 fixtures)** — Both sides compile but reactive scope computation produces different cache slot counts. Root cause: `effective_range` approximation differs from upstream's pure mutation BFS. An `use_mutable_range` A/B flag exists but net-regresses as mutable ranges are still too narrow.
-- **Codegen structure (86 fixtures)** — Slot count matches upstream but code within scopes differs. Improved from 240 through formatting fixes (const/let, dead call elimination, dependency ordering, dot notation, optional chaining).
-- **Manual memoization preservation** — Reduced from 58 to 4 false positives through preserve-memo validation relaxation (Phase 124).
+- **Slot count divergences (568 fixtures)** — The dominant failure category. Both sides compile but reactive scope computation produces different cache slot counts. Root cause: `effective_range` approximation over-merges independent scopes. Phase 178 fixed PropertyStore BFS edge ordering. A `use_mutable_range` A/B flag exists but net-regresses (-59) as mutable ranges are still too narrow for closures (blocked by Group D context variable support).
+- **Codegen structure (221 fixtures)** — Slot count matches upstream but code within scopes differs. Improved through formatting fixes (const/let, dead call elimination, dependency ordering, self-assignment stripping, proper loop syntax).
+- **Manual memoization preservation** — 94 false-positive bail-outs remain (blocked by scope accuracy). Scope propagation to FinishMemoize.decl would reduce to ~14 but causes -52 regression without accurate scopes.
+- **Validation gaps (70 fixtures)** — We compile functions that upstream correctly rejects. Missing validation checks need to be ported.
 
 ### Validation
 
-- **False-positive bail-outs (44 fixtures)** — We reject functions that upstream compiles successfully. Down from 135 through Flow preprocessing, preserve-memo relaxation, frozen-mutation tuning, and ref-access fixes.
-- **Upstream errors we miss (677 fixtures)** — Validation gaps where upstream correctly bails but we compile successfully. This is now the largest gap.
+- **False-positive bail-outs (200 fixtures)** — We reject functions that upstream compiles successfully. 94 are preserve-memo (blocked by scope accuracy), 14 frozen-mutation, 9 ref-access, 9 reassignment, and various others.
+- **Upstream errors we miss (70 fixtures)** — Validation gaps where upstream correctly bails but we compile successfully.
 
 ### Other
 
