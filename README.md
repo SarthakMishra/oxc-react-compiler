@@ -2,7 +2,9 @@
 
 Native [OXC](https://oxc.rs/) port of Meta's [React Compiler](https://github.com/facebook/react/tree/main/compiler/packages/babel-plugin-react-compiler) for the Rolldown/Vite pipeline, plus React 19 compiler-based lint rules for oxlint.
 
-> **Status:** This port has reached 190 implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 33.1% (568/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready. See [Project Status](#project-status) for details on what was achieved and the remaining architectural gaps.
+> **Note:** This is an experimental project. All code was generated with AI using [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+
+> **Status:** This port covers HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 33.1% (568/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready. See [Project Status](#project-status) for details on what was achieved and the remaining architectural gaps.
 
 ## Vite Plugin Usage
 
@@ -191,18 +193,18 @@ cargo test --test conformance_tests
 
 The compiler implements a 65-pass compilation pipeline organized into 10 phases:
 
-| Phase                   | Passes   | Description                                                                                                                          |
-| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 0. Early Validation     | 1        | Reject unsupported patterns (getters, setters, for-await, new.target, `var` declarations)                                            |
-| 1. Early Cleanup        | 2–7      | Prune throws, validate context variables, validate useMemo, drop manual memoization, inline IIFEs, merge blocks                      |
-| 2. SSA                  | 8–9.6    | Enter SSA form, eliminate redundant phi nodes, prune temporary lvalues, inline LoadLocal temps                                        |
-| 3. Optimization & Types | 10–12    | Constant propagation (with binary/unary folding), type inference, instruction kind rewriting                                         |
-| 4. Hook Validation      | 13–14.6  | Validate hooks usage, no capitalized calls, no global reassignment, no eval                                                          |
-| 5. Mutation/Aliasing    | 14–22    | Props optimization, function analysis, built-in/method signatures, mutation/aliasing effects, freeze validation, SSR opt, DCE, mutable ranges, last-use annotation |
-| 6. Validation Battery   | 23–28.7  | Locals reassignment, ref access, setState, impurity, derived computations in effects, blocklisted imports, break targets             |
-| 7. Reactivity           | 29–32    | Reactive place inference, exhaustive deps, unconditional blocks, property load hoisting, optional chains, static components           |
-| 8. Scope Construction   | 33–46.5  | Reactive scope variables, scope membership propagation, fbt/macro scoping, JSX/function outlining, scope alignment, merging, dependency propagation, minimal deps |
-| 9. RF Optimization      | 47–61    | Build reactive function tree, prune/merge/stabilize scopes, rename variables, prune hoisted contexts, validate memoization           |
+| Phase                   | Passes  | Description                                                                                                                                                        |
+| ----------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0. Early Validation     | 1       | Reject unsupported patterns (getters, setters, for-await, new.target, `var` declarations)                                                                          |
+| 1. Early Cleanup        | 2–7     | Prune throws, validate context variables, validate useMemo, drop manual memoization, inline IIFEs, merge blocks                                                    |
+| 2. SSA                  | 8–9.6   | Enter SSA form, eliminate redundant phi nodes, prune temporary lvalues, inline LoadLocal temps                                                                     |
+| 3. Optimization & Types | 10–12   | Constant propagation (with binary/unary folding), type inference, instruction kind rewriting                                                                       |
+| 4. Hook Validation      | 13–14.6 | Validate hooks usage, no capitalized calls, no global reassignment, no eval                                                                                        |
+| 5. Mutation/Aliasing    | 14–22   | Props optimization, function analysis, built-in/method signatures, mutation/aliasing effects, freeze validation, SSR opt, DCE, mutable ranges, last-use annotation |
+| 6. Validation Battery   | 23–28.7 | Locals reassignment, ref access, setState, impurity, derived computations in effects, blocklisted imports, break targets                                           |
+| 7. Reactivity           | 29–32   | Reactive place inference, exhaustive deps, unconditional blocks, property load hoisting, optional chains, static components                                        |
+| 8. Scope Construction   | 33–46.5 | Reactive scope variables, scope membership propagation, fbt/macro scoping, JSX/function outlining, scope alignment, merging, dependency propagation, minimal deps  |
+| 9. RF Optimization      | 47–61   | Build reactive function tree, prune/merge/stabilize scopes, rename variables, prune hoisted contexts, validate memoization                                         |
 
 ## Benchmarks & Conformance
 
@@ -210,13 +212,13 @@ The compiler implements a 65-pass compilation pipeline organized into 10 phases:
 
 The compiler is tested against Meta's upstream React Compiler conformance suite — the same 1717 test fixtures used by `babel-plugin-react-compiler`. Output is compared structurally after normalizing semantics-irrelevant differences (import paths, variable naming, whitespace, cache variable names).
 
-| Metric                      | Value        |
-| --------------------------- | ------------ |
-| Total upstream fixtures     | 1717         |
-| Passing (exact match)       | 568 (33.1%)  |
-| Failing (output divergence) | 1149         |
-| Panics / crashes            | 0            |
-| Render equivalence          | 92% (23/25)  |
+| Metric                      | Value       |
+| --------------------------- | ----------- |
+| Total upstream fixtures     | 1717        |
+| Passing (exact match)       | 568 (33.1%) |
+| Failing (output divergence) | 1149        |
+| Panics / crashes            | 0           |
+| Render equivalence          | 92% (23/25) |
 
 #### Divergence Breakdown (~1149 known failures)
 
@@ -232,26 +234,26 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 
 #### Bail-out Breakdown (192 fixtures where we bail but upstream compiles)
 
-| Error                                 | Count |
-| ------------------------------------- | ----- |
-| Preserve-memo false positives         | 94    |
-| Cannot reassign outside component     | 9     |
-| Silent bail-outs (no error)           | 9     |
-| Ref-access in render false positives  | 9     |
-| setState in effects                   | 7     |
-| Local variable reassignment           | 7     |
-| Frozen-mutation false positives       | 6     |
-| MethodCall codegen internal error     | 5     |
-| Other                                 | 46    |
+| Error                                | Count |
+| ------------------------------------ | ----- |
+| Preserve-memo false positives        | 94    |
+| Cannot reassign outside component    | 9     |
+| Silent bail-outs (no error)          | 9     |
+| Ref-access in render false positives | 9     |
+| setState in effects                  | 7     |
+| Local variable reassignment          | 7     |
+| Frozen-mutation false positives      | 6     |
+| MethodCall codegen internal error    | 5     |
+| Other                                | 46    |
 
 #### Slot Diff Distribution (571 fixtures where both compile but slot counts differ)
 
-| Diff             | Count | Notes                     |
-| ---------------- | ----- | ------------------------- |
-| -1 (under-count) | 128   | Scope over-merging        |
-| +1 (over-count)  | 66    | Extra scopes or deps      |
-| +2               | 18    | Extra scopes              |
-| other            | 359   |                           |                           |
+| Diff             | Count | Notes                |
+| ---------------- | ----- | -------------------- | --- |
+| -1 (under-count) | 128   | Scope over-merging   |
+| +1 (over-count)  | 66    | Extra scopes or deps |
+| +2               | 18    | Extra scopes         |
+| other            | 359   |                      |     |
 
 #### Key Divergence Patterns
 
@@ -276,24 +278,24 @@ cargo test --release upstream_conformance -- --nocapture
 
 The benchmark suite compiles 16 real-world React components through both OXC and the upstream Babel compiler, then structurally compares memoization patterns (cache slot count, scope blocks, dependency checks).
 
-| Fixture               | Size | OXC Slots | Babel Slots | Delta | Status             |
-| --------------------- | ---- | --------- | ----------- | ----- | ------------------ |
-| simple-counter        | XS   | 3         | 2           | +1    | over-memoization   |
-| status-badge          | XS   | 3         | 7           | -4    | conservative miss  |
-| theme-toggle          | XS   | 5         | 4           | +1    | over-memoization   |
-| avatar-group          | XS   | 10        | 10          | 0     | cosmetic           |
-| search-input          | S    | 12        | 17          | -5    | conservative miss  |
-| toolbar               | S    | 0         | 19          | -19   | bail-out           |
-| todo-list             | S    | 4         | 24          | -20   | conservative miss  |
-| form-validation       | S    | 0         | 48          | -48   | bail-out           |
-| time-slot-picker      | M    | 16        | 20          | -4    | conservative miss  |
-| color-picker          | M    | 0         | 30          | -30   | bail-out           |
-| data-table            | M    | 18        | 56          | -38   | conservative miss  |
-| command-menu          | M    | 0         | 37          | -37   | bail-out           |
-| booking-list          | L    | 17        | 62          | -45   | conservative miss  |
-| availability-schedule | L    | 0         | 31          | -31   | bail-out           |
-| canvas-sidebar        | L    | 26        | 70          | -44   | conservative miss  |
-| multi-step-form       | L    | 0         | 92          | -92   | bail-out           |
+| Fixture               | Size | OXC Slots | Babel Slots | Delta | Status            |
+| --------------------- | ---- | --------- | ----------- | ----- | ----------------- |
+| simple-counter        | XS   | 3         | 2           | +1    | over-memoization  |
+| status-badge          | XS   | 3         | 7           | -4    | conservative miss |
+| theme-toggle          | XS   | 5         | 4           | +1    | over-memoization  |
+| avatar-group          | XS   | 10        | 10          | 0     | cosmetic          |
+| search-input          | S    | 12        | 17          | -5    | conservative miss |
+| toolbar               | S    | 0         | 19          | -19   | bail-out          |
+| todo-list             | S    | 4         | 24          | -20   | conservative miss |
+| form-validation       | S    | 0         | 48          | -48   | bail-out          |
+| time-slot-picker      | M    | 16        | 20          | -4    | conservative miss |
+| color-picker          | M    | 0         | 30          | -30   | bail-out          |
+| data-table            | M    | 18        | 56          | -38   | conservative miss |
+| command-menu          | M    | 0         | 37          | -37   | bail-out          |
+| booking-list          | L    | 17        | 62          | -45   | conservative miss |
+| availability-schedule | L    | 0         | 31          | -31   | bail-out          |
+| canvas-sidebar        | L    | 26        | 70          | -44   | conservative miss |
+| multi-step-form       | L    | 0         | 92          | -92   | bail-out          |
 
 **Divergence types:**
 
@@ -308,19 +310,19 @@ The benchmark suite compiles 16 real-world React components through both OXC and
 
 All numbers measured on the 16-fixture benchmark suite (`--release` build, 30 iterations, 5 warmup). Both compilers process the same fixtures with equivalent configuration (JSX automatic runtime, TypeScript support, React compiler plugin).
 
-| Fixture | Size | LOC | OXC p50 | Babel p50 | Speedup |
-|---------|------|-----|---------|-----------|---------|
-| simple-counter | XS | 8 | 133.3 µs | 8.57 ms | **64.3x** |
-| theme-toggle | XS | 16 | 288.6 µs | 8.88 ms | **30.8x** |
-| status-badge | XS | 21 | 183.1 µs | 9.83 ms | **53.7x** |
-| avatar-group | XS | 23 | 4.91 ms | 11.77 ms | **2.4x** |
-| todo-list | S | 35 | 789.2 µs | 33.73 ms | **42.7x** |
-| search-input | S | 55 | 4.09 ms | 17.88 ms | **4.4x** |
-| toolbar | S | 60 | 67.5 µs | 24.05 ms | **356.5x** ¹ |
-| data-table | M | 80 | 29.58 ms | 45.11 ms | **1.5x** |
-| time-slot-picker | M | 81 | 17.53 ms | 24.32 ms | **1.4x** |
-| booking-list | L | 152 | 56.44 ms | 60.59 ms | **1.1x** |
-| canvas-sidebar | L | 272 | 213.01 ms | 77.79 ms | **0.4x** |
+| Fixture          | Size | LOC | OXC p50   | Babel p50 | Speedup      |
+| ---------------- | ---- | --- | --------- | --------- | ------------ |
+| simple-counter   | XS   | 8   | 133.3 µs  | 8.57 ms   | **64.3x**    |
+| theme-toggle     | XS   | 16  | 288.6 µs  | 8.88 ms   | **30.8x**    |
+| status-badge     | XS   | 21  | 183.1 µs  | 9.83 ms   | **53.7x**    |
+| avatar-group     | XS   | 23  | 4.91 ms   | 11.77 ms  | **2.4x**     |
+| todo-list        | S    | 35  | 789.2 µs  | 33.73 ms  | **42.7x**    |
+| search-input     | S    | 55  | 4.09 ms   | 17.88 ms  | **4.4x**     |
+| toolbar          | S    | 60  | 67.5 µs   | 24.05 ms  | **356.5x** ¹ |
+| data-table       | M    | 80  | 29.58 ms  | 45.11 ms  | **1.5x**     |
+| time-slot-picker | M    | 81  | 17.53 ms  | 24.32 ms  | **1.4x**     |
+| booking-list     | L    | 152 | 56.44 ms  | 60.59 ms  | **1.1x**     |
+| canvas-sidebar   | L    | 272 | 213.01 ms | 77.79 ms  | **0.4x**     |
 
 ¹ Bail-out — OXC exits early without compiling.
 
@@ -334,14 +336,14 @@ All numbers measured on the 16-fixture benchmark suite (`--release` build, 30 it
 
 Simulates compiling an entire project — all 16 fixtures compiled sequentially as a single batch, measured 30 times.
 
-| Metric | OXC | Babel |
-|--------|-----|-------|
-| Files compiled | 16 | 16 |
-| Total LOC | 1,664 | 1,664 |
-| Batch p50 | 340.91 ms | 575.55 ms |
-| Batch p95 | 385.79 ms | 636.77 ms |
-| Throughput | 4,881 LOC/s | 2,891 LOC/s |
-| **Speedup** | **1.7x** | baseline |
+| Metric         | OXC         | Babel       |
+| -------------- | ----------- | ----------- |
+| Files compiled | 16          | 16          |
+| Total LOC      | 1,664       | 1,664       |
+| Batch p50      | 340.91 ms   | 575.55 ms   |
+| Batch p95      | 385.79 ms   | 636.77 ms   |
+| Throughput     | 4,881 LOC/s | 2,891 LOC/s |
+| **Speedup**    | **1.7x**    | baseline    |
 
 > **Note:** OXC is now **1.9x faster than Babel** in batch mode, up from 0.5x before Phases 179–180 performance optimizations. The improvement comes from in-place state merging, BFS buffer reuse, sorted worklist processing, and structural optimizations (Rc<ReactiveScope>, IdVec/IdSet). Some of the speedup is also due to 6 fixtures now bailing early (0 compilation work) — see memoization section above.
 
@@ -349,10 +351,10 @@ Simulates compiling an entire project — all 16 fixtures compiled sequentially 
 
 Simulates Vite's transform pipeline with content-hash caching — cold build (all files, no cache) and warm HMR rebuild (one file changed, rest cached).
 
-| Scenario | OXC p50 | Babel p50 | Speedup |
-|----------|---------|-----------|---------|
-| Cold build (16 files, no cache) | 336.49 ms | 533.23 ms | **1.6x** |
-| Warm HMR rebuild (1 file changed) | 460.5 µs | 91.62 ms | **199x** |
+| Scenario                          | OXC p50   | Babel p50 | Speedup  |
+| --------------------------------- | --------- | --------- | -------- |
+| Cold build (16 files, no cache)   | 336.49 ms | 533.23 ms | **1.6x** |
+| Warm HMR rebuild (1 file changed) | 460.5 µs  | 91.62 ms  | **199x** |
 
 Changed file: `multi-step-form` (284 LOC, largest fixture)
 
@@ -364,16 +366,16 @@ Measures ReactDOMServer.renderToString() timing for original (uncompiled), OXC-c
 
 > **Note:** OXC-compiled output renders correctly for 23 of 25 benchmark fixtures (92% render equivalence). `command-menu` and `canvas-sidebar` have content divergences. Most OXC-compiled fixtures hit runtime errors during SSR benchmarking due to codegen differences (e.g., scope variable ordering, missing declarations).
 
-| Fixture | Size | Original p50 | OXC p50 | Babel p50 |
-|---------|------|-------------|---------|-----------|
-| simple-counter | XS | 62.0 µs | 59.1 µs | 61.1 µs |
-| theme-toggle | XS | 23.1 µs | 23.6 µs | 21.8 µs |
-| todo-list | S | 92.0 µs | — | 91.0 µs |
-| form-validation | S | 153.5 µs | — | 143.7 µs |
-| data-table | M | 162.6 µs | — | 177.0 µs |
-| color-picker | M | 13.6 µs | — | 11.0 µs |
-| booking-list | L | 213.5 µs | — | 240.5 µs |
-| availability-schedule | L | 201.0 µs | — | 206.5 µs |
+| Fixture               | Size | Original p50 | OXC p50 | Babel p50 |
+| --------------------- | ---- | ------------ | ------- | --------- |
+| simple-counter        | XS   | 62.0 µs      | 59.1 µs | 61.1 µs   |
+| theme-toggle          | XS   | 23.1 µs      | 23.6 µs | 21.8 µs   |
+| todo-list             | S    | 92.0 µs      | —       | 91.0 µs   |
+| form-validation       | S    | 153.5 µs     | —       | 143.7 µs  |
+| data-table            | M    | 162.6 µs     | —       | 177.0 µs  |
+| color-picker          | M    | 13.6 µs      | —       | 11.0 µs   |
+| booking-list          | L    | 213.5 µs     | —       | 240.5 µs  |
+| availability-schedule | L    | 201.0 µs     | —       | 206.5 µs  |
 
 Two OXC fixtures render successfully in SSR (`simple-counter` at 1.05x improvement, `theme-toggle` at 0.98x vs uncompiled). Babel-compiled output is within 1.04x of uncompiled on average — the memoization cache overhead roughly offsets any render savings on initial render, as expected (memoization benefits show on re-renders with unchanged deps, not measured in SSR).
 
@@ -381,30 +383,30 @@ Two OXC fixtures render successfully in SSR (`simple-counter` at 1.05x improveme
 
 The e2e benchmark clones real open-source projects that use Vite + React, builds them with `babel-plugin-react-compiler` (baseline), then patches the Vite config to swap in the OXC plugin and rebuilds. All builds run 3 iterations; median is reported.
 
-| Project | Scale | React Files | Babel Build | OXC Build | Speedup |
-|---------|-------|-------------|-------------|-----------|---------|
-| [ephe](https://github.com/unvalley/ephe) (PWA markdown editor) | small | 19 | 8.21s | 8.48s | **0.97x** |
-| [rai-pal](https://github.com/Raicuparta/rai-pal) (Tauri game mod manager) | medium | 42 | 8.09s | 7.31s | **1.11x** |
-| [arcomage-hd](https://github.com/arcomage/arcomage-hd) (web card game) | large | 62 | 14.30s | 10.11s | **1.42x** |
-| [docmost](https://github.com/docmost/docmost) (collaborative wiki, 10.7K★) | large | 307 | 2.84s | 7.93s | **0.36x** |
+| Project                                                                    | Scale  | React Files | Babel Build | OXC Build | Speedup   |
+| -------------------------------------------------------------------------- | ------ | ----------- | ----------- | --------- | --------- |
+| [ephe](https://github.com/unvalley/ephe) (PWA markdown editor)             | small  | 19          | 8.21s       | 8.48s     | **0.97x** |
+| [rai-pal](https://github.com/Raicuparta/rai-pal) (Tauri game mod manager)  | medium | 42          | 8.09s       | 7.31s     | **1.11x** |
+| [arcomage-hd](https://github.com/arcomage/arcomage-hd) (web card game)     | large  | 62          | 14.30s      | 10.11s    | **1.42x** |
+| [docmost](https://github.com/docmost/docmost) (collaborative wiki, 10.7K★) | large  | 307         | 2.84s       | 7.93s     | **0.36x** |
 
 #### Bundle Size Comparison
 
-| Project | Babel JS | OXC JS | Delta |
-|---------|----------|--------|-------|
-| ephe | 2.8 MB | 2.9 MB | +13.2 KB (+0.5%) |
-| rai-pal | 634.3 KB | 613.6 KB | -20.7 KB (-3.3%) |
+| Project     | Babel JS | OXC JS   | Delta              |
+| ----------- | -------- | -------- | ------------------ |
+| ephe        | 2.8 MB   | 2.9 MB   | +13.2 KB (+0.5%)   |
+| rai-pal     | 634.3 KB | 613.6 KB | -20.7 KB (-3.3%)   |
 | arcomage-hd | 845.0 KB | 574.7 KB | -270.3 KB (-32.0%) |
-| docmost | 10.4 MB | 10.4 MB | +40.9 KB (+0.4%) |
+| docmost     | 10.4 MB  | 10.4 MB  | +40.9 KB (+0.4%)   |
 
 #### OXC Transform Coverage
 
-| Project | React Files | Compiled | Skipped | Errors | Coverage |
-|---------|------------|----------|---------|--------|----------|
-| ephe | 19 | 17 | 31 | 0 | 100% |
-| rai-pal | 42 | 41 | 22 | 0 | 100% |
-| arcomage-hd | 62 | 37 | 112 | 1 | 97% |
-| docmost | 307 | 222 | 250 | 0 | 100% |
+| Project     | React Files | Compiled | Skipped | Errors | Coverage |
+| ----------- | ----------- | -------- | ------- | ------ | -------- |
+| ephe        | 19          | 17       | 31      | 0      | 100%     |
+| rai-pal     | 42          | 41       | 22      | 0      | 100%     |
+| arcomage-hd | 62          | 37       | 112     | 1      | 97%      |
+| docmost     | 307         | 222      | 250     | 0      | 100%     |
 
 > **Coverage**: OXC transform coverage is **97–100%** across all four projects. Nearly all React components are compiled by OXC.
 >
@@ -478,7 +480,7 @@ node scripts/bench-compare.mjs --iterations 20 --warmup 5
 
 ## Project Status
 
-This project was an experiment in porting Meta's React Compiler from TypeScript/Babel to Rust/OXC using Claude Code as the primary development tool. After 190 implementation phases, the experiment has concluded. Here is an honest assessment of what was achieved and what remains fundamentally difficult.
+This project is a port of Meta's React Compiler from TypeScript/Babel to Rust/OXC. Here is an honest assessment of what was achieved and what remains fundamentally difficult.
 
 ### What was achieved
 
@@ -492,6 +494,7 @@ This project was an experiment in porting Meta's React Compiler from TypeScript/
 ### What was learned about AI-assisted compiler development
 
 **Claude Code was effective for:**
+
 - Implementing well-specified compiler passes from upstream TypeScript source
 - Writing conformance test infrastructure and debugging test failures
 - Performance optimization (profiling, algorithmic improvements, structural refactoring)
@@ -499,13 +502,14 @@ This project was an experiment in porting Meta's React Compiler from TypeScript/
 - Systematic root cause analysis with hypothesis testing
 
 **Claude Code struggled with:**
-- Architectural decisions that compound across 65 passes — early choices (like separate PropertyLoad instructions vs property paths on Places) had consequences that were only discovered 100+ phases later
+
+- Architectural decisions that compound across 65 passes — early choices (like separate PropertyLoad instructions vs property paths on Places) had consequences that were only discovered much later
 - The coupled system problem — the `effective_range` workaround created a web of compensating errors where fixing one pass broke others
 - JavaScript-to-Rust semantic translation — JS reference semantics vs Rust value semantics caused subtle bugs (stale operand identifiers, missing scope annotations) that were extremely difficult to diagnose
 
 ### Architectural gaps that block further progress
 
-After exhaustive investigation (3 line-by-line upstream comparisons, 10 scope grouping algorithms tested, 7 preserve-memo approaches attempted), the remaining conformance gaps trace to three fundamental architectural differences from upstream:
+After exhaustive investigation, the remaining conformance gaps trace to three fundamental architectural differences from upstream:
 
 1. **HIR instruction IDs differ from upstream** — Our HIR builder produces different instruction numbering than Babel's BuildHIR.ts. This shifts mutable ranges by small amounts across hundreds of identifiers, causing the scope grouping union-find to produce different scopes. The `effective_range = max(mutable_range, last_use + 1)` workaround compensates but causes 419 fixtures to over-merge. No scope grouping algorithm tested (use-based, hybrid, threshold-based, split group/scope) improved beyond the workaround.
 
