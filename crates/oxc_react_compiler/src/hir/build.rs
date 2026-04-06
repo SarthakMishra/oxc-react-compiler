@@ -2026,15 +2026,32 @@ impl HIRBuilder {
 
             // Member expression (static/computed)
             Expression::StaticMemberExpression(member) => {
-                let object = self.lower_expression(&member.object);
-                self.emit(
-                    InstructionValue::PropertyLoad {
-                        object,
+                let mut object = self.lower_expression(&member.object);
+                // DIVERGENCE: Fold non-optional static property accesses into the
+                // Place's property_path instead of emitting a PropertyLoad instruction.
+                // This produces `Place { identifier: a, property_path: ["b","c"] }` for
+                // `a.b.c` rather than intermediate temps, giving downstream passes
+                // (scope inference, dependency tracking) direct visibility into the
+                // full property path without needing to chase PropertyLoad chains.
+                let can_fold = !member.optional
+                    && (object.identifier.name.is_some() || !object.property_path.is_empty());
+                if can_fold {
+                    object.property_path.push(PropertyPathEntry {
                         property: member.property.name.to_string(),
-                        optional: member.optional,
-                    },
-                    loc,
-                )
+                        optional: false,
+                    });
+                    object.loc = loc;
+                    object
+                } else {
+                    self.emit(
+                        InstructionValue::PropertyLoad {
+                            object,
+                            property: member.property.name.to_string(),
+                            optional: member.optional,
+                        },
+                        loc,
+                    )
+                }
             }
             Expression::ComputedMemberExpression(member) => {
                 let object = self.lower_expression(&member.object);
