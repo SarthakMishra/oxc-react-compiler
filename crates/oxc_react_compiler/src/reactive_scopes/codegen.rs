@@ -911,6 +911,7 @@ fn build_declare_merge_set(
     scope_skip_indices: &FxHashSet<usize>,
     pre_declared: &FxHashSet<String>,
     name_promotions: &FxHashMap<String, String>,
+    inline_map: &InlineMap,
 ) -> FxHashSet<usize> {
     let mut merge_set = FxHashSet::default();
     for i in 0..instructions.len().saturating_sub(1) {
@@ -930,11 +931,20 @@ fn build_declare_merge_set(
         if pre_declared.contains(decl_name.as_ref()) {
             continue;
         }
-        let next_i = i + 1;
-        // Next instruction must not be folded into scope promotion
-        if scope_skip_indices.contains(&next_i) {
-            continue;
-        }
+        // Find the next non-skipped instruction after the DeclareLocal.
+        // Inlined temps, scope-promoted instructions, and dead temps are all
+        // skipped during emission, so the "next visible instruction" may not
+        // be at index i+1.
+        let next_i = match find_next_visible_instruction(
+            instructions,
+            i + 1,
+            scope_skip_indices,
+            inline_map,
+            name_promotions,
+        ) {
+            Some(idx) => idx,
+            None => continue,
+        };
         // Next must be a StoreLocal for the same variable
         let ReactiveInstruction::Instruction(store_instr) = &instructions[next_i] else {
             continue;
@@ -952,6 +962,43 @@ fn build_declare_merge_set(
         merge_set.insert(i);
     }
     merge_set
+}
+
+/// Find the next instruction index that will actually be emitted (not inlined,
+/// not skipped by scope promotions, not dead).
+fn find_next_visible_instruction(
+    instructions: &[ReactiveInstruction],
+    start: usize,
+    scope_skip_indices: &FxHashSet<usize>,
+    inline_map: &InlineMap,
+    name_promotions: &FxHashMap<String, String>,
+) -> Option<usize> {
+    for (j, ri) in instructions.iter().enumerate().skip(start) {
+        // Skip scope-promoted instructions
+        if scope_skip_indices.contains(&j) {
+            continue;
+        }
+        let ReactiveInstruction::Instruction(instr) = ri else {
+            // Terminal or Scope — this is a visible boundary, return it
+            return Some(j);
+        };
+        // Check if this instruction would be skipped due to inlining
+        if is_temp_place(&instr.lvalue) {
+            let temp_name = format!("t{}", instr.lvalue.identifier.id.0);
+            if let Some(mapped) = inline_map.get(&temp_name)
+                && mapped != STMT_ONLY_SENTINEL
+            {
+                // Inlined or dead — skip
+                continue;
+            }
+        }
+        // Check if it would be skipped by name promotion
+        if should_skip_for_promotion(instr, name_promotions) {
+            continue;
+        }
+        return Some(j);
+    }
+    None
 }
 
 /// Generate the RHS expression string for an inlinable instruction value,
@@ -1661,6 +1708,7 @@ fn codegen_block(
         &scope_skip_indices,
         declared,
         &name_promotions,
+        &inline_map,
     );
     for (idx, instr) in block.instructions.iter().enumerate() {
         // Skip instructions that were folded into scope output promotions

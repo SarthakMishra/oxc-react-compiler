@@ -94,9 +94,7 @@ capture_mutate-across-fns-iife.js
 capture_mutate-across-fns.js
 capturing-arrow-function-1.js
 capturing-fun-alias-captured-mutate-2-iife.js
-capturing-fun-alias-captured-mutate-2.js
 capturing-fun-alias-captured-mutate-arr-2-iife.js
-capturing-fun-alias-captured-mutate-arr-2.js
 capturing-func-alias-captured-mutate-arr-iife.js
 capturing-func-alias-captured-mutate-arr.js
 capturing-func-alias-captured-mutate-iife.js
