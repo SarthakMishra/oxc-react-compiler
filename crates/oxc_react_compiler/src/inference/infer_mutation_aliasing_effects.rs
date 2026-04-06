@@ -1276,32 +1276,18 @@ fn apply_call_effect(
         hir,
     );
 
-    // Build operand list: function (if mutates_function) + receiver + args
+    // Build operand list: receiver + function + args (always include function).
+    // Upstream iterates [receiver, function, ...args] and only skips
+    // MutateTransitiveConditionally for function when !mutatesFunction.
+    // MaybeAlias and cross-arg Capture are applied to ALL operands.
     let mut operands: Vec<Place> = Vec::new();
-    if mutates_function {
-        operands.push(function.clone());
-    }
     operands.push(receiver.clone());
+    operands.push(function.clone());
     for arg in args {
         operands.push(arg.clone());
     }
 
-    // 2. MutateTransitiveConditionally each operand
-    for operand in &operands {
-        apply_effect(
-            ctx,
-            state,
-            &AliasingEffect::MutateTransitiveConditionally { value: operand.clone() },
-            initialized,
-            effects,
-            block_idx,
-            instr_idx,
-            0,
-            hir,
-        );
-    }
-
-    // 3. MaybeAlias each operand to the return value
+    // 2. MaybeAlias each operand to the return value (edges before mutations)
     for operand in &operands {
         apply_effect(
             ctx,
@@ -1316,7 +1302,7 @@ fn apply_call_effect(
         );
     }
 
-    // 4. Cross-arg capture: each operand may be captured into each other
+    // 3. Cross-arg capture: each operand may be captured into each other
     for (i, operand) in operands.iter().enumerate() {
         for (j, other) in operands.iter().enumerate() {
             if i == j {
@@ -1334,6 +1320,24 @@ fn apply_call_effect(
                 hir,
             );
         }
+    }
+
+    // 4. MutateTransitiveConditionally each operand (skip function if !mutates_function)
+    for operand in &operands {
+        if !mutates_function && operand.identifier.id == function.identifier.id {
+            continue;
+        }
+        apply_effect(
+            ctx,
+            state,
+            &AliasingEffect::MutateTransitiveConditionally { value: operand.clone() },
+            initialized,
+            effects,
+            block_idx,
+            instr_idx,
+            0,
+            hir,
+        );
     }
 }
 

@@ -97,7 +97,7 @@ pub fn compute_instruction_effects(
             effects.push(AliasingEffect::Apply {
                 receiver: callee.clone(),
                 function: callee.clone(),
-                mutates_function: false,
+                mutates_function: true, // upstream: mutatesCallee = true for CallExpression
                 args: args.clone(),
                 into: lvalue.clone(),
                 signature: sig,
@@ -143,10 +143,11 @@ pub fn compute_instruction_effects(
 
         InstructionValue::PropertyStore { object, value, .. }
         | InstructionValue::ComputedStore { object, value, .. } => {
-            // Capture MUST come before Mutate: the BFS mutation propagation
-            // skips edges with index >= mutation_index. If Capture is emitted
-            // after Mutate, its edge index is higher and gets skipped, preventing
-            // transitive range propagation through aliasing chains (z→y→x).
+            // Capture before MutateTransitive: the BFS mutation propagation
+            // skips edges with index >= mutation_index. Capture edges must have
+            // lower indices to be followed during BFS traversal.
+            // MutateTransitive (not Mutate) enables transitive range propagation
+            // through capture chains (z→y→x via PropertyStore).
             effects.push(AliasingEffect::Capture { from: value.clone(), into: object.clone() });
             effects.push(AliasingEffect::MutateTransitive { value: object.clone() });
         }
