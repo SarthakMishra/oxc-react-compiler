@@ -1082,6 +1082,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             effect: crate::hir::types::Effect::Read,
                             reactive: resolved.root_reactive,
                             loc: place.loc,
+                            property_path: vec![],
                         };
                         if !is_internal(&root_place)
                             && !non_reactive_ids.contains(&root.id)

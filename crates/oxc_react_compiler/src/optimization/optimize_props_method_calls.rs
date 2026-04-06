@@ -75,6 +75,7 @@ pub fn optimize_props_method_calls(hir: &mut HIR) {
                     effect: Effect::Read,
                     reactive: false,
                     loc: instr.loc,
+                    property_path: vec![],
                 };
 
                 // Create the PropertyLoad instruction.

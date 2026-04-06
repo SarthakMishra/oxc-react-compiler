@@ -107,6 +107,7 @@ mod tests {
             effect: Effect::Unknown,
             reactive: false,
             loc: Span::default(),
+            property_path: vec![],
         }
     }
 

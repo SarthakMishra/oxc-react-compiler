@@ -39,6 +39,7 @@ fn make_place(ids: &mut IdGenerator, name: &str) -> Place {
         effect: Effect::Unknown,
         reactive: false,
         loc: dummy_span(),
+        property_path: vec![],
     }
 }
 
@@ -48,6 +49,7 @@ fn make_reactive_place(ids: &mut IdGenerator, name: &str) -> Place {
         effect: Effect::Read,
         reactive: true,
         loc: dummy_span(),
+        property_path: vec![],
     }
 }
 

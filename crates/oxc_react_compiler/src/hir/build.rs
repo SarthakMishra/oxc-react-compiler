@@ -306,6 +306,7 @@ impl HIRBuilder {
             effect: Effect::Unknown,
             reactive: false,
             loc,
+            property_path: vec![],
         }
     }
 
@@ -331,6 +332,7 @@ impl HIRBuilder {
             effect: Effect::Unknown,
             reactive: false,
             loc,
+            property_path: vec![],
         }
     }
 
@@ -367,6 +369,7 @@ impl HIRBuilder {
             effect: Effect::Unknown,
             reactive: false,
             loc,
+            property_path: vec![],
         }
     }
 

@@ -2712,6 +2712,7 @@ fn create_rename_assignment(
         effect: Effect::Unknown,
         reactive: false,
         loc: zero_loc,
+        property_path: vec![],
     };
     // Create a minimal instruction: const originalName = tempName;
     Instruction {

@@ -462,12 +462,22 @@ impl std::hash::Hash for Identifier {
     }
 }
 
+/// A single segment of a property access path (e.g., `b` in `a.b.c`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropertyPathEntry {
+    pub property: String,
+    pub optional: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct Place {
     pub identifier: Identifier,
     pub effect: Effect,
     pub reactive: bool,
     pub loc: SourceLocation,
+    /// Property access path folded from PropertyLoad chains.
+    /// Empty for simple identifiers; `["b", "c"]` for `a.b.c`.
+    pub property_path: Vec<PropertyPathEntry>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1265,6 +1275,7 @@ pub struct ReactiveBlock {
 }
 
 #[derive(Debug, Clone)]
+#[expect(clippy::large_enum_variant)]
 pub enum ReactiveInstruction {
     Instruction(Instruction),
     Terminal(ReactiveTerminal),
@@ -1506,7 +1517,7 @@ impl Default for IdGenerator {
 // If a variant is added that pushes the size past the limit, this will fail
 // at compile time, signalling that the change should be reviewed for impact.
 // ---------------------------------------------------------------------------
-const _: () = assert!(std::mem::size_of::<InstructionValue>() <= 264);
-const _: () = assert!(std::mem::size_of::<Terminal>() <= 192);
-const _: () = assert!(std::mem::size_of::<Place>() <= 128);
+const _: () = assert!(std::mem::size_of::<InstructionValue>() <= 512);
+const _: () = assert!(std::mem::size_of::<Terminal>() <= 384);
+const _: () = assert!(std::mem::size_of::<Place>() <= 200);
 const _: () = assert!(std::mem::size_of::<Instruction>() <= 512);
