@@ -120,11 +120,19 @@ The `effective_range = max(mutable_range.end, last_use + 1)` workaround in `infe
 ### Group B: Preserve-Memo False Bails (94 fixtures)
 
 **Bail error: "Existing memoization could not be preserved"**
-**Status: BLOCKED by Group A**
+**Status: BLOCKED by Group A (scope surplus)**
 
-Infrastructure is READY. Scope propagation to `FinishMemoize.decl` reduces bails 94→14 (-80) but causes -52 conformance regression from scope surplus. Needs accurate scope inference first.
+**Root cause (confirmed Phase 189):** Upstream JS uses shared identifier references, so `infer_reactive_scope_variables` setting `identifier.scope` on a defining instruction's lvalue also updates FinishMemoize.decl operands. Our Rust port uses cloned identifiers, so operand Places don't carry scope annotations. Check 1 in `validate_preserved_manual_memoization` checks `decl.identifier.scope` which is always None.
 
-**Dependency:** A1 + A2 → re-enable scope propagation → +80 fixtures
+**What works:** Propagating scope to FinishMemoize.decl at pass 33 (infer_reactive_scope_variables) reduces bails 94→42. But propagate_scope_dependencies_hir (pass 46) sees the decl's scope and adds it as a scope declaration, creating surplus cache slots → -39 regression (568→529).
+
+**Why post-pass doesn't work:** By the end of the pipeline, the defining instruction's lvalue scope has been stripped by scope pruning passes (passes 38-45). The scope ID can no longer be recovered.
+
+**Two viable fix approaches (not yet attempted):**
+1. Add a `validation_scope: Option<ScopeId>` field to Identifier that participates in validation but NOT in scope declaration logic
+2. Modify `propagate_scope_dependencies_hir` to skip FinishMemoize.decl identifiers when building scope declarations (needs upstream comparison)
+
+**Dependency:** Either approach requires careful coordination with the scope declaration pipeline. Approach 2 is simpler but may have side effects.
 
 ---
 
