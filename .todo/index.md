@@ -112,7 +112,8 @@ The `effective_range = max(mutable_range.end, last_use + 1)` workaround in `infe
 - Do NOT make blanket model changes (cascading regressions)
 - Do NOT switch `use_mutable_range` without fixing range computation first
 - Do NOT filter deps by name pattern (post-naming). Only structural filters work.
-- Do NOT re-enable scope propagation to FinishMemoize.decl until scope accuracy improves (-52 regression)
+- Do NOT propagate scope to FinishMemoize.decl in the HIR (pass 33) — causes -39 regression from surplus scope declarations
+- Do NOT fix Check 1 alone without also fixing Check 2/3 — causes -31 regression from error fixtures losing their accidental match
 - Do NOT attempt individual scope inference fixes without understanding the coupled system
 
 ---
@@ -120,19 +121,25 @@ The `effective_range = max(mutable_range.end, last_use + 1)` workaround in `infe
 ### Group B: Preserve-Memo False Bails (94 fixtures)
 
 **Bail error: "Existing memoization could not be preserved"**
-**Status: BLOCKED by Group A (scope surplus)**
+**Status: BLOCKED — Check 1 fix found, but blocked by Check 2/3 gaps**
 
 **Root cause (confirmed Phase 189):** Upstream JS uses shared identifier references, so `infer_reactive_scope_variables` setting `identifier.scope` on a defining instruction's lvalue also updates FinishMemoize.decl operands. Our Rust port uses cloned identifiers, so operand Places don't carry scope annotations. Check 1 in `validate_preserved_manual_memoization` checks `decl.identifier.scope` which is always None.
 
-**What works:** Propagating scope to FinishMemoize.decl at pass 33 (infer_reactive_scope_variables) reduces bails 94→42. But propagate_scope_dependencies_hir (pass 46) sees the decl's scope and adds it as a scope declaration, creating surplus cache slots → -39 regression (568→529).
+**Working approach found (Phase 190): HIR-based id_to_scope map**
+Build `FxHashMap<IdentifierId, ScopeId>` from HIR lvalue scopes (after all HIR passes, before RF conversion). Pass it to `validate_preserved_manual_memoization` as an extra parameter. For StoreLocal instructions whose value operand matches a FinishMemoize.decl ID, also map the value operand to the scope. This resolves 134/193 FinishMemoize decl scopes without touching the HIR or affecting downstream passes. Reduces bails 94→41 (-53).
 
-**Why post-pass doesn't work:** By the end of the pipeline, the defining instruction's lvalue scope has been stripped by scope pruning passes (passes 38-45). The scope ID can no longer be recovered.
+**Why it doesn't improve conformance:** The 53 fixtures that stop bailing are already in known-failures for OTHER compilation issues. And 31 fixtures that were "accidentally" matching (both sides bailed) now diverge because Check 1 passes but Check 2/3 don't catch the legitimate bail cases. Net: -31 (568→537).
 
-**Two viable fix approaches (not yet attempted):**
-1. Add a `validation_scope: Option<ScopeId>` field to Identifier that participates in validation but NOT in scope declaration logic
-2. Modify `propagate_scope_dependencies_hir` to skip FinishMemoize.decl identifiers when building scope declarations (needs upstream comparison)
+**Previous approaches that DON'T work:**
+- HIR scope propagation (pass 33): -39 regression from surplus scope declarations
+- RF-based scope map: IDs removed by inline_load_locals/prune_unused_lvalues
+- Post-pass propagation: scopes stripped by pruning passes
 
-**Dependency:** Either approach requires careful coordination with the scope declaration pipeline. Approach 2 is simpler but may have side effects.
+**To unblock (all required together):**
+1. Apply the HIR-based id_to_scope map approach (validated, code exists in Phase 190)
+2. Implement Check 3 ("dep mutated later") — requires `identifier.scope` on StartMemoize deps
+3. Improve Check 2 dep mismatch detection for edge cases
+4. Fix other compilation issues in the 53 formerly-bailing fixtures (to move them from known-failures to matched)
 
 ---
 
