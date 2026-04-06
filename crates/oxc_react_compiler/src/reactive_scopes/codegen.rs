@@ -3754,9 +3754,24 @@ fn extract_for_of_parts(init: &ReactiveBlock) -> (String, String) {
 }
 
 fn place_name(place: &Place) -> Cow<'_, str> {
-    match &place.identifier.name {
-        Some(name) => Cow::Borrowed(name.as_str()),
-        None => Cow::Owned(format!("t{}", place.identifier.id.0)),
+    let base = match &place.identifier.name {
+        Some(name) => name.as_str(),
+        None => "",
+    };
+    if place.property_path.is_empty() {
+        if base.is_empty() {
+            Cow::Owned(format!("t{}", place.identifier.id.0))
+        } else {
+            Cow::Borrowed(base)
+        }
+    } else {
+        let mut result =
+            if base.is_empty() { format!("t{}", place.identifier.id.0) } else { base.to_string() };
+        for entry in &place.property_path {
+            result.push('.');
+            result.push_str(&entry.property);
+        }
+        Cow::Owned(result)
     }
 }
 

@@ -331,7 +331,15 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             },
                         );
                     } else if place.identifier.name.is_some() {
-                        // Root named variable
+                        // Root named variable — propagate any folded property_path
+                        let path = place
+                            .property_path
+                            .iter()
+                            .map(|e| DependencyPathEntry {
+                                property: e.property.clone(),
+                                optional: e.optional,
+                            })
+                            .collect();
                         temp_map.insert(
                             instr.lvalue.identifier.id,
                             TemporaryInfo {
@@ -340,7 +348,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                                 root_name: place.identifier.name.clone(),
                                 root_reactive: place.reactive,
                                 root_loc: place.identifier.loc,
-                                path: Vec::new(),
+                                path,
                             },
                         );
                     }
@@ -368,6 +376,19 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                         );
                     } else if object.identifier.name.is_some() {
                         // Direct property load of a named variable (no LoadLocal intermediate)
+                        // Include any folded property_path from the object Place
+                        let mut path: Vec<DependencyPathEntry> = object
+                            .property_path
+                            .iter()
+                            .map(|e| DependencyPathEntry {
+                                property: e.property.clone(),
+                                optional: e.optional,
+                            })
+                            .collect();
+                        path.push(DependencyPathEntry {
+                            property: property.clone(),
+                            optional: *optional,
+                        });
                         temp_map.insert(
                             instr.lvalue.identifier.id,
                             TemporaryInfo {
@@ -376,10 +397,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                                 root_name: object.identifier.name.clone(),
                                 root_reactive: object.reactive,
                                 root_loc: object.identifier.loc,
-                                path: vec![DependencyPathEntry {
-                                    property: property.clone(),
-                                    optional: *optional,
-                                }],
+                                path,
                             },
                         );
                     }
@@ -509,9 +527,19 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             .as_deref()
                             .is_some_and(|n| non_reactive_names.contains(n))
                     {
+                        // DIVERGENCE: Convert Place.property_path (from folded
+                        // PropertyLoad chains) into DependencyPathEntry for deps.
+                        let dep_path: Vec<DependencyPathEntry> = place
+                            .property_path
+                            .iter()
+                            .map(|e| DependencyPathEntry {
+                                property: e.property.clone(),
+                                optional: e.optional,
+                            })
+                            .collect();
                         let deps = scope_deps.entry(scope_id).or_default();
                         let already_added = deps.iter().any(|d| {
-                            d.path.is_empty()
+                            d.path == dep_path
                                 && match (
                                     d.identifier.declaration_id,
                                     place.identifier.declaration_id,
@@ -524,7 +552,7 @@ pub fn propagate_scope_dependencies_hir(hir: &mut HIR, param_names: &[String]) {
                             deps.push(ReactiveScopeDependency {
                                 identifier: place.identifier.clone(),
                                 reactive: place.reactive,
-                                path: Vec::new(),
+                                path: dep_path,
                             });
                         }
                     }
