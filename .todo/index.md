@@ -1,7 +1,7 @@
 # oxc-react-compiler — Remaining Work
 
-> **Conformance: 560/1717 (32.6%)** | Known failures: 1157 | 0 panics | 0 unexpected divergences
-> Last updated: 2026-04-06 (Phase 181 — InferReactiveScopeVariables isMutable operand filter, +1 net)
+> **Conformance: 567/1717 (33.0%)** | Known failures: 1150 | 0 panics | 0 unexpected divergences
+> Last updated: 2026-04-05 (Phase 187 — PruneNonEscapingScopes force-memoize fix + DeclareLocal merge, +7 net)
 
 ---
 
