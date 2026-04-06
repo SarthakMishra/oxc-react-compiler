@@ -1,7 +1,7 @@
 # oxc-react-compiler — Remaining Work
 
 > **Conformance: 560/1717 (32.6%)** | Known failures: 1157 | 0 panics | 0 unexpected divergences
-> Last updated: 2026-04-05 (Phase 180 — IdVec/IdSet in 4 more validation passes, 10 of 17+ files done)
+> Last updated: 2026-04-06 (Phase 181 — InferReactiveScopeVariables isMutable operand filter, +1 net)
 
 ---
 
@@ -35,7 +35,7 @@
 ### What was DISPROVEN:
 
 - ❌ **"Apply effects are skipped"** — Apply effects ARE fully resolved in Pass 16 (`infer_mutation_aliasing_effects.rs` lines 1035-1135). The `AliasingEffect::Apply { .. } => {}` skip in Pass 17 is a correct no-op matching upstream's invariant.
-- ❌ **"Switching to `use_mutable_range=true` would fix it"** — Tested: **-40 regression** (557→517). Despite producing correct slot counts for individually tested fixtures, the net effect is strongly negative. The `effective_range` workaround is more load-bearing than previously understood.
+- ❌ **"Switching to `use_mutable_range=true` would fix it"** — Tested: **-57 regression** (560→503) even after isMutable fix. Over-splitting dominates (+1 category: 66→145). Mutable ranges from `infer_mutation_aliasing_ranges` are still too narrow.
 
 ### What IS verified:
 
@@ -101,6 +101,7 @@ The `effective_range = max(mutable_range.end, last_use + 1)` workaround in `infe
 
 **Files:** `infer_mutation_aliasing_ranges.rs`, `infer_reactive_scope_variables.rs`
 
+- [x] **A3.0:** Line-by-line comparison of `InferReactiveScopeVariables.ts` with our code — isMutable operand filter fix (+1, 559->560), 8 divergences documented in `.analysis/scope-variables-comparison.md` ✅
 - [ ] **A3.1:** Line-by-line comparison of `InferMutationAliasingRanges.ts` with our `infer_mutation_aliasing_ranges.rs`
 - [ ] **A3.2:** Identify specific range differences for 3-5 -1 fixtures
 - [ ] **A3.3:** Fix range computation to produce wider ranges where needed

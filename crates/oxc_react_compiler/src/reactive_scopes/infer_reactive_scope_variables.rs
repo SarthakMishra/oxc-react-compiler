@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use crate::hir::types::{
-    DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId, InstructionId,
-    InstructionValue, MutableRange, ReactiveScope, ScopeId, SourceLocation, Type,
+    DeclarationId, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId,
+    InstructionId, InstructionValue, MutableRange, ReactiveScope, ScopeId, SourceLocation, Type,
 };
 use crate::utils::disjoint_set::DisjointSet;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -29,11 +29,15 @@ pub fn infer_reactive_scope_variables(
     let mut dsu: DisjointSet<IdentifierId> = DisjointSet::new();
     let mut ranges: FxHashMap<IdentifierId, MutableRange> = FxHashMap::default();
     let mut is_reactive: FxHashMap<IdentifierId, bool> = FxHashMap::default();
+    // is_allocating_id: for sentinel scope detection — only literal allocations
+    // (objects, arrays, JSX, functions) and non-hook, non-primitive calls whose
+    // result escapes. This is MORE restrictive than may_allocate.
     let mut is_allocating_id: FxHashSet<IdentifierId> = FxHashSet::default();
+    // is_mutable_id: broader — any instruction that produces a potentially mutable
+    // value (includes all may_allocate instructions).
     let mut is_mutable_id: FxHashSet<IdentifierId> = FxHashSet::default();
 
     // Build id-to-name map for resolving callee names through LoadGlobal/LoadLocal.
-    // This is needed to determine if a CallExpression is a hook call.
     let mut id_to_name: FxHashMap<IdentifierId, String> = FxHashMap::default();
     for (_, block) in &hir.blocks {
         for instr in &block.instructions {
@@ -62,7 +66,7 @@ pub fn infer_reactive_scope_variables(
             ranges.insert(id, instr.lvalue.identifier.mutable_range);
             last_use_map.insert(id, instr.lvalue.identifier.last_use);
             is_reactive.insert(id, instr.lvalue.reactive);
-            if is_allocating_instruction(
+            if is_allocating_for_sentinel(
                 &instr.value,
                 &instr.lvalue.identifier.type_,
                 &id_to_name,
@@ -70,14 +74,6 @@ pub fn infer_reactive_scope_variables(
                 instr.id,
             ) {
                 is_allocating_id.insert(id);
-            }
-            if is_mutable_instruction(
-                &instr.value,
-                &instr.lvalue.identifier.type_,
-                &id_to_name,
-                instr.lvalue.identifier.last_use,
-                instr.id,
-            ) {
                 is_mutable_id.insert(id);
             }
         }
@@ -107,45 +103,68 @@ pub fn infer_reactive_scope_variables(
         }
     }
 
+    // Declarations map: DeclarationId -> IdentifierId, used for phi handling.
+    // Upstream tracks this to union phi places with their declaration identifiers.
+    let mut declarations: FxHashMap<DeclarationId, IdentifierId> = FxHashMap::default();
+
+    // Helper: check if operand is mutable at instruction (upstream's isMutable)
+    // isMutable(instr, place) ≡ instr.id >= range.start && instr.id < range.end
+    let is_mutable = |instr_id: InstructionId, op_id: IdentifierId| -> bool {
+        if let Some(&op_range) = ranges.get(&op_id) {
+            let effective_end = if use_mutable_range {
+                op_range.end.0
+            } else {
+                let op_last_use = last_use_map.get(&op_id).copied().unwrap_or(InstructionId(0));
+                op_range.end.0.max(if op_last_use > InstructionId(0) {
+                    op_last_use.0 + 1
+                } else {
+                    0
+                })
+            };
+            instr_id.0 >= op_range.start.0 && instr_id.0 < effective_end
+        } else {
+            false
+        }
+    };
+
     // Phase 2: Union identifiers that should be in the same scope.
-    //
-    // Upstream uses `isMutable(instr, operand)` to check whether an operand is
-    // still within its mutable range at the current instruction. An operand
-    // whose mutable range has already ended is NOT unioned — it becomes a
-    // dependency of the scope rather than a member.
-    //
-    // `isMutable(instr, place)` ≡ `instr.id >= range.start && instr.id < range.end`
+    // Matches upstream findDisjointMutableValues with isMutable checks on operands
+    // and declarations map for phi handling.
     for (_, block) in &hir.blocks {
+        // Phi handling: union phi operands when the phi's mutable range extends
+        // beyond its definition (non-trivial range).
+        for phi in &block.phis {
+            let phi_id = phi.place.identifier.id;
+            let phi_range = phi.place.identifier.mutable_range;
+            if phi_range.end.0 > phi_range.start.0 + 1 {
+                for (_, operand) in &phi.operands {
+                    dsu.make_set(operand.identifier.id);
+                    let _ = dsu.union(phi_id, operand.identifier.id);
+                }
+            }
+        }
+
         for instr in &block.instructions {
             let lvalue_id = instr.lvalue.identifier.id;
             let lvalue_range = instr.lvalue.identifier.mutable_range;
             let instr_id = instr.id;
 
-            // Compute the "effective range end" for the lvalue.
-            // When use_mutable_range is true, use raw mutable_range.end (matching
-            // upstream's isMutable check). When false, extend with last_use as a
-            // workaround for historically narrow mutable ranges.
-            let lvalue_last_use = instr.lvalue.identifier.last_use;
+            let mut operands: Vec<IdentifierId> = Vec::new();
+
+            // Upstream: if lvalue has non-trivial range OR instruction allocates,
+            // add the lvalue to operands
             let lvalue_effective_end = if use_mutable_range {
                 lvalue_range.end.0
             } else {
+                let lvalue_last_use = instr.lvalue.identifier.last_use;
                 lvalue_range.end.0.max(if lvalue_last_use > InstructionId(0) {
                     lvalue_last_use.0 + 1
                 } else {
                     0
                 })
             };
-
-            // If the lvalue has a non-trivial effective range OR the instruction
-            // allocates, collect live operands and union them together.
-            // This matches upstream: `range.end > range.start + 1 || mayAllocate(env, instr)`
-            // DIVERGENCE: When use_mutable_range=false (default), we use effective_range
-            // (mutation + last_use) rather than mutable_range alone, because our
-            // mutable_range is still too narrow for correct scope grouping.
-            // Phase 131 tested use_mutable_range=true: +16 passes, -20 regressions
-            // (over-splitting, e.g. 9 slots vs expected 1). Still needs work.
             if lvalue_effective_end > lvalue_range.start.0 + 1
-                || is_allocating_instruction(
+                || is_allocating_for_sentinel(
                     &instr.value,
                     &instr.lvalue.identifier.type_,
                     &id_to_name,
@@ -153,47 +172,43 @@ pub fn infer_reactive_scope_variables(
                     instr.id,
                 )
             {
-                let operand_ids = collect_operand_ids(&instr.value);
-                for op_id in operand_ids {
-                    if param_destructure_target_ids.contains(&op_id) {
-                        continue;
+                operands.push(lvalue_id);
+            }
+
+            // Collect operands and declarations per instruction kind.
+            // First, handle declarations for StoreLocal/StoreContext/DeclareLocal/DeclareContext
+            // (matching upstream's declareIdentifier calls).
+            match &instr.value {
+                InstructionValue::DeclareLocal { lvalue, .. }
+                | InstructionValue::DeclareContext { lvalue } => {
+                    if let Some(decl_id) = lvalue.identifier.declaration_id {
+                        declarations.entry(decl_id).or_insert(lvalue.identifier.id);
                     }
-                    // Check if the operand is still "live" at this instruction.
-                    // Use effective range (mutation + last_use) for the liveness check.
-                    // Upstream's isMutable uses the full range which includes usage extension.
-                    if let Some(&op_range) = ranges.get(&op_id) {
-                        let op_effective_end = if use_mutable_range {
-                            op_range.end.0
-                        } else {
-                            let op_last_use =
-                                last_use_map.get(&op_id).copied().unwrap_or(InstructionId(0));
-                            op_range.end.0.max(if op_last_use > InstructionId(0) {
-                                op_last_use.0 + 1
-                            } else {
-                                0
-                            })
-                        };
-                        if instr_id.0 >= op_range.start.0 && instr_id.0 < op_effective_end {
-                            // Both lvalue_id and op_id are registered via make_set in Phase 1
-                            let _ = dsu.union(lvalue_id, op_id);
-                        }
+                }
+                InstructionValue::StoreLocal { lvalue, .. }
+                | InstructionValue::StoreContext { lvalue, .. } => {
+                    if let Some(decl_id) = lvalue.identifier.declaration_id {
+                        declarations.entry(decl_id).or_insert(lvalue.identifier.id);
                     }
+                }
+                _ => {}
+            }
+
+            // Collect operand IDs and filter by isMutable + start > 0.
+            // Upstream: for each operand, check isMutable(instr, operand) &&
+            // operand.identifier.mutableRange.start > 0 (exclude globals).
+            let all_ids = collect_operand_ids(&instr.value);
+            for op_id in all_ids {
+                if is_mutable(instr_id, op_id) {
+                    operands.push(op_id);
                 }
             }
-        }
 
-        // Union phi operands when the phi's mutable range extends beyond its
-        // definition (matching upstream's condition).
-        for phi in &block.phis {
-            let phi_id = phi.place.identifier.id;
-            let phi_range = phi.place.identifier.mutable_range;
-            // Upstream: phi range is non-trivial AND extends past the first instruction
-            // of the block. We approximate with: range spans more than 1 instruction.
-            if phi_range.end.0 > phi_range.start.0 + 1 {
-                for (_, operand) in &phi.operands {
-                    dsu.make_set(operand.identifier.id);
-                    let _ = dsu.union(phi_id, operand.identifier.id);
-                }
+            // Filter out param destructure targets
+            operands.retain(|id| !param_destructure_target_ids.contains(id));
+
+            if !operands.is_empty() {
+                dsu.union_many(&operands);
             }
         }
     }
@@ -210,7 +225,6 @@ pub fn infer_reactive_scope_variables(
         // Compute merged range for the scope
         let mut merged_range =
             MutableRange { start: InstructionId(u32::MAX), end: InstructionId(0) };
-        let mut any_reactive = false;
 
         for &member in &members {
             if let Some(&range) = ranges.get(&member) {
@@ -225,28 +239,31 @@ pub fn infer_reactive_scope_variables(
                         0
                     })
                 };
-                merged_range.start = InstructionId(merged_range.start.0.min(range.start.0));
+                if range.start.0 > 0 {
+                    merged_range.start = InstructionId(merged_range.start.0.min(range.start.0));
+                }
                 merged_range.end = InstructionId(merged_range.end.0.max(effective_end));
             }
+        }
+
+        let mut any_reactive = false;
+        for &member in &members {
             if is_reactive.get(&member).copied().unwrap_or(false) {
                 any_reactive = true;
+                break;
             }
         }
 
         // Check if any member is an allocating instruction (for sentinel scopes)
         let any_allocating = members.iter().any(|m| is_allocating_id.contains(m));
-        // Check if any member produces a mutable value (objects, arrays, calls, etc.)
-        // Reactive-only sets (primitives, LoadLocal, arithmetic) don't need scopes
-        // because those values are cheap to recompute and have no identity.
         let any_mutable = members.iter().any(|m| is_mutable_id.contains(m));
 
         // Create scope if:
         // - any_allocating (sentinel scope for identity memoization), OR
         // - any_reactive AND any_mutable (reactive computation producing a mutable value)
-        // Pure-reactive but non-mutable sets (e.g., `return x` where x is a param)
-        // don't get scopes — matches upstream's ValueKind.Mutable check.
         if (any_allocating || (any_reactive && any_mutable))
             && merged_range.end.0 > merged_range.start.0
+            && merged_range.start.0 > 0
         {
             let scope_idx = scopes.len();
             let scope = ReactiveScope {
@@ -261,7 +278,6 @@ pub fn infer_reactive_scope_variables(
                 is_allocating: any_allocating && !any_reactive,
             };
             scopes.push(scope);
-            // Map all member identifiers to this scope index (cheap u64 copy, no clone)
             for &member in &members {
                 id_to_scope_idx.insert(member, scope_idx);
             }
@@ -486,18 +502,10 @@ pub fn propagate_scope_membership_hir(hir: &mut HIR) {
     }
 }
 
-/// Returns true if an instruction value creates a new heap allocation.
-/// Used for sentinel scope detection: allocating expressions get scopes
-/// even without reactive deps (for identity memoization).
-///
-/// Matches upstream's `mayAllocate(env, instruction)` which checks:
-/// 1. The instruction kind (objects, arrays, calls, etc.)
-/// 2. The result type -- if the type is known to be primitive, the call
-///    does NOT allocate (e.g., `Math.max(1, 2)` returns a number).
-///
-/// Hook calls (useXxx) are excluded: they execute every render and their
-/// return values are reactive inputs, not allocating values.
-fn is_allocating_instruction(
+/// Allocating check for sentinel scope detection and scope creation gating.
+/// Excludes hook calls and calls whose results don't escape.
+/// Used for the `is_allocating` flag on ReactiveScope.
+fn is_allocating_for_sentinel(
     value: &InstructionValue,
     lvalue_type: &Type,
     id_to_name: &FxHashMap<IdentifierId, String>,
@@ -512,114 +520,31 @@ fn is_allocating_instruction(
         | InstructionValue::NewExpression { .. }
         | InstructionValue::FunctionExpression { .. }
         | InstructionValue::ObjectMethod { .. } => true,
-        // Calls may allocate unless the return type is known to be primitive
-        // or the callee is a hook (hooks are reactive inputs, not allocations).
-        //
-        // DIVERGENCE: Upstream's `mayAllocate` unconditionally returns true for
-        // calls with non-primitive return types, and relies on downstream passes
-        // (PropagateScopeDependenciesHIR, PruneNonEscapingScopes) to prune
-        // unnecessary sentinel scopes. We lack those passes, so we apply a
-        // heuristic: only treat a call as allocating if its result has a
-        // non-trivial mutable range (end > start + 1), meaning the value is
-        // used beyond the instruction that creates it. Calls whose results are
-        // immediately consumed (trivial range) don't benefit from identity
-        // memoization and shouldn't create sentinel scopes.
         InstructionValue::CallExpression { callee, .. } => {
             if matches!(lvalue_type, Type::Primitive(_)) {
                 return false;
             }
-            // Resolve callee name through LoadGlobal/LoadLocal for temporaries
             let name = callee
                 .identifier
                 .name
                 .as_deref()
                 .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
-            // Hook calls (useXxx) are reactive inputs, not allocations
             if name.is_some_and(|n| n.starts_with("use") && n.len() > 3) {
                 return false;
             }
-            // Only allocating if the result escapes (used after its definition)
             last_use > instr_id
         }
-        // Method calls: check both return type and hook pattern (React.useXxx)
         InstructionValue::MethodCall { property, .. } => {
             if matches!(lvalue_type, Type::Primitive(_)) {
                 return false;
             }
-            // Hook methods like React.useState, React.useRef
             if property.starts_with("use") && property.len() > 3 {
                 return false;
             }
-            // Only allocating if the result escapes (used after its definition)
             last_use > instr_id
         }
         InstructionValue::TaggedTemplateExpression { .. } => {
             if matches!(lvalue_type, Type::Primitive(_)) {
-                return false;
-            }
-            // Only allocating if the result escapes (used after its definition)
-            last_use > instr_id
-        }
-        _ => false,
-    }
-}
-
-/// Returns true if an instruction value produces a potentially mutable value
-/// (one that benefits from memoization when reactive).
-///
-/// This is broader than `is_allocating_instruction`: it also includes
-/// CallExpression and MethodCall, whose return types are unknown and
-/// conservatively treated as mutable (they may return objects/arrays).
-///
-/// Used to gate scope creation: a reactive-only set (primitives, LoadLocal,
-/// arithmetic) doesn't need a scope because those values are cheap to
-/// recompute and have no identity. A set with a mutable value (call result,
-/// object literal, etc.) DOES need a scope.
-///
-/// Matches upstream's `ValueKind.Mutable` in InferReactiveScopeVariables.ts.
-fn is_mutable_instruction(
-    value: &InstructionValue,
-    lvalue_type: &Type,
-    id_to_name: &FxHashMap<IdentifierId, String>,
-    last_use: InstructionId,
-    instr_id: InstructionId,
-) -> bool {
-    match value {
-        // Literal allocations are always mutable
-        InstructionValue::ObjectExpression { .. }
-        | InstructionValue::ArrayExpression { .. }
-        | InstructionValue::JsxExpression { .. }
-        | InstructionValue::JsxFragment { .. }
-        | InstructionValue::NewExpression { .. }
-        | InstructionValue::FunctionExpression { .. }
-        | InstructionValue::ObjectMethod { .. } => true,
-        // Calls: mutable only if NOT a hook call AND NOT a primitive return.
-        // Hook calls (useXxx) are reactive inputs — their results shouldn't
-        // trigger scope creation just because they appear in a reactive set.
-        // Non-hook calls with non-primitive returns are conservatively mutable.
-        // Calls: mutable only if NOT a hook call, NOT primitive, AND result escapes.
-        // Hook calls (useXxx) are reactive inputs — they provide state/context,
-        // not mutable allocations. Their results shouldn't trigger scope creation.
-        // Non-hook calls with non-primitive escaping results are conservatively mutable.
-        InstructionValue::CallExpression { callee, .. } => {
-            if matches!(lvalue_type, Type::Primitive(_)) {
-                return false;
-            }
-            let name = callee
-                .identifier
-                .name
-                .as_deref()
-                .or_else(|| id_to_name.get(&callee.identifier.id).map(String::as_str));
-            if name.is_some_and(|n| n.starts_with("use") && n.len() > 3) {
-                return false;
-            }
-            last_use > instr_id
-        }
-        InstructionValue::MethodCall { property, .. } => {
-            if matches!(lvalue_type, Type::Primitive(_)) {
-                return false;
-            }
-            if property.starts_with("use") && property.len() > 3 {
                 return false;
             }
             last_use > instr_id

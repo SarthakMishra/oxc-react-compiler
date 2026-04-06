@@ -66,6 +66,18 @@ impl<T: Copy + Eq + Hash> DisjointSet<T> {
         Some(())
     }
 
+    /// Unions all items in the slice into the same set.
+    /// Items must already be registered via `make_set`.
+    pub fn union_many(&mut self, items: &[T]) {
+        if items.len() < 2 {
+            return;
+        }
+        let first = items[0];
+        for &item in &items[1..] {
+            let _ = self.union(first, item);
+        }
+    }
+
     /// Returns `true` if `a` and `b` belong to the same set.
     ///
     /// Returns `None` if either `a` or `b` has not been registered via `make_set`.

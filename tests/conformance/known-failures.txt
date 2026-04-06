@@ -178,7 +178,6 @@ constant-propagation.js
 context-variable-reactive-explicit-control-flow.js
 context-variable-reactive-implicit-control-flow.js
 context-variable-reassigned-objectmethod.js
-context-variable-reassigned-outside-of-lambda.js
 context-variable-reassigned-reactive-capture.js
 context-variable-reassigned-two-lambdas.js
 controlled-input.js
@@ -575,7 +574,6 @@ new-mutability/array-map-captures-receiver-noAlias.js
 new-mutability/array-map-named-callback-cross-context.js
 new-mutability/array-push.js
 new-mutability/basic-mutation-via-function-expression.js
-new-mutability/basic-mutation.js
 new-mutability/capture-backedge-phi-with-later-mutation.js
 new-mutability/capture-in-function-expression-indirect.js
 new-mutability/capturing-function-alias-computed-load-2-iife.js
@@ -1167,3 +1165,4 @@ weakmap-constructor.js
 weakset-constructor.js
 while-conditional-continue.js
 while-with-assignment-in-test.js
+gating/gating-preserves-function-properties.tsx
