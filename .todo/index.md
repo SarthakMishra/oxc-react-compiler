@@ -36,6 +36,7 @@
 
 - ❌ **"Apply effects are skipped"** — Apply effects ARE fully resolved in Pass 16 (`infer_mutation_aliasing_effects.rs` lines 1035-1135). The `AliasingEffect::Apply { .. } => {}` skip in Pass 17 is a correct no-op matching upstream's invariant.
 - ❌ **"Switching to `use_mutable_range=true` would fix it"** — Tested: **-57 regression** (560→503) even after isMutable fix. Over-splitting dominates (+1 category: 66→145). Mutable ranges from `infer_mutation_aliasing_ranges` are still too narrow.
+- ❌ **"Alternative grouping algorithms can replace the effective_range workaround"** — Tested 8+ variants (use-based grouping, selective trivial-range extension with thresholds 1-50, split grouping/scoping, fixed +1/+2 extensions). Best results achieve 560 but are functionally equivalent to `use_mutable_range=false`. The over-merging problem cannot be solved by tweaking the grouping algorithm — it requires matching upstream instruction IDs or implementing PruneNonEscapingScopes. See `.analysis/scope-grouping-algorithms.md`.
 
 ### What IS verified:
 
