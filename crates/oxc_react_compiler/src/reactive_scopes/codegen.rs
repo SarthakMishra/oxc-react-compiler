@@ -673,12 +673,13 @@ fn build_inline_map(
                 // Scope outputs / protected names must always be emitted.
                 continue;
             }
-            // Dead call/method/new temps: emit as bare statement (no `let tN =`)
+            // Dead call/method/new/await temps: emit as bare statement (no `let tN =`)
             if matches!(
                 &instr.value,
                 InstructionValue::CallExpression { .. }
                     | InstructionValue::MethodCall { .. }
                     | InstructionValue::NewExpression { .. }
+                    | InstructionValue::Await { .. }
             ) {
                 inline_map.insert(temp_name, STMT_ONLY_SENTINEL.to_string());
                 continue;
@@ -1776,6 +1777,7 @@ fn codegen_block(
 }
 
 /// Like `codegen_block` but skips instructions at specific indices (already hoisted).
+/// Includes DeclareLocal+StoreLocal merge optimization from `codegen_block`.
 fn codegen_block_skip_hoisted(
     block: &ReactiveBlock,
     output: &mut String,
@@ -1791,8 +1793,23 @@ fn codegen_block_skip_hoisted(
     let mut phantom = FxHashSet::default();
     collect_scope_temps_recursive(&block.instructions, &mut scope_temps, &mut phantom);
     let inline_map = build_inline_map(&block.instructions, &scope_temps, tag_constants);
-    for (i, instr) in block.instructions.iter().enumerate() {
-        if hoisted_indices.contains(&i) {
+    // Build declare-merge set: DeclareLocal instructions that are immediately
+    // followed by a StoreLocal for the same variable can be merged into a single
+    // `let/const/var x = expr;` statement. Treat hoisted indices as skipped.
+    let empty_promotions = FxHashMap::default();
+    let declare_merge_set = build_declare_merge_set(
+        &block.instructions,
+        hoisted_indices,
+        declared,
+        &empty_promotions,
+        &inline_map,
+    );
+    for (idx, instr) in block.instructions.iter().enumerate() {
+        if hoisted_indices.contains(&idx) {
+            continue;
+        }
+        // Skip DeclareLocal instructions that will be merged into their following StoreLocal
+        if declare_merge_set.contains(&idx) {
             continue;
         }
         match instr {
@@ -1819,7 +1836,7 @@ fn codegen_block_skip_hoisted(
                 );
             }
             ReactiveInstruction::Scope(scope_block) => {
-                let empty_promotions = FxHashMap::default();
+                let empty_scope_promotions = FxHashMap::default();
                 codegen_scope(
                     scope_block,
                     output,
@@ -1827,7 +1844,7 @@ fn codegen_block_skip_hoisted(
                     indent,
                     declared,
                     tag_constants,
-                    &empty_promotions,
+                    &empty_scope_promotions,
                 );
             }
         }
@@ -2324,13 +2341,21 @@ fn codegen_instruction(
             }
         }
         InstructionValue::Await { value } => {
-            output.push_str(&format!(
-                "{}{}{} = await {};\n",
-                indent,
-                decl_keyword,
-                lvalue_name,
-                resolve_place(value, inline_map)
-            ));
+            if is_stmt_only {
+                output.push_str(&format!(
+                    "{}await {};\n",
+                    indent,
+                    resolve_place(value, inline_map)
+                ));
+            } else {
+                output.push_str(&format!(
+                    "{}{}{} = await {};\n",
+                    indent,
+                    decl_keyword,
+                    lvalue_name,
+                    resolve_place(value, inline_map)
+                ));
+            }
         }
         InstructionValue::Destructure { lvalue_pattern, value } => {
             let value_name = resolve_place(value, inline_map);
@@ -2593,7 +2618,12 @@ fn codegen_instruction(
             }
         }
         InstructionValue::UnsupportedNode { node } => {
-            output.push_str(&format!("{indent}/* unsupported: {node} */\n"));
+            // Emit specific statements for known node types instead of comments
+            if node == "DebuggerStatement" {
+                output.push_str(&format!("{indent}debugger;\n"));
+            } else {
+                output.push_str(&format!("{indent}/* unsupported: {node} */\n"));
+            }
         }
     }
 }

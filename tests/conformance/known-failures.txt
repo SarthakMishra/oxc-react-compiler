@@ -68,7 +68,6 @@ arrow-function-one-line-directive.js
 assignment-expression-computed.js
 assignment-in-nested-if.js
 assignment-variations.js
-await-side-effecting-promise.js
 await.js
 babel-existing-react-import.js
 babel-existing-react-kitchensink-import.js

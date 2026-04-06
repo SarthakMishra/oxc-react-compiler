@@ -1,19 +1,19 @@
 # oxc-react-compiler — Remaining Work
 
-> **Conformance: 567/1717 (33.0%)** | Known failures: 1150 | 0 panics | 0 unexpected divergences
-> Last updated: 2026-04-05 (Phase 187 — PruneNonEscapingScopes force-memoize fix + DeclareLocal merge, +7 net)
+> **Conformance: 568/1717 (33.1%)** | Known failures: 1149 | 0 panics | 0 unexpected divergences
+> Last updated: 2026-04-05 (Phase 188 — codegen fixes: debugger, await side-effect, DeclareLocal merge, +1)
 
 ---
 
-## Failure Breakdown (1160 divergences)
+## Failure Breakdown (1149 divergences)
 
 | Category | Count | % | Description |
 |----------|------:|---|-------------|
-| Both compile, slots DIFFER | 565 | 49% | We compile, they compile, but different scope/slot counts |
-| Both compile, slots MATCH | 227 | 20% | Same slots but codegen token diffs (naming, structure) |
-| We bail, they compile | 199 | 17% | False-positive bail-outs |
-| Both no memo (format diff) | 98 | 8% | Neither side memoizes, format differs |
-| We compile, they don't | 71 | 6% | We compile, upstream bails with error |
+| Both compile, slots DIFFER | 571 | 50% | We compile, they compile, but different scope/slot counts |
+| Both compile, slots MATCH | 222 | 19% | Same slots but codegen token diffs (naming, structure) |
+| We bail, they compile | 192 | 17% | False-positive bail-outs |
+| Both no memo (format diff) | 100 | 9% | Neither side memoizes, format differs |
+| We compile, they don't | 58 | 5% | We compile, upstream bails with error |
 
 ### Slot Diff Distribution (565 slot-DIFFER fixtures)
 
