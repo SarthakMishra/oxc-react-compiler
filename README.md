@@ -2,7 +2,7 @@
 
 Native [OXC](https://oxc.rs/) port of Meta's [React Compiler](https://github.com/facebook/react/tree/main/compiler/packages/babel-plugin-react-compiler) for the Rolldown/Vite pipeline, plus React 19 compiler-based lint rules for oxlint.
 
-> **Status:** This is an active port — 180+ implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 32.6% (560/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready but is progressing rapidly toward upstream parity.
+> **Status:** This port has reached 190 implementation phases covering HIR construction, SSA, type inference, mutation analysis, reactive scope inference, and codegen. Conformance is at 33.1% (568/1717 upstream fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML). The compiler does not crash on any upstream fixture (0 panics). It is **not** production-ready. See [Project Status](#project-status) for details on what was achieved and the remaining architectural gaps.
 
 ## Vite Plugin Usage
 
@@ -213,47 +213,45 @@ The compiler is tested against Meta's upstream React Compiler conformance suite 
 | Metric                      | Value        |
 | --------------------------- | ------------ |
 | Total upstream fixtures     | 1717         |
-| Passing (exact match)       | 560 (32.6%)  |
-| Failing (output divergence) | 1157         |
+| Passing (exact match)       | 568 (33.1%)  |
+| Failing (output divergence) | 1149         |
 | Panics / crashes            | 0            |
 | Render equivalence          | 92% (23/25)  |
 
-#### Divergence Breakdown (~1157 known failures)
+#### Divergence Breakdown (~1149 known failures)
 
 | Category                                 | Count | % of known |
 | ---------------------------------------- | ----- | ---------- |
-| Both compile, slots DIFFER               | 568   | 49.1%      |
-| Both compile, slots MATCH (codegen diff) | 221   | 19.1%      |
-| We compile, they don't (validation gaps) | 70    | 6.0%       |
-| We bail, they compile                    | 200   | 17.3%      |
-| Both no memo (format diff)               | 98    | 8.5%       |
+| Both compile, slots DIFFER               | 571   | 49.7%      |
+| Both compile, slots MATCH (codegen diff) | 222   | 19.3%      |
+| We compile, they don't (validation gaps) | 58    | 5.0%       |
+| We bail, they compile                    | 192   | 16.7%      |
+| Both no memo (format diff)               | 100   | 8.7%       |
 
 > Note: In Phase 133, expected files were rebaselined with `compilationMode: "all"` (matching the upstream test suite). Phase 138 added Todo error detection for 5 categories of unsupported syntax (+15 fixtures). Phase 139 added frozen-mutation freeze propagation (phi nodes, store chains, property loads, iterators) gaining +9 fixtures. Phase 142 fixed ref-access validation to detect `.current` access after inline_load_local_temps eliminates LoadLocal intermediaries (+1 fixture). Phase 150 implemented validateInferredDep (source dep extraction and comparison) for preserve-memo validation (+3 fixtures). Phase 155 fixed preserve-memo validation by pre-computing HIR temp map before inline_load_locals, correcting Subpath comparison, and removing `is_temp_name` skip that suppressed all dep mismatch detection (+31 fixtures). Phase 177 fixed all loop constructs (for, for-of, for-in, while, do-while) being silently dropped from output when inside reactive scopes. Phase 178 fixed scope output over-declaration (last_use-based check), loop condition reactive deps, PropertyStore aliasing BFS edge ordering, and for-loop update DCE preservation (+5 fixtures). Phases 179-180 added 21-35% compile performance improvements (in-place state merging, BFS buffer reuse, sorted worklist, lightweight phi processing) and structural optimizations (Rc<ReactiveScope>, IdVec/IdSet for O(1) lookups).
 
-#### Bail-out Breakdown (200 fixtures where we bail but upstream compiles)
+#### Bail-out Breakdown (192 fixtures where we bail but upstream compiles)
 
 | Error                                 | Count |
 | ------------------------------------- | ----- |
 | Preserve-memo false positives         | 94    |
-| Frozen-mutation false positives       | 14    |
 | Cannot reassign outside component     | 9     |
+| Silent bail-outs (no error)           | 9     |
 | Ref-access in render false positives  | 9     |
 | setState in effects                   | 7     |
 | Local variable reassignment           | 7     |
-| Silent bail-outs (no error)           | 9     |
+| Frozen-mutation false positives       | 6     |
 | MethodCall codegen internal error     | 5     |
 | Other                                 | 46    |
 
-#### Slot Diff Distribution (568 fixtures where both compile but slot counts differ)
+#### Slot Diff Distribution (571 fixtures where both compile but slot counts differ)
 
 | Diff             | Count | Notes                     |
 | ---------------- | ----- | ------------------------- |
-| -1 (under-count) | 127   | Scope over-merging        |
-| -2               | 121   | Under-memoization         |
-| -3               | 71    | Scope analysis gaps       |
-| +1 (over-count)  | 65    | Extra scopes or deps      |
-| +2               | 22    | Extra scopes              |
-| other            | 162   |                           |                           |
+| -1 (under-count) | 128   | Scope over-merging        |
+| +1 (over-count)  | 66    | Extra scopes or deps      |
+| +2               | 18    | Extra scopes              |
+| other            | 359   |                           |                           |
 
 #### Key Divergence Patterns
 
@@ -312,21 +310,21 @@ All numbers measured on the 16-fixture benchmark suite (`--release` build, 30 it
 
 | Fixture | Size | LOC | OXC p50 | Babel p50 | Speedup |
 |---------|------|-----|---------|-----------|---------|
-| simple-counter | XS | 8 | 118.1 µs | 8.90 ms | **75.4x** |
-| theme-toggle | XS | 16 | 251.9 µs | 10.23 ms | **40.6x** |
-| status-badge | XS | 21 | 166.5 µs | 9.61 ms | **57.7x** |
-| avatar-group | XS | 23 | 4.51 ms | 11.22 ms | **2.5x** |
-| todo-list | S | 35 | 679.7 µs | 28.45 ms | **41.9x** |
-| search-input | S | 55 | 3.94 ms | 17.54 ms | **4.5x** |
-| toolbar | S | 60 | 80.8 µs | 18.50 ms | **228.9x** ¹ |
-| data-table | M | 80 | 27.20 ms | 43.96 ms | **1.6x** |
-| time-slot-picker | M | 81 | 16.37 ms | 22.10 ms | **1.4x** |
-| booking-list | L | 152 | 50.92 ms | 55.69 ms | **1.1x** |
-| canvas-sidebar | L | 272 | 209.48 ms | 77.65 ms | **0.4x** |
+| simple-counter | XS | 8 | 133.3 µs | 8.57 ms | **64.3x** |
+| theme-toggle | XS | 16 | 288.6 µs | 8.88 ms | **30.8x** |
+| status-badge | XS | 21 | 183.1 µs | 9.83 ms | **53.7x** |
+| avatar-group | XS | 23 | 4.91 ms | 11.77 ms | **2.4x** |
+| todo-list | S | 35 | 789.2 µs | 33.73 ms | **42.7x** |
+| search-input | S | 55 | 4.09 ms | 17.88 ms | **4.4x** |
+| toolbar | S | 60 | 67.5 µs | 24.05 ms | **356.5x** ¹ |
+| data-table | M | 80 | 29.58 ms | 45.11 ms | **1.5x** |
+| time-slot-picker | M | 81 | 17.53 ms | 24.32 ms | **1.4x** |
+| booking-list | L | 152 | 56.44 ms | 60.59 ms | **1.1x** |
+| canvas-sidebar | L | 272 | 213.01 ms | 77.79 ms | **0.4x** |
 
 ¹ Bail-out — OXC exits early without compiling.
 
-**Aggregate** (compiled fixtures only): median **4.5x**, range 0.4x–75.4x
+**Aggregate** (compiled fixtures only): median **4.4x**, range 0.4x–64.3x
 
 > **Performance improvement in Phases 179–180:** In-place state merging, BFS buffer reuse, sorted worklist processing, `Rc<ReactiveScope>` (eliminating deep scope clones), and `IdVec`/`IdSet` O(1) lookups improved compile performance by 21–35% on large fixtures. Small fixtures (XS/S) are 2.5–75x faster than Babel. Medium fixtures are now 1.1–1.6x faster. The remaining regression is `canvas-sidebar` (272 LOC, 0.4x) which has the most complex scope structure.
 >
@@ -340,10 +338,10 @@ Simulates compiling an entire project — all 16 fixtures compiled sequentially 
 |--------|-----|-------|
 | Files compiled | 16 | 16 |
 | Total LOC | 1,664 | 1,664 |
-| Batch p50 | 291.68 ms | 546.19 ms |
-| Batch p95 | 325.90 ms | 778.05 ms |
-| Throughput | 5,705 LOC/s | 3,047 LOC/s |
-| **Speedup** | **1.9x** | baseline |
+| Batch p50 | 340.91 ms | 575.55 ms |
+| Batch p95 | 385.79 ms | 636.77 ms |
+| Throughput | 4,881 LOC/s | 2,891 LOC/s |
+| **Speedup** | **1.7x** | baseline |
 
 > **Note:** OXC is now **1.9x faster than Babel** in batch mode, up from 0.5x before Phases 179–180 performance optimizations. The improvement comes from in-place state merging, BFS buffer reuse, sorted worklist processing, and structural optimizations (Rc<ReactiveScope>, IdVec/IdSet). Some of the speedup is also due to 6 fixtures now bailing early (0 compilation work) — see memoization section above.
 
@@ -353,8 +351,8 @@ Simulates Vite's transform pipeline with content-hash caching — cold build (al
 
 | Scenario | OXC p50 | Babel p50 | Speedup |
 |----------|---------|-----------|---------|
-| Cold build (16 files, no cache) | 327.94 ms | 567.52 ms | **1.7x** |
-| Warm HMR rebuild (1 file changed) | 362.1 µs | 81.71 ms | **225.7x** |
+| Cold build (16 files, no cache) | 336.49 ms | 533.23 ms | **1.6x** |
+| Warm HMR rebuild (1 file changed) | 460.5 µs | 91.62 ms | **199x** |
 
 Changed file: `multi-step-form` (284 LOC, largest fixture)
 
@@ -385,19 +383,19 @@ The e2e benchmark clones real open-source projects that use Vite + React, builds
 
 | Project | Scale | React Files | Babel Build | OXC Build | Speedup |
 |---------|-------|-------------|-------------|-----------|---------|
-| [ephe](https://github.com/unvalley/ephe) (PWA markdown editor) | small | 19 | 7.73s | 8.43s | **0.92x** |
-| [rai-pal](https://github.com/Raicuparta/rai-pal) (Tauri game mod manager) | medium | 42 | 7.27s | 7.19s | **1.01x** |
-| [arcomage-hd](https://github.com/arcomage/arcomage-hd) (web card game) | large | 62 | 12.37s | 9.27s | **1.34x** |
-| [docmost](https://github.com/docmost/docmost) (collaborative wiki, 10.7K★) | large | 307 | 2.75s | 7.25s | **0.38x** |
+| [ephe](https://github.com/unvalley/ephe) (PWA markdown editor) | small | 19 | 8.21s | 8.48s | **0.97x** |
+| [rai-pal](https://github.com/Raicuparta/rai-pal) (Tauri game mod manager) | medium | 42 | 8.09s | 7.31s | **1.11x** |
+| [arcomage-hd](https://github.com/arcomage/arcomage-hd) (web card game) | large | 62 | 14.30s | 10.11s | **1.42x** |
+| [docmost](https://github.com/docmost/docmost) (collaborative wiki, 10.7K★) | large | 307 | 2.84s | 7.93s | **0.36x** |
 
 #### Bundle Size Comparison
 
 | Project | Babel JS | OXC JS | Delta |
 |---------|----------|--------|-------|
 | ephe | 2.8 MB | 2.9 MB | +13.2 KB (+0.5%) |
-| rai-pal | 634.3 KB | 613.2 KB | -21.1 KB (-3.3%) |
-| arcomage-hd | 845.0 KB | 575.0 KB | -270.0 KB (-32.0%) |
-| docmost | 10.4 MB | 10.4 MB | +41.1 KB (+0.4%) |
+| rai-pal | 634.3 KB | 613.6 KB | -20.7 KB (-3.3%) |
+| arcomage-hd | 845.0 KB | 574.7 KB | -270.3 KB (-32.0%) |
+| docmost | 10.4 MB | 10.4 MB | +40.9 KB (+0.4%) |
 
 #### OXC Transform Coverage
 
@@ -448,7 +446,7 @@ node scripts/bench-compare.mjs --iterations 20 --warmup 5
 
 ### General
 
-- **Active development** — Upstream conformance is at 32.6% (560/1717 fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries, validation gaps).
+- **Experimental status** — Upstream conformance is at 33.1% (568/1717 fixtures) with 92% render equivalence (23/25 fixtures produce correct HTML output). The compiler does not crash on any upstream fixture (0 panics), but output frequently diverges from the reference implementation in structure (cache slot counts, scope boundaries, validation gaps). See [Project Status](#project-status) below for architectural analysis.
 - **Performance on large files** — The mutation/aliasing analysis passes (Phases 113–130) introduced O(n²+) scaling. Phases 179–180 significantly improved performance:
   - **Algorithmic**: Sorted worklist processing for forward-dataflow convergence, in-place `InferenceState::merge`, lightweight phi processing, reusable BFS buffers with clear-instead-of-realloc, pre-sized hash maps, visitor-based operand collection (no per-instruction Vec allocation)
   - **Structural**: `Rc<ReactiveScope>` replacing `Box` (eliminates 50x deep scope clones per function), `IdVec<IdentifierId, T>` / `IdSet<IdentifierId>` replacing `FxHashMap`/`FxHashSet` for O(1) indexed lookups (10 passes converted)
@@ -477,6 +475,51 @@ node scripts/bench-compare.mjs --iterations 20 --warmup 5
 
 - **@flow fixtures** — Flow component/hook syntax is preprocessed into standard function declarations (Phase 128). Some Flow type annotations still cause parse errors — these are permanently skipped as Flow is deprecated.
 - **Benchmark fixture bail-outs** — 6 of 16 benchmark fixtures currently bail without compiling: 2 from nested MethodCall arguments (color-picker, command-menu), 2 from unsupported computed object keys (availability-schedule, multi-step-form), 1 from optional chaining in ternary test (form-validation), and 1 from module-level variable reassignment detection (toolbar). These are the same unsupported patterns tracked in the conformance suite.
+
+## Project Status
+
+This project was an experiment in porting Meta's React Compiler from TypeScript/Babel to Rust/OXC using Claude Code as the primary development tool. After 190 implementation phases, the experiment has concluded. Here is an honest assessment of what was achieved and what remains fundamentally difficult.
+
+### What was achieved
+
+- **568/1717 upstream conformance (33.1%)** with zero panics on any fixture
+- **92% render equivalence** — 23 of 25 benchmark fixtures produce correct HTML output
+- **1.7x faster batch compilation** than Babel (up from 0.5x after performance optimization)
+- **97-100% transform coverage** on real-world projects (ephe, rai-pal, arcomage-hd, docmost)
+- **Complete 65-pass pipeline** — HIR construction, SSA, type inference, mutation analysis, reactive scope inference, codegen, and 11 lint rules
+- **Full Vite plugin** with source maps, caching, and gating support
+
+### What was learned about AI-assisted compiler development
+
+**Claude Code was effective for:**
+- Implementing well-specified compiler passes from upstream TypeScript source
+- Writing conformance test infrastructure and debugging test failures
+- Performance optimization (profiling, algorithmic improvements, structural refactoring)
+- Line-by-line upstream comparisons across 4 major passes (Ranges, ScopeVariables, Effects, BuildHIR)
+- Systematic root cause analysis with hypothesis testing
+
+**Claude Code struggled with:**
+- Architectural decisions that compound across 65 passes — early choices (like separate PropertyLoad instructions vs property paths on Places) had consequences that were only discovered 100+ phases later
+- The coupled system problem — the `effective_range` workaround created a web of compensating errors where fixing one pass broke others
+- JavaScript-to-Rust semantic translation — JS reference semantics vs Rust value semantics caused subtle bugs (stale operand identifiers, missing scope annotations) that were extremely difficult to diagnose
+
+### Architectural gaps that block further progress
+
+After exhaustive investigation (3 line-by-line upstream comparisons, 10 scope grouping algorithms tested, 7 preserve-memo approaches attempted), the remaining conformance gaps trace to three fundamental architectural differences from upstream:
+
+1. **HIR instruction IDs differ from upstream** — Our HIR builder produces different instruction numbering than Babel's BuildHIR.ts. This shifts mutable ranges by small amounts across hundreds of identifiers, causing the scope grouping union-find to produce different scopes. The `effective_range = max(mutable_range, last_use + 1)` workaround compensates but causes 419 fixtures to over-merge. No scope grouping algorithm tested (use-based, hybrid, threshold-based, split group/scope) improved beyond the workaround.
+
+2. **Preserve-memo validation requires all 3 checks working together** — 94 fixtures bail with "Existing memoization could not be preserved." Fixing Check 1 alone causes -31 to -39 regression because error fixtures that were "accidentally" matching (both sides bail with same error) stop matching when one side stops bailing. All 3 checks (scope completion, dep matching, dep mutation) must be fixed simultaneously — a coordination problem AI agents struggled with.
+
+3. **JS reference semantics vs Rust value semantics** — Upstream's `Place.identifier` is a shared reference. Mutating `mutableRange` on one copy updates all copies. In Rust, each `Identifier` is an independent value. Our workaround (writing ranges back to lvalue identifiers in Phase 3, looking up from a ranges map in Phase 4) is correct but required 3 separate investigations to discover and fix.
+
+### Recommendation for future work
+
+The most productive path forward would be:
+
+- **For conformance**: Implement Check 2/3 of preserve-memo validation simultaneously with Check 1 scope propagation (the -31 regression would be offset by +80 from correct validation). This requires careful coordination across 3 files.
+- **For performance**: Complete the remaining structural optimizations (String→Atom, Place→IdentifierId in AliasingEffect, reduced Place cloning). These are mechanical but high-impact.
+- **For architecture**: Accept the `effective_range` workaround as permanent. Matching upstream's instruction IDs would require rewriting the HIR builder to mimic Babel's exact lowering behavior, which defeats the purpose of a native port.
 
 ## License
 
