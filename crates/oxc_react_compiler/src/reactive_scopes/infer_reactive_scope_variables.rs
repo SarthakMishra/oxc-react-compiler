@@ -2,7 +2,8 @@ use std::rc::Rc;
 
 use crate::hir::types::{
     DeclarationId, DestructureArrayItem, DestructurePattern, DestructureTarget, HIR, IdentifierId,
-    InstructionId, InstructionValue, MutableRange, ReactiveScope, ScopeId, SourceLocation, Type,
+    InstructionId, InstructionValue, MutableRange, Place, ReactiveScope, ScopeId, SourceLocation,
+    Type,
 };
 use crate::utils::disjoint_set::DisjointSet;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -103,6 +104,90 @@ pub fn infer_reactive_scope_variables(
         }
     }
 
+    // DIVERGENCE: Upstream treats property paths (e.g. `props.a` vs `props.b`) as
+    // independent scoping units even though they share the same root identifier.
+    // We achieve this by assigning virtual IdentifierIds to each unique
+    // (root_id, property_path) combination. The union-find operates on these virtual
+    // IDs, and we map them back to root IDs when building scopes.
+    let max_real_id = {
+        let mut max_id = 0u32;
+        for (_, block) in &hir.blocks {
+            for instr in &block.instructions {
+                max_id = max_id.max(instr.lvalue.identifier.id.0);
+                for place in collect_operand_places(&instr.value) {
+                    max_id = max_id.max(place.identifier.id.0);
+                }
+            }
+            for phi in &block.phis {
+                max_id = max_id.max(phi.place.identifier.id.0);
+                for (_, operand) in &phi.operands {
+                    max_id = max_id.max(operand.identifier.id.0);
+                }
+            }
+        }
+        max_id
+    };
+    let mut next_virtual_id = max_real_id + 1;
+    // Map from (root_id, property_path_strings) -> virtual IdentifierId
+    let mut path_to_virtual: FxHashMap<(IdentifierId, Vec<String>), IdentifierId> =
+        FxHashMap::default();
+    // Map from virtual IdentifierId -> root IdentifierId
+    let mut virtual_to_root: FxHashMap<IdentifierId, IdentifierId> = FxHashMap::default();
+
+    /// Resolve a Place to a (possibly virtual) IdentifierId.
+    /// If the Place has a non-empty property_path, returns a virtual ID unique to
+    /// that (root_id, path) combination. Otherwise returns the root ID directly.
+    fn resolve_place_id(
+        place: &Place,
+        path_to_virtual: &mut FxHashMap<(IdentifierId, Vec<String>), IdentifierId>,
+        virtual_to_root: &mut FxHashMap<IdentifierId, IdentifierId>,
+        next_virtual_id: &mut u32,
+    ) -> IdentifierId {
+        if place.property_path.is_empty() {
+            place.identifier.id
+        } else {
+            let key = (
+                place.identifier.id,
+                place.property_path.iter().map(|e| e.property.clone()).collect::<Vec<_>>(),
+            );
+            *path_to_virtual.entry(key).or_insert_with(|| {
+                let vid = IdentifierId(*next_virtual_id);
+                *next_virtual_id += 1;
+                virtual_to_root.insert(vid, place.identifier.id);
+                vid
+            })
+        }
+    }
+
+    // Pre-scan: register virtual IDs for all operand places with property paths,
+    // and populate ranges/last_use_map for virtual IDs (copied from root).
+    for (_, block) in &hir.blocks {
+        for instr in &block.instructions {
+            for place in collect_operand_places(&instr.value) {
+                if !place.property_path.is_empty() {
+                    let vid = resolve_place_id(
+                        place,
+                        &mut path_to_virtual,
+                        &mut virtual_to_root,
+                        &mut next_virtual_id,
+                    );
+                    let root_id = place.identifier.id;
+                    // Copy range and last_use from root identifier to virtual ID
+                    if let Some(&range) = ranges.get(&root_id) {
+                        ranges.entry(vid).or_insert(range);
+                    }
+                    if let Some(&last_use) = last_use_map.get(&root_id) {
+                        last_use_map.entry(vid).or_insert(last_use);
+                    }
+                    if let Some(&reactive) = is_reactive.get(&root_id) {
+                        is_reactive.entry(vid).or_insert(reactive);
+                    }
+                    dsu.make_set(vid);
+                }
+            }
+        }
+    }
+
     // Declarations map: DeclarationId -> IdentifierId, used for phi handling.
     // Upstream tracks this to union phi places with their declaration identifiers.
     let mut declarations: FxHashMap<DeclarationId, IdentifierId> = FxHashMap::default();
@@ -197,8 +282,16 @@ pub fn infer_reactive_scope_variables(
             // Collect operand IDs and filter by isMutable + start > 0.
             // Upstream: for each operand, check isMutable(instr, operand) &&
             // operand.identifier.mutableRange.start > 0 (exclude globals).
-            let all_ids = collect_operand_ids(&instr.value);
-            for op_id in all_ids {
+            // Use resolve_place_id to get virtual IDs for property-path operands,
+            // so that `props.a` and `props.b` are treated as independent scoping units.
+            let all_places = collect_operand_places(&instr.value);
+            for place in &all_places {
+                let op_id = resolve_place_id(
+                    place,
+                    &mut path_to_virtual,
+                    &mut virtual_to_root,
+                    &mut next_virtual_id,
+                );
                 if is_mutable(instr_id, op_id) {
                     operands.push(op_id);
                 }
@@ -279,7 +372,15 @@ pub fn infer_reactive_scope_variables(
             };
             scopes.push(scope);
             for &member in &members {
-                id_to_scope_idx.insert(member, scope_idx);
+                // Map virtual IDs back to their root real IDs for scope membership.
+                // Both the virtual ID and the root ID get the scope assignment so
+                // that Phase 4 (propagation) can look up either form.
+                let real_id = virtual_to_root.get(&member).copied().unwrap_or(member);
+                id_to_scope_idx.insert(real_id, scope_idx);
+                if virtual_to_root.contains_key(&member) {
+                    // Also keep the virtual ID mapped for consistency
+                    id_to_scope_idx.insert(member, scope_idx);
+                }
             }
             scope_id_counter += 1;
         }
@@ -713,6 +814,162 @@ fn collect_operand_ids(value: &InstructionValue) -> Vec<IdentifierId> {
     }
 
     ids
+}
+
+/// Collect references to all operand Places in an instruction value.
+/// Unlike `collect_operand_ids`, this preserves property_path information
+/// so callers can distinguish `props.a` from `props.b`.
+fn collect_operand_places(value: &InstructionValue) -> Vec<&Place> {
+    let mut places = Vec::new();
+
+    match value {
+        InstructionValue::LoadLocal { place } | InstructionValue::LoadContext { place } => {
+            places.push(place);
+        }
+        InstructionValue::StoreLocal { lvalue, value, .. }
+        | InstructionValue::StoreContext { lvalue, value } => {
+            places.push(lvalue);
+            places.push(value);
+        }
+        InstructionValue::DeclareLocal { lvalue, .. }
+        | InstructionValue::DeclareContext { lvalue } => {
+            places.push(lvalue);
+        }
+        InstructionValue::Destructure { value, .. } => {
+            places.push(value);
+        }
+        InstructionValue::BinaryExpression { left, right, .. } => {
+            places.push(left);
+            places.push(right);
+        }
+        InstructionValue::UnaryExpression { value, .. } => {
+            places.push(value);
+        }
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            places.push(lvalue);
+        }
+        InstructionValue::CallExpression { callee, args, .. } => {
+            places.push(callee);
+            for arg in args {
+                places.push(arg);
+            }
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            places.push(receiver);
+            for arg in args {
+                places.push(arg);
+            }
+        }
+        InstructionValue::NewExpression { callee, args } => {
+            places.push(callee);
+            for arg in args {
+                places.push(arg);
+            }
+        }
+        InstructionValue::PropertyLoad { object, .. } => {
+            places.push(object);
+        }
+        InstructionValue::PropertyStore { object, value, .. } => {
+            places.push(object);
+            places.push(value);
+        }
+        InstructionValue::ComputedLoad { object, property, .. } => {
+            places.push(object);
+            places.push(property);
+        }
+        InstructionValue::ComputedStore { object, property, value } => {
+            places.push(object);
+            places.push(property);
+            places.push(value);
+        }
+        InstructionValue::PropertyDelete { object, .. } => {
+            places.push(object);
+        }
+        InstructionValue::ComputedDelete { object, property } => {
+            places.push(object);
+            places.push(property);
+        }
+        InstructionValue::ObjectExpression { properties } => {
+            for prop in properties {
+                places.push(&prop.value);
+                if let crate::hir::types::ObjectPropertyKey::Computed(place) = &prop.key {
+                    places.push(place);
+                }
+            }
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            for elem in elements {
+                match elem {
+                    crate::hir::types::ArrayElement::Expression(p)
+                    | crate::hir::types::ArrayElement::Spread(p) => {
+                        places.push(p);
+                    }
+                    crate::hir::types::ArrayElement::Hole => {}
+                }
+            }
+        }
+        InstructionValue::JsxExpression { tag, props, children } => {
+            places.push(tag);
+            for attr in props {
+                places.push(&attr.value);
+            }
+            for child in children {
+                places.push(child);
+            }
+        }
+        InstructionValue::JsxFragment { children } => {
+            for child in children {
+                places.push(child);
+            }
+        }
+        InstructionValue::TemplateLiteral { subexpressions, .. } => {
+            for sub in subexpressions {
+                places.push(sub);
+            }
+        }
+        InstructionValue::Await { value } => {
+            places.push(value);
+        }
+        InstructionValue::GetIterator { collection } => {
+            places.push(collection);
+        }
+        InstructionValue::IteratorNext { iterator, .. } => {
+            places.push(iterator);
+        }
+        InstructionValue::NextPropertyOf { value } => {
+            places.push(value);
+        }
+        InstructionValue::TypeCastExpression { value, .. } => {
+            places.push(value);
+        }
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            places.push(tag);
+            for sub in &value.subexpressions {
+                places.push(sub);
+            }
+        }
+        InstructionValue::StoreGlobal { value, .. } => {
+            places.push(value);
+        }
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            places.push(decl);
+            for dep in deps {
+                places.push(dep);
+            }
+        }
+        // No operands
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::RegExpLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. }
+        | InstructionValue::FunctionExpression { .. }
+        | InstructionValue::ObjectMethod { .. } => {}
+    }
+
+    places
 }
 
 /// Collect all identifier IDs from a destructure pattern's targets.
