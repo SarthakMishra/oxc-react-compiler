@@ -402,20 +402,18 @@ pub fn infer_mutation_aliasing_ranges(hir: &mut HIR, returns_id: Option<Identifi
                                 .or_insert(into.identifier.mutable_range);
                             // Create does NOT consume an index slot
                         }
-                        AliasingEffect::CreateFunction { into, captures, .. } => {
+                        AliasingEffect::CreateFunction { into, .. } => {
+                            // Upstream: CreateFunction just creates the node, no capture edges.
+                            // The captures are handled by separate Capture effects emitted by
+                            // infer_mutation_aliasing_effects. Adding edges here DUPLICATES them
+                            // and advances the global index counter, shifting all subsequent
+                            // mutation indices and causing BFS edge filtering to exclude valid
+                            // graph paths (narrower ranges → over-splitting).
                             graph.create(into.identifier.id);
                             creation_map.entry(into.identifier.id).or_insert(instr.id);
                             ranges
                                 .entry(into.identifier.id)
                                 .or_insert(into.identifier.mutable_range);
-                            // Wire up capture edges from each captured place → function
-                            for cap in captures {
-                                ranges
-                                    .entry(cap.identifier.id)
-                                    .or_insert(cap.identifier.mutable_range);
-                                graph.capture(index, cap.identifier.id, into.identifier.id);
-                                index += 1;
-                            }
                         }
                         AliasingEffect::CreateFrom { from, into } => {
                             ranges
