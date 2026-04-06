@@ -9,70 +9,862 @@ use crate::hir::types::{
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
-/// Prune reactive scopes that don't escape the function.
-///
-/// A scope "escapes" if any of its declarations or reassignments are consumed
-/// by instructions anywhere in the function. Scopes whose results are never
-/// referenced can be unwrapped (their instructions inlined into the parent
-/// block).
-pub fn prune_non_escaping_scopes(rf: &mut ReactiveFunction) {
-    // Collect all identifier IDs used anywhere in the function.
-    //
-    // NOTE: Previously we only collected uses OUTSIDE scope blocks (passing
-    // `in_scope=true` when recursing into scopes). This was a bug: a variable
-    // declared in scope S1 and used inside scope S2 IS escaping S1. Both
-    // scopes are independent cache boundaries. The `in_scope` flag incorrectly
-    // treated uses inside ANY scope block as "not escaping", causing derived
-    // computations (like `const doubled = value * 2`) to be pruned and emitted
-    // outside their scope guard, defeating memoization. The fix matches
-    // upstream's `PruneNonEscapingScopes.ts` which collects all references
-    // without an in-scope gate.
-    let mut used_ids = FxHashSet::default();
-    collect_used_ids(&rf.body, &mut used_ids);
+// ---------------------------------------------------------------------------
+// PruneNonEscapingScopes — graph-based escape analysis
+//
+// Upstream: PruneNonEscapingScopes.ts
+//
+// This pass builds a dependency graph for every identifier in the reactive
+// function, classifies each identifier's MemoizationLevel, determines which
+// identifiers "escape" (are returned or passed to hooks), and then walks
+// outward from escaping identifiers to compute the set of identifiers that
+// must be memoized. Scopes whose outputs are not in the memoized set are
+// pruned (unwrapped).
+// ---------------------------------------------------------------------------
 
-    // Collect IDs that are ONLY used as condition tests (if/switch/ternary test
-    // positions) and never as values. Per upstream's PruneNonEscapingScopes.ts,
-    // a scope whose declarations are only used as condition tests does not
-    // "escape" — the test discards the value (only truthiness matters).
-    // DIVERGENCE: upstream tracks this at the type level; we approximate by
-    // collecting test-position IDs and subtracting value-position IDs, then
-    // propagating through alias chains (StoreLocal/LoadLocal).
-    let mut test_only_ids = FxHashSet::default();
-    collect_test_position_ids(&rf.body, &mut test_only_ids);
-    let mut value_used_ids = FxHashSet::default();
-    collect_value_used_ids(&rf.body, &mut value_used_ids);
-    // test_only = appears in test position AND never in value position
-    test_only_ids.retain(|id| !value_used_ids.contains(id));
+/// Describes how to determine whether a value should be memoized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemoizationLevel {
+    /// The value should be memoized if it escapes
+    Memoized,
+    /// Memoized if dependencies are memoized (logical/ternary, property loads)
+    Conditional,
+    /// Not memoized unless forced (primitives, declarations)
+    Unmemoized,
+    /// Never memoized (cheap to compare with Object.is)
+    Never,
+}
 
-    // Propagate test-only status through alias chains: if `const x = t0` and x
-    // is test-only, and t0 is only used in this store, then t0 is also test-only.
-    let mut alias_info: FxHashMap<IdentifierId, Vec<IdentifierId>> = FxHashMap::default();
-    let mut use_counts: FxHashMap<IdentifierId, usize> = FxHashMap::default();
-    collect_alias_info(&rf.body, &mut alias_info, &mut use_counts);
-    // Fixed-point propagation
-    loop {
-        let mut changed = false;
-        for (value_id, target_ids) in &alias_info {
-            if test_only_ids.contains(value_id) {
-                continue; // already test-only
-            }
-            // Check if ALL targets are test-only and this value is only used
-            // in stores to those targets (use_count == number of store targets)
-            let store_count = target_ids.len();
-            let total_uses = use_counts.get(value_id).copied().unwrap_or(0);
-            let all_targets_test_only = target_ids.iter().all(|t| test_only_ids.contains(t));
-            if all_targets_test_only && total_uses == store_count {
-                test_only_ids.insert(*value_id);
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
+fn join_aliases(a: MemoizationLevel, b: MemoizationLevel) -> MemoizationLevel {
+    use MemoizationLevel::{Conditional, Memoized, Never, Unmemoized};
+    if a == Memoized || b == Memoized {
+        Memoized
+    } else if a == Conditional || b == Conditional {
+        Conditional
+    } else if a == Unmemoized || b == Unmemoized {
+        Unmemoized
+    } else {
+        Never
+    }
+}
+
+#[derive(Debug)]
+struct IdentifierNode {
+    level: MemoizationLevel,
+    memoized: bool,
+    dependencies: FxHashSet<IdentifierId>,
+    scopes: FxHashSet<ScopeId>,
+    seen: bool,
+}
+
+#[derive(Debug)]
+struct ScopeNode {
+    dependencies: Vec<IdentifierId>,
+    seen: bool,
+}
+
+struct EscapeState {
+    /// Maps SSA IDs through LoadLocal chains to resolve indirections
+    definitions: FxHashMap<IdentifierId, IdentifierId>,
+    identifiers: FxHashMap<IdentifierId, IdentifierNode>,
+    scopes: FxHashMap<ScopeId, ScopeNode>,
+    escaping_values: FxHashSet<IdentifierId>,
+    /// Map from identifier ID to name for hook detection
+    id_to_name: FxHashMap<IdentifierId, String>,
+}
+
+impl EscapeState {
+    fn new() -> Self {
+        Self {
+            definitions: FxHashMap::default(),
+            identifiers: FxHashMap::default(),
+            scopes: FxHashMap::default(),
+            escaping_values: FxHashSet::default(),
+            id_to_name: FxHashMap::default(),
         }
     }
 
-    // Remove scopes whose declarations are never used anywhere (or only as tests)
-    prune_scopes_in_block(&mut rf.body, &used_ids, &test_only_ids);
+    fn resolve(&self, id: IdentifierId) -> IdentifierId {
+        self.definitions.get(&id).copied().unwrap_or(id)
+    }
+
+    fn declare(&mut self, id: IdentifierId) {
+        self.identifiers.entry(id).or_insert_with(|| IdentifierNode {
+            level: MemoizationLevel::Never,
+            memoized: false,
+            dependencies: FxHashSet::default(),
+            scopes: FxHashSet::default(),
+            seen: false,
+        });
+    }
+
+    fn ensure_node(&mut self, id: IdentifierId) -> &mut IdentifierNode {
+        self.identifiers.entry(id).or_insert_with(|| IdentifierNode {
+            level: MemoizationLevel::Never,
+            memoized: false,
+            dependencies: FxHashSet::default(),
+            scopes: FxHashSet::default(),
+            seen: false,
+        })
+    }
+
+    /// Associate an operand with its scope (if any).
+    fn visit_operand(&mut self, place: &Place, resolved_id: IdentifierId) {
+        if let Some(ref scope) = place.identifier.scope {
+            // Record the scope node with its dependencies
+            self.scopes.entry(scope.id).or_insert_with(|| ScopeNode {
+                dependencies: scope.dependencies.iter().map(|dep| dep.identifier.id).collect(),
+                seen: false,
+            });
+            // Associate the identifier with this scope
+            let node = self.ensure_node(resolved_id);
+            node.scopes.insert(scope.id);
+        }
+    }
+}
+
+struct LValueMemoization {
+    id: IdentifierId,
+    level: MemoizationLevel,
+}
+
+/// Compute the memoization level and lvalue/rvalue sets for an instruction.
+fn compute_memoization_inputs(
+    value: &InstructionValue,
+    lvalue_id: IdentifierId,
+) -> (Vec<LValueMemoization>, Vec<IdentifierId>) {
+    use MemoizationLevel::{Conditional, Memoized, Never, Unmemoized};
+
+    match value {
+        // Primitives, binary/unary ops, templates — produce primitive values, never need memoization
+        InstructionValue::Primitive { .. }
+        | InstructionValue::JSXText { .. }
+        | InstructionValue::BinaryExpression { .. }
+        | InstructionValue::UnaryExpression { .. }
+        | InstructionValue::TemplateLiteral { .. }
+        | InstructionValue::LoadGlobal { .. }
+        | InstructionValue::StartMemoize { .. }
+        | InstructionValue::UnsupportedNode { .. }
+        | InstructionValue::ComputedDelete { .. }
+        | InstructionValue::PropertyDelete { .. }
+        | InstructionValue::NextPropertyOf { .. } => {
+            (vec![LValueMemoization { id: lvalue_id, level: Never }], vec![])
+        }
+
+        // LoadLocal: indirection, memoized if source is memoized
+        InstructionValue::LoadLocal { place } => (
+            vec![LValueMemoization { id: lvalue_id, level: Conditional }],
+            vec![place.identifier.id],
+        ),
+
+        InstructionValue::LoadContext { place } => (
+            vec![LValueMemoization { id: lvalue_id, level: Conditional }],
+            vec![place.identifier.id],
+        ),
+
+        // DeclareLocal: new declaration, unmemoized by default
+        InstructionValue::DeclareLocal { lvalue, .. } => {
+            let mut lvalues =
+                vec![LValueMemoization { id: lvalue.identifier.id, level: Unmemoized }];
+            lvalues.push(LValueMemoization { id: lvalue_id, level: Unmemoized });
+            (lvalues, vec![])
+        }
+
+        InstructionValue::DeclareContext { lvalue } => {
+            let mut lvalues = vec![LValueMemoization { id: lvalue.identifier.id, level: Memoized }];
+            lvalues.push(LValueMemoization { id: lvalue_id, level: Unmemoized });
+            (lvalues, vec![])
+        }
+
+        // StoreLocal: indirection through store
+        InstructionValue::StoreLocal { lvalue, value, .. } => {
+            let mut lvalues =
+                vec![LValueMemoization { id: lvalue.identifier.id, level: Conditional }];
+            lvalues.push(LValueMemoization { id: lvalue_id, level: Conditional });
+            (lvalues, vec![value.identifier.id])
+        }
+
+        InstructionValue::StoreContext { lvalue, value } => {
+            let mut lvalues = vec![LValueMemoization { id: lvalue.identifier.id, level: Memoized }];
+            lvalues.push(LValueMemoization { id: lvalue_id, level: Conditional });
+            (lvalues, vec![value.identifier.id])
+        }
+
+        InstructionValue::StoreGlobal { value, .. } => (
+            vec![LValueMemoization { id: lvalue_id, level: Unmemoized }],
+            vec![value.identifier.id],
+        ),
+
+        // PrefixUpdate/PostfixUpdate
+        InstructionValue::PrefixUpdate { lvalue, .. }
+        | InstructionValue::PostfixUpdate { lvalue, .. } => {
+            let mut lvalues =
+                vec![LValueMemoization { id: lvalue.identifier.id, level: Conditional }];
+            lvalues.push(LValueMemoization { id: lvalue_id, level: Conditional });
+            (lvalues, vec![lvalue.identifier.id])
+        }
+
+        // PropertyLoad/ComputedLoad: conditional on object
+        InstructionValue::PropertyLoad { object, .. } => (
+            vec![LValueMemoization { id: lvalue_id, level: Conditional }],
+            vec![object.identifier.id],
+        ),
+        InstructionValue::ComputedLoad { object, .. } => (
+            vec![LValueMemoization { id: lvalue_id, level: Conditional }],
+            vec![object.identifier.id],
+        ),
+
+        // PropertyStore/ComputedStore: object acts as lvalue (aliases the value)
+        InstructionValue::PropertyStore { object, value, .. } => {
+            let mut lvalues = vec![LValueMemoization { id: object.identifier.id, level: Memoized }];
+            lvalues.push(LValueMemoization { id: lvalue_id, level: Memoized });
+            (lvalues, vec![object.identifier.id, value.identifier.id])
+        }
+
+        InstructionValue::ComputedStore { object, property, value } => {
+            let mut lvalues =
+                vec![LValueMemoization { id: object.identifier.id, level: Conditional }];
+            lvalues.push(LValueMemoization { id: lvalue_id, level: Conditional });
+            (lvalues, vec![object.identifier.id, property.identifier.id, value.identifier.id])
+        }
+
+        // Await / TypeCast / GetIterator / IteratorNext: conditional indirection
+        InstructionValue::Await { value }
+        | InstructionValue::TypeCastExpression { value, .. }
+        | InstructionValue::GetIterator { collection: value } => (
+            vec![LValueMemoization { id: lvalue_id, level: Conditional }],
+            vec![value.identifier.id],
+        ),
+
+        InstructionValue::IteratorNext { iterator, .. } => (
+            vec![LValueMemoization { id: lvalue_id, level: Conditional }],
+            vec![iterator.identifier.id],
+        ),
+
+        // Destructure: conditional on the source value
+        InstructionValue::Destructure { value, lvalue_pattern } => {
+            let mut lvalues = vec![LValueMemoization { id: lvalue_id, level: Conditional }];
+            // Add pattern lvalues
+            for place_id in collect_destructure_lvalue_places(lvalue_pattern) {
+                lvalues.push(LValueMemoization { id: place_id, level: Conditional });
+            }
+            (lvalues, vec![value.identifier.id])
+        }
+
+        // JSX: memoized (we always memoize JSX elements)
+        InstructionValue::JsxExpression { tag, props, children } => {
+            let mut rvalues = vec![tag.identifier.id];
+            for attr in props {
+                rvalues.push(attr.value.identifier.id);
+            }
+            for child in children {
+                rvalues.push(child.identifier.id);
+            }
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], rvalues)
+        }
+
+        InstructionValue::JsxFragment { children } => {
+            let rvalues: Vec<_> = children.iter().map(|c| c.identifier.id).collect();
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], rvalues)
+        }
+
+        // Calls: memoized (produce new values)
+        InstructionValue::CallExpression { callee, args, .. } => {
+            let mut rvalues = vec![callee.identifier.id];
+            for arg in args {
+                rvalues.push(arg.identifier.id);
+            }
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], rvalues)
+        }
+        InstructionValue::NewExpression { callee, args } => {
+            let mut rvalues = vec![callee.identifier.id];
+            for arg in args {
+                rvalues.push(arg.identifier.id);
+            }
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], rvalues)
+        }
+        InstructionValue::MethodCall { receiver, args, .. } => {
+            let mut rvalues = vec![receiver.identifier.id];
+            for arg in args {
+                rvalues.push(arg.identifier.id);
+            }
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], rvalues)
+        }
+
+        // Containers: memoized (produce new objects/arrays)
+        InstructionValue::ObjectExpression { properties } => {
+            let mut rvalues = Vec::new();
+            for prop in properties {
+                rvalues.push(prop.value.identifier.id);
+                if let ObjectPropertyKey::Computed(key) = &prop.key {
+                    rvalues.push(key.identifier.id);
+                }
+            }
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], rvalues)
+        }
+        InstructionValue::ArrayExpression { elements } => {
+            let mut rvalues = Vec::new();
+            for elem in elements {
+                match elem {
+                    ArrayElement::Expression(p) | ArrayElement::Spread(p) => {
+                        rvalues.push(p.identifier.id);
+                    }
+                    ArrayElement::Hole => {}
+                }
+            }
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], rvalues)
+        }
+
+        // RegExp, FunctionExpression, ObjectMethod: memoized (produce new values)
+        InstructionValue::RegExpLiteral { .. } => {
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], vec![])
+        }
+        InstructionValue::FunctionExpression { .. } | InstructionValue::ObjectMethod { .. } => {
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], vec![])
+        }
+
+        // TaggedTemplateExpression: memoized
+        InstructionValue::TaggedTemplateExpression { tag, value } => {
+            let mut rvalues = vec![tag.identifier.id];
+            for sub in &value.subexpressions {
+                rvalues.push(sub.identifier.id);
+            }
+            (vec![LValueMemoization { id: lvalue_id, level: Memoized }], rvalues)
+        }
+
+        // FinishMemoize: never memoized itself
+        InstructionValue::FinishMemoize { decl, deps, .. } => {
+            let mut rvalues = vec![decl.identifier.id];
+            for dep in deps {
+                rvalues.push(dep.identifier.id);
+            }
+            (vec![LValueMemoization { id: lvalue_id, level: Never }], rvalues)
+        }
+    }
+}
+
+/// Collect all lvalue places from a destructure pattern.
+fn collect_destructure_lvalue_places(
+    pattern: &crate::hir::types::DestructurePattern,
+) -> Vec<IdentifierId> {
+    let mut result = Vec::new();
+    collect_destructure_places_recursive(pattern, &mut result);
+    result
+}
+
+fn collect_destructure_places_recursive(
+    pattern: &crate::hir::types::DestructurePattern,
+    result: &mut Vec<IdentifierId>,
+) {
+    use crate::hir::types::{DestructureArrayItem, DestructurePattern, DestructureTarget};
+
+    match pattern {
+        DestructurePattern::Array { items, rest } => {
+            for item in items {
+                match item {
+                    DestructureArrayItem::Value(target) => match target {
+                        DestructureTarget::Place(place) => {
+                            result.push(place.identifier.id);
+                        }
+                        DestructureTarget::Pattern(nested) => {
+                            collect_destructure_places_recursive(nested, result);
+                        }
+                    },
+                    DestructureArrayItem::Spread(place) => {
+                        result.push(place.identifier.id);
+                    }
+                    DestructureArrayItem::Hole => {}
+                }
+            }
+            if let Some(rest_place) = rest {
+                result.push(rest_place.identifier.id);
+            }
+        }
+        DestructurePattern::Object { properties, rest } => {
+            for prop in properties {
+                match &prop.value {
+                    DestructureTarget::Place(place) => {
+                        result.push(place.identifier.id);
+                    }
+                    DestructureTarget::Pattern(nested) => {
+                        collect_destructure_places_recursive(nested, result);
+                    }
+                }
+            }
+            if let Some(rest_place) = rest {
+                result.push(rest_place.identifier.id);
+            }
+        }
+    }
+}
+
+/// Build the escape analysis graph by visiting all instructions in the reactive function.
+fn build_escape_graph(rf: &ReactiveFunction, state: &mut EscapeState) {
+    // Declare function params
+    for param in &rf.params {
+        match param {
+            Param::Identifier(place) => {
+                state.declare(place.identifier.id);
+                if let Some(name) = &place.identifier.name {
+                    state.id_to_name.insert(place.identifier.id, name.clone());
+                }
+            }
+            Param::Spread(place) => {
+                state.declare(place.identifier.id);
+                if let Some(name) = &place.identifier.name {
+                    state.id_to_name.insert(place.identifier.id, name.clone());
+                }
+            }
+        }
+    }
+
+    visit_block_for_escape(&rf.body, state, &[]);
+}
+
+fn visit_block_for_escape(
+    block: &ReactiveBlock,
+    state: &mut EscapeState,
+    parent_scopes: &[ScopeId],
+) {
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                let lvalue_id = instruction.lvalue.identifier.id;
+
+                // Build name map for hook detection
+                match &instruction.value {
+                    InstructionValue::LoadGlobal { binding } => {
+                        state.id_to_name.insert(lvalue_id, binding.name.clone());
+                    }
+                    InstructionValue::LoadLocal { place }
+                    | InstructionValue::LoadContext { place } => {
+                        if let Some(name) = &place.identifier.name {
+                            state.id_to_name.insert(lvalue_id, name.clone());
+                        }
+                    }
+                    _ => {}
+                }
+
+                let (lvalues, rvalues) = compute_memoization_inputs(&instruction.value, lvalue_id);
+
+                // Associate all rvalues with their scopes
+                for &rv_id in &rvalues {
+                    let resolved = state.resolve(rv_id);
+                    // We need to look up the place for visit_operand, but since we
+                    // don't have it directly, we'll handle scope association through
+                    // the lvalue's scope instead
+                    let _ = resolved;
+                }
+
+                // Pre-resolve all rvalues
+                let resolved_rvalues: Vec<IdentifierId> =
+                    rvalues.iter().map(|&rv_id| state.resolve(rv_id)).collect();
+
+                // Process lvalues
+                for lv in &lvalues {
+                    let resolved_lv = state.resolve(lv.id);
+                    let node = state.ensure_node(resolved_lv);
+                    node.level = join_aliases(node.level, lv.level);
+                    for &resolved_rv in &resolved_rvalues {
+                        if resolved_rv != resolved_lv {
+                            node.dependencies.insert(resolved_rv);
+                        }
+                    }
+                    // Associate with parent scopes
+                    for &scope_id in parent_scopes {
+                        node.scopes.insert(scope_id);
+                    }
+                    // Also associate with the lvalue's own scope if it has one
+                    if lv.id == lvalue_id
+                        && let Some(ref scope) = instruction.lvalue.identifier.scope
+                    {
+                        state.scopes.entry(scope.id).or_insert_with(|| ScopeNode {
+                            dependencies: scope
+                                .dependencies
+                                .iter()
+                                .map(|dep| dep.identifier.id)
+                                .collect(),
+                            seen: false,
+                        });
+                        let node = state.ensure_node(resolved_lv);
+                        node.scopes.insert(scope.id);
+                    }
+                }
+
+                // Track LoadLocal definitions for alias resolution
+                if let InstructionValue::LoadLocal { place } = &instruction.value {
+                    let resolved_place = state.resolve(place.identifier.id);
+                    state.definitions.insert(lvalue_id, resolved_place);
+                }
+
+                // Check for hook calls — arguments to hooks escape
+                match &instruction.value {
+                    InstructionValue::CallExpression { callee, args, .. } => {
+                        let callee_name = callee.identifier.name.as_deref().or_else(|| {
+                            state.id_to_name.get(&callee.identifier.id).map(String::as_str)
+                        });
+                        if callee_name.is_some_and(crate::hir::globals::is_hook_name) {
+                            for arg in args {
+                                let resolved = state.resolve(arg.identifier.id);
+                                state.escaping_values.insert(resolved);
+                            }
+                        }
+                    }
+                    InstructionValue::MethodCall { receiver, args, .. } => {
+                        // Method calls on hooks are rare but handle for safety
+                        let recv_name = receiver.identifier.name.as_deref().or_else(|| {
+                            state.id_to_name.get(&receiver.identifier.id).map(String::as_str)
+                        });
+                        if recv_name.is_some_and(crate::hir::globals::is_hook_name) {
+                            for arg in args {
+                                let resolved = state.resolve(arg.identifier.id);
+                                state.escaping_values.insert(resolved);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                // Record scope's reassignments
+                for ident in &scope_block.scope.reassignments {
+                    let resolved = state.resolve(ident.id);
+                    let node = state.ensure_node(resolved);
+                    for &scope_id in parent_scopes {
+                        node.scopes.insert(scope_id);
+                    }
+                    node.scopes.insert(scope_block.scope.id);
+                }
+
+                // Record scope node
+                state.scopes.entry(scope_block.scope.id).or_insert_with(|| ScopeNode {
+                    dependencies: scope_block
+                        .scope
+                        .dependencies
+                        .iter()
+                        .map(|dep| dep.identifier.id)
+                        .collect(),
+                    seen: false,
+                });
+
+                let mut child_scopes: Vec<ScopeId> = parent_scopes.to_vec();
+                child_scopes.push(scope_block.scope.id);
+                visit_block_for_escape(&scope_block.instructions, state, &child_scopes);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                visit_terminal_for_escape(terminal, state, parent_scopes);
+            }
+        }
+    }
+}
+
+fn visit_terminal_for_escape(
+    terminal: &ReactiveTerminal,
+    state: &mut EscapeState,
+    parent_scopes: &[ScopeId],
+) {
+    match terminal {
+        ReactiveTerminal::Return { value, .. } => {
+            let resolved = state.resolve(value.identifier.id);
+            state.escaping_values.insert(resolved);
+            // Associate with parent scopes
+            let node = state.ensure_node(resolved);
+            for &scope_id in parent_scopes {
+                node.scopes.insert(scope_id);
+            }
+        }
+        ReactiveTerminal::Throw { value, .. } => {
+            let resolved = state.resolve(value.identifier.id);
+            let node = state.ensure_node(resolved);
+            for &scope_id in parent_scopes {
+                node.scopes.insert(scope_id);
+            }
+        }
+        ReactiveTerminal::If { consequent, alternate, .. } => {
+            visit_block_for_escape(consequent, state, parent_scopes);
+            visit_block_for_escape(alternate, state, parent_scopes);
+        }
+        ReactiveTerminal::Switch { cases, .. } => {
+            for (_, block) in cases {
+                visit_block_for_escape(block, state, parent_scopes);
+            }
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            visit_block_for_escape(init, state, parent_scopes);
+            visit_block_for_escape(test, state, parent_scopes);
+            if let Some(upd) = update {
+                visit_block_for_escape(upd, state, parent_scopes);
+            }
+            visit_block_for_escape(body, state, parent_scopes);
+        }
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            visit_block_for_escape(init, state, parent_scopes);
+            visit_block_for_escape(test, state, parent_scopes);
+            visit_block_for_escape(body, state, parent_scopes);
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { body, test, .. } => {
+            visit_block_for_escape(test, state, parent_scopes);
+            visit_block_for_escape(body, state, parent_scopes);
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            visit_block_for_escape(block, state, parent_scopes);
+            visit_block_for_escape(handler, state, parent_scopes);
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            visit_block_for_escape(block, state, parent_scopes);
+        }
+        ReactiveTerminal::Logical { right, result, .. } => {
+            visit_block_for_escape(right, state, parent_scopes);
+            if let Some(r) = result {
+                let resolved = state.resolve(r.identifier.id);
+                let node = state.ensure_node(resolved);
+                for &scope_id in parent_scopes {
+                    node.scopes.insert(scope_id);
+                }
+            }
+        }
+        ReactiveTerminal::Continue { .. } | ReactiveTerminal::Break { .. } => {}
+    }
+}
+
+/// Walk the escape graph from escaping values to compute the memoized set.
+fn compute_memoized_identifiers(state: &mut EscapeState) -> FxHashSet<IdentifierId> {
+    let mut memoized = FxHashSet::default();
+    let escaping: Vec<IdentifierId> = state.escaping_values.iter().copied().collect();
+
+    for id in escaping {
+        visit_for_memoization(id, false, state, &mut memoized);
+    }
+
+    memoized
+}
+
+fn visit_for_memoization(
+    id: IdentifierId,
+    force_memoize: bool,
+    state: &mut EscapeState,
+    memoized: &mut FxHashSet<IdentifierId>,
+) -> bool {
+    // Check if already visited
+    if let Some(node) = state.identifiers.get(&id) {
+        if node.seen {
+            return node.memoized;
+        }
+    } else {
+        return false;
+    }
+
+    // Mark as seen (with temporary false for cycle detection)
+    state.identifiers.get_mut(&id).unwrap().seen = true;
+    state.identifiers.get_mut(&id).unwrap().memoized = false;
+
+    // Determine if this node will definitely be memoized upfront.
+    // Memoized-level values and force-memoized values are known in advance,
+    // so we can propagate force to their dependencies immediately.
+    let level = state.identifiers[&id].level;
+    let will_definitely_memoize = level == MemoizationLevel::Memoized || force_memoize;
+
+    let deps: Vec<IdentifierId> = state
+        .identifiers
+        .get(&id)
+        .map(|n| n.dependencies.iter().copied().collect())
+        .unwrap_or_default();
+
+    let mut has_memoized_dependency = false;
+    for dep in &deps {
+        let resolved = state.resolve(*dep);
+        // DIVERGENCE: upstream visits deps without force, then separately
+        // handles scope-level force propagation. We propagate force directly
+        // to deps when this node will definitely be memoized, because deps
+        // of a memoized escaping value must also be memoized to keep their
+        // scopes alive.
+        let is_dep_memoized =
+            visit_for_memoization(resolved, will_definitely_memoize, state, memoized);
+        has_memoized_dependency |= is_dep_memoized;
+    }
+
+    let should_memoize = level == MemoizationLevel::Memoized
+        || (level == MemoizationLevel::Conditional && (has_memoized_dependency || force_memoize))
+        || (level == MemoizationLevel::Unmemoized && force_memoize);
+
+    if should_memoize {
+        state.identifiers.get_mut(&id).unwrap().memoized = true;
+        memoized.insert(id);
+
+        // Force-memoize all scope dependencies
+        let scope_ids: Vec<ScopeId> = state
+            .identifiers
+            .get(&id)
+            .map(|n| n.scopes.iter().copied().collect())
+            .unwrap_or_default();
+        for scope_id in scope_ids {
+            force_memoize_scope_dependencies(scope_id, state, memoized);
+        }
+    }
+
+    should_memoize
+}
+
+fn force_memoize_scope_dependencies(
+    scope_id: ScopeId,
+    state: &mut EscapeState,
+    memoized: &mut FxHashSet<IdentifierId>,
+) {
+    if let Some(node) = state.scopes.get(&scope_id) {
+        if node.seen {
+            return;
+        }
+    } else {
+        return;
+    }
+    state.scopes.get_mut(&scope_id).unwrap().seen = true;
+
+    let deps: Vec<IdentifierId> =
+        state.scopes.get(&scope_id).map(|n| n.dependencies.clone()).unwrap_or_default();
+
+    for dep in deps {
+        let resolved = state.resolve(dep);
+        visit_for_memoization(resolved, true, state, memoized);
+    }
+}
+
+/// Prune reactive scopes that don't escape the function.
+///
+/// Upstream: PruneNonEscapingScopes.ts
+///
+/// Uses a graph-based escape analysis to determine which identifiers must be
+/// memoized (because they are returned or passed to hooks, or are transitive
+/// dependencies of such values). Scopes whose outputs are not in the memoized
+/// set are pruned (unwrapped).
+pub fn prune_non_escaping_scopes(rf: &mut ReactiveFunction) {
+    let mut state = EscapeState::new();
+    build_escape_graph(rf, &mut state);
+    let memoized = compute_memoized_identifiers(&mut state);
+
+    // Prune scopes whose outputs (declarations + reassignments) are not memoized
+    prune_scopes_with_memoized(&mut rf.body, &memoized, &state);
+}
+
+fn prune_scopes_with_memoized(
+    block: &mut ReactiveBlock,
+    memoized: &FxHashSet<IdentifierId>,
+    state: &EscapeState,
+) {
+    let mut new_instructions = Vec::new();
+
+    for instr in std::mem::take(&mut block.instructions) {
+        match instr {
+            ReactiveInstruction::Scope(mut scope_block) => {
+                // Recurse first
+                prune_scopes_with_memoized(&mut scope_block.instructions, memoized, state);
+
+                // Keep scopes with early return values (handled by PropagateEarlyReturns)
+                if scope_block.scope.early_return_value.is_some() {
+                    new_instructions.push(ReactiveInstruction::Scope(scope_block));
+                    continue;
+                }
+
+                // Keep scopes with no declarations/reassignments (empty scopes
+                // handled by downstream passes)
+                if scope_block.scope.declarations.is_empty()
+                    && scope_block.scope.reassignments.is_empty()
+                {
+                    new_instructions.push(ReactiveInstruction::Scope(scope_block));
+                    continue;
+                }
+
+                // Keep scopes that are allocating (sentinel scopes) — these need
+                // caching even if their outputs aren't transitively escaping.
+                // Pruning them causes functions to produce no scopes at all,
+                // making them appear untransformed.
+                if scope_block.scope.is_allocating {
+                    new_instructions.push(ReactiveInstruction::Scope(scope_block));
+                    continue;
+                }
+
+                // Check if any declaration or reassignment is in the memoized set
+                let has_memoized_output =
+                    scope_block.scope.declarations.iter().any(|(id, _)| {
+                        let resolved = state.resolve(*id);
+                        memoized.contains(id) || memoized.contains(&resolved)
+                    }) || scope_block.scope.reassignments.iter().any(|ident| {
+                        let resolved = state.resolve(ident.id);
+                        memoized.contains(&ident.id) || memoized.contains(&resolved)
+                    });
+
+                if has_memoized_output {
+                    new_instructions.push(ReactiveInstruction::Scope(scope_block));
+                } else {
+                    // Unwrap the scope: emit its instructions directly
+                    for inner in scope_block.instructions.instructions {
+                        new_instructions.push(inner);
+                    }
+                }
+            }
+            ReactiveInstruction::Terminal(mut terminal) => {
+                prune_scopes_in_terminal_memoized(&mut terminal, memoized, state);
+                new_instructions.push(ReactiveInstruction::Terminal(terminal));
+            }
+            other => {
+                new_instructions.push(other);
+            }
+        }
+    }
+
+    block.instructions = new_instructions;
+}
+
+fn prune_scopes_in_terminal_memoized(
+    terminal: &mut ReactiveTerminal,
+    memoized: &FxHashSet<IdentifierId>,
+    state: &EscapeState,
+) {
+    match terminal {
+        ReactiveTerminal::If { consequent, alternate, .. } => {
+            prune_scopes_with_memoized(consequent, memoized, state);
+            prune_scopes_with_memoized(alternate, memoized, state);
+        }
+        ReactiveTerminal::Switch { cases, .. } => {
+            for (_, block) in cases {
+                prune_scopes_with_memoized(block, memoized, state);
+            }
+        }
+        ReactiveTerminal::For { init, test, update, body, .. } => {
+            prune_scopes_with_memoized(init, memoized, state);
+            prune_scopes_with_memoized(test, memoized, state);
+            if let Some(upd) = update {
+                prune_scopes_with_memoized(upd, memoized, state);
+            }
+            prune_scopes_with_memoized(body, memoized, state);
+        }
+        ReactiveTerminal::ForOf { init, test, body, .. }
+        | ReactiveTerminal::ForIn { init, test, body, .. } => {
+            prune_scopes_with_memoized(init, memoized, state);
+            prune_scopes_with_memoized(test, memoized, state);
+            prune_scopes_with_memoized(body, memoized, state);
+        }
+        ReactiveTerminal::While { test, body, .. }
+        | ReactiveTerminal::DoWhile { body, test, .. } => {
+            prune_scopes_with_memoized(test, memoized, state);
+            prune_scopes_with_memoized(body, memoized, state);
+        }
+        ReactiveTerminal::Try { block, handler, .. } => {
+            prune_scopes_with_memoized(block, memoized, state);
+            prune_scopes_with_memoized(handler, memoized, state);
+        }
+        ReactiveTerminal::Label { block, .. } => {
+            prune_scopes_with_memoized(block, memoized, state);
+        }
+        ReactiveTerminal::Logical { right, .. } => {
+            prune_scopes_with_memoized(right, memoized, state);
+        }
+        ReactiveTerminal::Return { .. }
+        | ReactiveTerminal::Throw { .. }
+        | ReactiveTerminal::Continue { .. }
+        | ReactiveTerminal::Break { .. } => {}
+    }
 }
 
 /// Collect all identifier IDs referenced as operands anywhere in the tree.

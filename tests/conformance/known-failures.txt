@@ -281,9 +281,6 @@ escape-analysis-logical.js
 escape-analysis-non-escaping-interleaved-allocating-dependency.js
 escape-analysis-non-escaping-interleaved-allocating-nested-dependency.js
 escape-analysis-non-escaping-interleaved-primitive-dependency.js
-escape-analysis-not-conditional-test.js
-escape-analysis-not-switch-case.js
-escape-analysis-not-switch-test.js
 evaluation-order-mutate-call-after-dependency-load.ts
 evaluation-order-mutate-store-after-dependency-load.ts
 exhaustive-deps/error.exhaustive-deps-effect-events.js
@@ -333,7 +330,6 @@ for-empty-update-with-continue.js
 for-empty-update.js
 for-in-statement-break.js
 for-in-statement-continue.js
-for-in-statement-type-inference.js
 for-in-statement.js
 for-logical.js
 for-loop-with-value-block-initializer.js
@@ -451,7 +447,6 @@ independent-across-if.js
 independent.js
 independently-memoize-object-property.js
 infer-compile-hooks-with-multiple-params.js
-infer-computed-delete.js
 infer-functions-component-with-hook-call.js
 infer-functions-component-with-ref-arg.js
 infer-functions-hook-with-hook-call.js
@@ -459,7 +454,6 @@ infer-global-object.js
 infer-nested-object-method.jsx
 infer-no-component-annot.ts
 infer-no-component-obj-return.js
-infer-property-delete.js
 infer-sequential-optional-chain-nonnull.ts
 inner-function/nullable-objects/array-map-named-callback-cross-context.js
 inner-function/nullable-objects/array-map-named-callback.js
@@ -556,7 +550,6 @@ multiple-calls-to-hoisted-callback-from-other-callback.js
 multiple-components-first-is-invalid.js
 mutable-lifetime-loops.js
 mutable-lifetime-with-aliasing.js
-mutable-liverange-loop.js
 mutate-outer-scope-within-value-block.ts
 mutation-within-jsx-and-break.tsx
 mutation-within-jsx.tsx
@@ -660,11 +653,9 @@ outlined-destructured-params.js
 outlined-helper.js
 outlining-in-func-expr.js
 outlining-in-react-memo.js
-overlapping-scopes-interleaved-by-terminal.js
 overlapping-scopes-interleaved.js
 overlapping-scopes-shadowed.js
 overlapping-scopes-shadowing-within-block.js
-overlapping-scopes-while.js
 overlapping-scopes-within-block.js
 partial-early-return-within-reactive-scope.js
 phi-reference-effects.ts
@@ -864,7 +855,6 @@ reduce-reactive-deps/jump-unpoisoned/jump-target-within-scope-label.ts
 reduce-reactive-deps/jump-unpoisoned/jump-target-within-scope-loop-break.ts
 reduce-reactive-deps/jump-unpoisoned/reduce-if-exhaustive-nonpoisoned-deps.ts
 reduce-reactive-deps/jump-unpoisoned/reduce-if-exhaustive-nonpoisoned-deps1.ts
-reduce-reactive-deps/jump-unpoisoned/throw-before-scope-starts.ts
 reduce-reactive-deps/memberexpr-join-optional-chain.ts
 reduce-reactive-deps/memberexpr-join-optional-chain2.ts
 reduce-reactive-deps/no-uncond.js
@@ -957,7 +947,6 @@ reverse-postorder.js
 rewrite-phis-in-lambda-capture-context.js
 rules-of-hooks/allow-locals-named-like-hooks.js
 rules-of-hooks/allow-props-named-like-hooks.js
-rules-of-hooks/rules-of-hooks-0e2214abc294.js
 rules-of-hooks/rules-of-hooks-4f6c78a14bf7.js
 rules-of-hooks/rules-of-hooks-69521d94fa03.js
 rules-of-hooks/rules-of-hooks-93dc5d5e538a.js
