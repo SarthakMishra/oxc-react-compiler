@@ -33,6 +33,7 @@
     clippy::comparison_chain
 )]
 
+pub mod debug_dump;
 pub mod entrypoint;
 pub mod error;
 pub mod hir;

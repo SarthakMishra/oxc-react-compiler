@@ -60,12 +60,20 @@ pub fn run_pipeline(
     // Pass 7: Merge consecutive blocks
     crate::optimization::merge_consecutive_blocks::merge_consecutive_blocks(hir);
 
+    if crate::debug_dump::is_debug_ir_enabled() {
+        crate::debug_dump::dump_hir_summary(hir, "Pass 7: merge_consecutive_blocks");
+    }
+
     // Phase 2: SSA
     // Pass 8: Enter SSA
     crate::ssa::enter_ssa::enter_ssa(hir);
 
     // Pass 9: Eliminate redundant phi
     crate::ssa::eliminate_redundant_phi::eliminate_redundant_phi(hir);
+
+    if crate::debug_dump::is_debug_ir_enabled() {
+        crate::debug_dump::dump_hir_summary(hir, "Pass 9: SSA (after eliminate_redundant_phi)");
+    }
 
     // Pass 9.5: Prune temporary lvalues (post-SSA cleanup)
     crate::optimization::prune_temporary_lvalues::prune_temporary_lvalues(hir);
@@ -184,6 +192,10 @@ pub fn run_pipeline(
     crate::inference::infer_mutation_aliasing_ranges::infer_mutation_aliasing_ranges(
         hir, returns_id,
     );
+
+    if crate::debug_dump::is_debug_ir_enabled() {
+        crate::debug_dump::dump_hir_summary(hir, "Pass 20: infer_mutation_aliasing_ranges");
+    }
 
     // Pass 20.5: annotate_last_use (stamps identifier.last_use for scope inference)
     crate::inference::infer_mutation_aliasing_ranges::annotate_last_use(hir);
@@ -316,6 +328,10 @@ pub fn run_pipeline(
         config.use_mutable_range,
     );
 
+    if crate::debug_dump::is_debug_ir_enabled() {
+        crate::debug_dump::dump_scopes(hir, "Pass 33: infer_reactive_scope_variables");
+    }
+
     // Pass 33.5: propagate_scope_membership_hir
     // Pull unscoped instructions into their consuming scope when ALL consumers
     // are in the same scope. This ensures instructions that produce values used
@@ -372,6 +388,10 @@ pub fn run_pipeline(
         hir,
         param_names,
     );
+
+    if crate::debug_dump::is_debug_ir_enabled() {
+        crate::debug_dump::dump_scopes(hir, "Pass 46: propagate_scope_dependencies_hir");
+    }
 
     // Pass 46.5: derive_minimal_dependencies_hir (dependency tree minimization)
     crate::reactive_scopes::derive_minimal_dependencies::derive_minimal_dependencies_hir(hir);
@@ -431,6 +451,10 @@ pub fn run_full_pipeline(
         hir_func.is_async,
         hir_func.is_generator,
     );
+
+    if crate::debug_dump::is_debug_ir_enabled() {
+        crate::debug_dump::dump_rf_summary(&rf, "Pass 47: build_reactive_function");
+    }
 
     // Phase 9: RF Optimization Passes (48–60)
     crate::reactive_scopes::prune_scopes::prune_unused_labels(&mut rf);
