@@ -1511,6 +1511,103 @@ fn substitute_places_in_value(value: &mut InstructionValue, subs: &FxHashMap<Ide
     }
 }
 
+/// Inline PropertyLoad chains in scope dependencies and declarations.
+///
+/// When `a.b.c` is lowered, it becomes:
+///   t1 = PropertyLoad(a, "b")
+///   t2 = PropertyLoad(t1, "c")
+///
+/// Each temp has a narrow mutable range `[N, N+1)`. In scope grouping,
+/// these temps don't overlap with their consumers, causing scope
+/// fragmentation. Upstream represents these as property paths on Places
+/// so the root `a` (with wide range) is used directly.
+///
+/// This pass resolves PropertyLoad temps back to their root identifier
+/// in scope dependencies and declarations only — instruction operands
+/// are left intact so codegen still emits correct property chains.
+///
+/// Skips chains that include `optional=true` PropertyLoads to preserve
+/// `?.` semantics.
+pub fn inline_property_loads(rf: &mut ReactiveFunction) {
+    inline_prop_loads_in_block(&mut rf.body);
+}
+
+fn inline_prop_loads_in_block(block: &mut ReactiveBlock) {
+    // Phase 1: Build substitution map.
+    // For each PropertyLoad { object: temp, .. } where the lvalue is an unnamed temp,
+    // record lvalue_id -> object.clone().
+    // Skip optional PropertyLoads — we don't want to lose `?.` semantics.
+    let mut substitutions: FxHashMap<IdentifierId, Place> = FxHashMap::default();
+
+    for instr in &block.instructions {
+        match instr {
+            ReactiveInstruction::Instruction(instruction) => {
+                if let InstructionValue::PropertyLoad { object, optional, .. } = &instruction.value
+                    && !optional
+                    && instruction.lvalue.identifier.name.is_none()
+                {
+                    substitutions.insert(instruction.lvalue.identifier.id, object.clone());
+                }
+            }
+            ReactiveInstruction::Scope(scope_block) => {
+                // Collect PropertyLoad subs from inside the scope
+                for inner in &scope_block.instructions.instructions {
+                    if let ReactiveInstruction::Instruction(instruction) = inner
+                        && let InstructionValue::PropertyLoad { object, optional, .. } =
+                            &instruction.value
+                        && !optional
+                        && instruction.lvalue.identifier.name.is_none()
+                    {
+                        substitutions.insert(instruction.lvalue.identifier.id, object.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if substitutions.is_empty() {
+        // Recurse into nested blocks even if no subs at this level
+        for instr in &mut block.instructions {
+            match instr {
+                ReactiveInstruction::Scope(scope_block) => {
+                    inline_prop_loads_in_block(&mut scope_block.instructions);
+                }
+                ReactiveInstruction::Terminal(terminal) => {
+                    for_each_block_in_terminal_mut(terminal, inline_prop_loads_in_block);
+                }
+                ReactiveInstruction::Instruction(_) => {}
+            }
+        }
+        return;
+    }
+
+    // Resolve transitive substitutions: if t0 → t1 and t1 → a, then t0 → a.
+    let resolved = resolve_transitive_subs(&substitutions);
+
+    // Phase 2: Apply substitutions ONLY to scope dependencies and declarations,
+    // NOT to instruction operands (which would break codegen property chains).
+    for instr in &mut block.instructions {
+        match instr {
+            ReactiveInstruction::Scope(scope_block) => {
+                // Substitute in scope dependencies and declarations
+                for dep in &mut scope_block.scope.dependencies {
+                    substitute_place_identifier(&mut dep.identifier, &resolved);
+                }
+                for (_, decl) in &mut scope_block.scope.declarations {
+                    substitute_place_identifier(&mut decl.identifier, &resolved);
+                }
+                // Recurse into nested blocks
+                inline_prop_loads_in_block(&mut scope_block.instructions);
+            }
+            ReactiveInstruction::Terminal(terminal) => {
+                for_each_block_in_terminal_mut(terminal, inline_prop_loads_in_block);
+            }
+            ReactiveInstruction::Instruction(_) => {}
+        }
+    }
+}
+
 /// Prune unused lvalues.
 pub fn prune_unused_lvalues(rf: &mut ReactiveFunction) {
     // Collect all referenced IDs

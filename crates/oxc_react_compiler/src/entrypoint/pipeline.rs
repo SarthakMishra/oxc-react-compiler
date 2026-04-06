@@ -443,6 +443,7 @@ pub fn run_full_pipeline(
     crate::reactive_scopes::prune_scopes::propagate_early_returns(&mut rf);
 
     crate::reactive_scopes::prune_scopes::inline_load_locals(&mut rf);
+    crate::reactive_scopes::prune_scopes::inline_property_loads(&mut rf);
     crate::reactive_scopes::prune_scopes::prune_unused_lvalues(&mut rf);
     crate::reactive_scopes::prune_scopes::promote_used_temporaries(&mut rf);
     crate::reactive_scopes::prune_scopes::extract_scope_declarations_from_destructuring(&mut rf);
